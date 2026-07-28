@@ -1,0 +1,640 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Identity {
+  id       String @id @default(uuid())
+  publicId String @unique
+
+  email       String         @unique
+  phoneNumber String?        @unique
+  type        IdentityType
+  status      IdentityStatus
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  activatedAt DateTime?
+  suspendedAt DateTime?
+  closedAt    DateTime?
+
+  authentication      Authentication?
+  verification        Verification?   @relation("IdentityVerification")
+  verificationReviews Verification[]  @relation("VerificationReviewer")
+
+  sessions   Session[]
+  devices    Device[]
+  recoveries Recovery[]
+
+  identityRoles IdentityRole[]
+
+  roleAssignmentsMade IdentityRole[] @relation("RoleAssignments")
+  roleRevocationsMade IdentityRole[] @relation("RoleRevocations")
+
+  auditEvents          IdentityAudit[]
+  auditActions         IdentityAudit[]       @relation("AuditActor")
+  verificationRequests VerificationRequest[]
+
+  @@index([email])
+  @@index([phoneNumber])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+  @@map("identities")
+}
+
+model Authentication {
+  id       String @id @default(uuid())
+  publicId String @unique
+
+  identityId String   @unique
+  identity   Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  status AuthenticationStatus
+
+  passwordHash    String?
+  passwordVersion Int     @default(1)
+
+  passwordChangedAt  DateTime?
+  passwordExpiresAt  DateTime?
+  passwordMustChange Boolean   @default(false)
+
+  failedAuthenticationCount  Int       @default(0)
+  lastFailedAuthenticationAt DateTime?
+
+  lockedAt    DateTime?
+  lockedUntil DateTime?
+  lockReason  AuthenticationFailureReason?
+
+  lastAuthenticatedAt DateTime?
+
+  mfaStatus    MfaStatus
+  mfaMethod    AuthenticationMfaMethod?
+  mfaSecret    String?
+  mfaEnabledAt DateTime?
+
+  passwordHistories PasswordHistory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([identityId])
+  @@index([status])
+  @@index([lockedUntil])
+  @@index([lastAuthenticatedAt])
+  @@map("authentications")
+}
+
+model PasswordHistory {
+  id String @id @default(uuid())
+
+  authenticationId String
+  authentication   Authentication @relation(fields: [authenticationId], references: [id], onDelete: Cascade)
+
+  passwordHash String
+
+  version Int
+
+  createdAt DateTime @default(now())
+
+  @@unique([authenticationId, version])
+  @@index([authenticationId])
+  @@index([createdAt])
+  @@map("password_histories")
+}
+
+model Role {
+  id       String @id @default(uuid())
+  publicId String @unique
+
+  name String @unique
+  code String @unique
+
+  description  String?
+  displayOrder Int     @default(0)
+
+  isSystem Boolean @default(false)
+  isActive Boolean @default(true)
+
+  identityRoles   IdentityRole[]
+  rolePermissions RolePermission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+  @@map("roles")
+}
+
+model Permission {
+  id       String @id @default(uuid())
+  publicId String @unique
+
+  name String
+  code String @unique
+
+  resource String
+  action   String
+
+  description String?
+
+  isSystem Boolean @default(true)
+  isActive Boolean @default(true)
+
+  rolePermissions RolePermission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([resource, action])
+  @@index([resource])
+  @@index([action])
+  @@index([isActive])
+  @@map("permissions")
+}
+
+model RolePermission {
+  id String @id @default(uuid())
+
+  roleId String
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model IdentityRole {
+  id String @id @default(uuid())
+
+  identityId String
+  identity   Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  roleId String
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  assignedById String?
+  assignedBy   Identity? @relation("RoleAssignments", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  assignedAt DateTime @default(now())
+
+  expiresAt DateTime?
+
+  revokedAt   DateTime?
+  revokedById String?
+  revokedBy   Identity? @relation("RoleRevocations", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([identityId, roleId])
+  @@index([identityId])
+  @@index([roleId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("identity_roles")
+}
+
+model Session {
+  id       String @id @default(uuid())
+  publicId String @unique
+
+  identityId String
+  identity   Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  status SessionStatus
+
+  refreshTokenHash String @unique
+
+  ipAddress   String?
+  userAgent   String?
+  countryCode String? @db.VarChar(2)
+  city        String?
+
+  authenticatedAt DateTime
+  lastActivityAt  DateTime
+
+  expiresAt DateTime
+
+  revokedAt     DateTime?
+  revokedReason SessionRevocationReason?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([identityId])
+  @@index([deviceId])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([lastActivityAt])
+  @@map("sessions")
+}
+
+model Device {
+  id       String @id @default(uuid())
+  publicId String @unique
+
+  identityId String
+  identity   Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  status     DeviceStatus
+  trustLevel DeviceTrustLevel
+
+  fingerprint String @unique
+
+  name                   String?
+  platform               String?
+  operatingSystem        String?
+  operatingSystemVersion String?
+  browser                String?
+  browserVersion         String?
+  deviceType             DeviceType
+
+  trustedAt  DateTime?
+  lastSeenAt DateTime?
+
+  revokedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions Session[]
+
+  @@index([identityId])
+  @@index([status])
+  @@index([trustLevel])
+  @@index([lastSeenAt])
+  @@map("devices")
+}
+
+model Verification {
+  id       String @id @default(uuid())
+  publicId String @unique
+
+  identityId String   @unique
+  identity   Identity @relation("IdentityVerification", fields: [identityId], references: [id], onDelete: Cascade)
+
+  status VerificationStatus
+  level  VerificationLevel
+
+  profilePhotoVerified  Boolean @default(false)
+  governmentIdVerified  Boolean @default(false)
+  driverLicenseVerified Boolean @default(false)
+
+  verifiedAt DateTime?
+  expiresAt  DateTime?
+
+  reviewedById String?
+  reviewedBy   Identity? @relation("VerificationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  rejectionReason String?
+  lastReviewedAt  DateTime?
+
+  requests VerificationRequest[]
+
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+  memberVerifiedAt DateTime?
+  decisionReason   VerificationDecisionReason?
+
+  driverVerifiedAt DateTime?
+
+  profilePhotoVerifiedAt DateTime?
+
+  governmentIdVerifiedAt DateTime?
+
+  driverLicenseVerifiedAt DateTime?
+
+  @@index([identityId])
+  @@index([reviewedById])
+  @@index([status])
+  @@index([level])
+  @@index([expiresAt])
+  @@map("verifications")
+}
+
+model VerificationRequest {
+  id       String @id @default(uuid())
+  publicId String @unique
+
+  verificationId String
+  verification   Verification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
+
+  type VerificationRequestType
+
+  status VerificationRequestStatus
+
+  assetPublicId String
+
+  submittedAt DateTime @default(now())
+
+  reviewedAt DateTime?
+
+  reviewedById String?
+  reviewedBy   Identity? @relation(fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  rejectionReason String?
+  expiresAt       DateTime?
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([verificationId])
+  @@index([type])
+  @@index([status])
+  @@map("verification_requests")
+}
+
+model Recovery {
+  id       String @id @default(uuid())
+  publicId String @unique
+
+  identityId String
+  identity   Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  type   RecoveryType
+  status RecoveryStatus
+
+  recoveryTokenHash String? @unique
+
+  requestedAt DateTime
+  expiresAt   DateTime
+
+  completedAt DateTime?
+  cancelledAt DateTime?
+
+  failureReason RecoveryFailureReason?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([identityId])
+  @@index([expiresAt])
+  @@index([requestedAt])
+  @@index([identityId, type])
+  @@index([identityId, status])
+  @@map("recoveries")
+}
+
+model IdentityAudit {
+  id       String @id @default(uuid())
+  publicId String @unique
+
+  identityId String?
+  identity   Identity? @relation(fields: [identityId], references: [id], onDelete: SetNull)
+
+  eventType IdentityAuditEventType
+  severity  AuditSeverity
+
+  actorIdentityId String?
+  actorIdentity   Identity? @relation("AuditActor", fields: [actorIdentityId], references: [id], onDelete: SetNull)
+
+  resource         String
+  resourcePublicId String?
+
+  ipAddress String?
+  userAgent String?
+
+  metadata Json?
+
+  occurredAt DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([identityId])
+  @@index([actorIdentityId])
+  @@index([eventType])
+  @@index([severity])
+  @@index([occurredAt])
+  @@map("identity_audits")
+}
+
+enum IdentityAuditEventType {
+  IDENTITY_REGISTERED
+  IDENTITY_ACTIVATED
+  IDENTITY_SUSPENDED
+  IDENTITY_CLOSED
+
+  AUTHENTICATION_SUCCEEDED
+  AUTHENTICATION_FAILED
+  PASSWORD_CHANGED
+  PASSWORD_RESET
+
+  MFA_ENABLED
+  MFA_DISABLED
+  MFA_VERIFIED
+
+  SESSION_CREATED
+  SESSION_REVOKED
+  SESSION_EXPIRED
+
+  DEVICE_REGISTERED
+  DEVICE_TRUSTED
+  DEVICE_REVOKED
+
+  ROLE_ASSIGNED
+  ROLE_REVOKED
+  PERMISSION_GRANTED
+  PERMISSION_REVOKED
+
+  VERIFICATION_STARTED
+  VERIFICATION_APPROVED
+  VERIFICATION_REJECTED
+  VERIFICATION_EXPIRED
+
+  RECOVERY_STARTED
+  RECOVERY_COMPLETED
+  RECOVERY_CANCELLED
+
+  SECURITY_POLICY_TRIGGERED
+}
+
+enum AuditSeverity {
+  INFORMATION
+  WARNING
+  CRITICAL
+}
+
+enum AuthenticationStatus {
+  PENDING
+  ACTIVE
+  LOCKED
+  DISABLED
+}
+
+enum RecoveryType {
+  PASSWORD_RESET
+  ACCOUNT_UNLOCK
+  MFA_RESET
+  ACCOUNT_RECOVERY
+}
+
+enum RecoveryStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum DeviceStatus {
+  PENDING
+  TRUSTED
+  REVOKED
+}
+
+enum DeviceTrustLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum DeviceType {
+  WEB
+  MOBILE
+  TABLET
+  DESKTOP
+  SERVER
+  UNKNOWN
+}
+
+enum SessionRevocationReason {
+  USER_LOGOUT
+  ADMIN_LOGOUT
+  PASSWORD_CHANGED
+  PASSWORD_RESET
+  MFA_RESET
+  ACCOUNT_LOCKED
+  ACCOUNT_CLOSED
+  TOKEN_REUSE
+  SECURITY_POLICY
+  DEVICE_REMOVED
+  SESSION_EXPIRED
+  SYSTEM
+}
+
+enum SessionStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+enum AuthenticationMfaMethod {
+  TOTP
+  EMAIL
+  SMS
+  PASSKEY
+}
+
+enum IdentityType {
+  PERSON
+  ORGANIZATION
+  SERVICE
+  SYSTEM
+}
+
+enum IdentityStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum MfaStatus {
+  DISABLED
+  ENABLED
+}
+
+enum AuthenticationFailureReason {
+  INVALID_CREDENTIALS
+  INVALID_PASSWORD
+  IDENTITY_NOT_FOUND
+  IDENTITY_NOT_ACTIVE
+  AUTHENTICATION_NOT_ACTIVE
+  ACCOUNT_DISABLED
+  ACCOUNT_LOCKED
+  TOO_MANY_ATTEMPTS
+  RATE_LIMITED
+  PASSWORD_EXPIRED
+  PASSWORD_CHANGE_REQUIRED
+  MFA_REQUIRED
+  MFA_FAILED
+  MFA_EXPIRED
+  INVALID_TOKEN
+  TOKEN_EXPIRED
+  TOKEN_REVOKED
+  SESSION_EXPIRED
+  INVALID_SESSION
+  UNTRUSTED_DEVICE
+  LOCATION_RESTRICTED
+  NETWORK_RESTRICTED
+  HIGH_RISK_AUTHENTICATION
+  INTERNAL_ERROR
+}
+
+enum VerificationRequestType {
+  PROFILE_PHOTO
+  GOVERNMENT_ID
+  DRIVER_LICENSE
+}
+
+enum VerificationRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum VerificationLevel {
+  NONE
+  MEMBER
+  DRIVER
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  EXPIRED
+  REVOKED
+}
+
+enum VerificationDecisionReason {
+  INITIAL_APPROVAL
+  DOCUMENT_UPDATED
+  DOCUMENT_EXPIRED
+  DOCUMENT_REJECTED
+  MANUAL_REVIEW
+  ADMIN_OVERRIDE
+}
+
+enum RecoveryFailureReason {
+  USER_CANCELLED
+  ADMIN_CANCELLED
+  SYSTEM_CANCELLED
+
+  TOKEN_INVALID
+  TOKEN_EXPIRED
+
+  TOO_MANY_ATTEMPTS
+
+  PASSWORD_ALREADY_CHANGED
+
+  ACCOUNT_LOCKED
+}

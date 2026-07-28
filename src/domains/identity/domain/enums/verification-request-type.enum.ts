@@ -1,0 +1,5 @@
+export enum VerificationRequestType {
+  PROFILE_PHOTO = 'PROFILE_PHOTO',
+  GOVERNMENT_ID = 'GOVERNMENT_ID',
+  DRIVER_LICENSE = 'DRIVER_LICENSE',
+}
