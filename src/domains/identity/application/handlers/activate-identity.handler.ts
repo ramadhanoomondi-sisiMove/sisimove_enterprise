@@ -5,9 +5,17 @@ import { Inject, Injectable } from '@nestjs/common';
 import { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
 
+import {
+  IDENTITY_REPOSITORY,
+  IDENTITY_EVENT_PUBLISHER,
+} from '../identity.tokens';
+
 import { ActivateIdentityCommand } from '../commands/activate-identity.command';
+
 import { IdentityNotFoundException } from '../../domain/exceptions/identity-not-found.exception';
-import { IdentityRepository } from '../../domain/repositories/identity.repository';
+
+import type { IdentityRepository } from '../../domain/repositories/identity.repository';
+
 import { IdentityId } from '../../domain/value-objects/identity-id.vo';
 
 @Injectable()
@@ -16,10 +24,10 @@ export class ActivateIdentityHandler implements CommandHandler<
   void
 > {
   constructor(
-    @Inject('IdentityRepository')
+    @Inject(IDENTITY_REPOSITORY)
     private readonly repository: IdentityRepository,
 
-    @Inject('EventPublisher')
+    @Inject(IDENTITY_EVENT_PUBLISHER)
     private readonly eventPublisher: EventPublisher,
   ) {}
 
@@ -28,7 +36,7 @@ export class ActivateIdentityHandler implements CommandHandler<
       new IdentityId(command.publicId),
     );
 
-    if (!identity) {
+    if (identity === null) {
       throw new IdentityNotFoundException(command.publicId);
     }
 

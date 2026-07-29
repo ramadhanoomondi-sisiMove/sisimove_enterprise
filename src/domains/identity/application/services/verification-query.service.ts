@@ -1,4 +1,4 @@
-// src/domains/identity/application/services/verification-query.service.ts
+// src/domains/identity/infrastructure/query-services/verification-query.service.ts
 
 import type { VerificationLevel } from '../../domain/enums/verification-level.enum';
 import type { VerificationStatus } from '../../domain/enums/verification-status.enum';

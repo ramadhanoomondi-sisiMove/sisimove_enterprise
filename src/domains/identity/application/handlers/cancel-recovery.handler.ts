@@ -5,10 +5,16 @@ import { Inject, Injectable } from '@nestjs/common';
 import { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
 
+import {
+  IDENTITY_EVENT_PUBLISHER,
+  IDENTITY_RECOVERY_REPOSITORY,
+} from '../identity.tokens';
+
 import { CancelRecoveryCommand } from '../commands/cancel-recovery.command';
 import type { CancelRecoveryResult } from '../contracts/cancel-recovery.result';
 
 import { RecoveryNotFoundException } from '../../domain/exceptions/recovery-not-found.exception';
+
 import type { RecoveryRepository } from '../../domain/repositories/recovery.repository';
 
 @Injectable()
@@ -17,10 +23,10 @@ export class CancelRecoveryHandler implements CommandHandler<
   CancelRecoveryResult
 > {
   constructor(
-    @Inject('RecoveryRepository')
+    @Inject(IDENTITY_RECOVERY_REPOSITORY)
     private readonly recoveryRepository: RecoveryRepository,
 
-    @Inject('EventPublisher')
+    @Inject(IDENTITY_EVENT_PUBLISHER)
     private readonly eventPublisher: EventPublisher,
   ) {}
 
@@ -29,7 +35,7 @@ export class CancelRecoveryHandler implements CommandHandler<
       command.recoveryPublicId,
     );
 
-    if (!recovery) {
+    if (recovery === null) {
       throw new RecoveryNotFoundException();
     }
 

@@ -23,7 +23,7 @@ export class GetIdentityPermissionsHandler implements QueryHandler<
   GetIdentityPermissionsQuery,
   string[]
 > {
-  constructor(
+  public constructor(
     @Inject(AUTHORIZATION_IDENTITY_ROLE_REPOSITORY)
     private readonly identityRoleRepository: IdentityRoleRepository,
 
@@ -34,7 +34,7 @@ export class GetIdentityPermissionsHandler implements QueryHandler<
     private readonly permissionRepository: PermissionRepository,
   ) {}
 
-  async execute(query: GetIdentityPermissionsQuery): Promise<string[]> {
+  public async execute(query: GetIdentityPermissionsQuery): Promise<string[]> {
     const identityId = new IdentityId(query.identityId);
 
     const identityRoles =
@@ -56,9 +56,11 @@ export class GetIdentityPermissionsHandler implements QueryHandler<
           rolePermission.permissionId,
         );
 
-        if (permission?.isActive) {
-          permissionCodes.add(permission.code);
+        if (permission === null || !permission.isActive) {
+          continue;
         }
+
+        permissionCodes.add(permission.code);
       }
     }
 

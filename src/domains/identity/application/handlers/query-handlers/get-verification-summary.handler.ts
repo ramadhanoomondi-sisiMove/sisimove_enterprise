@@ -2,10 +2,11 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 
-import { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
+import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
+
+import { IDENTITY_VERIFICATION_QUERY_SERVICE } from '../../identity.tokens';
 
 import type { VerificationSummary } from '../../contracts/verification-summary';
-
 import { GetVerificationSummaryQuery } from '../../queries/get-verification-summary.query';
 import type { VerificationQueryService } from '../../services/verification-query.service';
 
@@ -14,12 +15,12 @@ export class GetVerificationSummaryHandler implements QueryHandler<
   GetVerificationSummaryQuery,
   VerificationSummary | null
 > {
-  constructor(
-    @Inject('VerificationQueryService')
+  public constructor(
+    @Inject(IDENTITY_VERIFICATION_QUERY_SERVICE)
     private readonly queryService: VerificationQueryService,
   ) {}
 
-  async execute(
+  public async execute(
     query: GetVerificationSummaryQuery,
   ): Promise<VerificationSummary | null> {
     return this.queryService.findSummary(query.verificationPublicId);

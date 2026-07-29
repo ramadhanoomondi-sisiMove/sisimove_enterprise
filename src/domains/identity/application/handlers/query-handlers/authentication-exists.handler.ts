@@ -2,7 +2,9 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 
-import { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
+import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
+
+import { IDENTITY_AUTHENTICATION_REPOSITORY } from '../../identity.tokens';
 
 import { AuthenticationExistsQuery } from '../../queries/authentication-exists.query';
 
@@ -14,12 +16,12 @@ export class AuthenticationExistsHandler implements QueryHandler<
   AuthenticationExistsQuery,
   boolean
 > {
-  constructor(
-    @Inject('AuthenticationRepository')
+  public constructor(
+    @Inject(IDENTITY_AUTHENTICATION_REPOSITORY)
     private readonly repository: AuthenticationRepository,
   ) {}
 
-  async execute(query: AuthenticationExistsQuery): Promise<boolean> {
+  public async execute(query: AuthenticationExistsQuery): Promise<boolean> {
     return this.repository.existsByPublicId(
       new AuthenticationId(query.publicId),
     );

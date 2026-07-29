@@ -140,9 +140,9 @@ export class AuthorizationController {
     type: RoleResponse,
     isArray: true,
   })
-  async listRoles(
+  public async listRoles(
     @Query('includeInactive') includeInactive?: string,
-  ): Promise<RoleResponse[]> {
+  ): Promise<readonly RoleResponse[]> {
     return this.listRolesHandler.execute(
       new ListRolesQuery(includeInactive === 'true'),
     );

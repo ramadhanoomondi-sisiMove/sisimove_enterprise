@@ -5,6 +5,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
 
+import {
+  IDENTITY_EVENT_PUBLISHER,
+  IDENTITY_VERIFICATION_REPOSITORY,
+} from '../identity.tokens';
+
 import { SubmitVerificationRequestCommand } from '../commands/submit-verification-request.command';
 
 import { VerificationRequestEntity } from '../../domain/entities/verification-request.entity';
@@ -21,10 +26,10 @@ export class SubmitVerificationRequestHandler implements CommandHandler<
   string
 > {
   constructor(
-    @Inject('VerificationRepository')
+    @Inject(IDENTITY_VERIFICATION_REPOSITORY)
     private readonly verificationRepository: VerificationRepository,
 
-    @Inject('EventPublisher')
+    @Inject(IDENTITY_EVENT_PUBLISHER)
     private readonly eventPublisher: EventPublisher,
   ) {}
 

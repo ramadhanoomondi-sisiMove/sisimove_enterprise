@@ -4,6 +4,8 @@ import { Inject, Injectable } from '@nestjs/common';
 
 import { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
 
+import { IDENTITY_VERIFICATION_QUERY_SERVICE } from '../../identity.tokens';
+
 import type { VerificationListItem } from '../../contracts/verification-list-item';
 import type { VerificationQueryService } from '../../services/verification-query.service';
 
@@ -14,12 +16,14 @@ export class ListVerificationsHandler implements QueryHandler<
   ListVerificationsQuery,
   VerificationListItem[]
 > {
-  constructor(
-    @Inject('VerificationQueryService')
+  public constructor(
+    @Inject(IDENTITY_VERIFICATION_QUERY_SERVICE)
     private readonly queryService: VerificationQueryService,
   ) {}
 
-  execute(query: ListVerificationsQuery): Promise<VerificationListItem[]> {
+  public async execute(
+    query: ListVerificationsQuery,
+  ): Promise<VerificationListItem[]> {
     void query;
 
     return this.queryService.findAll();

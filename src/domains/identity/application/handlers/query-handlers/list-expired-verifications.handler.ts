@@ -2,24 +2,25 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 
-import { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
+import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
+
+import { IDENTITY_VERIFICATION_QUERY_SERVICE } from '../../identity.tokens';
 
 import type { VerificationListItem } from '../../contracts/verification-list-item';
-import type { VerificationQueryService } from '../../services/verification-query.service';
-
 import { ListExpiredVerificationsQuery } from '../../queries/list-expired-verifications.query';
+import type { VerificationQueryService } from '../../services/verification-query.service';
 
 @Injectable()
 export class ListExpiredVerificationsHandler implements QueryHandler<
   ListExpiredVerificationsQuery,
   VerificationListItem[]
 > {
-  constructor(
-    @Inject('VerificationQueryService')
+  public constructor(
+    @Inject(IDENTITY_VERIFICATION_QUERY_SERVICE)
     private readonly queryService: VerificationQueryService,
   ) {}
 
-  execute(
+  public execute(
     query: ListExpiredVerificationsQuery,
   ): Promise<VerificationListItem[]> {
     void query;

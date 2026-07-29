@@ -5,6 +5,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 
+import {
+  IDENTITY_AUTHENTICATION_REPOSITORY,
+  IDENTITY_EVENT_PUBLISHER,
+} from '../identity.tokens';
+
 import { ResetPasswordCommand } from '../commands/reset-password.command';
 
 import { AuthenticationNotFoundException } from '../../domain/exceptions/authentication-not-found.exception';
@@ -16,10 +21,10 @@ import { IdentityId } from '../../domain/value-objects/identity-id.vo';
 @Injectable()
 export class ResetPasswordHandler implements CommandHandler<ResetPasswordCommand> {
   constructor(
-    @Inject('AuthenticationRepository')
+    @Inject(IDENTITY_AUTHENTICATION_REPOSITORY)
     private readonly repository: AuthenticationRepository,
 
-    @Inject('EventPublisher')
+    @Inject(IDENTITY_EVENT_PUBLISHER)
     private readonly eventPublisher: EventPublisher,
   ) {}
 

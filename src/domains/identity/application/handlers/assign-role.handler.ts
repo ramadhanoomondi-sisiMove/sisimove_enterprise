@@ -4,15 +4,22 @@ import { Inject, Injectable } from '@nestjs/common';
 
 import { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 
+import { IDENTITY_REPOSITORY } from '../identity.tokens';
+
+import {
+  AUTHORIZATION_IDENTITY_ROLE_REPOSITORY,
+  AUTHORIZATION_ROLE_REPOSITORY,
+} from '../authorization.tokens';
+
 import { AssignRoleCommand } from '../commands/assign-role.command';
 
 import { InvalidCredentialsException } from '../../domain/exceptions/invalid-credentials.exception';
 
+import { IdentityRoleEntity } from '../../domain/entities/identity-role.entity';
+
 import type { IdentityRepository } from '../../domain/repositories/identity.repository';
 import type { IdentityRoleRepository } from '../../domain/repositories/identity-role.repository';
 import type { RoleRepository } from '../../domain/repositories/role.repository';
-
-import { IdentityRoleEntity } from '../../domain/entities/identity-role.entity';
 
 import { IdentityId } from '../../domain/value-objects/identity-id.vo';
 import { RoleCode } from '../../domain/value-objects/role-code.vo';
@@ -22,18 +29,18 @@ export class AssignRoleHandler implements CommandHandler<
   AssignRoleCommand,
   void
 > {
-  constructor(
-    @Inject('IdentityRepository')
+  public constructor(
+    @Inject(IDENTITY_REPOSITORY)
     private readonly identityRepository: IdentityRepository,
 
-    @Inject('RoleRepository')
+    @Inject(AUTHORIZATION_ROLE_REPOSITORY)
     private readonly roleRepository: RoleRepository,
 
-    @Inject('IdentityRoleRepository')
+    @Inject(AUTHORIZATION_IDENTITY_ROLE_REPOSITORY)
     private readonly identityRoleRepository: IdentityRoleRepository,
   ) {}
 
-  async execute(command: AssignRoleCommand): Promise<void> {
+  public async execute(command: AssignRoleCommand): Promise<void> {
     // ------------------------------------------------------------------
     // Target identity
     // ------------------------------------------------------------------

@@ -11,7 +11,7 @@ import { PermissionResponse } from '../../../application/responses/permission.re
 import { PermissionResponseMapper } from '../../../presentation/rest/mappers/permission-response.mapper';
 
 @Injectable()
-export class PrismaPermissionReadRepository implements PermissionReadRepository {
+export class PermissionReadPrismaRepository implements PermissionReadRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async findById(id: string): Promise<PermissionResponse | null> {

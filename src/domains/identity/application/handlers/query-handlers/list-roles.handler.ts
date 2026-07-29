@@ -1,8 +1,10 @@
+// src/domains/authorization/application/handlers/query-handlers/list-roles.handler.ts
+
 import { Inject, Injectable } from '@nestjs/common';
 
 import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
 
-import { ROLE_READ_REPOSITORY } from '../../../application/authorization.tokens';
+import { AUTHORIZATION_ROLE_READ_REPOSITORY } from '../../authorization.tokens';
 
 import type { RoleReadRepository } from '../../repositories/role-read.repository';
 
@@ -13,14 +15,16 @@ import type { RoleResponse } from '../../responses/role.response';
 @Injectable()
 export class ListRolesHandler implements QueryHandler<
   ListRolesQuery,
-  RoleResponse[]
+  readonly RoleResponse[]
 > {
-  constructor(
-    @Inject(ROLE_READ_REPOSITORY)
+  public constructor(
+    @Inject(AUTHORIZATION_ROLE_READ_REPOSITORY)
     private readonly roleReadRepository: RoleReadRepository,
   ) {}
 
-  execute(query: ListRolesQuery): Promise<RoleResponse[]> {
+  public async execute(
+    query: ListRolesQuery,
+  ): Promise<readonly RoleResponse[]> {
     return this.roleReadRepository.findAll(query.includeInactive);
   }
 }

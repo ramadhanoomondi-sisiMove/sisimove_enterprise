@@ -7,26 +7,36 @@ import { CommandHandler } from '../../../../foundation/kernel/application/comman
 import type { PasswordHasher } from '../../../../foundation/security/password-hasher.interface';
 import { JwtTokenService } from '../../../../infrastructure/security/jwt-token.service';
 
+import {
+  IDENTITY_REPOSITORY,
+  IDENTITY_SESSION_REPOSITORY,
+  IDENTITY_PASSWORD_HASHER,
+} from '../identity.tokens';
+
 import { LoginCommand } from '../commands/login.command';
 import type { LoginResult } from '../contracts/login-result';
+
 import { IdentityStatus } from '../../domain/aggregates/identity.aggregate';
 import { SessionEntity } from '../../domain/entities/session.entity';
+
 import { IdentityNotActiveException } from '../../domain/exceptions/identity-not-active.exception';
 import { InvalidCredentialsException } from '../../domain/exceptions/invalid-credentials.exception';
-import { IdentityRepository } from '../../domain/repositories/identity.repository';
-import { SessionRepository } from '../../domain/repositories/session.repository';
+
+import type { IdentityRepository } from '../../domain/repositories/identity.repository';
+import type { SessionRepository } from '../../domain/repositories/session.repository';
+
 import { Email } from '../../domain/value-objects/email.vo';
 
 @Injectable()
 export class LoginHandler implements CommandHandler<LoginCommand, LoginResult> {
   constructor(
-    @Inject('IdentityRepository')
+    @Inject(IDENTITY_REPOSITORY)
     private readonly repository: IdentityRepository,
 
-    @Inject('SessionRepository')
+    @Inject(IDENTITY_SESSION_REPOSITORY)
     private readonly sessionRepository: SessionRepository,
 
-    @Inject('PasswordHasher')
+    @Inject(IDENTITY_PASSWORD_HASHER)
     private readonly passwordHasher: PasswordHasher,
 
     private readonly jwtTokenService: JwtTokenService,

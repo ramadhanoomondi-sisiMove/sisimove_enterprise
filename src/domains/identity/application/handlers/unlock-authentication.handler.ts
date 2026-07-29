@@ -2,8 +2,13 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 
-import { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
+import { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
+
+import {
+  IDENTITY_AUTHENTICATION_REPOSITORY,
+  IDENTITY_EVENT_PUBLISHER,
+} from '../identity.tokens';
 
 import { UnlockAuthenticationCommand } from '../commands/unlock-authentication.command';
 
@@ -16,15 +21,15 @@ export class UnlockAuthenticationHandler implements CommandHandler<
   UnlockAuthenticationCommand,
   void
 > {
-  public constructor(
-    @Inject('AuthenticationRepository')
+  constructor(
+    @Inject(IDENTITY_AUTHENTICATION_REPOSITORY)
     private readonly authenticationRepository: AuthenticationRepository,
 
-    @Inject('EventPublisher')
+    @Inject(IDENTITY_EVENT_PUBLISHER)
     private readonly eventPublisher: EventPublisher,
   ) {}
 
-  public async execute(command: UnlockAuthenticationCommand): Promise<void> {
+  async execute(command: UnlockAuthenticationCommand): Promise<void> {
     const authentication = await this.authenticationRepository.findByIdentityId(
       command.identityId,
     );

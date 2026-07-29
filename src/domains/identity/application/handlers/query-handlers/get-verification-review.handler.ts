@@ -2,10 +2,11 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 
-import { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
+import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
+
+import { IDENTITY_VERIFICATION_QUERY_SERVICE } from '../../identity.tokens';
 
 import type { VerificationReviewResult } from '../../contracts/verification-review-result';
-
 import { GetVerificationReviewQuery } from '../../queries/get-verification-review.query';
 import type { VerificationQueryService } from '../../services/verification-query.service';
 
@@ -14,12 +15,12 @@ export class GetVerificationReviewHandler implements QueryHandler<
   GetVerificationReviewQuery,
   VerificationReviewResult | null
 > {
-  constructor(
-    @Inject('VerificationQueryService')
+  public constructor(
+    @Inject(IDENTITY_VERIFICATION_QUERY_SERVICE)
     private readonly queryService: VerificationQueryService,
   ) {}
 
-  async execute(
+  public async execute(
     query: GetVerificationReviewQuery,
   ): Promise<VerificationReviewResult | null> {
     return this.queryService.findReview(query.requestPublicId);

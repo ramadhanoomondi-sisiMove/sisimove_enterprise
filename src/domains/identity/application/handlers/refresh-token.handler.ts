@@ -6,15 +6,24 @@ import * as crypto from 'crypto';
 import { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 import { JwtTokenService } from '../../../../infrastructure/security/jwt-token.service';
 
+import {
+  IDENTITY_REPOSITORY,
+  IDENTITY_SESSION_REPOSITORY,
+} from '../identity.tokens';
+
 import { RefreshTokenCommand } from '../commands/refresh-token.command';
 import type { LoginResult } from '../contracts/login-result';
+
 import {
   SessionEntity,
   SessionRevocationReason,
 } from '../../domain/entities/session.entity';
+
 import { InvalidCredentialsException } from '../../domain/exceptions/invalid-credentials.exception';
-import { IdentityRepository } from '../../domain/repositories/identity.repository';
-import { SessionRepository } from '../../domain/repositories/session.repository';
+
+import type { IdentityRepository } from '../../domain/repositories/identity.repository';
+import type { SessionRepository } from '../../domain/repositories/session.repository';
+
 import { IdentityId } from '../../domain/value-objects/identity-id.vo';
 
 @Injectable()
@@ -23,10 +32,10 @@ export class RefreshTokenHandler implements CommandHandler<
   LoginResult
 > {
   constructor(
-    @Inject('IdentityRepository')
+    @Inject(IDENTITY_REPOSITORY)
     private readonly identityRepository: IdentityRepository,
 
-    @Inject('SessionRepository')
+    @Inject(IDENTITY_SESSION_REPOSITORY)
     private readonly sessionRepository: SessionRepository,
 
     private readonly jwtTokenService: JwtTokenService,

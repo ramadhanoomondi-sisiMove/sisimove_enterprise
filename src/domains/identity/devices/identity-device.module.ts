@@ -9,7 +9,7 @@ import { TrustDeviceHandler } from '../application/handlers/trust-device.handler
 import { GetDeviceHandler } from '../application/handlers/query-handlers/get-device.handler';
 import { ListIdentityDevicesHandler } from '../application/handlers/query-handlers/list-identity-devices.handler';
 
-import { DevicePrismaRepository } from '../infrastructure/persistence/device.prisma.repository';
+import { DevicePrismaRepository } from '../infrastructure/persistence/device-prisma.repository';
 
 @Module({
   providers: [

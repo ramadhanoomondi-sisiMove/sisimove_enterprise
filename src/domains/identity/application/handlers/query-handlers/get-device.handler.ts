@@ -2,7 +2,9 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 
-import { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
+import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
+
+import { IDENTITY_DEVICE_REPOSITORY } from '../../identity.tokens';
 
 import { GetDeviceQuery } from '../../queries/get-device.query';
 
@@ -16,12 +18,12 @@ export class GetDeviceHandler implements QueryHandler<
   GetDeviceQuery,
   DeviceEntity
 > {
-  constructor(
-    @Inject('DeviceRepository')
+  public constructor(
+    @Inject(IDENTITY_DEVICE_REPOSITORY)
     private readonly repository: DeviceRepository,
   ) {}
 
-  async execute(query: GetDeviceQuery): Promise<DeviceEntity> {
+  public async execute(query: GetDeviceQuery): Promise<DeviceEntity> {
     const publicId = new DeviceId(query.publicId);
 
     const device = await this.repository.findEntityByPublicId(publicId);

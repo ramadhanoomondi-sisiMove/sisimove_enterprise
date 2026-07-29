@@ -4,7 +4,7 @@ import { Inject, Injectable } from '@nestjs/common';
 
 import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
 
-import { ROLE_READ_REPOSITORY } from '../../../application/authorization.tokens';
+import { AUTHORIZATION_ROLE_READ_REPOSITORY } from '../../../application/authorization.tokens';
 
 import type { RoleReadRepository } from '../../repositories/role-read.repository';
 
@@ -19,15 +19,15 @@ export class GetRoleHandler implements QueryHandler<
   GetRoleQuery,
   RoleResponse
 > {
-  constructor(
-    @Inject(ROLE_READ_REPOSITORY)
+  public constructor(
+    @Inject(AUTHORIZATION_ROLE_READ_REPOSITORY)
     private readonly roleReadRepository: RoleReadRepository,
   ) {}
 
-  async execute(query: GetRoleQuery): Promise<RoleResponse> {
+  public async execute(query: GetRoleQuery): Promise<RoleResponse> {
     const role = await this.roleReadRepository.findByPublicId(query.roleId);
 
-    if (!role) {
+    if (role === null) {
       throw new RoleNotFoundException(query.roleId);
     }
 

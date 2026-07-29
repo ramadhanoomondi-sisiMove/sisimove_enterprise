@@ -5,6 +5,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
 
+import {
+  IDENTITY_EVENT_PUBLISHER,
+  IDENTITY_AUTHENTICATION_REPOSITORY,
+} from '../identity.tokens';
+
 import { ApproveVerificationRequestCommand } from '../commands/approve-verification-request.command';
 
 import { VerificationNotFoundException } from '../../domain/exceptions/verification-not-found.exception';
@@ -21,10 +26,10 @@ export class ApproveVerificationRequestHandler implements CommandHandler<
   void
 > {
   constructor(
-    @Inject('VerificationRepository')
+    @Inject(IDENTITY_AUTHENTICATION_REPOSITORY)
     private readonly verificationRepository: VerificationRepository,
 
-    @Inject('EventPublisher')
+    @Inject(IDENTITY_EVENT_PUBLISHER)
     private readonly eventPublisher: EventPublisher,
   ) {}
 
@@ -40,7 +45,7 @@ export class ApproveVerificationRequestHandler implements CommandHandler<
     const verification =
       await this.verificationRepository.findByPublicId(verificationPublicId);
 
-    if (!verification) {
+    if (verification === null) {
       throw new VerificationNotFoundException(verificationPublicId.value);
     }
 

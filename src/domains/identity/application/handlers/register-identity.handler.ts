@@ -6,11 +6,21 @@ import { CommandHandler } from '../../../../foundation/kernel/application/comman
 import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
 import type { PasswordHasher } from '../../../../foundation/security/password-hasher.interface';
 
+import {
+  IDENTITY_REPOSITORY,
+  IDENTITY_PASSWORD_HASHER,
+  IDENTITY_EVENT_PUBLISHER,
+} from '../identity.tokens';
+
 import { RegisterIdentityCommand } from '../commands/register-identity.command';
+
 import { IdentityAggregate } from '../../domain/aggregates/identity.aggregate';
 import { AuthenticationEntity } from '../../domain/entities/authentication.entity';
+
 import { IdentityAlreadyExistsException } from '../../domain/exceptions/identity-already-exists.exception';
-import { IdentityRepository } from '../../domain/repositories/identity.repository';
+
+import type { IdentityRepository } from '../../domain/repositories/identity.repository';
+
 import { Email } from '../../domain/value-objects/email.vo';
 
 @Injectable()
@@ -19,13 +29,13 @@ export class RegisterIdentityHandler implements CommandHandler<
   string
 > {
   constructor(
-    @Inject('IdentityRepository')
+    @Inject(IDENTITY_REPOSITORY)
     private readonly repository: IdentityRepository,
 
-    @Inject('PasswordHasher')
+    @Inject(IDENTITY_PASSWORD_HASHER)
     private readonly passwordHasher: PasswordHasher,
 
-    @Inject('EventPublisher')
+    @Inject(IDENTITY_EVENT_PUBLISHER)
     private readonly eventPublisher: EventPublisher,
   ) {}
 

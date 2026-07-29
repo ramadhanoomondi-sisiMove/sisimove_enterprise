@@ -5,6 +5,12 @@ import { Inject, Injectable } from '@nestjs/common';
 import { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
 
+import {
+  IDENTITY_EVENT_PUBLISHER,
+  IDENTITY_RECOVERY_REPOSITORY,
+  IDENTITY_RECOVERY_TOKEN_GENERATOR,
+} from '../identity.tokens';
+
 import { RequestRecoveryCommand } from '../commands/request-recovery.command';
 import type { RequestRecoveryResult } from '../contracts/request-recovery.result';
 import type { RecoveryTokenGenerator } from '../services/recovery-token-generator';
@@ -24,13 +30,13 @@ export class RequestRecoveryHandler implements CommandHandler<
   private static readonly RECOVERY_TTL_MS = 15 * 60 * 1000;
 
   constructor(
-    @Inject('RecoveryRepository')
+    @Inject(IDENTITY_RECOVERY_REPOSITORY)
     private readonly recoveryRepository: RecoveryRepository,
 
-    @Inject('RecoveryTokenGenerator')
+    @Inject(IDENTITY_RECOVERY_TOKEN_GENERATOR)
     private readonly tokenGenerator: RecoveryTokenGenerator,
 
-    @Inject('EventPublisher')
+    @Inject(IDENTITY_EVENT_PUBLISHER)
     private readonly eventPublisher: EventPublisher,
   ) {}
 

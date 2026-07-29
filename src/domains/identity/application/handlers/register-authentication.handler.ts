@@ -1,9 +1,15 @@
-// src/domains/identity/application/handlers/create-authentication.handler.ts
+// src/domains/identity/application/handlers/register-authentication.handler.ts
 
 import { Inject, Injectable } from '@nestjs/common';
 
 import { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
+
+import {
+  IDENTITY_AUTHENTICATION_REPOSITORY,
+  IDENTITY_REPOSITORY,
+  IDENTITY_EVENT_PUBLISHER,
+} from '../identity.tokens';
 
 import { RegisterAuthenticationCommand } from '../commands/register-authentication.command';
 
@@ -22,13 +28,13 @@ export class RegisterAuthenticationHandler implements CommandHandler<
   string
 > {
   constructor(
-    @Inject('AuthenticationRepository')
+    @Inject(IDENTITY_AUTHENTICATION_REPOSITORY)
     private readonly authenticationRepository: AuthenticationRepository,
 
-    @Inject('IdentityRepository')
+    @Inject(IDENTITY_REPOSITORY)
     private readonly identityRepository: IdentityRepository,
 
-    @Inject('EventPublisher')
+    @Inject(IDENTITY_EVENT_PUBLISHER)
     private readonly eventPublisher: EventPublisher,
   ) {}
 

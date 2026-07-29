@@ -1,13 +1,16 @@
 // src/domains/identity/presentation/rest/mappers/authentication.response.mapper.ts
 
+import { Injectable } from '@nestjs/common';
+
 import type { AuthenticationEntity } from '../../domain/entities/authentication.entity';
 
 import { MfaStatus } from '../../domain/value-objects/mfa-status.enum';
 
 import { AuthenticationResponse } from '../../application/responses/authentication.response';
 
+@Injectable()
 export class AuthenticationResponseMapper {
-  static toResponse(
+  public toResponse(
     authentication: AuthenticationEntity,
   ): AuthenticationResponse {
     const response = new AuthenticationResponse();
@@ -68,11 +71,11 @@ export class AuthenticationResponseMapper {
     return response;
   }
 
-  static toResponses(
+  public toResponses(
     authentications: readonly AuthenticationEntity[],
   ): AuthenticationResponse[] {
     return authentications.map((authentication) =>
-      AuthenticationResponseMapper.toResponse(authentication),
+      this.toResponse(authentication),
     );
   }
 }

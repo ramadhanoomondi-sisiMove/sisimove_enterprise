@@ -6,6 +6,12 @@ import { CommandHandler } from '../../../../foundation/kernel/application/comman
 import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
 import type { PasswordHasher } from '../../../../foundation/security/password-hasher.interface';
 
+import {
+  IDENTITY_AUTHENTICATION_REPOSITORY,
+  IDENTITY_EVENT_PUBLISHER,
+  IDENTITY_PASSWORD_HASHER,
+} from '../identity.tokens';
+
 import { ChangePasswordCommand } from '../commands/change-password.command';
 
 import { AuthenticationNotFoundException } from '../../domain/exceptions/authentication-not-found.exception';
@@ -18,13 +24,13 @@ export class ChangePasswordHandler implements CommandHandler<
   void
 > {
   constructor(
-    @Inject('AuthenticationRepository')
+    @Inject(IDENTITY_AUTHENTICATION_REPOSITORY)
     private readonly repository: AuthenticationRepository,
 
-    @Inject('PasswordHasher')
+    @Inject(IDENTITY_PASSWORD_HASHER)
     private readonly passwordHasher: PasswordHasher,
 
-    @Inject('EventPublisher')
+    @Inject(IDENTITY_EVENT_PUBLISHER)
     private readonly eventPublisher: EventPublisher,
   ) {}
 

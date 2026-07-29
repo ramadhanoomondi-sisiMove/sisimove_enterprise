@@ -5,6 +5,12 @@ import { Inject, Injectable } from '@nestjs/common';
 import { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
 
+import {
+  IDENTITY_DEVICE_REPOSITORY,
+  IDENTITY_REPOSITORY,
+  IDENTITY_EVENT_PUBLISHER,
+} from '../identity.tokens';
+
 import { RegisterDeviceCommand } from '../commands/register-device.command';
 
 import { DeviceAggregate } from '../../domain/aggregates/device.aggregate';
@@ -24,13 +30,13 @@ export class RegisterDeviceHandler implements CommandHandler<
   string
 > {
   constructor(
-    @Inject('DeviceRepository')
+    @Inject(IDENTITY_DEVICE_REPOSITORY)
     private readonly repository: DeviceRepository,
 
-    @Inject('IdentityRepository')
+    @Inject(IDENTITY_REPOSITORY)
     private readonly identityRepository: IdentityRepository,
 
-    @Inject('EventPublisher')
+    @Inject(IDENTITY_EVENT_PUBLISHER)
     private readonly eventPublisher: EventPublisher,
   ) {}
 
@@ -53,7 +59,7 @@ export class RegisterDeviceHandler implements CommandHandler<
     }
 
     const device = DeviceAggregate.register(
-      identity.id.value, // <-- internal UUID
+      identity.id.value, // internal UUID
       fingerprint,
       command.deviceType,
       command.correlationId,

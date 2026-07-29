@@ -4,6 +4,11 @@ import { Inject, Injectable } from '@nestjs/common';
 
 import { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 
+import {
+  IDENTITY_REPOSITORY,
+  IDENTITY_SESSION_REPOSITORY,
+} from '../identity.tokens';
+
 import { LogoutAllSessionsCommand } from '../commands/logout-all-sessions.command';
 
 import { InvalidCredentialsException } from '../../domain/exceptions/invalid-credentials.exception';
@@ -17,10 +22,10 @@ export class LogoutAllSessionsHandler implements CommandHandler<
   void
 > {
   constructor(
-    @Inject('IdentityRepository')
+    @Inject(IDENTITY_REPOSITORY)
     private readonly identityRepository: IdentityRepository,
 
-    @Inject('SessionRepository')
+    @Inject(IDENTITY_SESSION_REPOSITORY)
     private readonly sessionRepository: SessionRepository,
   ) {}
 

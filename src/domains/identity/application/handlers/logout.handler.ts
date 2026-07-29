@@ -5,15 +5,19 @@ import * as crypto from 'crypto';
 
 import { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 
+import { IDENTITY_SESSION_REPOSITORY } from '../identity.tokens';
+
 import { LogoutCommand } from '../commands/logout.command';
+
 import { SessionRevocationReason } from '../../domain/entities/session.entity';
 import { InvalidCredentialsException } from '../../domain/exceptions/invalid-credentials.exception';
-import { SessionRepository } from '../../domain/repositories/session.repository';
+
+import type { SessionRepository } from '../../domain/repositories/session.repository';
 
 @Injectable()
 export class LogoutHandler implements CommandHandler<LogoutCommand, void> {
   constructor(
-    @Inject('SessionRepository')
+    @Inject(IDENTITY_SESSION_REPOSITORY)
     private readonly sessionRepository: SessionRepository,
   ) {}
 

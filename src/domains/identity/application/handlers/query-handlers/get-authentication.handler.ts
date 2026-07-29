@@ -2,7 +2,9 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 
-import { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
+import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
+
+import { IDENTITY_AUTHENTICATION_REPOSITORY } from '../../identity.tokens';
 
 import { GetAuthenticationQuery } from '../../queries/get-authentication.query';
 
@@ -16,12 +18,14 @@ export class GetAuthenticationHandler implements QueryHandler<
   GetAuthenticationQuery,
   AuthenticationEntity
 > {
-  constructor(
-    @Inject('AuthenticationRepository')
+  public constructor(
+    @Inject(IDENTITY_AUTHENTICATION_REPOSITORY)
     private readonly repository: AuthenticationRepository,
   ) {}
 
-  async execute(query: GetAuthenticationQuery): Promise<AuthenticationEntity> {
+  public async execute(
+    query: GetAuthenticationQuery,
+  ): Promise<AuthenticationEntity> {
     const publicId = new AuthenticationId(query.publicId);
 
     const authentication = await this.repository.findEntityByPublicId(publicId);

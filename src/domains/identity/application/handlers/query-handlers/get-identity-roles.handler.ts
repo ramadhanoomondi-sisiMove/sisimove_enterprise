@@ -28,7 +28,7 @@ export class GetIdentityRolesHandler implements QueryHandler<
   GetIdentityRolesQuery,
   IdentityRoleResponse[]
 > {
-  constructor(
+  public constructor(
     @Inject(AUTHORIZATION_IDENTITY_ROLE_REPOSITORY)
     private readonly identityRoleRepository: IdentityRoleRepository,
 
@@ -36,7 +36,9 @@ export class GetIdentityRolesHandler implements QueryHandler<
     private readonly roleRepository: RoleRepository,
   ) {}
 
-  async execute(query: GetIdentityRolesQuery): Promise<IdentityRoleResponse[]> {
+  public async execute(
+    query: GetIdentityRolesQuery,
+  ): Promise<IdentityRoleResponse[]> {
     const identityId = new IdentityId(query.identityPublicId);
 
     const assignments =
@@ -51,7 +53,7 @@ export class GetIdentityRolesHandler implements QueryHandler<
 
       const role = await this.roleRepository.findByPublicId(assignment.roleId);
 
-      if (!role) {
+      if (role === null) {
         continue;
       }
 

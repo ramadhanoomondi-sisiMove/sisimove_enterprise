@@ -5,6 +5,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
 
+import {
+  IDENTITY_AUTHENTICATION_REPOSITORY,
+  IDENTITY_EVENT_PUBLISHER,
+} from '../identity.tokens';
+
 import { RotateMfaSecretCommand } from '../commands/rotate-mfa-secret.command';
 
 import { AuthenticationNotFoundException } from '../../domain/exceptions/authentication-not-found.exception';
@@ -16,10 +21,10 @@ export class RotateMfaSecretHandler implements CommandHandler<
   void
 > {
   constructor(
-    @Inject('AuthenticationRepository')
+    @Inject(IDENTITY_AUTHENTICATION_REPOSITORY)
     private readonly repository: AuthenticationRepository,
 
-    @Inject('EventPublisher')
+    @Inject(IDENTITY_EVENT_PUBLISHER)
     private readonly eventPublisher: EventPublisher,
   ) {}
 

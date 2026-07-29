@@ -11,7 +11,7 @@ import { RoleResponse } from '../../../application/responses/role.response';
 import { RoleResponseMapper } from '../../../presentation/rest/mappers/role-response.mapper';
 
 @Injectable()
-export class PrismaRoleReadRepository implements RoleReadRepository {
+export class RoleReadPrismaRepository implements RoleReadRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async findById(id: string): Promise<RoleResponse | null> {

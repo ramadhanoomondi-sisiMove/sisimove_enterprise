@@ -96,7 +96,7 @@ export class AuthenticationController {
     private readonly rotateMfaSecretHandler: RotateMfaSecretHandler,
     private readonly lockAuthenticationHandler: LockAuthenticationHandler,
     private readonly unlockAuthenticationHandler: UnlockAuthenticationHandler,
-    private readonly mapper: AuthenticationResponseMapper,
+    private readonly authenticationResponseMapper: AuthenticationResponseMapper,
   ) {}
 
   @Post('register')
@@ -162,12 +162,16 @@ export class AuthenticationController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('authentication.read')
-  @ApiOperation({ summary: 'Get authentication.' })
-  @ApiOkResponse({ type: AuthenticationResponse })
+  @ApiOperation({
+    summary: 'Get authentication',
+  })
+  @ApiOkResponse({
+    type: AuthenticationResponse,
+  })
   @ApiUnauthorizedResponse()
   @ApiForbiddenResponse()
   @ApiNotFoundResponse()
-  async get(
+  public async get(
     @Param('identityPublicId') identityPublicId: string,
   ): Promise<AuthenticationResponse> {
     const authentication = await this.getAuthenticationHandler.execute(
@@ -177,8 +181,9 @@ export class AuthenticationController {
       ),
     );
 
-    return AuthenticationResponseMapper.toResponse(authentication);
+    return this.authenticationResponseMapper.toResponse(authentication);
   }
+
   @Patch('password')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiBearerAuth()

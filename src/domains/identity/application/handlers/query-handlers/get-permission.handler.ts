@@ -4,7 +4,7 @@ import { Inject, Injectable } from '@nestjs/common';
 
 import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
 
-import { PERMISSION_READ_REPOSITORY } from '../../../application/authorization.tokens';
+import { AUTHORIZATION_PERMISSION_READ_REPOSITORY } from '../../../application/authorization.tokens';
 
 import type { PermissionReadRepository } from '../../repositories/permission-read.repository';
 
@@ -20,7 +20,7 @@ export class GetPermissionHandler implements QueryHandler<
   PermissionResponse
 > {
   constructor(
-    @Inject(PERMISSION_READ_REPOSITORY)
+    @Inject(AUTHORIZATION_PERMISSION_READ_REPOSITORY)
     private readonly permissionReadRepository: PermissionReadRepository,
   ) {}
 

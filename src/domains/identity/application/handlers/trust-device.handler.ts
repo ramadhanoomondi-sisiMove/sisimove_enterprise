@@ -5,9 +5,17 @@ import { Inject, Injectable } from '@nestjs/common';
 import { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
 
+import {
+  IDENTITY_DEVICE_REPOSITORY,
+  IDENTITY_EVENT_PUBLISHER,
+} from '../identity.tokens';
+
 import { TrustDeviceCommand } from '../commands/trust-device.command';
+
 import { DeviceNotFoundException } from '../../domain/exceptions/device-not-found.exception';
+
 import type { DeviceRepository } from '../../domain/repositories/device.repository';
+
 import { DeviceId } from '../../domain/value-objects/device-id.vo';
 
 @Injectable()
@@ -16,10 +24,10 @@ export class TrustDeviceHandler implements CommandHandler<
   void
 > {
   constructor(
-    @Inject('DeviceRepository')
+    @Inject(IDENTITY_DEVICE_REPOSITORY)
     private readonly repository: DeviceRepository,
 
-    @Inject('EventPublisher')
+    @Inject(IDENTITY_EVENT_PUBLISHER)
     private readonly eventPublisher: EventPublisher,
   ) {}
 
