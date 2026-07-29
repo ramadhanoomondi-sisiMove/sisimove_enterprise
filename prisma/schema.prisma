@@ -397,17 +397,24 @@ model IdentityAudit {
   id       String @id @default(uuid())
   publicId String @unique
 
+  /// Identity the audit event is about.
   identityId String?
   identity   Identity? @relation(fields: [identityId], references: [id], onDelete: SetNull)
 
-  eventType IdentityAuditEventType
-  severity  AuditSeverity
-
+  /// Identity (or system) that performed the action.
   actorIdentityId String?
   actorIdentity   Identity? @relation("AuditActor", fields: [actorIdentityId], references: [id], onDelete: SetNull)
 
-  resource         String
+  actorType AuditActorType
+
+  eventType IdentityAuditEventType
+  severity  AuditSeverity
+  result    AuditResult
+
+  resourceType     AuditResourceType
   resourcePublicId String?
+
+  correlationId String?
 
   ipAddress String?
   userAgent String?
@@ -415,54 +422,88 @@ model IdentityAudit {
   metadata Json?
 
   occurredAt DateTime
-
-  createdAt DateTime @default(now())
+  createdAt  DateTime @default(now())
 
   @@index([identityId])
   @@index([actorIdentityId])
   @@index([eventType])
   @@index([severity])
+  @@index([result])
+  @@index([resourceType])
+  @@index([resourcePublicId])
+  @@index([correlationId])
   @@index([occurredAt])
   @@map("identity_audits")
 }
 
+enum AuditResult {
+  SUCCESS
+  FAILURE
+}
+
+enum AuditActorType {
+  IDENTITY
+  SYSTEM
+  SERVICE
+  API_KEY
+}
+
+enum AuditResourceType {
+  IDENTITY
+  AUTHENTICATION
+  SESSION
+  DEVICE
+  ROLE
+  PERMISSION
+  VERIFICATION
+  VERIFICATION_REQUEST
+  RECOVERY
+}
+
 enum IdentityAuditEventType {
+  // Identity
   IDENTITY_REGISTERED
   IDENTITY_ACTIVATED
   IDENTITY_SUSPENDED
   IDENTITY_CLOSED
 
-  AUTHENTICATION_SUCCEEDED
-  AUTHENTICATION_FAILED
+  // Authentication
+  AUTHENTICATION
   PASSWORD_CHANGED
   PASSWORD_RESET
-
   MFA_ENABLED
   MFA_DISABLED
   MFA_VERIFIED
 
+  // Sessions
   SESSION_CREATED
   SESSION_REVOKED
   SESSION_EXPIRED
 
+  // Devices
   DEVICE_REGISTERED
   DEVICE_TRUSTED
   DEVICE_REVOKED
 
+  // Authorization
   ROLE_ASSIGNED
   ROLE_REVOKED
   PERMISSION_GRANTED
   PERMISSION_REVOKED
 
+  // Verification
   VERIFICATION_STARTED
   VERIFICATION_APPROVED
   VERIFICATION_REJECTED
   VERIFICATION_EXPIRED
+  VERIFICATION_REVOKED
 
+  // Recovery
   RECOVERY_STARTED
   RECOVERY_COMPLETED
   RECOVERY_CANCELLED
 
+  // Security
   SECURITY_POLICY_TRIGGERED
 }
 

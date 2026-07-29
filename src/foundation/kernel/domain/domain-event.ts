@@ -1,3 +1,4 @@
+//src/foundation/kernel/domain/domain-events.ts
 import { randomUUID } from 'crypto';
 
 export interface EventMetadata {

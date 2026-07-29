@@ -1,3 +1,4 @@
+//src/kernel/domain/aggregate-root.ts
 import type { DomainEvent } from './domain-event';
 import { Entity } from './entity';
 import type { PublicEntityId } from './public-entity-id';

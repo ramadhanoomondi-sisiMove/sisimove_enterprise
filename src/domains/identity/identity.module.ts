@@ -38,6 +38,11 @@ import {
   AUTHORIZATION_ROLE_REPOSITORY,
 } from './application/authorization.tokens';
 
+import {
+  IDENTITY_AUDIT_EVENT_PUBLISHER,
+  IDENTITY_AUDIT_REPOSITORY,
+} from './application/identity-audit.tokens';
+
 // ============================================================================
 // Infrastructure
 // ============================================================================
@@ -84,7 +89,7 @@ import { SessionPrismaRepository } from './infrastructure/persistence/session-pr
 import { DevicePrismaRepository } from './infrastructure/persistence/device-prisma.repository';
 import { VerificationPrismaRepository } from './infrastructure/persistence/verification-prisma.repository';
 import { RecoveryPrismaRepository } from './infrastructure/persistence/recovery-prisma.repository';
-
+import { IdentityAuditPrismaRepository } from './infrastructure/persistence/prisma-identity-audit.repository';
 // ============================================================================
 // REST Controllers
 // ============================================================================
@@ -95,6 +100,7 @@ import { DeviceController } from './presentation/rest/controllers/device.control
 import { IdentityController } from './presentation/rest/controllers/identity.controller';
 import { RecoveryController } from './presentation/rest/controllers/recovery.controller';
 import { VerificationController } from './presentation/rest/controllers/verification.controller';
+import { IdentityAuditController } from './presentation/rest/controllers/identity-audit.controller';
 
 // ============================================================================
 // Identity Command Handlers
@@ -203,6 +209,9 @@ import { ListRolesHandler } from './application/handlers/query-handlers/list-rol
 
 import { GetDeviceHandler } from './application/handlers/query-handlers/get-device.handler';
 import { ListIdentityDevicesHandler } from './application/handlers/query-handlers/list-identity-devices.handler';
+import { RecordIdentityAuditHandler } from './application/handlers/record-identity-audit.handler';
+import { GetIdentityAuditHandler } from './application/handlers/query-handlers/get-identity-audit.handler';
+import { ListIdentityAuditsHandler } from './application/handlers/query-handlers/list-identity-audits.handler';
 
 // ============================================================================
 // Verification Query Handlers
@@ -227,6 +236,7 @@ import { AuthenticationResponseMapper } from './infrastructure/mappers/authentic
     DeviceController,
     RecoveryController,
     VerificationController,
+    IdentityAuditController,
   ],
 
   providers: [
@@ -369,7 +379,15 @@ import { AuthenticationResponseMapper } from './infrastructure/mappers/authentic
       provide: AUTHORIZATION_EVENT_PUBLISHER,
       useExisting: EventPublisher,
     },
+    {
+      provide: IDENTITY_AUDIT_REPOSITORY,
+      useClass: IdentityAuditPrismaRepository,
+    },
 
+    {
+      provide: IDENTITY_AUDIT_EVENT_PUBLISHER,
+      useExisting: EventPublisher,
+    },
     // ==========================================================================
     // Identity Command Handlers
     // ==========================================================================
@@ -477,6 +495,10 @@ import { AuthenticationResponseMapper } from './infrastructure/mappers/authentic
 
     GetDeviceHandler,
     ListIdentityDevicesHandler,
+    RecordIdentityAuditHandler,
+
+    GetIdentityAuditHandler,
+    ListIdentityAuditsHandler,
 
     // ==========================================================================
     // Verification Query Handlers
