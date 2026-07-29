@@ -30,6 +30,7 @@ model Identity {
   sessions   Session[]
   devices    Device[]
   recoveries Recovery[]
+  assets     Asset[]
 
   identityRoles IdentityRole[]
 
@@ -339,7 +340,8 @@ model VerificationRequest {
 
   status VerificationRequestStatus
 
-  assetPublicId String
+  assetId String
+  asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Restrict)
 
   submittedAt DateTime @default(now())
 
@@ -394,14 +396,11 @@ model Recovery {
 }
 
 model IdentityAudit {
-  id       String @id @default(uuid())
-  publicId String @unique
-
-  /// Identity the audit event is about.
+  id         String    @id @default(uuid())
+  publicId   String    @unique
   identityId String?
   identity   Identity? @relation(fields: [identityId], references: [id], onDelete: SetNull)
 
-  /// Identity (or system) that performed the action.
   actorIdentityId String?
   actorIdentity   Identity? @relation("AuditActor", fields: [actorIdentityId], references: [id], onDelete: SetNull)
 
@@ -436,6 +435,101 @@ model IdentityAudit {
   @@map("identity_audits")
 }
 
+model Asset {
+  id       String @id @default(uuid())
+  publicId String @unique
+
+  ownerIdentityId String?
+  ownerIdentity   Identity? @relation(fields: [ownerIdentityId], references: [id], onDelete: SetNull)
+
+  type     AssetType
+  category AssetCategory
+
+  status     AssetStatus     @default(PENDING)
+  visibility AssetVisibility @default(PRIVATE)
+
+  storageProvider StorageProvider
+
+  bucket    String
+  objectKey String @unique
+
+  originalFilename String?
+  storedFilename   String?
+
+  mimeType  String
+  extension String?
+
+  sizeBytes BigInt
+
+  checksumAlgorithm ChecksumAlgorithm?
+  checksum          String?
+
+  width      Int?
+  height     Int?
+  colorDepth Int?
+
+  durationSeconds Int?
+  bitrate         Int?
+  frameRate       Float?
+
+  blurHash String?
+
+  metadata Json?
+
+  uploadedAt  DateTime  @default(now())
+  processedAt DateTime?
+  archivedAt  DateTime?
+  deletedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  variants AssetVariant[]
+
+  verificationRequests VerificationRequest[]
+
+  @@index([ownerIdentityId])
+  @@index([type])
+  @@index([category])
+  @@index([status])
+  @@index([visibility])
+  @@index([uploadedAt])
+  @@index([deletedAt])
+  @@map("assets")
+}
+
+model AssetVariant {
+  id String @id @default(uuid())
+
+  assetId String
+  asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  variant AssetVariantType
+
+  storageProvider StorageProvider
+
+  bucket String
+
+  objectKey String @unique
+
+  mimeType String
+
+  extension String?
+
+  sizeBytes BigInt
+
+  width  Int?
+  height Int?
+
+  durationSeconds Int?
+
+  createdAt DateTime @default(now())
+
+  @@unique([assetId, variant])
+  @@index([assetId])
+  @@map("asset_variants")
+}
+
 enum AuditResult {
   SUCCESS
   FAILURE
@@ -461,49 +555,34 @@ enum AuditResourceType {
 }
 
 enum IdentityAuditEventType {
-  // Identity
   IDENTITY_REGISTERED
   IDENTITY_ACTIVATED
   IDENTITY_SUSPENDED
   IDENTITY_CLOSED
-
-  // Authentication
   AUTHENTICATION
   PASSWORD_CHANGED
   PASSWORD_RESET
   MFA_ENABLED
   MFA_DISABLED
   MFA_VERIFIED
-
-  // Sessions
   SESSION_CREATED
   SESSION_REVOKED
   SESSION_EXPIRED
-
-  // Devices
   DEVICE_REGISTERED
   DEVICE_TRUSTED
   DEVICE_REVOKED
-
-  // Authorization
   ROLE_ASSIGNED
   ROLE_REVOKED
   PERMISSION_GRANTED
   PERMISSION_REVOKED
-
-  // Verification
   VERIFICATION_STARTED
   VERIFICATION_APPROVED
   VERIFICATION_REJECTED
   VERIFICATION_EXPIRED
   VERIFICATION_REVOKED
-
-  // Recovery
   RECOVERY_STARTED
   RECOVERY_COMPLETED
   RECOVERY_CANCELLED
-
-  // Security
   SECURITY_POLICY_TRIGGERED
 }
 
@@ -669,13 +748,84 @@ enum RecoveryFailureReason {
   USER_CANCELLED
   ADMIN_CANCELLED
   SYSTEM_CANCELLED
-
   TOKEN_INVALID
   TOKEN_EXPIRED
-
   TOO_MANY_ATTEMPTS
-
   PASSWORD_ALREADY_CHANGED
-
   ACCOUNT_LOCKED
+}
+
+enum AssetType {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+}
+
+enum AssetCategory {
+  PROFILE_PHOTO
+  COVER_PHOTO
+  AVATAR
+  GOVERNMENT_ID
+  DRIVER_LICENSE
+  PASSPORT
+  SELFIE
+  POST_MEDIA
+  COMMENT_MEDIA
+  STORY_MEDIA
+  REEL_MEDIA
+  CHAT_ATTACHMENT
+  TRIP_MEDIA
+  DESTINATION_MEDIA
+  VEHICLE_PHOTO
+  ORGANIZATION_LOGO
+  ORGANIZATION_BANNER
+  PRODUCT_MEDIA
+  EVENT_BANNER
+  OTHER
+}
+
+enum AssetStatus {
+  PENDING
+  SCANNING
+  PROCESSING
+  READY
+  FAILED
+  ARCHIVED
+  DELETED
+}
+
+enum AssetVisibility {
+  PUBLIC
+  COMMUNITY
+  CONNECTIONS
+  PRIVATE
+}
+
+enum StorageProvider {
+  LOCAL
+  AWS_S3
+  CLOUDINARY
+  GOOGLE_CLOUD_STORAGE
+  AZURE_BLOB
+}
+
+enum AssetVariantType {
+  ORIGINAL
+  THUMBNAIL
+  SMALL
+  MEDIUM
+  LARGE
+  WEB
+  WEBP
+  AVIF
+  PREVIEW
+  COMPRESSED
+}
+
+enum ChecksumAlgorithm {
+  MD5
+  SHA1
+  SHA256
+  SHA512
 }
