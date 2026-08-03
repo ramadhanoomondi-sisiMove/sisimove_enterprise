@@ -1,0 +1,15 @@
+// src/domains/assets/domain/value-objects/asset-status.enum.ts
+
+export enum AssetStatus {
+  UPLOADING = 'UPLOADING',
+  UPLOADED = 'UPLOADED',
+  SCANNING = 'SCANNING',
+  SCAN_FAILED = 'SCAN_FAILED',
+  PROCESSING = 'PROCESSING',
+  PROCESSING_FAILED = 'PROCESSING_FAILED',
+  READY = 'READY',
+  ARCHIVING = 'ARCHIVING',
+  ARCHIVED = 'ARCHIVED',
+  DELETING = 'DELETING',
+  DELETED = 'DELETED',
+}

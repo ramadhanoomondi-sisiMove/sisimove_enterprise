@@ -1,0 +1,6 @@
+export enum AssetScanEngine {
+  CLAMAV = 'CLAMAV',
+  VIRUS_TOTAL = 'VIRUS_TOTAL',
+  MICROSOFT_DEFENDER = 'MICROSOFT_DEFENDER',
+  CUSTOM = 'CUSTOM',
+}

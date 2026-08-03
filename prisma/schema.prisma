@@ -40,6 +40,7 @@ model Identity {
   auditEvents          IdentityAudit[]
   auditActions         IdentityAudit[]       @relation("AuditActor")
   verificationRequests VerificationRequest[]
+  assetModerations     AssetModeration[]
 
   @@index([email])
   @@index([phoneNumber])
@@ -442,10 +443,9 @@ model Asset {
   ownerIdentityId String?
   ownerIdentity   Identity? @relation(fields: [ownerIdentityId], references: [id], onDelete: SetNull)
 
-  type     AssetType
-  category AssetCategory
-
-  status     AssetStatus     @default(PENDING)
+  type       AssetType
+  category   AssetCategory
+  status     AssetStatus     @default(UPLOADING)
   visibility AssetVisibility @default(PRIVATE)
 
   storageProvider StorageProvider
@@ -476,15 +476,20 @@ model Asset {
 
   metadata Json?
 
-  uploadedAt  DateTime  @default(now())
-  processedAt DateTime?
-  archivedAt  DateTime?
-  deletedAt   DateTime?
+  uploadedAt DateTime?
+
+  archivedAt DateTime?
+  deletedAt  DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   variants AssetVariant[]
+
+  references  AssetReference[]
+  processings AssetProcessing[]
+  scans       AssetScan[]
+  moderations AssetModeration[]
 
   verificationRequests VerificationRequest[]
 
@@ -493,27 +498,42 @@ model Asset {
   @@index([category])
   @@index([status])
   @@index([visibility])
+  @@index([storageProvider])
   @@index([uploadedAt])
+  @@index([archivedAt])
   @@index([deletedAt])
+  @@index([ownerIdentityId, status])
+  @@index([ownerIdentityId, category])
+  @@index([storageProvider, status])
+  @@index([type, status])
+  @@index([category, status])
+  @@index([visibility, status])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([ownerIdentityId, createdAt])
+  @@index([ownerIdentityId, visibility])
   @@map("assets")
 }
 
 model AssetVariant {
-  id String @id @default(uuid())
+  id       String @id @default(uuid())
+  publicId String @unique
 
   assetId String
   asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
   variant AssetVariantType
 
+  status AssetVariantStatus @default(PENDING)
+
+  isGenerated Boolean @default(true)
+
   storageProvider StorageProvider
 
-  bucket String
-
+  bucket    String
   objectKey String @unique
 
-  mimeType String
-
+  mimeType  String
   extension String?
 
   sizeBytes BigInt
@@ -524,10 +544,341 @@ model AssetVariant {
   durationSeconds Int?
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([assetId, variant])
   @@index([assetId])
+  @@index([status])
+  @@index([variant])
+  @@index([assetId, status])
+  @@index([storageProvider])
+  @@index([createdAt])
   @@map("asset_variants")
+}
+
+model AssetReference {
+  id       String @id @default(uuid())
+  publicId String @unique
+
+  assetId String
+  asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  resourceType AssetResourceType
+
+  resourcePublicId String
+
+  referenceField AssetReferenceField
+
+  createdAt DateTime @default(now())
+
+  @@unique([assetId, resourceType, resourcePublicId, referenceField])
+  @@index([assetId])
+  @@index([resourceType])
+  @@index([resourcePublicId])
+  @@index([resourceType, resourcePublicId])
+  @@map("asset_references")
+}
+
+model AssetProcessing {
+  id       String @id @default(uuid())
+  publicId String @unique
+
+  assetId String
+  asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  operation AssetProcessingOperation
+
+  status AssetProcessingStatus @default(PENDING)
+
+  processor AssetProcessor?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  failedAt    DateTime?
+
+  failureReason String?
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([assetId])
+  @@index([status])
+  @@index([operation])
+  @@index([createdAt])
+  @@index([assetId, operation])
+  @@index([assetId, status])
+  @@index([processor])
+  @@index([startedAt])
+  @@index([completedAt])
+  @@index([failedAt])
+  @@map("asset_processings")
+}
+
+model AssetScan {
+  id       String @id @default(uuid())
+  publicId String @unique
+
+  assetId String
+  asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  engine AssetScanEngine
+
+  status AssetScanStatus @default(PENDING)
+
+  scannedAt DateTime?
+
+  threatName String?
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([assetId])
+  @@index([status])
+  @@index([engine])
+  @@index([scannedAt])
+  @@index([assetId, engine])
+  @@index([assetId, status])
+  @@index([createdAt])
+  @@map("asset_scans")
+}
+
+model AssetModeration {
+  id       String @id @default(uuid())
+  publicId String @unique
+
+  assetId String
+  asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  type AssetModerationType
+
+  status AssetModerationStatus @default(PENDING)
+
+  moderatorIdentityId String?
+  moderatorIdentity   Identity? @relation(fields: [moderatorIdentityId], references: [id], onDelete: SetNull)
+
+  confidence Float?
+
+  reason String?
+
+  metadata Json?
+
+  moderatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([assetId])
+  @@index([status])
+  @@index([type])
+  @@index([moderatorIdentityId])
+  @@index([assetId, type])
+  @@index([assetId, status])
+  @@index([moderatedAt])
+  @@index([createdAt])
+  @@map("asset_moderations")
+}
+
+enum AssetVariantType {
+  ORIGINAL
+  ICON
+  THUMBNAIL
+  TINY
+  SMALL
+  MEDIUM
+  LARGE
+  XLARGE
+  WEB
+  WEBP
+  AVIF
+  PREVIEW
+  COMPRESSED
+  HD
+  FULL_HD
+  QHD
+  UHD_4K
+}
+
+enum AssetProcessingOperation {
+  THUMBNAIL
+  PREVIEW
+  COMPRESS
+  RESIZE
+  ROTATE
+  WEBP
+  AVIF
+  TRANSCODE
+  OCR
+  BLUR_HASH
+  WATERMARK
+  STRIP_METADATA
+  FACE_DETECTION
+  AI_TAGGING
+  AI_CAPTION
+}
+
+enum AssetType {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  ARCHIVE
+  OTHER
+}
+
+enum AssetCategory {
+  PROFILE_PHOTO
+  COVER_PHOTO
+  AVATAR
+
+  GOVERNMENT_ID
+  DRIVER_LICENSE
+  PASSPORT
+  SELFIE
+
+  POST_MEDIA
+  COMMENT_MEDIA
+  STORY_MEDIA
+  REEL_MEDIA
+
+  CHAT_ATTACHMENT
+
+  TRIP_MEDIA
+  DESTINATION_MEDIA
+
+  VEHICLE_PHOTO
+
+  ORGANIZATION_LOGO
+  ORGANIZATION_BANNER
+
+  PRODUCT_MEDIA
+
+  EVENT_BANNER
+
+  OTHER
+}
+
+enum AssetStatus {
+  UPLOADING
+  UPLOADED
+  SCANNING
+  SCAN_FAILED
+  PROCESSING
+  PROCESSING_FAILED
+  READY
+  ARCHIVING
+  ARCHIVED
+  DELETING
+  DELETED
+}
+
+enum AssetVisibility {
+  PUBLIC
+  COMMUNITY
+  CONNECTIONS
+  PRIVATE
+}
+
+enum StorageProvider {
+  LOCAL
+  AWS_S3
+  GOOGLE_CLOUD_STORAGE
+  AZURE_BLOB
+  CLOUDINARY
+  OTHER
+}
+
+enum AssetVariantStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum ChecksumAlgorithm {
+  MD5
+  SHA1
+  SHA256
+  SHA512
+}
+
+enum AssetProcessingStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum AssetProcessor {
+  LIBVIPS
+  IMAGEMAGICK
+  FFMPEG
+  CLOUDINARY
+  CUSTOM
+  GDAL
+}
+
+enum AssetScanEngine {
+  CLAMAV
+  VIRUS_TOTAL
+  MICROSOFT_DEFENDER
+  CUSTOM
+}
+
+enum AssetScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  FAILED
+}
+
+enum AssetModerationType {
+  AI
+  MANUAL
+  COMMUNITY
+  COPYRIGHT
+}
+
+enum AssetModerationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AssetReferenceField {
+  PRIMARY
+  SECONDARY
+  AVATAR
+  COVER
+  BANNER
+  THUMBNAIL
+  PREVIEW
+  GALLERY
+  ATTACHMENT
+  DOCUMENT
+  OTHER
+}
+
+enum AssetResourceType {
+  IDENTITY
+  MEMBER
+  ORGANIZATION
+  POST
+  COMMENT
+  MESSAGE
+  STORY
+  REEL
+  TRIP
+  DESTINATION
+  EVENT
+  PRODUCT
+  VEHICLE
+  VERIFICATION
+  OTHER
 }
 
 enum AuditResult {
@@ -753,79 +1104,4 @@ enum RecoveryFailureReason {
   TOO_MANY_ATTEMPTS
   PASSWORD_ALREADY_CHANGED
   ACCOUNT_LOCKED
-}
-
-enum AssetType {
-  IMAGE
-  VIDEO
-  AUDIO
-  DOCUMENT
-}
-
-enum AssetCategory {
-  PROFILE_PHOTO
-  COVER_PHOTO
-  AVATAR
-  GOVERNMENT_ID
-  DRIVER_LICENSE
-  PASSPORT
-  SELFIE
-  POST_MEDIA
-  COMMENT_MEDIA
-  STORY_MEDIA
-  REEL_MEDIA
-  CHAT_ATTACHMENT
-  TRIP_MEDIA
-  DESTINATION_MEDIA
-  VEHICLE_PHOTO
-  ORGANIZATION_LOGO
-  ORGANIZATION_BANNER
-  PRODUCT_MEDIA
-  EVENT_BANNER
-  OTHER
-}
-
-enum AssetStatus {
-  PENDING
-  SCANNING
-  PROCESSING
-  READY
-  FAILED
-  ARCHIVED
-  DELETED
-}
-
-enum AssetVisibility {
-  PUBLIC
-  COMMUNITY
-  CONNECTIONS
-  PRIVATE
-}
-
-enum StorageProvider {
-  LOCAL
-  AWS_S3
-  CLOUDINARY
-  GOOGLE_CLOUD_STORAGE
-  AZURE_BLOB
-}
-
-enum AssetVariantType {
-  ORIGINAL
-  THUMBNAIL
-  SMALL
-  MEDIUM
-  LARGE
-  WEB
-  WEBP
-  AVIF
-  PREVIEW
-  COMPRESSED
-}
-
-enum ChecksumAlgorithm {
-  MD5
-  SHA1
-  SHA256
-  SHA512
 }

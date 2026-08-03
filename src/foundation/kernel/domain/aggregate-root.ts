@@ -1,16 +1,18 @@
-//src/kernel/domain/aggregate-root.ts
 import type { DomainEvent } from './domain-event';
 import { Entity } from './entity';
 import type { PublicEntityId } from './public-entity-id';
 import type { UniqueEntityId } from './unique-entity-id';
 
-export abstract class AggregateRoot<T> extends Entity<T> {
+export abstract class AggregateRoot<
+  TProps,
+  TPublicId extends PublicEntityId = PublicEntityId,
+> extends Entity<TProps, TPublicId> {
   private readonly _domainEvents: DomainEvent[] = [];
 
   protected constructor(
-    props: T,
+    props: TProps,
     id?: UniqueEntityId,
-    publicId?: PublicEntityId,
+    publicId?: TPublicId,
   ) {
     super(props, id, publicId);
   }

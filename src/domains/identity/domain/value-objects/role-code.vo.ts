@@ -19,7 +19,7 @@ export class RoleCode extends ValueObject<RoleCodeProps> {
     });
   }
 
-  get value(): string {
+  override get value(): string {
     return this.props.value;
   }
 
