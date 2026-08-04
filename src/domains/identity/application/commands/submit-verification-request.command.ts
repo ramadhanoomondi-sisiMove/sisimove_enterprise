@@ -8,7 +8,7 @@ export class SubmitVerificationRequestCommand extends Command {
   constructor(
     public readonly verificationPublicId: string,
     public readonly type: VerificationRequestType,
-    public readonly assetPublicId: string,
+    public readonly assetId: string,
     public readonly metadata: Readonly<Record<string, unknown>> | undefined,
     public readonly correlationId: string,
   ) {

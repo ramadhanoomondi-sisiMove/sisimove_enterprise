@@ -1,5 +1,6 @@
 // src/domains/identity/domain/entities/verification-request.entity.ts
 
+import type { AssetId } from 'src/domains/assets/domain/value-objects';
 import { Entity } from '../../../../foundation/kernel/domain/entity';
 import { UniqueEntityId } from '../../../../foundation/kernel/domain/unique-entity-id';
 
@@ -26,7 +27,7 @@ export class VerificationRequestEntity extends Entity<VerificationRequestProps> 
   public static create(
     verificationId: VerificationId,
     type: VerificationRequestType,
-    assetPublicId: string,
+    assetId: AssetId,
     metadata?: Readonly<Record<string, unknown>>,
   ): VerificationRequestEntity {
     const now = new Date();
@@ -35,7 +36,7 @@ export class VerificationRequestEntity extends Entity<VerificationRequestProps> 
       verificationId,
       type,
       status: VerificationRequestStatus.PENDING,
-      assetPublicId,
+      assetId,
       submittedAt: now,
       createdAt: now,
       updatedAt: now,
@@ -72,8 +73,8 @@ export class VerificationRequestEntity extends Entity<VerificationRequestProps> 
     return this.props.status;
   }
 
-  public get assetPublicId(): string {
-    return this.props.assetPublicId;
+  public get assetId(): AssetId {
+    return this.props.assetId;
   }
 
   public get submittedAt(): Date {

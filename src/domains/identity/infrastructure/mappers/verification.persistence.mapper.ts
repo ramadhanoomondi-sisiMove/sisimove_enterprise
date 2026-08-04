@@ -23,6 +23,7 @@ import type { VerificationLevel } from '../../domain/enums/verification-level.en
 import type { VerificationStatus } from '../../domain/enums/verification-status.enum';
 import type { VerificationRequestStatus } from '../../domain/enums/verification-request-status.enum';
 import type { VerificationRequestType } from '../../domain/enums/verification-request-type.enum';
+import { AssetId } from 'src/domains/assets/domain/value-objects';
 
 export class VerificationPersistenceMapper {
   static toDomain(
@@ -83,7 +84,7 @@ export class VerificationPersistenceMapper {
         type: request.type as VerificationRequestType,
         status: request.status as VerificationRequestStatus,
 
-        assetPublicId: request.assetPublicId,
+        assetId: new AssetId(request.assetId),
 
         submittedAt: request.submittedAt,
 
@@ -153,7 +154,7 @@ export class VerificationPersistenceMapper {
 
       status: request.status as PrismaVerificationRequestStatus,
 
-      assetPublicId: request.assetPublicId,
+      assetId: request.assetId.value,
 
       submittedAt: request.submittedAt,
 

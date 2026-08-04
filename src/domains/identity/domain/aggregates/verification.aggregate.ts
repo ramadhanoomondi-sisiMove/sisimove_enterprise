@@ -192,7 +192,7 @@ export class VerificationAggregate extends AggregateRoot<VerificationProps> {
         this.publicId.value,
         request.publicId.value,
         request.type,
-        request.assetPublicId,
+        request.assetId.value,
         correlationId,
       ),
     );

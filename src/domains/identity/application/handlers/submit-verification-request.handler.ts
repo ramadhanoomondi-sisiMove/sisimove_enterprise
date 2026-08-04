@@ -19,6 +19,7 @@ import { VerificationNotFoundException } from '../../domain/exceptions/verificat
 import type { VerificationRepository } from '../../domain/repositories/verification.repository';
 
 import { VerificationId } from '../../domain/value-objects/verification-id.vo';
+import { AssetId } from 'src/domains/assets/domain/value-objects';
 
 @Injectable()
 export class SubmitVerificationRequestHandler implements CommandHandler<
@@ -48,7 +49,7 @@ export class SubmitVerificationRequestHandler implements CommandHandler<
     const request = VerificationRequestEntity.create(
       verification.publicId,
       command.type,
-      command.assetPublicId,
+      new AssetId(command.assetId),
       command.metadata,
     );
 

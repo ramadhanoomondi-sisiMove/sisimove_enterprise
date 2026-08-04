@@ -44,7 +44,7 @@ const verificationInclude = Prisma.validator<Prisma.VerificationInclude>()({
       publicId: true,
       type: true,
       status: true,
-      assetPublicId: true,
+      assetId: true,
       submittedAt: true,
       reviewedAt: true,
       rejectionReason: true,
@@ -354,7 +354,7 @@ export class PrismaVerificationQueryService extends VerificationQueryService {
       type: request.type as VerificationRequestType,
       status: request.status as VerificationRequestStatus,
 
-      assetPublicId: request.assetPublicId,
+      assetPublicId: request.assetId,
 
       submittedAt: request.submittedAt,
 

@@ -1,3 +1,4 @@
+import type { AssetId } from 'src/domains/assets/domain/value-objects';
 import type { VerificationRequestStatus } from '../enums/verification-request-status.enum';
 import type { VerificationRequestType } from '../enums/verification-request-type.enum';
 
@@ -11,7 +12,7 @@ export interface VerificationRequestProps {
 
   status: VerificationRequestStatus;
 
-  assetPublicId: string;
+  assetId: AssetId;
 
   submittedAt: Date;
 

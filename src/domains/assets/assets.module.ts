@@ -81,9 +81,10 @@ import {
   FindAssetVariantHandler,
   FindAssetVariantsHandler,
 } from './application/query-handlers';
+import { IdentityModule } from '../identity/identity.module';
 
 @Module({
-  imports: [EventsModule],
+  imports: [EventsModule, IdentityModule],
 
   controllers: [AssetsController, AssetModerationController],
 

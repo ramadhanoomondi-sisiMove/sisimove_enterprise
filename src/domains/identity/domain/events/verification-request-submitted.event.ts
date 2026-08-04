@@ -10,7 +10,7 @@ export class VerificationRequestSubmittedEvent extends DomainEvent {
     public readonly verificationPublicId: string,
     public readonly requestPublicId: string,
     public readonly requestType: VerificationRequestType,
-    public readonly assetPublicId: string,
+    public readonly assetId: string,
     correlationId: string,
     causationId?: string,
   ) {
@@ -33,7 +33,7 @@ export class VerificationRequestSubmittedEvent extends DomainEvent {
       verificationPublicId: this.verificationPublicId,
       requestPublicId: this.requestPublicId,
       requestType: this.requestType,
-      assetPublicId: this.assetPublicId,
+      assetPublicId: this.assetId,
     };
   }
 }

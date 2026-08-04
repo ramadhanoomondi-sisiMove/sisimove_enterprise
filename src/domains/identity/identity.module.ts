@@ -563,6 +563,8 @@ import { AuthenticationResponseMapper } from './infrastructure/mappers/authentic
 
     IDENTITY_EVENT_PUBLISHER,
     AUTHORIZATION_EVENT_PUBLISHER,
+    GetIdentityPermissionsHandler,
+    GetIdentityRolesHandler,
   ],
 })
 export class IdentityModule {}

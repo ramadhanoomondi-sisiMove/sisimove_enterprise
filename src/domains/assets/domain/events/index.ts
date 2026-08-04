@@ -16,4 +16,3 @@ export * from './asset-visibility-changed.event';
 
 export * from './asset-archived.event';
 export * from './asset-deleted.event';
-export * from './asset-restored.event';

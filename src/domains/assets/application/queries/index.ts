@@ -8,7 +8,7 @@ export * from './find-assets-by-owner-identity-id.query';
 export * from './find-asset-by-public-id.query';
 
 export * from './find-asset-entity-by-object-key.query';
-export * from './find-asset-by-owner-identity-id.handler';
+export * from './find-asset-by-owner-identity-id.query';
 export * from './find-asset-entity-by-public-id.query';
 
 export * from './find-asset-entities-by-category.query';
