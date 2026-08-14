@@ -36,7 +36,7 @@ export * from './asset-scan-id.vo';
 export * from './asset-moderation-id.vo';
 export * from './asset-variant-id.vo';
 export * from './asset-processing-failure-reason.vo';
-export * from './json-value.type';
+export * from '../../../../foundation/kernel/domain/json-value.type';
 export * from './asset-threat-name.vo';
 export * from './moderation-confidence.vo';
 export * from './moderation-reason.vo';

@@ -65,7 +65,7 @@ export abstract class StatefulEntity<
   // Infrastructure
   // --------------------------------------------------------------------------
 
-  protected touch(at: Date = new Date()): void {
+  protected override touch(at: Date = new Date()): void {
     this.props.updatedAt = at;
   }
 

@@ -166,7 +166,7 @@ export class VerificationAggregate extends AggregateRoot<VerificationProps> {
     return this.props.updatedAt;
   }
 
-  protected touch(): void {
+  protected override touch(): void {
     this.props.updatedAt = new Date();
   }
 

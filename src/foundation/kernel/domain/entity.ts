@@ -1,5 +1,3 @@
-// src/foundation/kernel/domain/entity.ts
-
 import { PublicEntityId } from './public-entity-id';
 import { UniqueEntityId } from './unique-entity-id';
 
@@ -33,6 +31,20 @@ export abstract class Entity<
 
   get publicId(): TPublicId {
     return this._publicId;
+  }
+
+  // --------------------------------------------------------------------------
+  // Lifecycle
+  // --------------------------------------------------------------------------
+
+  protected touch(at: Date = new Date()): void {
+    const props = this.props as TProps & {
+      updatedAt?: Date;
+    };
+
+    if ('updatedAt' in props) {
+      props.updatedAt = at;
+    }
   }
 
   // --------------------------------------------------------------------------

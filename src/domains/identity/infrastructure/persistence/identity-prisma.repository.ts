@@ -2,6 +2,12 @@
 
 import { Injectable } from '@nestjs/common';
 
+import {
+  FinancialAccountPurpose,
+  FinancialAccountStatus,
+  FinancialAccountType,
+} from '@prisma/client';
+
 import { UniqueEntityId } from '../../../../foundation/kernel/domain/unique-entity-id';
 import { PrismaService } from '../../../../infrastructure/database/prisma/prisma.service';
 
@@ -24,6 +30,10 @@ import { IdentityPersistenceMapper } from '../mappers/identity.persistence.mappe
 export class IdentityPrismaRepository implements IdentityRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  // ===========================================================================
+  // CREATE
+  // ===========================================================================
+
   async save(
     identity: IdentityAggregate,
     authentication: AuthenticationEntity,
@@ -34,15 +44,59 @@ export class IdentityPrismaRepository implements IdentityRepository {
       IdentityPersistenceMapper.authenticationToPersistence(authentication);
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.identity.create({
-        data: identityData,
+      // -----------------------------------------------------------------------
+      // Financial Account
+      //
+      // Identity.financialAccountId is required by Prisma.
+      // The financial account is created atomically with the identity.
+      // -----------------------------------------------------------------------
+
+      const financialAccount = await tx.financialAccount.create({
+        data: {
+          publicId: `FIN-${identity.publicId.value}`,
+
+          type: FinancialAccountType.INDIVIDUAL,
+
+          purpose: FinancialAccountPurpose.USER_WALLET,
+
+          ownerPublicId: identity.publicId.value,
+
+          currency: 'KES',
+
+          availableBalance: 0,
+          pendingBalance: 0,
+
+          status: FinancialAccountStatus.ACTIVE,
+
+          version: 1,
+        },
       });
+
+      // -----------------------------------------------------------------------
+      // Identity
+      // -----------------------------------------------------------------------
+
+      await tx.identity.create({
+        data: {
+          ...identityData,
+
+          financialAccountId: financialAccount.id,
+        },
+      });
+
+      // -----------------------------------------------------------------------
+      // Authentication
+      // -----------------------------------------------------------------------
 
       await tx.authentication.create({
         data: authenticationData,
       });
     });
   }
+
+  // ===========================================================================
+  // UPDATE
+  // ===========================================================================
 
   async update(identity: IdentityAggregate): Promise<void> {
     const data = IdentityPersistenceMapper.toPersistence(identity);
@@ -51,9 +105,14 @@ export class IdentityPrismaRepository implements IdentityRepository {
       where: {
         id: identity.id.value,
       },
+
       data,
     });
   }
+
+  // ===========================================================================
+  // FIND BY ID
+  // ===========================================================================
 
   async findById(id: IdentityId): Promise<IdentityAggregate | null> {
     const record = await this.prisma.identity.findUnique({
@@ -65,6 +124,10 @@ export class IdentityPrismaRepository implements IdentityRepository {
     return record ? IdentityPersistenceMapper.toDomain(record) : null;
   }
 
+  // ===========================================================================
+  // FIND BY EMAIL
+  // ===========================================================================
+
   async findByEmail(email: Email): Promise<IdentityAggregate | null> {
     const record = await this.prisma.identity.findUnique({
       where: {
@@ -74,6 +137,10 @@ export class IdentityPrismaRepository implements IdentityRepository {
 
     return record ? IdentityPersistenceMapper.toDomain(record) : null;
   }
+
+  // ===========================================================================
+  // FIND BY PUBLIC ID
+  // ===========================================================================
 
   async findByPublicId(
     publicId: IdentityId,
@@ -86,6 +153,10 @@ export class IdentityPrismaRepository implements IdentityRepository {
 
     return record ? IdentityPersistenceMapper.toDomain(record) : null;
   }
+
+  // ===========================================================================
+  // FIND AUTHENTICATION
+  // ===========================================================================
 
   async findAuthenticationByIdentityId(
     identityId: string,
@@ -107,18 +178,24 @@ export class IdentityPrismaRepository implements IdentityRepository {
         status: record.status as AuthenticationStatus,
 
         passwordHash: record.passwordHash,
+
         passwordVersion: record.passwordVersion,
 
         passwordChangedAt: record.passwordChangedAt ?? undefined,
+
         passwordExpiresAt: record.passwordExpiresAt ?? undefined,
+
         passwordMustChange: record.passwordMustChange,
 
         failedAuthenticationCount: record.failedAuthenticationCount,
+
         lastFailedAuthenticationAt:
           record.lastFailedAuthenticationAt ?? undefined,
 
         lockedAt: record.lockedAt ?? undefined,
+
         lockedUntil: record.lockedUntil ?? undefined,
+
         lockReason:
           (record.lockReason as AuthenticationFailureReason | null) ??
           undefined,
@@ -126,15 +203,21 @@ export class IdentityPrismaRepository implements IdentityRepository {
         lastAuthenticatedAt: record.lastAuthenticatedAt ?? undefined,
 
         mfaStatus: record.mfaStatus as MfaStatus,
+
         mfaMethod:
           (record.mfaMethod as AuthenticationMfaMethod | null) ?? undefined,
+
         mfaSecret: record.mfaSecret ?? undefined,
+
         mfaEnabledAt: record.mfaEnabledAt ?? undefined,
 
         createdAt: record.createdAt,
+
         updatedAt: record.updatedAt,
       },
+
       new UniqueEntityId(record.id),
+
       new AuthenticationId(record.publicId),
     );
   }

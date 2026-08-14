@@ -181,8 +181,4 @@ export class RecoveryEntity extends Entity<RecoveryProps> {
 
     this.touch(expiredAt);
   }
-
-  private touch(at: Date): void {
-    this.props.updatedAt = at;
-  }
 }

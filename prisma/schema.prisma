@@ -23,6 +23,10 @@ model Identity {
   suspendedAt DateTime?
   closedAt    DateTime?
 
+  // ---------------------------------------------------------------------------
+  // Identity
+  // ---------------------------------------------------------------------------
+
   authentication      Authentication?
   verification        Verification?   @relation("IdentityVerification")
   verificationReviews Verification[]  @relation("VerificationReviewer")
@@ -41,6 +45,17 @@ model Identity {
   auditActions         IdentityAudit[]       @relation("AuditActor")
   verificationRequests VerificationRequest[]
   assetModerations     AssetModeration[]
+
+  // ---------------------------------------------------------------------------
+  // Financial Account
+  // ---------------------------------------------------------------------------
+
+  financialAccountId String           @unique
+  financialAccount   FinancialAccount @relation(fields: [financialAccountId], references: [id])
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
 
   @@index([email])
   @@index([phoneNumber])
@@ -682,6 +697,2489 @@ model AssetModeration {
   @@map("asset_moderations")
 }
 
+// ============================================================
+// TRAVELLER PROFILE
+// ============================================================
+
+model TravellerProfile {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain reference
+  // ---------------------------------------------------------------------------
+
+  /// References Identity.publicId.
+  /// This is intentionally NOT a Prisma relation.
+  memberPublicId String @unique
+
+  // ---------------------------------------------------------------------------
+  // Traveller identity
+  // ---------------------------------------------------------------------------
+
+  /// Public traveller handle.
+  /// Example: john_doe
+  handle String @unique
+
+  bio String?
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain asset reference
+  // ---------------------------------------------------------------------------
+
+  /// References Asset.publicId.
+  /// This is intentionally NOT a Prisma relation.
+  avatarAssetPublicId String?
+
+  // ---------------------------------------------------------------------------
+  // Traveller location
+  // ---------------------------------------------------------------------------
+
+  /// ISO 3166-1 alpha-2 country code.
+  /// Example: KE, UG, TZ.
+  countryCode String @default("KE")
+
+  // ---------------------------------------------------------------------------
+  // Profile lifecycle
+  // ---------------------------------------------------------------------------
+
+  status     TravellerProfileStatus     @default(ACTIVE)
+  visibility TravellerProfileVisibility @default(PUBLIC)
+
+  // ---------------------------------------------------------------------------
+  // Materialized journey statistics
+  //
+  // Journey domain remains authoritative.
+  // These values are projections maintained from journey events.
+  // ---------------------------------------------------------------------------
+
+  totalJourneys     Int @default(0)
+  completedJourneys Int @default(0)
+
+  providerJourneys  Int @default(0)
+  passengerJourneys Int @default(0)
+
+  completedProviderJourneys  Int @default(0)
+  completedPassengerJourneys Int @default(0)
+
+  // ---------------------------------------------------------------------------
+  // Traveller profile components
+  // ---------------------------------------------------------------------------
+
+  preferences TravellerProfilePreferences?
+
+  corridors TravellerProfileCorridor[]
+
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
+
+  @@index([memberPublicId])
+  @@index([status])
+  @@index([visibility])
+  @@index([countryCode])
+  @@index([handle])
+  @@index([avatarAssetPublicId])
+  @@map("traveller_profiles")
+}
+
+// ============================================================
+// TRAVELLER PROFILE PREFERENCES
+// ============================================================
+
+model TravellerProfilePreferences {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  profileId String @unique
+
+  profile TravellerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  showJourneyHistory    Boolean @default(true)
+  showJourneyStatistics Boolean @default(true)
+  allowJourneyInvites   Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("traveller_profile_preferences")
+}
+
+// ============================================================
+// FREQUENT TRAVEL CORRIDOR
+// ============================================================
+
+model TravellerProfileCorridor {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  profileId String
+
+  profile TravellerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Human-readable corridor information
+  // ---------------------------------------------------------------------------
+
+  originName      String
+  destinationName String
+
+  // ---------------------------------------------------------------------------
+  // Geographic discovery coordinates
+  // ---------------------------------------------------------------------------
+
+  originLatitude  Decimal @db.Decimal(10, 7)
+  originLongitude Decimal @db.Decimal(10, 7)
+
+  destinationLatitude  Decimal @db.Decimal(10, 7)
+  destinationLongitude Decimal @db.Decimal(10, 7)
+
+  // ---------------------------------------------------------------------------
+  // Stable discovery/matching identifier
+  //
+  // This is NOT a foreign key to Journey.
+  // ---------------------------------------------------------------------------
+
+  corridorKey String?
+
+  // ---------------------------------------------------------------------------
+  // Primary corridor
+  // ---------------------------------------------------------------------------
+
+  isPrimary Boolean @default(false)
+
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
+
+  @@index([profileId])
+  @@index([profileId, isPrimary])
+  @@index([corridorKey])
+  @@index([originLatitude, originLongitude])
+  @@index([destinationLatitude, destinationLongitude])
+  @@map("traveller_profile_corridors")
+}
+
+// ============================================================
+// TRUST PROFILE
+// ============================================================
+
+model TrustProfile {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain reference
+  // ---------------------------------------------------------------------------
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
+  memberPublicId String @unique
+
+  // ---------------------------------------------------------------------------
+  // Trust state
+  // ---------------------------------------------------------------------------
+
+  status            TrustProfileStatus     @default(ACTIVE)
+  verificationLevel TrustVerificationLevel @default(NONE)
+
+  // ---------------------------------------------------------------------------
+  // Rating statistics
+  // ---------------------------------------------------------------------------
+
+  ratingAverage Decimal @default(0) @db.Decimal(3, 2)
+  ratingCount   Int     @default(0)
+
+  // ---------------------------------------------------------------------------
+  // Journey statistics
+  //
+  // Journey remains authoritative.
+  // These values are materialized trust projections.
+  // ---------------------------------------------------------------------------
+
+  completedJourneys Int @default(0)
+  providerJourneys  Int @default(0)
+  passengerJourneys Int @default(0)
+
+  completedProviderJourneys  Int @default(0)
+  completedPassengerJourneys Int @default(0)
+
+  cancelledJourneys      Int @default(0)
+  providerCancellations  Int @default(0)
+  passengerCancellations Int @default(0)
+
+  completionRate   Decimal @default(0) @db.Decimal(5, 2)
+  cancellationRate Decimal @default(0) @db.Decimal(5, 2)
+
+  // ---------------------------------------------------------------------------
+  // Trust components
+  // ---------------------------------------------------------------------------
+
+  ratings TrustRating[]
+
+  badges TrustProfileBadge[]
+
+  events TrustEvent[]
+
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
+
+  @@index([memberPublicId])
+  @@index([status])
+  @@index([verificationLevel])
+  @@index([ratingAverage])
+  @@index([completedJourneys])
+  @@index([completionRate])
+  @@map("trust_profiles")
+}
+
+model TrustRating {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Internal Trust-domain relation
+  // ---------------------------------------------------------------------------
+
+  profileId String
+
+  profile TrustProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain references
+  // ---------------------------------------------------------------------------
+
+  /// Identity.publicId of the reviewer.
+  reviewerPublicId String
+
+  /// Identity.publicId of the person being reviewed.
+  revieweePublicId String
+
+  /// Journey.publicId.
+  journeyPublicId String
+
+  /// Booking.publicId.
+  bookingPublicId String?
+
+  // ---------------------------------------------------------------------------
+  // Rating
+  // ---------------------------------------------------------------------------
+
+  role  TrustRatingRole @default(PASSENGER)
+  score Int
+
+  status TrustRatingStatus @default(ACTIVE)
+
+  // ---------------------------------------------------------------------------
+  // Review
+  // ---------------------------------------------------------------------------
+
+  review TrustReview?
+
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Constraints / indexes
+  // ---------------------------------------------------------------------------
+
+  @@unique([journeyPublicId, reviewerPublicId, revieweePublicId])
+  @@index([profileId])
+  @@index([reviewerPublicId])
+  @@index([revieweePublicId])
+  @@index([journeyPublicId])
+  @@index([bookingPublicId])
+  @@index([status])
+  @@index([score])
+  @@index([revieweePublicId, status])
+  @@map("trust_ratings")
+}
+
+// ============================================================
+// TRUST REVIEW
+// ============================================================
+
+model TrustReview {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Internal Trust-domain relation
+  // ---------------------------------------------------------------------------
+
+  ratingId String @unique
+
+  rating TrustRating @relation(fields: [ratingId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Review content
+  // ---------------------------------------------------------------------------
+
+  content String
+
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("trust_reviews")
+}
+
+model TrustBadge {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  type TrustBadgeType @unique
+
+  name        String
+  description String?
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain Asset reference
+  // ---------------------------------------------------------------------------
+
+  /// References Asset.publicId.
+  /// Intentionally NOT a Prisma relation.
+  assetPublicId String?
+
+  active Boolean @default(true)
+
+  profiles TrustProfileBadge[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+  @@index([assetPublicId])
+  @@map("trust_badges")
+}
+
+// ============================================================
+// TRUST PROFILE BADGE
+// ============================================================
+
+model TrustProfileBadge {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Internal Trust-domain relation
+  // ---------------------------------------------------------------------------
+
+  profileId String
+
+  profile TrustProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  badgeId String
+
+  badge TrustBadge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Award lifecycle
+  // ---------------------------------------------------------------------------
+
+  awardedAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Constraints / indexes
+  // ---------------------------------------------------------------------------
+
+  @@unique([profileId, badgeId])
+  @@index([profileId])
+  @@index([badgeId])
+  @@index([profileId, active])
+  @@index([badgeId, active])
+  @@map("trust_profile_badges")
+}
+
+model TrustEvent {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Internal Trust-domain relation
+  // ---------------------------------------------------------------------------
+
+  profileId String
+
+  profile TrustProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Event
+  // ---------------------------------------------------------------------------
+
+  type TrustEventType
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain references
+  //
+  // These intentionally remain scalar public IDs.
+  // ---------------------------------------------------------------------------
+
+  /// Journey.publicId
+  journeyPublicId String?
+
+  /// Booking.publicId
+  bookingPublicId String?
+
+  /// TrustRating.publicId
+  ratingPublicId String?
+
+  /// TrustBadge.publicId
+  badgePublicId String?
+
+  /// Dispute.publicId
+  disputePublicId String?
+
+  /// Identity.publicId of actor.
+  actorPublicId String?
+
+  reason   String?
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
+
+  @@index([profileId])
+  @@index([type])
+  @@index([profileId, createdAt])
+  @@index([journeyPublicId])
+  @@index([bookingPublicId])
+  @@index([ratingPublicId])
+  @@index([badgePublicId])
+  @@index([disputePublicId])
+  @@index([actorPublicId])
+  @@map("trust_events")
+}
+
+// ============================================================
+// JOURNEY DOMAIN
+// ============================================================
+
+model Journey {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain reference
+  // ---------------------------------------------------------------------------
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
+  providerPublicId String
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
+  status JourneyStatus @default(DRAFT)
+
+  publishedAt           DateTime?
+  startedAt             DateTime?
+  completionRequestedAt DateTime?
+  completedAt           DateTime?
+  cancelledAt           DateTime?
+  expiredAt             DateTime?
+
+  version Int @default(1)
+
+  // ---------------------------------------------------------------------------
+  // Journey components
+  // ---------------------------------------------------------------------------
+
+  corridor JourneyCorridor?
+  schedule JourneySchedule?
+
+  vehicleId String?
+  vehicle   JourneyVehicle? @relation(fields: [vehicleId], references: [id])
+
+  capacity    JourneyCapacity?
+  pricing     JourneyPricing?
+  preferences JourneyPreferences?
+
+  assets JourneyAsset[]
+
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
+
+  @@index([providerPublicId])
+  @@index([status])
+  @@index([providerPublicId, status])
+  @@index([status, createdAt])
+  @@index([status, publishedAt])
+  @@index([vehicleId])
+  @@map("journeys")
+}
+
+// ============================================================
+// JOURNEY CORRIDOR
+// ============================================================
+
+model JourneyCorridor {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  journeyId String @unique
+
+  journey Journey @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+
+  originName      String
+  destinationName String
+
+  originLatitude  Decimal @db.Decimal(10, 7)
+  originLongitude Decimal @db.Decimal(10, 7)
+
+  destinationLatitude  Decimal @db.Decimal(10, 7)
+  destinationLongitude Decimal @db.Decimal(10, 7)
+
+  /// Stable corridor identifier used for discovery/matching.
+  /// Not a foreign key.
+  corridorKey String?
+
+  waypoints JourneyWaypoint[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([corridorKey])
+  @@index([originLatitude, originLongitude])
+  @@index([destinationLatitude, destinationLongitude])
+  @@map("journey_corridors")
+}
+
+model JourneyWaypoint {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  corridorId String
+
+  corridor JourneyCorridor @relation(fields: [corridorId], references: [id], onDelete: Cascade)
+
+  type     JourneyWaypointType
+  sequence Int
+
+  name      String
+  latitude  Decimal @db.Decimal(10, 7)
+  longitude Decimal @db.Decimal(10, 7)
+
+  pickupAllowed  Boolean @default(false)
+  dropoffAllowed Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([corridorId, sequence])
+  @@index([corridorId])
+  @@index([corridorId, type])
+  @@index([latitude, longitude])
+  @@map("journey_waypoints")
+}
+
+// ============================================================
+// JOURNEY SCHEDULE
+// ============================================================
+
+model JourneySchedule {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  journeyId String @unique
+
+  journey Journey @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+
+  departureAt DateTime
+  arrivalAt   DateTime?
+
+  timezone String @default("Africa/Nairobi")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([departureAt])
+  @@index([arrivalAt])
+  @@index([departureAt, arrivalAt])
+  @@map("journey_schedules")
+}
+
+// ============================================================
+// JOURNEY VEHICLE
+// ============================================================
+
+model JourneyVehicle {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  make         String
+  model        String
+  year         Int?
+  color        String?
+  registration String?
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain Asset reference
+  // ---------------------------------------------------------------------------
+
+  /// References Asset.publicId.
+  /// Intentionally NOT a Prisma relation.
+  assetPublicId String?
+
+  // ---------------------------------------------------------------------------
+  // Internal Journey-domain relation
+  // ---------------------------------------------------------------------------
+
+  journeys Journey[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([make])
+  @@index([model])
+  @@index([registration])
+  @@index([assetPublicId])
+  @@map("journey_vehicles")
+}
+
+// ============================================================
+// JOURNEY CAPACITY
+// ============================================================
+
+model JourneyCapacity {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  journeyId String @unique
+
+  journey Journey @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+
+  totalSeats  Int
+  bookedSeats Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([totalSeats])
+  @@index([bookedSeats])
+  @@map("journey_capacities")
+}
+
+// ============================================================
+// JOURNEY PRICING
+// ============================================================
+
+model JourneyPricing {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  journeyId String @unique
+
+  journey Journey @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+
+  amount   Int
+  currency String @default("KES")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([currency])
+  @@index([amount])
+  @@map("journey_pricing")
+}
+
+model JourneyPreferences {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  journeyId String @unique
+
+  journey Journey @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+
+  smoking      JourneySmokingPolicy          @default(NOT_ALLOWED)
+  pets         JourneyPetsPolicy             @default(NOT_ALLOWED)
+  luggage      JourneyLuggagePolicy          @default(STANDARD)
+  conversation JourneyConversationPreference @default(MODERATE)
+  music        JourneyMusicPreference        @default(LOW)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("journey_preferences")
+}
+
+model JourneyAsset {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Internal Journey-domain relation
+  // ---------------------------------------------------------------------------
+
+  journeyId String
+
+  journey Journey @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain Asset reference
+  // ---------------------------------------------------------------------------
+
+  /// References Asset.publicId.
+  /// Intentionally NOT a Prisma relation.
+  assetPublicId String
+
+  type JourneyAssetType
+
+  sortOrder Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([journeyId, assetPublicId])
+  @@index([journeyId])
+  @@index([assetPublicId])
+  @@index([journeyId, type])
+  @@index([journeyId, sortOrder])
+  @@map("journey_assets")
+}
+
+// ============================================================
+// JOURNEY DEMAND
+// ============================================================
+
+model JourneyDemand {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain Identity reference
+  // ---------------------------------------------------------------------------
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
+  requesterPublicId String
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
+  status JourneyDemandStatus @default(DRAFT)
+
+  // ---------------------------------------------------------------------------
+  // Cross-aggregate Journey reference
+  // ---------------------------------------------------------------------------
+
+  /// References Journey.publicId.
+  /// Intentionally NOT a Prisma relation.
+  matchedJourneyPublicId String?
+
+  // ---------------------------------------------------------------------------
+  // Demand components
+  // ---------------------------------------------------------------------------
+
+  corridor JourneyDemandCorridor?
+
+  schedule JourneyDemandSchedule?
+
+  capacity JourneyDemandCapacity?
+
+  pricing JourneyDemandPricing?
+
+  participants JourneyDemandParticipant[]
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle timestamps
+  // ---------------------------------------------------------------------------
+
+  publishedAt DateTime?
+  matchedAt   DateTime?
+  convertedAt DateTime?
+  fulfilledAt DateTime?
+  cancelledAt DateTime?
+  expiredAt   DateTime?
+
+  // ---------------------------------------------------------------------------
+  // Aggregate version
+  // ---------------------------------------------------------------------------
+
+  version Int @default(1)
+
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
+
+  @@index([requesterPublicId])
+  @@index([status])
+  @@index([requesterPublicId, status])
+  @@index([status, createdAt])
+  @@index([status, publishedAt])
+  @@index([matchedJourneyPublicId])
+  @@map("journey_demands")
+}
+
+// ============================================================
+// JOURNEY DEMAND CORRIDOR
+// ============================================================
+
+model JourneyDemandCorridor {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Internal Journey-domain relation
+  // ---------------------------------------------------------------------------
+
+  demandId String @unique
+
+  demand JourneyDemand @relation(fields: [demandId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Corridor
+  // ---------------------------------------------------------------------------
+
+  originName      String
+  destinationName String
+
+  originLatitude  Decimal @db.Decimal(10, 7)
+  originLongitude Decimal @db.Decimal(10, 7)
+
+  destinationLatitude  Decimal @db.Decimal(10, 7)
+  destinationLongitude Decimal @db.Decimal(10, 7)
+
+  /// Stable discovery/matching identifier.
+  /// Not a foreign key to JourneyCorridor.
+  corridorKey String?
+
+  waypoints JourneyDemandWaypoint[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([corridorKey])
+  @@index([originLatitude, originLongitude])
+  @@index([destinationLatitude, destinationLongitude])
+  @@map("journey_demand_corridors")
+}
+
+// ============================================================
+// JOURNEY DEMAND WAYPOINT
+// ============================================================
+
+model JourneyDemandWaypoint {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Internal Journey-domain relation
+  // ---------------------------------------------------------------------------
+
+  corridorId String
+
+  corridor JourneyDemandCorridor @relation(fields: [corridorId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Waypoint
+  // ---------------------------------------------------------------------------
+
+  type     JourneyDemandWaypointType
+  sequence Int
+
+  name      String
+  latitude  Decimal @db.Decimal(10, 7)
+  longitude Decimal @db.Decimal(10, 7)
+
+  pickupRequired  Boolean @default(false)
+  dropoffRequired Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([corridorId, sequence])
+  @@index([corridorId])
+  @@index([corridorId, type])
+  @@index([latitude, longitude])
+  @@map("journey_demand_waypoints")
+}
+
+// ============================================================
+// JOURNEY DEMAND SCHEDULE
+// ============================================================
+
+model JourneyDemandSchedule {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Internal Journey-domain relation
+  // ---------------------------------------------------------------------------
+
+  demandId String @unique
+
+  demand JourneyDemand @relation(fields: [demandId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Flexible departure window
+  // ---------------------------------------------------------------------------
+
+  earliestDeparture DateTime
+  latestDeparture   DateTime
+
+  targetArrival  DateTime?
+  maximumArrival DateTime?
+
+  timezone String @default("Africa/Nairobi")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([earliestDeparture])
+  @@index([latestDeparture])
+  @@index([earliestDeparture, latestDeparture])
+  @@index([targetArrival])
+  @@index([maximumArrival])
+  @@map("journey_demand_schedules")
+}
+
+// ============================================================
+// JOURNEY DEMAND CAPACITY
+// ============================================================
+
+model JourneyDemandCapacity {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Internal Journey-domain relation
+  // ---------------------------------------------------------------------------
+
+  demandId String @unique
+
+  demand JourneyDemand @relation(fields: [demandId], references: [id], onDelete: Cascade)
+
+  requestedSeats Int
+  matchedSeats   Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([requestedSeats])
+  @@index([matchedSeats])
+  @@map("journey_demand_capacities")
+}
+
+// ============================================================
+// JOURNEY DEMAND PRICING
+// ============================================================
+
+model JourneyDemandPricing {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Internal Journey-domain relation
+  // ---------------------------------------------------------------------------
+
+  demandId String @unique
+
+  demand JourneyDemand @relation(fields: [demandId], references: [id], onDelete: Cascade)
+
+  maximumPricePerSeat   Int?
+  preferredPricePerSeat Int?
+
+  currency String @default("KES")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([currency])
+  @@index([maximumPricePerSeat])
+  @@index([preferredPricePerSeat])
+  @@map("journey_demand_pricing")
+}
+
+// ============================================================
+// JOURNEY DEMAND PARTICIPANT
+// ============================================================
+
+model JourneyDemandParticipant {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Internal Journey-domain relation
+  // ---------------------------------------------------------------------------
+
+  demandId String
+
+  demand JourneyDemand @relation(fields: [demandId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain Identity reference
+  // ---------------------------------------------------------------------------
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
+  memberPublicId String
+
+  seats Int @default(1)
+
+  status JourneyDemandParticipantStatus @default(ACTIVE)
+
+  joinedAt    DateTime  @default(now())
+  withdrawnAt DateTime?
+  removedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([demandId, memberPublicId])
+  @@index([demandId])
+  @@index([memberPublicId])
+  @@index([memberPublicId, status])
+  @@index([demandId, status])
+  @@map("journey_demand_participants")
+}
+
+// ============================================================
+// JOURNEY BOOKING
+// ============================================================
+
+model JourneyBooking {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain references
+  // ---------------------------------------------------------------------------
+
+  /// References Journey.publicId.
+  /// Intentionally NOT a Prisma relation.
+  journeyPublicId String
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
+  passengerPublicId String
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
+  status JourneyBookingStatus @default(PENDING)
+
+  seats Int @default(1)
+
+  // ---------------------------------------------------------------------------
+  // Booking components
+  // ---------------------------------------------------------------------------
+
+  snapshot     JourneyBookingSnapshot?
+  pricing      JourneyBookingPricing?
+  payment      JourneyBookingPayment?
+  cancellation JourneyBookingCancellation?
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle timestamps
+  // ---------------------------------------------------------------------------
+
+  confirmedAt DateTime?
+  cancelledAt DateTime?
+  completedAt DateTime?
+  expiredAt   DateTime?
+
+  // ---------------------------------------------------------------------------
+  // Aggregate version
+  // ---------------------------------------------------------------------------
+
+  version Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
+
+  @@index([journeyPublicId])
+  @@index([passengerPublicId])
+  @@index([status])
+  @@index([status, createdAt])
+  @@index([journeyPublicId, status])
+  @@index([passengerPublicId, status])
+  @@index([journeyPublicId, passengerPublicId])
+  @@map("journey_bookings")
+}
+
+// ============================================================
+// JOURNEY BOOKING SNAPSHOT
+// ============================================================
+
+model JourneyBookingSnapshot {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Internal Booking relation
+  // ---------------------------------------------------------------------------
+
+  bookingId String @unique
+
+  booking JourneyBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Journey snapshot
+  //
+  // This represents the state of the journey at booking time.
+  // It intentionally does NOT reference JourneyCorridor or JourneySchedule.
+  // ---------------------------------------------------------------------------
+
+  originName      String
+  destinationName String
+
+  originLatitude  Decimal @db.Decimal(10, 7)
+  originLongitude Decimal @db.Decimal(10, 7)
+
+  destinationLatitude  Decimal @db.Decimal(10, 7)
+  destinationLongitude Decimal @db.Decimal(10, 7)
+
+  departureAt DateTime
+  arrivalAt   DateTime?
+
+  timezone String @default("Africa/Nairobi")
+
+  // ---------------------------------------------------------------------------
+  // Vehicle snapshot
+  // ---------------------------------------------------------------------------
+
+  vehicleMake         String?
+  vehicleModel        String?
+  vehicleYear         Int?
+  vehicleColor        String?
+  vehicleRegistration String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("journey_booking_snapshots")
+}
+
+// ============================================================
+// JOURNEY BOOKING PRICING
+// ============================================================
+
+model JourneyBookingPricing {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Internal Booking relation
+  // ---------------------------------------------------------------------------
+
+  bookingId String @unique
+
+  booking JourneyBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Pricing snapshot
+  // ---------------------------------------------------------------------------
+
+  pricePerSeat Int
+  seats        Int
+
+  subtotal         Int
+  discountAmount   Int @default(0)
+  adjustmentAmount Int @default(0)
+
+  totalAmount Int
+
+  currency String @default("KES")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("journey_booking_pricing")
+}
+
+// ============================================================
+// JOURNEY BOOKING PAYMENT
+// ============================================================
+
+model JourneyBookingPayment {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Internal Booking relation
+  // ---------------------------------------------------------------------------
+
+  bookingId String @unique
+
+  booking JourneyBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Payment state
+  // ---------------------------------------------------------------------------
+
+  status JourneyBookingPaymentStatus @default(PENDING)
+
+  amount   Int
+  currency String @default("KES")
+
+  /// Cross-domain reference to the payment/transaction domain.
+  /// Intentionally NOT a Prisma relation.
+  transactionPublicId String?
+
+  authorizedAt DateTime?
+  capturedAt   DateTime?
+  failedAt     DateTime?
+  refundedAt   DateTime?
+
+  failureReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([transactionPublicId])
+  @@index([capturedAt])
+  @@map("journey_booking_payments")
+}
+
+// ============================================================
+// JOURNEY BOOKING CANCELLATION
+// ============================================================
+
+model JourneyBookingCancellation {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Internal Booking relation
+  // ---------------------------------------------------------------------------
+
+  bookingId String @unique
+
+  booking JourneyBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Cancellation
+  // ---------------------------------------------------------------------------
+
+  reason JourneyBookingCancellationReason
+
+  /// References Identity.publicId or another actor public identifier.
+  /// Intentionally NOT a Prisma relation.
+  cancelledByPublicId String?
+
+  reasonDescription String?
+
+  cancelledAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([reason])
+  @@index([cancelledByPublicId])
+  @@index([cancelledAt])
+  @@map("journey_booking_cancellations")
+}
+
+// ============================================================
+// JOURNEY TRIP COMPLETION
+// ============================================================
+
+model JourneyTripCompletion {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain references
+  // ---------------------------------------------------------------------------
+
+  /// References Journey.publicId.
+  /// Intentionally NOT a Prisma relation.
+  journeyPublicId String @unique
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
+  providerPublicId String
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
+  status JourneyTripCompletionStatus @default(PENDING)
+
+  completionRequestedAt DateTime?
+  confirmedAt           DateTime?
+  disputedAt            DateTime?
+  cancelledAt           DateTime?
+
+  // ---------------------------------------------------------------------------
+  // Confirmation tracking
+  // ---------------------------------------------------------------------------
+
+  requiredConfirmations Int @default(2)
+  confirmedCount        Int @default(0)
+
+  // ---------------------------------------------------------------------------
+  // Aggregate version
+  // ---------------------------------------------------------------------------
+
+  version Int @default(1)
+
+  // ---------------------------------------------------------------------------
+  // Internal Journey-domain relations
+  // ---------------------------------------------------------------------------
+
+  confirmations JourneyTripCompletionConfirmation[]
+  disputes      JourneyTripCompletionDispute[]
+  settlement    JourneySettlement?
+
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
+
+  @@index([providerPublicId])
+  @@index([status])
+  @@index([status, createdAt])
+  @@map("journey_trip_completions")
+}
+
+// ============================================================
+// JOURNEY TRIP COMPLETION CONFIRMATION
+// ============================================================
+
+model JourneyTripCompletionConfirmation {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Internal Journey-domain relation
+  // ---------------------------------------------------------------------------
+
+  completionId String
+
+  completion JourneyTripCompletion @relation(fields: [completionId], references: [id], onDelete: Cascade)
+
+  // --------------------------------------------------------------------------
+  // Cross-domain references
+  // ---------------------------------------------------------------------------
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
+  memberPublicId String
+
+  /// References JourneyBooking.publicId.
+  /// Intentionally NOT a Prisma relation.
+  bookingPublicId String?
+
+  // ---------------------------------------------------------------------------
+  // Confirmation
+  // ---------------------------------------------------------------------------
+
+  role   JourneyTripCompletionConfirmationRole
+  status JourneyTripCompletionConfirmationStatus @default(CONFIRMED)
+
+  confirmedAt DateTime  @default(now())
+  withdrawnAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([completionId, memberPublicId])
+  @@index([completionId])
+  @@index([memberPublicId])
+  @@index([bookingPublicId])
+  @@index([completionId, role])
+  @@index([completionId, status])
+  @@map("journey_trip_completion_confirmations")
+}
+
+// ============================================================
+// JOURNEY TRIP COMPLETION DISPUTE
+// ============================================================
+
+model JourneyTripCompletionDispute {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Internal Journey-domain relation
+  // ---------------------------------------------------------------------------
+
+  completionId String
+
+  completion JourneyTripCompletion @relation(fields: [completionId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain Identity reference
+  // ---------------------------------------------------------------------------
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
+  raisedByPublicId String
+
+  // ---------------------------------------------------------------------------
+  // Dispute
+  // ---------------------------------------------------------------------------
+
+  reason      JourneyTripCompletionDisputeReason
+  description String?
+
+  status JourneyTripCompletionDisputeStatus @default(OPEN)
+
+  // ---------------------------------------------------------------------------
+  // Resolution
+  // ---------------------------------------------------------------------------
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
+  resolvedByPublicId String?
+
+  resolutionSummary String?
+
+  openedAt    DateTime  @default(now())
+  resolvedAt  DateTime?
+  rejectedAt  DateTime?
+  withdrawnAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([completionId])
+  @@index([raisedByPublicId])
+  @@index([status])
+  @@index([reason])
+  @@index([completionId, status])
+  @@index([status, createdAt])
+  @@map("journey_trip_completion_disputes")
+}
+
+// ============================================================
+// JOURNEY SETTLEMENT
+// ============================================================
+
+model JourneySettlement {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Internal Journey-domain relation
+  // ---------------------------------------------------------------------------
+
+  completionId String @unique
+
+  completion JourneyTripCompletion @relation(fields: [completionId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain references
+  // ---------------------------------------------------------------------------
+
+  /// References Journey.publicId.
+  /// Intentionally NOT a Prisma relation.
+  journeyPublicId String
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
+  providerPublicId String
+
+  // ---------------------------------------------------------------------------
+  // Settlement lifecycle
+  // ---------------------------------------------------------------------------
+
+  status JourneySettlementStatus @default(PENDING)
+
+  /// References the Financial domain.
+  /// Intentionally NOT a Prisma relation.
+  financialTransactionPublicId String?
+
+  submittedAt  DateTime?
+  processingAt DateTime?
+  completedAt  DateTime?
+  failedAt     DateTime?
+  heldAt       DateTime?
+  cancelledAt  DateTime?
+
+  failureReason String?
+
+  version Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([journeyPublicId])
+  @@index([providerPublicId])
+  @@index([status])
+  @@index([status, createdAt])
+  @@index([financialTransactionPublicId])
+  @@map("journey_settlements")
+}
+
+// ---------------------------------------------------------------------------
+// Message Domain
+// -----------------------------------------------------------
+
+model MessagingConversation {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  type   MessagingConversationType
+  status MessagingConversationStatus @default(ACTIVE)
+
+  journeyPublicId String
+  bookingPublicId String?
+
+  participants MessagingConversationParticipant[]
+  messages     MessagingMessage[]
+
+  lastMessageAt DateTime?
+  closedAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([journeyPublicId])
+  @@index([bookingPublicId])
+  @@index([status])
+  @@index([journeyPublicId, status])
+}
+
+model MessagingConversationParticipant {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  conversationId String
+  conversation   MessagingConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  memberPublicId String
+
+  role   MessagingParticipantRole
+  status MessagingParticipantStatus @default(ACTIVE)
+
+  joinedAt   DateTime  @default(now())
+  leftAt     DateTime?
+  removedAt  DateTime?
+  lastReadAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([conversationId, memberPublicId])
+  @@index([conversationId])
+  @@index([memberPublicId])
+  @@index([memberPublicId, status])
+  @@index([conversationId, status])
+}
+
+model MessagingMessage {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  conversationId String
+  conversation   MessagingConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  senderPublicId String
+
+  type   MessagingMessageType
+  status MessagingMessageStatus @default(SENT)
+
+  content String?
+  assetId String?
+
+  sentAt      DateTime  @default(now())
+  editedAt    DateTime?
+  deletedAt   DateTime?
+  moderatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([conversationId])
+  @@index([senderPublicId])
+  @@index([conversationId, sentAt])
+  @@index([status])
+}
+
+// ============================================================
+// NOTIFICATION
+// ============================================================
+
+model Notification {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  recipientPublicId String
+
+  type     NotificationType
+  priority NotificationPriority @default(NORMAL)
+  status   NotificationStatus   @default(PENDING)
+
+  title String
+  body  String
+
+  referenceType     String?
+  referencePublicId String?
+
+  eventType     String?
+  eventPublicId String?
+
+  sentAt      DateTime?
+  readAt      DateTime?
+  failedAt    DateTime?
+  cancelledAt DateTime?
+
+  failureReason String?
+
+  deliveries NotificationDelivery[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([recipientPublicId])
+  @@index([recipientPublicId, status])
+  @@index([recipientPublicId, createdAt])
+  @@index([type])
+  @@index([priority])
+  @@index([eventType, eventPublicId])
+}
+
+// ============================================================
+// NOTIFICATION PREFERENCE
+// ============================================================
+
+model NotificationPreference {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  memberPublicId String @unique
+
+  journeyEnabled      Boolean @default(true)
+  bookingEnabled      Boolean @default(true)
+  paymentEnabled      Boolean @default(true)
+  walletEnabled       Boolean @default(true)
+  trustEnabled        Boolean @default(true)
+  verificationEnabled Boolean @default(true)
+  messageEnabled      Boolean @default(true)
+  supportEnabled      Boolean @default(true)
+  systemEnabled       Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([memberPublicId])
+}
+
+// ============================================================
+// NOTIFICATION DELIVERY
+// ============================================================
+
+model NotificationDelivery {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  notificationId String
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  channel NotificationChannel
+  status  NotificationDeliveryStatus @default(PENDING)
+
+  providerReference String?
+
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  failedAt    DateTime?
+  cancelledAt DateTime?
+
+  failureReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([notificationId, channel])
+  @@index([notificationId])
+  @@index([status])
+  @@index([channel, status])
+}
+
+model SupportCase {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  requesterPublicId String
+
+  status   SupportCaseStatus   @default(OPEN)
+  priority SupportCasePriority @default(NORMAL)
+  category SupportCaseCategory
+
+  subject     String
+  description String?
+
+  referenceType     String?
+  referencePublicId String?
+
+  assignedToPublicId String?
+
+  messages     SupportCaseMessage[]
+  participants SupportCaseParticipant[]
+  notes        SupportCaseNote[]
+  evidence     SupportCaseEvidence[]
+  resolution   SupportCaseResolution?
+
+  openedAt    DateTime  @default(now())
+  resolvedAt  DateTime?
+  closedAt    DateTime?
+  cancelledAt DateTime?
+
+  version Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([requesterPublicId])
+  @@index([status])
+  @@index([priority])
+  @@index([category])
+  @@index([assignedToPublicId])
+  @@index([referenceType, referencePublicId])
+  @@index([status, priority])
+  @@index([status, createdAt])
+}
+
+model SupportCaseParticipant {
+  id String @id @default(uuid())
+
+  publicId String @unique @default(uuid())
+
+  caseId String
+  case   SupportCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  memberPublicId String
+  role           SupportCaseParticipantRole
+
+  joinedAt DateTime  @default(now())
+  leftAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([caseId, memberPublicId, role])
+  @@index([caseId])
+  @@index([memberPublicId])
+  @@index([caseId, role])
+}
+
+model SupportCaseMessage {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  caseId String
+  case   SupportCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  senderPublicId String
+
+  type    SupportMessageType
+  content String?
+  assetId String?
+
+  sentAt    DateTime  @default(now())
+  editedAt  DateTime?
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([caseId])
+  @@index([senderPublicId])
+  @@index([caseId, sentAt])
+}
+
+model SupportCaseNote {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  caseId String
+  case   SupportCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  authorPublicId String
+  content        String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([caseId])
+  @@index([authorPublicId])
+  @@index([caseId, createdAt])
+}
+
+model SupportCaseEvidence {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  caseId String
+  case   SupportCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  submittedByPublicId String
+
+  assetId String
+
+  description String?
+
+  createdAt DateTime @default(now())
+
+  @@index([caseId])
+  @@index([submittedByPublicId])
+  @@index([assetId])
+}
+
+model SupportCaseResolution {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  caseId String      @unique
+  case   SupportCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  type    SupportResolutionType
+  summary String
+
+  resolvedByPublicId String
+  resolvedAt         DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+// FINANCIAL ACCOUNT
+// ============================================================
+
+model FinancialAccount {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  type    FinancialAccountType
+  purpose FinancialAccountPurpose
+
+  ownerPublicId String?
+
+  currency String @default("KES")
+
+  availableBalance Int @default(0)
+  pendingBalance   Int @default(0)
+
+  status FinancialAccountStatus @default(ACTIVE)
+
+  version Int @default(1)
+
+  identity  Identity?
+  entries   FinancialAccountEntry[]
+  wallet    FinancialWallet?
+  moneyIns  FinancialMoneyIn[]
+  moneyOuts FinancialMoneyOut[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerPublicId])
+  @@index([type])
+  @@index([purpose])
+  @@index([status])
+  @@index([ownerPublicId, purpose])
+}
+
+// ============================================================
+// ACCOUNT ENTRY
+// ============================================================
+
+model FinancialAccountEntry {
+  id String @id @default(uuid())
+
+  publicId String @unique @default(uuid())
+
+  accountId String
+  account   FinancialAccount @relation(fields: [accountId], references: [id])
+
+  transactionId String
+  transaction   FinancialTransaction @relation(fields: [transactionId], references: [id])
+
+  direction     FinancialEntryDirection
+  balanceBucket FinancialBalanceBucket
+
+  amount   Int
+  currency String @default("KES")
+
+  balanceAfter Int
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId])
+  @@index([transactionId])
+  @@index([accountId, createdAt])
+  @@index([accountId, balanceBucket, createdAt])
+}
+
+// ============================================================
+// FINANCIAL TRANSACTION
+// ============================================================
+
+model FinancialTransaction {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  type   FinancialTransactionType
+  status FinancialTransactionStatus @default(PENDING)
+
+  amount   Int
+  currency String @default("KES")
+
+  referenceType     String?
+  referencePublicId String?
+
+  externalReference String?
+
+  idempotencyKey String? @unique
+
+  description String?
+
+  entries FinancialAccountEntry[]
+
+  moneyIn  FinancialMoneyIn?
+  moneyOut FinancialMoneyOut?
+
+  completedAt DateTime?
+  failedAt    DateTime?
+  reversedAt  DateTime?
+  cancelledAt DateTime?
+
+  failureReason String?
+
+  version Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([status])
+  @@index([referenceType, referencePublicId])
+  @@index([externalReference])
+  @@index([status, createdAt])
+}
+
+// ============================================================
+// USER WALLET
+// ============================================================
+
+model FinancialWallet {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  accountId String           @unique
+  account   FinancialAccount @relation(fields: [accountId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+// MONEY IN
+// ============================================================
+
+model FinancialMoneyIn {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  accountId String
+
+  account FinancialAccount @relation(fields: [accountId], references: [id])
+
+  transactionId String @unique
+
+  transaction FinancialTransaction @relation(fields: [transactionId], references: [id])
+
+  method FinancialMoneyInMethod
+
+  amount   Int
+  currency String @default("KES")
+
+  externalReference String?
+
+  status FinancialMoneyInStatus @default(PENDING)
+
+  initiatedAt DateTime  @default(now())
+  completedAt DateTime?
+  failedAt    DateTime?
+  cancelledAt DateTime?
+
+  failureReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+  @@index([status])
+  @@index([externalReference])
+  @@index([initiatedAt])
+}
+
+// ============================================================
+// MONEY OUT
+// ============================================================
+
+model FinancialMoneyOut {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  accountId String
+
+  account FinancialAccount @relation(fields: [accountId], references: [id])
+
+  transactionId String @unique
+
+  transaction FinancialTransaction @relation(fields: [transactionId], references: [id])
+
+  method FinancialMoneyOutMethod
+
+  destinationPublicId String
+
+  amount    Int
+  feeAmount Int @default(0)
+  netAmount Int
+
+  currency String @default("KES")
+
+  externalReference String?
+
+  status FinancialMoneyOutStatus @default(PENDING)
+
+  requestedAt  DateTime  @default(now())
+  processingAt DateTime?
+  completedAt  DateTime?
+  failedAt     DateTime?
+  cancelledAt  DateTime?
+
+  failureReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+  @@index([status])
+  @@index([destinationPublicId])
+  @@index([externalReference])
+  @@index([requestedAt])
+}
+
+// ============================================================
+// COMMERCIAL / FINANCIAL PRICING CONFIGURATION
+// ============================================================
+
+model FinancialPricingConfiguration {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  bookingFeeAmount Int
+
+  journeyCommissionRate Decimal @db.Decimal(5, 4)
+
+  currency String @default("KES")
+
+  active Boolean @default(true)
+
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+  @@index([effectiveFrom])
+  @@index([effectiveTo])
+}
+
+// ============================================================
+// FINANCIAL ACCOUNT
+// ============================================================
+
+enum FinancialAccountType {
+  INDIVIDUAL
+  PLATFORM
+}
+
+enum FinancialAccountPurpose {
+  USER_WALLET
+  CUSTOMER_FUNDS
+  JOURNEY_SETTLEMENT
+  PLATFORM_REVENUE
+  PLATFORM_OPERATING
+  EXTERNAL_CLEARING
+}
+
+enum FinancialAccountStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum FinancialEntryDirection {
+  CREDIT
+  DEBIT
+}
+
+enum FinancialBalanceBucket {
+  AVAILABLE
+  PENDING
+}
+
+enum FinancialTransactionType {
+  MONEY_IN
+  BOOKING_PAYMENT
+  JOURNEY_SETTLEMENT
+  BOOKING_FEE
+  JOURNEY_COMMISSION
+  REFUND
+  MONEY_OUT
+  ADJUSTMENT
+}
+
+enum FinancialTransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+  CANCELLED
+}
+
+enum FinancialMoneyInMethod {
+  MPESA
+  BANK
+  CARD
+  OTHER
+}
+
+enum FinancialMoneyInStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum FinancialMoneyOutMethod {
+  MPESA
+  BANK
+}
+
+enum FinancialMoneyOutStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum SupportResolutionType {
+  INFORMATION_PROVIDED
+  ACTION_TAKEN
+  REFUND_ISSUED
+  BOOKING_CANCELLED
+  JOURNEY_CANCELLED
+  ACCOUNT_RESTRICTED
+  TRUST_ACTION
+  VERIFICATION_ACTION
+  NO_ACTION_REQUIRED
+  REFERRED
+  OTHER
+}
+
+enum SupportMessageType {
+  TEXT
+  IMAGE
+  FILE
+  SYSTEM
+}
+
+enum SupportCaseParticipantRole {
+  REQUESTER
+  RESPONDENT
+  SUPPORT_AGENT
+  REVIEWER
+}
+
+enum SupportCaseStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_FOR_MEMBER
+  WAITING_FOR_INTERNAL_ACTION
+  RESOLVED
+  CLOSED
+  CANCELLED
+}
+
+enum SupportCasePriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum SupportCaseCategory {
+  JOURNEY
+  BOOKING
+  PAYMENT
+  WALLET
+  REFUND
+  TRUST
+  VERIFICATION
+  MESSAGING
+  ACCOUNT
+  SAFETY
+  OTHER
+}
+
+// ============================================================
+// NOTIFICATION
+// ============================================================
+
+enum NotificationChannel {
+  IN_APP
+  PUSH
+  EMAIL
+  SMS
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  CANCELLED
+}
+
+enum NotificationType {
+  JOURNEY
+  BOOKING
+  PAYMENT
+  WALLET
+  TRUST
+  VERIFICATION
+  MESSAGE
+  SUPPORT
+  SYSTEM
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  READ
+  FAILED
+  CANCELLED
+}
+
+enum MessagingParticipantRole {
+  PROVIDER
+  PASSENGER
+}
+
+enum MessagingParticipantStatus {
+  ACTIVE
+  LEFT
+  REMOVED
+}
+
+enum MessagingMessageType {
+  TEXT
+  IMAGE
+  FILE
+  SYSTEM
+}
+
+enum MessagingMessageStatus {
+  SENT
+  EDITED
+  DELETED
+  MODERATED
+}
+
+enum MessagingConversationStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum MessagingConversationType {
+  JOURNEY
+  DIRECT
+}
+
+// ============================================================
+// JOURNEY TRIP COMPLETION
+// ============================================================
+
+enum JourneyTripCompletionConfirmationRole {
+  PROVIDER
+  PASSENGER
+}
+
+enum JourneyTripCompletionConfirmationStatus {
+  CONFIRMED
+  WITHDRAWN
+}
+
+enum JourneyTripCompletionDisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  REJECTED
+  WITHDRAWN
+}
+
+enum JourneyTripCompletionDisputeReason {
+  TRIP_NOT_COMPLETED
+  PASSENGER_DID_NOT_TRAVEL
+  PROVIDER_DID_NOT_TRAVEL
+  WRONG_DESTINATION
+  EARLY_TERMINATION
+  SAFETY_ISSUE
+  OTHER
+}
+
+enum JourneySettlementStatus {
+  PENDING
+  SUBMITTED
+  PROCESSING
+  COMPLETED
+  FAILED
+  HELD
+  CANCELLED
+}
+
+enum JourneyTripCompletionStatus {
+  PENDING
+  CONFIRMATION_REQUIRED
+  CONFIRMED
+  DISPUTED
+  CANCELLED
+}
+
+// ============================================================
+// JOURNEY BOOKING
+// ============================================================
+
+enum JourneyBookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  EXPIRED
+}
+
+enum JourneyBookingCancellationReason {
+  PASSENGER_REQUEST
+  PROVIDER_REQUEST
+  JOURNEY_CANCELLED
+  NO_SHOW
+  SYSTEM
+  OTHER
+}
+
+enum JourneyBookingPaymentStatus {
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+// ============================================================
+// JOURNEY DEMAND
+// ============================================================
+
+enum JourneyDemandWaypointType {
+  ORIGIN
+  DESTINATION
+  PICKUP
+  DROPOFF
+  WAYPOINT
+}
+
+enum JourneyDemandParticipantStatus {
+  ACTIVE
+  WITHDRAWN
+  REMOVED
+}
+
+enum JourneyDemandStatus {
+  DRAFT
+  OPEN
+  MATCHED
+  CONVERTED
+  FULFILLED
+  CANCELLED
+  EXPIRED
+}
+
 enum AssetVariantType {
   ORIGINAL
   ICON
@@ -1104,4 +3602,141 @@ enum RecoveryFailureReason {
   TOO_MANY_ATTEMPTS
   PASSWORD_ALREADY_CHANGED
   ACCOUNT_LOCKED
+}
+
+// ============================================================
+// TRAVELLER PROFILE
+// ============================================================
+
+enum TravellerProfileStatus {
+  ACTIVE
+  RESTRICTED
+  SUSPENDED
+  CLOSED
+}
+
+enum TravellerProfileVisibility {
+  PUBLIC
+  LIMITED
+  PRIVATE
+}
+
+// ============================================================
+// TRUST PROFILE
+// ============================================================
+
+enum TrustVerificationLevel {
+  NONE
+  BASIC
+  VERIFIED
+  HIGHLY_VERIFIED
+}
+
+enum TrustProfileStatus {
+  ACTIVE
+  RESTRICTED
+  SUSPENDED
+}
+
+enum TrustRatingStatus {
+  ACTIVE
+  HIDDEN
+  REMOVED
+}
+
+enum TrustRatingRole {
+  PROVIDER
+  PASSENGER
+}
+
+enum TrustEventType {
+  JOURNEY_COMPLETED
+  JOURNEY_CANCELLED
+
+  RATING_RECEIVED
+  RATING_REMOVED
+
+  VERIFICATION_GRANTED
+  VERIFICATION_REVOKED
+
+  BADGE_AWARDED
+  BADGE_REVOKED
+
+  DISPUTE_OPENED
+  DISPUTE_RESOLVED
+
+  TRUST_RESTRICTED
+  TRUST_RESTORED
+
+  MANUAL_ADJUSTMENT
+}
+
+enum TrustBadgeType {
+  IDENTITY_VERIFIED
+  PHONE_VERIFIED
+  EXPERIENCED_PROVIDER
+  EXPERIENCED_TRAVELLER
+  RELIABLE_PROVIDER
+  RELIABLE_TRAVELLER
+  HIGHLY_RATED
+}
+
+// ============================================================
+// JOURNEY DOMAIN
+// ============================================================
+
+enum JourneySmokingPolicy {
+  ALLOWED
+  NOT_ALLOWED
+}
+
+enum JourneyPetsPolicy {
+  ALLOWED
+  NOT_ALLOWED
+  SERVICE_ANIMALS_ONLY
+}
+
+enum JourneyLuggagePolicy {
+  NONE
+  LIMITED
+  STANDARD
+  LARGE
+}
+
+enum JourneyConversationPreference {
+  QUIET
+  MODERATE
+  SOCIAL
+}
+
+enum JourneyMusicPreference {
+  NONE
+  LOW
+  MODERATE
+  ANY
+}
+
+enum JourneyAssetType {
+  VEHICLE
+  ROUTE
+  OTHER
+}
+
+enum JourneyWaypointType {
+  ORIGIN
+  DESTINATION
+  PICKUP
+  DROPOFF
+  WAYPOINT
+}
+
+enum JourneyStatus {
+  DRAFT
+  PUBLISHED
+  FULL
+  IN_PROGRESS
+  COMPLETION_PENDING
+  COMPLETED
+  CANCELLED
+  EXPIRED
 }

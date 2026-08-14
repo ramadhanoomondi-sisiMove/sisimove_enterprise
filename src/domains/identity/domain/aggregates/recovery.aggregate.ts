@@ -4,9 +4,13 @@ import { AggregateRoot } from '../../../../foundation/kernel/domain/aggregate-ro
 import { UniqueEntityId } from '../../../../foundation/kernel/domain/unique-entity-id';
 
 import { RecoveryRequestedEvent } from '../events/recovery-requested.event';
+import { RecoveryCompletedEvent } from '../events/recovery-completed.event';
+import { RecoveryCancelledEvent } from '../events/recovery-cancelled.event';
+import { RecoveryExpiredEvent } from '../events/recovery-expired.event';
 
 import { RecoveryId } from '../value-objects/recovery-id.vo';
 import { RecoveryStatus } from '../value-objects/recovery-status.enum';
+
 import type { RecoveryType } from '../value-objects/recovery-type.enum';
 import type { RecoveryFailureReason } from '../value-objects/recovery-failure-reason.enum';
 
@@ -15,9 +19,9 @@ import { RecoveryCancelledException } from '../exceptions/recovery-cancelled.exc
 import { RecoveryExpiredException } from '../exceptions/recovery-expired.exception';
 import { InvalidRecoveryTokenException } from '../exceptions/invalid-recovery-token.exception';
 
-import { RecoveryCompletedEvent } from '../events/recovery-completed.event.ts';
-import { RecoveryCancelledEvent } from '../events/recovery-cancelled.event';
-import { RecoveryExpiredEvent } from '../events/recovery-expired.event';
+// -----------------------------------------------------------------------------
+// Properties
+// -----------------------------------------------------------------------------
 
 interface RecoveryProps {
   identityId: string;
@@ -39,6 +43,10 @@ interface RecoveryProps {
   updatedAt: Date;
 }
 
+// -----------------------------------------------------------------------------
+// Aggregate
+// -----------------------------------------------------------------------------
+
 export class RecoveryAggregate extends AggregateRoot<RecoveryProps> {
   public constructor(
     props: RecoveryProps,
@@ -47,6 +55,10 @@ export class RecoveryAggregate extends AggregateRoot<RecoveryProps> {
   ) {
     super(props, id, publicId);
   }
+
+  // ===========================================================================
+  // Factory
+  // ===========================================================================
 
   static request(
     identityId: string,
@@ -96,9 +108,17 @@ export class RecoveryAggregate extends AggregateRoot<RecoveryProps> {
     return recovery;
   }
 
+  // ===========================================================================
+  // Identity
+  // ===========================================================================
+
   get identityId(): string {
     return this.props.identityId;
   }
+
+  // ===========================================================================
+  // Properties
+  // ===========================================================================
 
   get type(): RecoveryType {
     return this.props.type;
@@ -140,13 +160,21 @@ export class RecoveryAggregate extends AggregateRoot<RecoveryProps> {
     return this.props.updatedAt;
   }
 
-  private touch(at: Date): void {
+  // ===========================================================================
+  // Internal State
+  // ===========================================================================
+
+  protected override touch(at: Date): void {
     this.props.updatedAt = at;
   }
 
   private clearToken(): void {
     this.props.recoveryTokenHash = undefined;
   }
+
+  // ===========================================================================
+  // Status Queries
+  // ===========================================================================
 
   isPending(): boolean {
     return this.props.status === RecoveryStatus.PENDING;
@@ -167,6 +195,10 @@ export class RecoveryAggregate extends AggregateRoot<RecoveryProps> {
     );
   }
 
+  // ===========================================================================
+  // Token Validation
+  // ===========================================================================
+
   validateToken(tokenHash: string): void {
     this.ensureUsable();
 
@@ -178,6 +210,10 @@ export class RecoveryAggregate extends AggregateRoot<RecoveryProps> {
       throw new InvalidRecoveryTokenException();
     }
   }
+
+  // ===========================================================================
+  // Lifecycle Validation
+  // ===========================================================================
 
   ensureUsable(referenceDate: Date = new Date()): void {
     if (this.isCompleted()) {
@@ -192,6 +228,10 @@ export class RecoveryAggregate extends AggregateRoot<RecoveryProps> {
       throw new RecoveryExpiredException();
     }
   }
+
+  // ===========================================================================
+  // Complete
+  // ===========================================================================
 
   complete(
     tokenHash: string,
@@ -217,6 +257,10 @@ export class RecoveryAggregate extends AggregateRoot<RecoveryProps> {
       ),
     );
   }
+
+  // ===========================================================================
+  // Cancel
+  // ===========================================================================
 
   cancel(
     reason: RecoveryFailureReason,
@@ -244,6 +288,10 @@ export class RecoveryAggregate extends AggregateRoot<RecoveryProps> {
       ),
     );
   }
+
+  // ===========================================================================
+  // Expire
+  // ===========================================================================
 
   expire(correlationId: string, expiredAt: Date = new Date()): void {
     if (
@@ -275,6 +323,10 @@ export class RecoveryAggregate extends AggregateRoot<RecoveryProps> {
     );
   }
 
+  // ===========================================================================
+  // Token Queries
+  // ===========================================================================
+
   hasToken(): boolean {
     return this.props.recoveryTokenHash !== undefined;
   }
@@ -286,6 +338,10 @@ export class RecoveryAggregate extends AggregateRoot<RecoveryProps> {
     );
   }
 
+  // ===========================================================================
+  // Retry
+  // ===========================================================================
+
   canBeRetried(referenceDate: Date = new Date()): boolean {
     return (
       this.status === RecoveryStatus.EXPIRED ||
@@ -295,14 +351,23 @@ export class RecoveryAggregate extends AggregateRoot<RecoveryProps> {
     );
   }
 
+  // ===========================================================================
+  // Token Rotation
+  // ===========================================================================
+
   rotateToken(recoveryTokenHash: string, expiresAt: Date): void {
     this.ensureUsable();
 
     this.props.recoveryTokenHash = recoveryTokenHash;
+
     this.props.expiresAt = expiresAt;
 
     this.touch(new Date());
   }
+
+  // ===========================================================================
+  // Expiry Extension
+  // ===========================================================================
 
   extendExpiry(expiresAt: Date): void {
     this.ensureUsable();
