@@ -9,6 +9,8 @@ import { Module } from '@nestjs/common';
 import { IdentityModule } from './domains/identity/identity.module';
 import { AssetsModule } from './domains/assets/assets.module';
 import { SocialModule } from './domains/social/social.module';
+import { TrustModule } from './domains/trust/trust.module';
+import { JourneyModule } from './domains/journey/journey.module';
 
 // -----------------------------------------------------------------------------
 // Infrastructure
@@ -41,6 +43,8 @@ import { SecurityModule } from './infrastructure/security/security.module';
     IdentityModule,
     AssetsModule,
     SocialModule,
+    TrustModule,
+    JourneyModule,
   ],
 })
 export class AppModule {}
