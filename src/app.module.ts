@@ -11,6 +11,7 @@ import { AssetsModule } from './domains/assets/assets.module';
 import { SocialModule } from './domains/social/social.module';
 import { TrustModule } from './domains/trust/trust.module';
 import { JourneyModule } from './domains/journey/journey.module';
+import { JourneyDemandModule } from './domains/journey-demand/journey-demand.module';
 
 // -----------------------------------------------------------------------------
 // Infrastructure
@@ -45,6 +46,7 @@ import { SecurityModule } from './infrastructure/security/security.module';
     SocialModule,
     TrustModule,
     JourneyModule,
+    JourneyDemandModule,
   ],
 })
 export class AppModule {}
