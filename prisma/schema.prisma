@@ -1234,7 +1234,8 @@ model Journey {
   pricing     JourneyPricing?
   preferences JourneyPreferences?
 
-  assets JourneyAsset[]
+  assets   JourneyAsset[]
+  boarding JourneyBoarding?
 
   // ---------------------------------------------------------------------------
   // Audit timestamps
@@ -1246,6 +1247,7 @@ model Journey {
   // ---------------------------------------------------------------------------
   // Indexes
   // ---------------------------------------------------------------------------
+  journeyBoardingId String?
 
   @@index([providerPublicId])
   @@index([status])
@@ -2030,6 +2032,111 @@ model JourneyBookingCancellation {
   @@index([cancelledByPublicId])
   @@index([cancelledAt])
   @@map("journey_booking_cancellations")
+}
+
+// -----------------------------------------------------------------------------
+// Journey Boarding
+// -----------------------------------------------------------------------------
+
+model JourneyBoarding {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  journeyId String @unique
+
+  journey Journey @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+
+  providerPublicId String
+
+  status JourneyBoardingStatus @default(NOT_STARTED)
+
+  boardingStartedAt DateTime?
+  journeyStartedAt  DateTime?
+  cancelledAt       DateTime?
+
+  participants JourneyBoardingParticipant[]
+  events       JourneyBoardingEvent[]
+
+  version Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([providerPublicId])
+  @@index([status])
+  @@index([status, boardingStartedAt])
+  @@index([journeyStartedAt])
+  @@map("journey_boardings")
+}
+
+// -----------------------------------------------------------------------------
+// Journey Boarding Participant
+// -----------------------------------------------------------------------------
+
+model JourneyBoardingParticipant {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  boardingId String
+  boarding   JourneyBoarding @relation(fields: [boardingId], references: [id], onDelete: Cascade)
+
+  memberPublicId  String
+  bookingPublicId String?
+
+  role   JourneyBoardingParticipantRole
+  status JourneyBoardingParticipantStatus @default(EXPECTED)
+
+  expectedAt  DateTime  @default(now())
+  boardedAt   DateTime?
+  withdrawnAt DateTime?
+  noShowAt    DateTime?
+  removedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([boardingId, memberPublicId])
+  @@index([boardingId])
+  @@index([memberPublicId])
+  @@index([bookingPublicId])
+  @@index([role])
+  @@index([status])
+  @@index([boardingId, role])
+  @@index([boardingId, status])
+  @@map("journey_boarding_participants")
+}
+
+// -----------------------------------------------------------------------------
+// Journey Boarding Event
+// -----------------------------------------------------------------------------
+
+model JourneyBoardingEvent {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  boardingId String
+  boarding   JourneyBoarding @relation(fields: [boardingId], references: [id], onDelete: Cascade)
+
+  type JourneyBoardingEventType
+
+  memberPublicId  String?
+  bookingPublicId String?
+
+  actorPublicId String?
+
+  occurredAt DateTime @default(now())
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([boardingId])
+  @@index([type])
+  @@index([memberPublicId])
+  @@index([bookingPublicId])
+  @@index([actorPublicId])
+  @@index([boardingId, occurredAt])
+  @@map("journey_boarding_events")
 }
 
 // ============================================================
@@ -3734,9 +3841,45 @@ enum JourneyStatus {
   DRAFT
   PUBLISHED
   FULL
+  BOARDING
   IN_PROGRESS
   COMPLETION_PENDING
   COMPLETED
   CANCELLED
   EXPIRED
+}
+
+// -----------------------------------------------------------------------------
+// Journey Boarding
+// -----------------------------------------------------------------------------
+
+enum JourneyBoardingStatus {
+  NOT_STARTED
+  BOARDING
+  STARTED
+  CANCELLED
+}
+
+enum JourneyBoardingParticipantRole {
+  PROVIDER
+  PASSENGER
+}
+
+enum JourneyBoardingParticipantStatus {
+  EXPECTED
+  BOARDED
+  WITHDRAWN
+  NO_SHOW
+  REMOVED
+}
+
+enum JourneyBoardingEventType {
+  BOARDING_OPENED
+  PROVIDER_BOARDED
+  PASSENGER_BOARDED
+  PASSENGER_NO_SHOW
+  BOARDING_WITHDRAWN
+  PARTICIPANT_REMOVED
+  JOURNEY_STARTED
+  BOARDING_CANCELLED
 }

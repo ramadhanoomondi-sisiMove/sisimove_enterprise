@@ -12,6 +12,7 @@ import { SocialModule } from './domains/social/social.module';
 import { TrustModule } from './domains/trust/trust.module';
 import { JourneyModule } from './domains/journey/journey.module';
 import { JourneyDemandModule } from './domains/journey-demand/journey-demand.module';
+import { JourneyBookingModule } from './domains/journey-booking/journey-booking.module';
 
 // -----------------------------------------------------------------------------
 // Infrastructure
@@ -47,6 +48,7 @@ import { SecurityModule } from './infrastructure/security/security.module';
     TrustModule,
     JourneyModule,
     JourneyDemandModule,
+    JourneyBookingModule,
   ],
 })
 export class AppModule {}
