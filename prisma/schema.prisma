@@ -2140,10 +2140,10 @@ model JourneyBoardingEvent {
 }
 
 // ============================================================
-// JOURNEY TRIP COMPLETION
+// JOURNEY COMPLETION
 // ============================================================
 
-model JourneyTripCompletion {
+model JourneyCompletion {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())
 
@@ -2163,7 +2163,7 @@ model JourneyTripCompletion {
   // Lifecycle
   // ---------------------------------------------------------------------------
 
-  status JourneyTripCompletionStatus @default(PENDING)
+  status JourneyCompletionStatus @default(PENDING)
 
   completionRequestedAt DateTime?
   confirmedAt           DateTime?
@@ -2187,8 +2187,8 @@ model JourneyTripCompletion {
   // Internal Journey-domain relations
   // ---------------------------------------------------------------------------
 
-  confirmations JourneyTripCompletionConfirmation[]
-  disputes      JourneyTripCompletionDispute[]
+  confirmations JourneyCompletionConfirmation[]
+  disputes      JourneyCompletionDispute[]
   settlement    JourneySettlement?
 
   // ---------------------------------------------------------------------------
@@ -2205,14 +2205,14 @@ model JourneyTripCompletion {
   @@index([providerPublicId])
   @@index([status])
   @@index([status, createdAt])
-  @@map("journey_trip_completions")
+  @@map("journey_completions")
 }
 
 // ============================================================
-// JOURNEY TRIP COMPLETION CONFIRMATION
+// JOURNEY COMPLETION CONFIRMATION
 // ============================================================
 
-model JourneyTripCompletionConfirmation {
+model JourneyCompletionConfirmation {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())
 
@@ -2222,9 +2222,9 @@ model JourneyTripCompletionConfirmation {
 
   completionId String
 
-  completion JourneyTripCompletion @relation(fields: [completionId], references: [id], onDelete: Cascade)
+  completion JourneyCompletion @relation(fields: [completionId], references: [id], onDelete: Cascade)
 
-  // --------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
   // Cross-domain references
   // ---------------------------------------------------------------------------
 
@@ -2240,14 +2240,22 @@ model JourneyTripCompletionConfirmation {
   // Confirmation
   // ---------------------------------------------------------------------------
 
-  role   JourneyTripCompletionConfirmationRole
-  status JourneyTripCompletionConfirmationStatus @default(CONFIRMED)
+  role   JourneyCompletionConfirmationRole
+  status JourneyCompletionConfirmationStatus @default(CONFIRMED)
 
   confirmedAt DateTime  @default(now())
   withdrawnAt DateTime?
 
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Constraints / indexes
+  // ---------------------------------------------------------------------------
 
   @@unique([completionId, memberPublicId])
   @@index([completionId])
@@ -2255,14 +2263,14 @@ model JourneyTripCompletionConfirmation {
   @@index([bookingPublicId])
   @@index([completionId, role])
   @@index([completionId, status])
-  @@map("journey_trip_completion_confirmations")
+  @@map("journey_completion_confirmations")
 }
 
 // ============================================================
-// JOURNEY TRIP COMPLETION DISPUTE
+// JOURNEY COMPLETION DISPUTE
 // ============================================================
 
-model JourneyTripCompletionDispute {
+model JourneyCompletionDispute {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())
 
@@ -2272,7 +2280,7 @@ model JourneyTripCompletionDispute {
 
   completionId String
 
-  completion JourneyTripCompletion @relation(fields: [completionId], references: [id], onDelete: Cascade)
+  completion JourneyCompletion @relation(fields: [completionId], references: [id], onDelete: Cascade)
 
   // ---------------------------------------------------------------------------
   // Cross-domain Identity reference
@@ -2286,10 +2294,10 @@ model JourneyTripCompletionDispute {
   // Dispute
   // ---------------------------------------------------------------------------
 
-  reason      JourneyTripCompletionDisputeReason
+  reason      JourneyCompletionDisputeReason
   description String?
 
-  status JourneyTripCompletionDisputeStatus @default(OPEN)
+  status JourneyCompletionDisputeStatus @default(OPEN)
 
   // ---------------------------------------------------------------------------
   // Resolution
@@ -2306,8 +2314,16 @@ model JourneyTripCompletionDispute {
   rejectedAt  DateTime?
   withdrawnAt DateTime?
 
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
 
   @@index([completionId])
   @@index([raisedByPublicId])
@@ -2315,7 +2331,7 @@ model JourneyTripCompletionDispute {
   @@index([reason])
   @@index([completionId, status])
   @@index([status, createdAt])
-  @@map("journey_trip_completion_disputes")
+  @@map("journey_completion_disputes")
 }
 
 // ============================================================
@@ -2332,7 +2348,7 @@ model JourneySettlement {
 
   completionId String @unique
 
-  completion JourneyTripCompletion @relation(fields: [completionId], references: [id], onDelete: Cascade)
+  completion JourneyCompletion @relation(fields: [completionId], references: [id], onDelete: Cascade)
 
   // ---------------------------------------------------------------------------
   // Cross-domain references
@@ -2365,10 +2381,22 @@ model JourneySettlement {
 
   failureReason String?
 
+  // ---------------------------------------------------------------------------
+  // Aggregate version
+  // ---------------------------------------------------------------------------
+
   version Int @default(1)
+
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
 
   @@index([journeyPublicId])
   @@index([providerPublicId])
@@ -3180,20 +3208,20 @@ enum MessagingConversationType {
 }
 
 // ============================================================
-// JOURNEY TRIP COMPLETION
+// JOURNEY COMPLETION ENUMS
 // ============================================================
 
-enum JourneyTripCompletionConfirmationRole {
+enum JourneyCompletionConfirmationRole {
   PROVIDER
   PASSENGER
 }
 
-enum JourneyTripCompletionConfirmationStatus {
+enum JourneyCompletionConfirmationStatus {
   CONFIRMED
   WITHDRAWN
 }
 
-enum JourneyTripCompletionDisputeStatus {
+enum JourneyCompletionDisputeStatus {
   OPEN
   UNDER_REVIEW
   RESOLVED
@@ -3201,8 +3229,8 @@ enum JourneyTripCompletionDisputeStatus {
   WITHDRAWN
 }
 
-enum JourneyTripCompletionDisputeReason {
-  TRIP_NOT_COMPLETED
+enum JourneyCompletionDisputeReason {
+  JOURNEY_NOT_COMPLETED
   PASSENGER_DID_NOT_TRAVEL
   PROVIDER_DID_NOT_TRAVEL
   WRONG_DESTINATION
@@ -3221,7 +3249,7 @@ enum JourneySettlementStatus {
   CANCELLED
 }
 
-enum JourneyTripCompletionStatus {
+enum JourneyCompletionStatus {
   PENDING
   CONFIRMATION_REQUIRED
   CONFIRMED

@@ -13,6 +13,7 @@ import { TrustModule } from './domains/trust/trust.module';
 import { JourneyModule } from './domains/journey/journey.module';
 import { JourneyDemandModule } from './domains/journey-demand/journey-demand.module';
 import { JourneyBookingModule } from './domains/journey-booking/journey-booking.module';
+import { JourneyBoardingModule } from './domains/journey-boarding/journey-boarding.module';
 
 // -----------------------------------------------------------------------------
 // Infrastructure
@@ -49,6 +50,7 @@ import { SecurityModule } from './infrastructure/security/security.module';
     JourneyModule,
     JourneyDemandModule,
     JourneyBookingModule,
+    JourneyBoardingModule,
   ],
 })
 export class AppModule {}
