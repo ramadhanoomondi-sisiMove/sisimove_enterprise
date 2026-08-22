@@ -24,6 +24,8 @@ import { JourneyBoardingModule } from './domains/journey-boarding/journey-boardi
 
 import { JourneyCompletionModule } from './domains/journey-completion/journey-completion.module';
 
+import { CommercialModule } from './domains/commercial/commercial.module';
+
 // -----------------------------------------------------------------------------
 // Infrastructure
 // -----------------------------------------------------------------------------
@@ -79,6 +81,8 @@ import { SecurityModule } from './infrastructure/security/security.module';
     JourneyBoardingModule,
 
     JourneyCompletionModule,
+
+    CommercialModule,
   ],
 })
 export class AppModule {}

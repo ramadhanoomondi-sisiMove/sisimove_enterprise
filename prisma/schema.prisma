@@ -47,13 +47,6 @@ model Identity {
   assetModerations     AssetModeration[]
 
   // ---------------------------------------------------------------------------
-  // Financial Account
-  // ---------------------------------------------------------------------------
-
-  financialAccountId String           @unique
-  financialAccount   FinancialAccount @relation(fields: [financialAccountId], references: [id])
-
-  // ---------------------------------------------------------------------------
   // Indexes
   // ---------------------------------------------------------------------------
 
@@ -1972,12 +1965,31 @@ model JourneyBookingPayment {
 
   status JourneyBookingPaymentStatus @default(PENDING)
 
-  amount   Int
+  /// Final amount payable by the passenger.
+  ///
+  /// This amount includes all commercial amounts assessed for the booking
+  /// that are applicable to the passenger payment.
+  ///
+  /// Example:
+  ///
+  /// JourneyBookingPricing.subtotal = 1000
+  /// Commercial booking commission = 50
+  /// JourneyBookingPayment.amount = 1050
+  amount Int
+
   currency String @default("KES")
 
-  /// Cross-domain reference to the payment/transaction domain.
+  // ---------------------------------------------------------------------------
+  // Cross-domain transaction reference
+  // ---------------------------------------------------------------------------
+
+  /// References the Financial/Payment transaction domain.
   /// Intentionally NOT a Prisma relation.
   transactionPublicId String?
+
+  // ---------------------------------------------------------------------------
+  // Payment lifecycle
+  // ---------------------------------------------------------------------------
 
   authorizedAt DateTime?
   capturedAt   DateTime?
@@ -1986,8 +1998,16 @@ model JourneyBookingPayment {
 
   failureReason String?
 
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
 
   @@index([status])
   @@index([transactionPublicId])
@@ -2406,9 +2426,949 @@ model JourneySettlement {
   @@map("journey_settlements")
 }
 
-// ---------------------------------------------------------------------------
-// Message Domain
-// -----------------------------------------------------------
+// =============================================================================
+// COMMERCIAL COMMISSION RULE
+// =============================================================================
+
+model CommercialCommissionRule {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  type       CommercialCommissionType
+  percentage Decimal                  @db.Decimal(5, 2)
+
+  status CommercialCommissionRuleStatus @default(ACTIVE)
+
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  version Int @default(1)
+
+  bookingCommissions CommercialBookingCommission[]
+  earningCommissions CommercialEarningCommission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([type, version])
+  @@index([type])
+  @@index([type, status])
+  @@index([type, status, effectiveFrom])
+  @@index([effectiveFrom, effectiveTo])
+  @@map("commercial_commission_rules")
+}
+
+// =============================================================================
+// COMMERCIAL BOOKING COMMISSION
+// =============================================================================
+
+model CommercialBookingCommission {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain references
+  // ---------------------------------------------------------------------------
+
+  /// References JourneyBooking.publicId.
+  /// Intentionally NOT a Prisma relation.
+  bookingPublicId String @unique
+
+  /// References Journey.publicId.
+  /// Intentionally NOT a Prisma relation.
+  journeyPublicId String
+
+  // ---------------------------------------------------------------------------
+  // Commission rule
+  // ---------------------------------------------------------------------------
+
+  /// References CommercialCommissionRule.id.
+  /// Internal Commercial-domain relation.
+  commissionRuleId String
+
+  commissionRule CommercialCommissionRule @relation(fields: [commissionRuleId], references: [id], onDelete: Restrict)
+
+  // ---------------------------------------------------------------------------
+  // Commission assessment snapshot
+  // ---------------------------------------------------------------------------
+
+  /// Snapshot of the commission percentage used for this booking.
+  percentage Decimal @db.Decimal(5, 2)
+
+  /// Booking amount before the Commercial booking commission.
+  ///
+  /// This is derived from the JourneyBookingPricing amount used
+  /// as the commercial commission base.
+  baseAmount Int
+
+  /// Commission charged to the passenger.
+  ///
+  /// Example:
+  /// baseAmount = 1000
+  /// percentage = 5.00
+  /// commissionAmount = 50
+  ///
+  /// The resulting passenger payment amount is:
+  ///
+  /// 1000 + 50 = 1050
+  ///
+  /// The final payment amount belongs to JourneyBookingPayment,
+  /// not to CommercialBookingCommission.
+  commissionAmount Int
+
+  currency String @default("KES")
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
+  status CommercialCommissionStatus @default(PENDING)
+
+  assessedAt  DateTime?
+  cancelledAt DateTime?
+
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
+
+  @@index([journeyPublicId])
+  @@index([commissionRuleId])
+  @@index([status])
+  @@index([assessedAt])
+  @@map("commercial_booking_commissions")
+}
+
+// =============================================================================
+// COMMERCIAL EARNING COMMISSION
+// =============================================================================
+
+model CommercialEarningCommission {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain references
+  // ---------------------------------------------------------------------------
+
+  /// References Journey.publicId.
+  /// Intentionally NOT a Prisma relation.
+  journeyPublicId String
+
+  /// References JourneySettlement.publicId.
+  /// Intentionally NOT a Prisma relation.
+  settlementPublicId String @unique
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
+  providerPublicId String
+
+  // ---------------------------------------------------------------------------
+  // Commission rule
+  // ---------------------------------------------------------------------------
+
+  /// References CommercialCommissionRule.id.
+  /// Internal Commercial-domain relation.
+  commissionRuleId String
+
+  commissionRule CommercialCommissionRule @relation(fields: [commissionRuleId], references: [id], onDelete: Restrict)
+
+  // ---------------------------------------------------------------------------
+  // Commission assessment snapshot
+  // ---------------------------------------------------------------------------
+
+  /// Snapshot of the commission percentage used for this settlement.
+  percentage Decimal @db.Decimal(5, 2)
+
+  /// Provider earning before the Commercial earning commission.
+  ///
+  /// This amount is derived from the Journey/Financial settlement
+  /// process and is not owned by Commercial.
+  baseAmount Int
+
+  /// Commission retained by the platform from the provider earning.
+  commissionAmount Int
+
+  /// Provider earning after Commercial commission.
+  ///
+  /// netAmount = baseAmount - commissionAmount
+  netAmount Int
+
+  currency String @default("KES")
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
+  status CommercialCommissionStatus @default(PENDING)
+
+  assessedAt  DateTime?
+  cancelledAt DateTime?
+
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
+
+  @@index([journeyPublicId])
+  @@index([providerPublicId])
+  @@index([commissionRuleId])
+  @@index([status])
+  @@index([assessedAt])
+  @@map("commercial_earning_commissions")
+}
+
+// =============================================================================
+// FINANCIAL ACCOUNT
+// =============================================================================
+
+model FinancialAccount {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  type   FinancialAccountType
+  status FinancialAccountStatus @default(ACTIVE)
+
+  ownerPublicId String?
+
+  currency String @default("KES")
+
+  balance FinancialAccountBalance?
+
+  outgoingTransactions FinancialTransaction[] @relation("TransactionSourceAccount")
+
+  incomingTransactions FinancialTransaction[] @relation("TransactionDestinationAccount")
+
+  entries FinancialTransactionEntry[]
+
+  payments FinancialPayment[]
+
+  paymentMethods FinancialPaymentMethod[]
+
+  holds FinancialAccountHold[]
+
+  withdrawals FinancialAccountWithdrawal[]
+
+  settlementAllocations FinancialSettlementAllocation[]
+
+  outgoingDisbursements FinancialDisbursement[] @relation("DisbursementSourceAccount")
+
+  disbursementDestinations FinancialDisbursementDestination[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([ownerPublicId])
+  @@index([type])
+  @@index([status])
+  @@index([currency])
+  @@map("financial_accounts")
+}
+
+// =============================================================================
+// FINANCIAL ACCOUNT BALANCE
+// =============================================================================
+
+model FinancialAccountBalance {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  accountId String @unique
+
+  account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  availableAmount Int @default(0)
+  pendingAmount   Int @default(0)
+  heldAmount      Int @default(0)
+
+  currency String @default("KES")
+
+  version Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([currency])
+  @@map("financial_account_balances")
+}
+
+// =============================================================================
+// FINANCIAL TRANSACTION
+// =============================================================================
+
+model FinancialTransaction {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  type   FinancialTransactionType
+  status FinancialTransactionStatus @default(PENDING)
+
+  sourceAccountId String?
+
+  sourceAccount FinancialAccount? @relation("TransactionSourceAccount", fields: [sourceAccountId], references: [id], onDelete: Restrict)
+
+  destinationAccountId String?
+
+  destinationAccount FinancialAccount? @relation("TransactionDestinationAccount", fields: [destinationAccountId], references: [id], onDelete: Restrict)
+
+  amount   Int
+  currency String @default("KES")
+
+  referenceType     String?
+  referencePublicId String?
+
+  entries                   FinancialTransactionEntry[]
+  accountingJournalPublicId String?
+
+  completedAt DateTime?
+  failedAt    DateTime?
+  reversedAt  DateTime?
+  cancelledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sourceAccountId])
+  @@index([destinationAccountId])
+  @@index([type])
+  @@index([status])
+  @@index([referenceType, referencePublicId])
+  @@index([accountingJournalPublicId])
+  @@index([createdAt])
+  @@map("financial_transactions")
+}
+
+// =============================================================================
+// FINANCIAL TRANSACTION ENTRY
+// =============================================================================
+
+model FinancialTransactionEntry {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  transactionId String
+
+  transaction FinancialTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  accountId String
+
+  account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  type        FinancialTransactionEntryType
+  balanceType FinancialBalanceType
+
+  amount Int
+
+  createdAt DateTime @default(now())
+
+  @@index([transactionId])
+  @@index([accountId])
+  @@index([accountId, balanceType])
+  @@index([accountId, type])
+  @@map("financial_transaction_entries")
+}
+
+// =============================================================================
+// FINANCIAL PAYMENT
+// =============================================================================
+
+model FinancialPayment {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  accountId String
+
+  account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  amount   Int
+  currency String @default("KES")
+
+  status FinancialPaymentStatus @default(PENDING)
+
+  methodId String?
+
+  method FinancialPaymentMethod? @relation(fields: [methodId], references: [id], onDelete: SetNull)
+
+  attempts FinancialPaymentAttempt[]
+
+  transactionPublicId String?
+
+  referenceType     String?
+  referencePublicId String?
+
+  initiatedAt DateTime  @default(now())
+  completedAt DateTime?
+  failedAt    DateTime?
+  cancelledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+  @@index([methodId])
+  @@index([status])
+  @@index([referenceType, referencePublicId])
+  @@index([transactionPublicId])
+  @@map("financial_payments")
+}
+
+// =============================================================================
+// FINANCIAL PAYMENT METHOD
+// =============================================================================
+
+model FinancialPaymentMethod {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  accountId String
+
+  account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  type FinancialPaymentMethodType
+
+  provider          String
+  providerReference String?
+
+  displayName String?
+  lastFour    String?
+
+  isDefault Boolean @default(false)
+  isActive  Boolean @default(true)
+
+  payments FinancialPayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, providerReference])
+  @@index([accountId])
+  @@index([provider])
+  @@index([providerReference])
+  @@index([type])
+  @@index([isActive])
+  @@map("financial_payment_methods")
+}
+
+// =============================================================================
+// FINANCIAL PAYMENT ATTEMPT
+// =============================================================================
+
+model FinancialPaymentAttempt {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  paymentId String
+
+  payment FinancialPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  status FinancialPaymentAttemptStatus @default(PENDING)
+
+  provider          String
+  providerReference String?
+
+  amount   Int
+  currency String @default("KES")
+
+  failureCode    String?
+  failureMessage String?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  failedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, providerReference])
+  @@index([paymentId])
+  @@index([status])
+  @@index([provider])
+  @@index([providerReference])
+  @@map("financial_payment_attempts")
+}
+
+// =============================================================================
+// FINANCIAL ACCOUNT HOLD
+// =============================================================================
+
+model FinancialAccountHold {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  accountId String
+
+  account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  amount   Int
+  currency String @default("KES")
+
+  status FinancialAccountHoldStatus @default(ACTIVE)
+
+  referenceType     String?
+  referencePublicId String?
+
+  holdTransactionPublicId    String?
+  releaseTransactionPublicId String?
+  captureTransactionPublicId String?
+
+  expiresAt   DateTime?
+  releasedAt  DateTime?
+  capturedAt  DateTime?
+  cancelledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+  @@index([status])
+  @@index([referenceType, referencePublicId])
+  @@index([expiresAt])
+  @@index([holdTransactionPublicId])
+  @@index([releaseTransactionPublicId])
+  @@index([captureTransactionPublicId])
+  @@map("financial_account_holds")
+}
+
+// =============================================================================
+// FINANCIAL ACCOUNT WITHDRAWAL
+// =============================================================================
+
+model FinancialAccountWithdrawal {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  accountId String
+
+  account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  amount   Int
+  currency String @default("KES")
+
+  status FinancialAccountWithdrawalStatus @default(PENDING)
+
+  destinationId String?
+
+  destination FinancialDisbursementDestination? @relation(fields: [destinationId], references: [id], onDelete: SetNull)
+
+  disbursementPublicId String?
+
+  requestedAt DateTime  @default(now())
+  completedAt DateTime?
+  failedAt    DateTime?
+  cancelledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+  @@index([destinationId])
+  @@index([status])
+  @@index([disbursementPublicId])
+  @@index([requestedAt])
+  @@map("financial_account_withdrawals")
+}
+
+// =============================================================================
+// FINANCIAL SETTLEMENT
+// =============================================================================
+
+model FinancialSettlement {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  status FinancialSettlementStatus @default(PENDING)
+
+  currency String @default("KES")
+
+  totalAmount Int @default(0)
+
+  items FinancialSettlementItem[]
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  failedAt    DateTime?
+  cancelledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("financial_settlements")
+}
+
+// =============================================================================
+// FINANCIAL SETTLEMENT ITEM
+// =============================================================================
+
+model FinancialSettlementItem {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  settlementId String
+
+  settlement FinancialSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+
+  referenceType     String
+  referencePublicId String
+
+  amount   Int
+  currency String @default("KES")
+
+  status FinancialSettlementItemStatus @default(PENDING)
+
+  allocations FinancialSettlementAllocation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([settlementId])
+  @@index([referenceType, referencePublicId])
+  @@index([status])
+  @@map("financial_settlement_items")
+}
+
+// =============================================================================
+// FINANCIAL SETTLEMENT ALLOCATION
+// =============================================================================
+
+model FinancialSettlementAllocation {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  settlementItemId String
+
+  settlementItem FinancialSettlementItem @relation(fields: [settlementItemId], references: [id], onDelete: Cascade)
+
+  accountId String
+
+  account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  type FinancialSettlementAllocationType
+
+  amount   Int
+  currency String @default("KES")
+
+  transactionPublicId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([settlementItemId])
+  @@index([accountId])
+  @@index([type])
+  @@index([transactionPublicId])
+  @@map("financial_settlement_allocations")
+}
+
+// =============================================================================
+// FINANCIAL DISBURSEMENT
+// =============================================================================
+
+model FinancialDisbursement {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  sourceAccountId String
+
+  sourceAccount FinancialAccount @relation("DisbursementSourceAccount", fields: [sourceAccountId], references: [id], onDelete: Restrict)
+
+  destinationId String
+
+  destination FinancialDisbursementDestination @relation(fields: [destinationId], references: [id], onDelete: Restrict)
+
+  amount   Int
+  currency String @default("KES")
+
+  status FinancialDisbursementStatus @default(PENDING)
+
+  attempts FinancialDisbursementAttempt[]
+
+  referenceType     String?
+  referencePublicId String?
+
+  transactionPublicId String?
+
+  requestedAt DateTime  @default(now())
+  completedAt DateTime?
+  failedAt    DateTime?
+  cancelledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sourceAccountId])
+  @@index([destinationId])
+  @@index([status])
+  @@index([referenceType, referencePublicId])
+  @@index([transactionPublicId])
+  @@index([requestedAt])
+  @@map("financial_disbursements")
+}
+
+// =============================================================================
+// FINANCIAL DISBURSEMENT DESTINATION
+// =============================================================================
+
+model FinancialDisbursementDestination {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  accountId String
+
+  account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  type FinancialDisbursementDestinationType
+
+  provider          String
+  providerReference String
+
+  displayName     String?
+  maskedReference String?
+
+  isDefault Boolean @default(false)
+  isActive  Boolean @default(true)
+
+  disbursements FinancialDisbursement[]
+
+  withdrawals FinancialAccountWithdrawal[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, providerReference])
+  @@index([accountId])
+  @@index([type])
+  @@index([provider])
+  @@index([isActive])
+  @@map("financial_disbursement_destinations")
+}
+
+// =============================================================================
+// FINANCIAL DISBURSEMENT ATTEMPT
+// =============================================================================
+
+model FinancialDisbursementAttempt {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  disbursementId String
+
+  disbursement FinancialDisbursement @relation(fields: [disbursementId], references: [id], onDelete: Cascade)
+
+  status FinancialDisbursementAttemptStatus @default(PENDING)
+
+  provider          String
+  providerReference String?
+
+  amount   Int
+  currency String @default("KES")
+
+  failureCode    String?
+  failureMessage String?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  failedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, providerReference])
+  @@index([disbursementId])
+  @@index([status])
+  @@index([provider])
+  @@index([providerReference])
+  @@map("financial_disbursement_attempts")
+}
+
+// =============================================================================
+// ACCOUNTING ACCOUNT
+// =============================================================================
+
+model AccountingAccount {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  code String @unique
+  name String
+
+  type   AccountingAccountType
+  status AccountingAccountStatus @default(ACTIVE)
+
+  parentAccountId String?
+
+  parentAccount AccountingAccount? @relation("AccountingAccountHierarchy", fields: [parentAccountId], references: [id], onDelete: Restrict)
+
+  childAccounts AccountingAccount[] @relation("AccountingAccountHierarchy")
+
+  journalLines AccountingJournalLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([status])
+  @@index([parentAccountId])
+  @@map("accounting_accounts")
+}
+
+// =============================================================================
+// ACCOUNTING PERIOD
+// =============================================================================
+
+model AccountingPeriod {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  name String
+
+  startsAt DateTime
+  endsAt   DateTime
+
+  status AccountingPeriodStatus @default(OPEN)
+
+  journals AccountingJournal[]
+
+  closedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([startsAt, endsAt])
+  @@index([status])
+  @@map("accounting_periods")
+}
+
+// =============================================================================
+// ACCOUNTING JOURNAL
+// =============================================================================
+
+model AccountingJournal {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  status AccountingJournalStatus @default(DRAFT)
+
+  currency String @default("KES")
+
+  periodId String?
+
+  period AccountingPeriod? @relation(fields: [periodId], references: [id], onDelete: Restrict)
+
+  entries AccountingJournalEntry[]
+
+  postingReference AccountingPostingReference?
+
+  postedAt   DateTime?
+  reversedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([periodId])
+  @@index([postedAt])
+  @@map("accounting_journals")
+}
+
+// =============================================================================
+// ACCOUNTING JOURNAL ENTRY
+// =============================================================================
+
+model AccountingJournalEntry {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  journalId String
+
+  journal AccountingJournal @relation(fields: [journalId], references: [id], onDelete: Cascade)
+
+  entryDate DateTime
+
+  description String?
+
+  lines AccountingJournalLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([journalId])
+  @@index([entryDate])
+  @@map("accounting_journal_entries")
+}
+
+// =============================================================================
+// ACCOUNTING JOURNAL LINE
+// =============================================================================
+
+model AccountingJournalLine {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  entryId String
+
+  entry AccountingJournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  accountId String
+
+  account AccountingAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  type AccountingJournalLineType
+
+  amount   Int
+  currency String @default("KES")
+
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([entryId])
+  @@index([accountId])
+  @@index([accountId, type])
+  @@map("accounting_journal_lines")
+}
+
+// =============================================================================
+// ACCOUNTING POSTING REFERENCE
+// =============================================================================
+
+model AccountingPostingReference {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  journalId String @unique
+
+  journal AccountingJournal @relation(fields: [journalId], references: [id], onDelete: Cascade)
+
+  sourceType     String
+  sourcePublicId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sourceType, sourcePublicId])
+  @@index([sourceType])
+  @@index([sourcePublicId])
+  @@map("accounting_posting_references")
+}
+
+// ============================================================
+// MESSAGING CONVERSATION
+// ============================================================
 
 model MessagingConversation {
   id       String @id @default(uuid())
@@ -2417,32 +3377,82 @@ model MessagingConversation {
   type   MessagingConversationType
   status MessagingConversationStatus @default(ACTIVE)
 
+  // ---------------------------------------------------------------------------
+  // Cross-domain Journey reference
+  // ---------------------------------------------------------------------------
+
+  /// References Journey.publicId.
+  /// Intentionally NOT a Prisma relation.
   journeyPublicId String
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain Booking reference
+  // ---------------------------------------------------------------------------
+
+  /// References JourneyBooking.publicId.
+  /// Intentionally NOT a Prisma relation.
   bookingPublicId String?
+
+  // ---------------------------------------------------------------------------
+  // Participants / Messages
+  // ---------------------------------------------------------------------------
 
   participants MessagingConversationParticipant[]
   messages     MessagingMessage[]
 
+  // ---------------------------------------------------------------------------
+  // Conversation lifecycle
+  // ---------------------------------------------------------------------------
+
   lastMessageAt DateTime?
   closedAt      DateTime?
 
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
 
   @@index([journeyPublicId])
   @@index([bookingPublicId])
   @@index([status])
   @@index([journeyPublicId, status])
+  @@index([status, lastMessageAt])
+  @@map("messaging_conversations")
 }
+
+// ============================================================
+// MESSAGING CONVERSATION PARTICIPANT
+// ============================================================
 
 model MessagingConversationParticipant {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())
 
-  conversationId String
-  conversation   MessagingConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  // ---------------------------------------------------------------------------
+  // Internal Message-domain relation
+  // ---------------------------------------------------------------------------
 
+  conversationId String
+
+  conversation MessagingConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain Identity reference
+  // ---------------------------------------------------------------------------
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
   memberPublicId String
+
+  // ---------------------------------------------------------------------------
+  // Participant state
+  // ---------------------------------------------------------------------------
 
   role   MessagingParticipantRole
   status MessagingParticipantStatus @default(ACTIVE)
@@ -2452,43 +3462,92 @@ model MessagingConversationParticipant {
   removedAt  DateTime?
   lastReadAt DateTime?
 
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Constraints / indexes
+  // ---------------------------------------------------------------------------
 
   @@unique([conversationId, memberPublicId])
   @@index([conversationId])
   @@index([memberPublicId])
   @@index([memberPublicId, status])
   @@index([conversationId, status])
+  @@map("messaging_conversation_participants")
 }
+
+// ============================================================
+// MESSAGING MESSAGE
+// ============================================================
 
 model MessagingMessage {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())
 
-  conversationId String
-  conversation   MessagingConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  // ---------------------------------------------------------------------------
+  // Internal Message-domain relation
+  // ---------------------------------------------------------------------------
 
+  conversationId String
+
+  conversation MessagingConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain Identity reference
+  // ---------------------------------------------------------------------------
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
   senderPublicId String
+
+  // ---------------------------------------------------------------------------
+  // Message
+  // ---------------------------------------------------------------------------
 
   type   MessagingMessageType
   status MessagingMessageStatus @default(SENT)
 
   content String?
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain Asset reference
+  // ---------------------------------------------------------------------------
+
+  /// References Asset.publicId.
+  /// Intentionally NOT a Prisma relation.
   assetId String?
+
+  // ---------------------------------------------------------------------------
+  // Message lifecycle
+  // ---------------------------------------------------------------------------
 
   sentAt      DateTime  @default(now())
   editedAt    DateTime?
   deletedAt   DateTime?
   moderatedAt DateTime?
 
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
+
   @@index([conversationId])
   @@index([senderPublicId])
+  @@index([assetId])
   @@index([conversationId, sentAt])
   @@index([status])
+  @@map("messaging_messages")
 }
 
 // ============================================================
@@ -2499,7 +3558,17 @@ model Notification {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())
 
+  // ---------------------------------------------------------------------------
+  // Cross-domain Identity reference
+  // ---------------------------------------------------------------------------
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
   recipientPublicId String
+
+  // ---------------------------------------------------------------------------
+  // Notification
+  // ---------------------------------------------------------------------------
 
   type     NotificationType
   priority NotificationPriority @default(NORMAL)
@@ -2508,11 +3577,37 @@ model Notification {
   title String
   body  String
 
+  // ---------------------------------------------------------------------------
+  // Cross-domain reference
+  // ---------------------------------------------------------------------------
+
+  /// Generic reference to the domain resource that caused the notification.
+  ///
+  /// Examples:
+  /// - Journey
+  /// - JourneyBooking
+  /// - JourneyCompletion
+  /// - JourneyCompletionDispute
+  /// - FinancialPayment
+  /// - SupportCase
+  ///
+  /// Intentionally NOT a Prisma relation.
   referenceType     String?
   referencePublicId String?
 
+  // ---------------------------------------------------------------------------
+  // Source event
+  // ---------------------------------------------------------------------------
+
+  /// Event that caused this notification.
+  ///
+  /// Intentionally stored as scalar metadata rather than a Prisma relation.
   eventType     String?
   eventPublicId String?
+
+  // ---------------------------------------------------------------------------
+  // Delivery lifecycle
+  // ---------------------------------------------------------------------------
 
   sentAt      DateTime?
   readAt      DateTime?
@@ -2521,10 +3616,22 @@ model Notification {
 
   failureReason String?
 
+  // ---------------------------------------------------------------------------
+  // Deliveries
+  // ---------------------------------------------------------------------------
+
   deliveries NotificationDelivery[]
+
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
 
   @@index([recipientPublicId])
   @@index([recipientPublicId, status])
@@ -2532,6 +3639,8 @@ model Notification {
   @@index([type])
   @@index([priority])
   @@index([eventType, eventPublicId])
+  @@index([referenceType, referencePublicId])
+  @@map("notifications")
 }
 
 // ============================================================
@@ -2542,7 +3651,18 @@ model NotificationPreference {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())
 
+  // ---------------------------------------------------------------------------
+  // Cross-domain Identity reference
+  // ---------------------------------------------------------------------------
+
+  /// References Identity.publicId.
+  /// Exactly one preference aggregate per member.
+  /// Intentionally NOT a Prisma relation.
   memberPublicId String @unique
+
+  // ---------------------------------------------------------------------------
+  // Notification preferences
+  // ---------------------------------------------------------------------------
 
   journeyEnabled      Boolean @default(true)
   bookingEnabled      Boolean @default(true)
@@ -2554,10 +3674,14 @@ model NotificationPreference {
   supportEnabled      Boolean @default(true)
   systemEnabled       Boolean @default(true)
 
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([memberPublicId])
+  @@map("notification_preferences")
 }
 
 // ============================================================
@@ -2568,13 +3692,26 @@ model NotificationDelivery {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())
 
+  // ---------------------------------------------------------------------------
+  // Internal Message-domain relation
+  // ---------------------------------------------------------------------------
+
   notificationId String
-  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Delivery
+  // ---------------------------------------------------------------------------
 
   channel NotificationChannel
   status  NotificationDeliveryStatus @default(PENDING)
 
   providerReference String?
+
+  // ---------------------------------------------------------------------------
+  // Delivery lifecycle
+  // ---------------------------------------------------------------------------
 
   sentAt      DateTime?
   deliveredAt DateTime?
@@ -2583,20 +3720,47 @@ model NotificationDelivery {
 
   failureReason String?
 
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Constraints / indexes
+  // ---------------------------------------------------------------------------
 
   @@unique([notificationId, channel])
   @@index([notificationId])
   @@index([status])
   @@index([channel, status])
+  @@map("notification_deliveries")
 }
+
+// =============================================================================
+// SUPPORT
+// =============================================================================
+
+// ============================================================
+// SUPPORT CASE
+// ============================================================
 
 model SupportCase {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())
 
+  // ---------------------------------------------------------------------------
+  // Cross-domain Identity reference
+  // ---------------------------------------------------------------------------
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
   requesterPublicId String
+
+  // ---------------------------------------------------------------------------
+  // Case
+  // ---------------------------------------------------------------------------
 
   status   SupportCaseStatus   @default(OPEN)
   priority SupportCasePriority @default(NORMAL)
@@ -2605,10 +3769,36 @@ model SupportCase {
   subject     String
   description String?
 
+  // ---------------------------------------------------------------------------
+  // Cross-domain reference
+  // ---------------------------------------------------------------------------
+
+  /// Identifies the resource this support case concerns.
+  ///
+  /// Examples:
+  /// - Journey
+  /// - JourneyBooking
+  /// - JourneyCompletion
+  /// - JourneyCompletionDispute
+  /// - FinancialPayment
+  /// - FinancialAccount
+  /// - TrustProfile
+  ///
+  /// Intentionally NOT a Prisma relation.
   referenceType     String?
   referencePublicId String?
 
+  // ---------------------------------------------------------------------------
+  // Assignment
+  // ---------------------------------------------------------------------------
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
   assignedToPublicId String?
+
+  // ---------------------------------------------------------------------------
+  // Case children
+  // ---------------------------------------------------------------------------
 
   messages     SupportCaseMessage[]
   participants SupportCaseParticipant[]
@@ -2616,15 +3806,31 @@ model SupportCase {
   evidence     SupportCaseEvidence[]
   resolution   SupportCaseResolution?
 
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
   openedAt    DateTime  @default(now())
   resolvedAt  DateTime?
   closedAt    DateTime?
   cancelledAt DateTime?
 
+  // ---------------------------------------------------------------------------
+  // Optimistic concurrency
+  // ---------------------------------------------------------------------------
+
   version Int @default(1)
+
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
 
   @@index([requesterPublicId])
   @@index([status])
@@ -2634,577 +3840,269 @@ model SupportCase {
   @@index([referenceType, referencePublicId])
   @@index([status, priority])
   @@index([status, createdAt])
+  @@map("support_cases")
 }
 
-model SupportCaseParticipant {
-  id String @id @default(uuid())
+// ============================================================
+// SUPPORT CASE PARTICIPANT
+// ============================================================
 
+model SupportCaseParticipant {
+  id       String @id @default(uuid())
   publicId String @unique @default(uuid())
 
-  caseId String
-  case   SupportCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  // ---------------------------------------------------------------------------
+  // Internal Support-domain relation
+  // ---------------------------------------------------------------------------
 
+  caseId String
+
+  case SupportCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain Identity reference
+  // ---------------------------------------------------------------------------
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
   memberPublicId String
-  role           SupportCaseParticipantRole
+
+  // ---------------------------------------------------------------------------
+  // Participant
+  // ---------------------------------------------------------------------------
+
+  role SupportCaseParticipantRole
 
   joinedAt DateTime  @default(now())
   leftAt   DateTime?
 
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Constraints / indexes
+  // ---------------------------------------------------------------------------
 
   @@unique([caseId, memberPublicId, role])
   @@index([caseId])
   @@index([memberPublicId])
   @@index([caseId, role])
+  @@map("support_case_participants")
 }
+
+// ============================================================
+// SUPPORT CASE MESSAGE
+// ============================================================
 
 model SupportCaseMessage {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())
 
-  caseId String
-  case   SupportCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  // ---------------------------------------------------------------------------
+  // Internal Support-domain relation
+  // ---------------------------------------------------------------------------
 
+  caseId String
+
+  case SupportCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain Identity reference
+  // ---------------------------------------------------------------------------
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
   senderPublicId String
+
+  // ---------------------------------------------------------------------------
+  // Message
+  // ---------------------------------------------------------------------------
 
   type    SupportMessageType
   content String?
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain Asset reference
+  // ---------------------------------------------------------------------------
+
+  /// References Asset.publicId.
+  /// Intentionally NOT a Prisma relation.
   assetId String?
+
+  // ---------------------------------------------------------------------------
+  // Message lifecycle
+  // ---------------------------------------------------------------------------
 
   sentAt    DateTime  @default(now())
   editedAt  DateTime?
   deletedAt DateTime?
 
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
+
   @@index([caseId])
   @@index([senderPublicId])
+  @@index([assetId])
   @@index([caseId, sentAt])
+  @@map("support_case_messages")
 }
+
+// ============================================================
+// SUPPORT CASE NOTE
+// ============================================================
 
 model SupportCaseNote {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())
 
-  caseId String
-  case   SupportCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  // ---------------------------------------------------------------------------
+  // Internal Support-domain relation
+  // ---------------------------------------------------------------------------
 
+  caseId String
+
+  case SupportCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain Identity reference
+  // ---------------------------------------------------------------------------
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
   authorPublicId String
-  content        String
+
+  // ---------------------------------------------------------------------------
+  // Note
+  // ---------------------------------------------------------------------------
+
+  content String
+
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
+
   @@index([caseId])
   @@index([authorPublicId])
   @@index([caseId, createdAt])
+  @@map("support_case_notes")
 }
+
+// ============================================================
+// SUPPORT CASE EVIDENCE
+// ============================================================
 
 model SupportCaseEvidence {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())
 
-  caseId String
-  case   SupportCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  // ---------------------------------------------------------------------------
+  // Internal Support-domain relation
+  // ---------------------------------------------------------------------------
 
+  caseId String
+
+  case SupportCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Cross-domain Identity reference
+  // ---------------------------------------------------------------------------
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
   submittedByPublicId String
 
+  // ---------------------------------------------------------------------------
+  // Cross-domain Asset reference
+  // ---------------------------------------------------------------------------
+
+  /// References Asset.publicId.
+  /// Intentionally NOT a Prisma relation.
   assetId String
 
   description String?
 
+  // ---------------------------------------------------------------------------
+  // Audit
+  // ---------------------------------------------------------------------------
+
   createdAt DateTime @default(now())
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
 
   @@index([caseId])
   @@index([submittedByPublicId])
   @@index([assetId])
+  @@map("support_case_evidence")
 }
+
+// ============================================================
+// SUPPORT CASE RESOLUTION
+// ============================================================
 
 model SupportCaseResolution {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())
 
-  caseId String      @unique
-  case   SupportCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  // ---------------------------------------------------------------------------
+  // Internal Support-domain relation
+  // ---------------------------------------------------------------------------
+
+  /// One resolution belongs to exactly one support case.
+  caseId String @unique
+
+  case SupportCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Resolution
+  // ---------------------------------------------------------------------------
 
   type    SupportResolutionType
   summary String
 
+  // ---------------------------------------------------------------------------
+  // Cross-domain Identity reference
+  // ---------------------------------------------------------------------------
+
+  /// References Identity.publicId.
+  /// Intentionally NOT a Prisma relation.
   resolvedByPublicId String
-  resolvedAt         DateTime @default(now())
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
+  resolvedAt DateTime @default(now())
 
-// ============================================================
-// FINANCIAL ACCOUNT
-// ============================================================
-
-model FinancialAccount {
-  id       String @id @default(uuid())
-  publicId String @unique @default(uuid())
-
-  type    FinancialAccountType
-  purpose FinancialAccountPurpose
-
-  ownerPublicId String?
-
-  currency String @default("KES")
-
-  availableBalance Int @default(0)
-  pendingBalance   Int @default(0)
-
-  status FinancialAccountStatus @default(ACTIVE)
-
-  version Int @default(1)
-
-  identity  Identity?
-  entries   FinancialAccountEntry[]
-  wallet    FinancialWallet?
-  moneyIns  FinancialMoneyIn[]
-  moneyOuts FinancialMoneyOut[]
+  // ---------------------------------------------------------------------------
+  // Audit timestamps
+  // ---------------------------------------------------------------------------
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([ownerPublicId])
-  @@index([type])
-  @@index([purpose])
-  @@index([status])
-  @@index([ownerPublicId, purpose])
-}
-
-// ============================================================
-// ACCOUNT ENTRY
-// ============================================================
-
-model FinancialAccountEntry {
-  id String @id @default(uuid())
-
-  publicId String @unique @default(uuid())
-
-  accountId String
-  account   FinancialAccount @relation(fields: [accountId], references: [id])
-
-  transactionId String
-  transaction   FinancialTransaction @relation(fields: [transactionId], references: [id])
-
-  direction     FinancialEntryDirection
-  balanceBucket FinancialBalanceBucket
-
-  amount   Int
-  currency String @default("KES")
-
-  balanceAfter Int
-
-  createdAt DateTime @default(now())
-
-  @@index([accountId])
-  @@index([transactionId])
-  @@index([accountId, createdAt])
-  @@index([accountId, balanceBucket, createdAt])
-}
-
-// ============================================================
-// FINANCIAL TRANSACTION
-// ============================================================
-
-model FinancialTransaction {
-  id       String @id @default(uuid())
-  publicId String @unique @default(uuid())
-
-  type   FinancialTransactionType
-  status FinancialTransactionStatus @default(PENDING)
-
-  amount   Int
-  currency String @default("KES")
-
-  referenceType     String?
-  referencePublicId String?
-
-  externalReference String?
-
-  idempotencyKey String? @unique
-
-  description String?
-
-  entries FinancialAccountEntry[]
-
-  moneyIn  FinancialMoneyIn?
-  moneyOut FinancialMoneyOut?
-
-  completedAt DateTime?
-  failedAt    DateTime?
-  reversedAt  DateTime?
-  cancelledAt DateTime?
-
-  failureReason String?
-
-  version Int @default(1)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([type])
-  @@index([status])
-  @@index([referenceType, referencePublicId])
-  @@index([externalReference])
-  @@index([status, createdAt])
-}
-
-// ============================================================
-// USER WALLET
-// ============================================================
-
-model FinancialWallet {
-  id       String @id @default(uuid())
-  publicId String @unique @default(uuid())
-
-  accountId String           @unique
-  account   FinancialAccount @relation(fields: [accountId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// ============================================================
-// MONEY IN
-// ============================================================
-
-model FinancialMoneyIn {
-  id       String @id @default(uuid())
-  publicId String @unique @default(uuid())
-
-  accountId String
-
-  account FinancialAccount @relation(fields: [accountId], references: [id])
-
-  transactionId String @unique
-
-  transaction FinancialTransaction @relation(fields: [transactionId], references: [id])
-
-  method FinancialMoneyInMethod
-
-  amount   Int
-  currency String @default("KES")
-
-  externalReference String?
-
-  status FinancialMoneyInStatus @default(PENDING)
-
-  initiatedAt DateTime  @default(now())
-  completedAt DateTime?
-  failedAt    DateTime?
-  cancelledAt DateTime?
-
-  failureReason String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([accountId])
-  @@index([status])
-  @@index([externalReference])
-  @@index([initiatedAt])
-}
-
-// ============================================================
-// MONEY OUT
-// ============================================================
-
-model FinancialMoneyOut {
-  id       String @id @default(uuid())
-  publicId String @unique @default(uuid())
-
-  accountId String
-
-  account FinancialAccount @relation(fields: [accountId], references: [id])
-
-  transactionId String @unique
-
-  transaction FinancialTransaction @relation(fields: [transactionId], references: [id])
-
-  method FinancialMoneyOutMethod
-
-  destinationPublicId String
-
-  amount    Int
-  feeAmount Int @default(0)
-  netAmount Int
-
-  currency String @default("KES")
-
-  externalReference String?
-
-  status FinancialMoneyOutStatus @default(PENDING)
-
-  requestedAt  DateTime  @default(now())
-  processingAt DateTime?
-  completedAt  DateTime?
-  failedAt     DateTime?
-  cancelledAt  DateTime?
-
-  failureReason String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([accountId])
-  @@index([status])
-  @@index([destinationPublicId])
-  @@index([externalReference])
-  @@index([requestedAt])
-}
-
-// ============================================================
-// COMMERCIAL / FINANCIAL PRICING CONFIGURATION
-// ============================================================
-
-model FinancialPricingConfiguration {
-  id       String @id @default(uuid())
-  publicId String @unique @default(uuid())
-
-  bookingFeeAmount Int
-
-  journeyCommissionRate Decimal @db.Decimal(5, 4)
-
-  currency String @default("KES")
-
-  active Boolean @default(true)
-
-  effectiveFrom DateTime
-  effectiveTo   DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([active])
-  @@index([effectiveFrom])
-  @@index([effectiveTo])
-}
-
-// ============================================================
-// FINANCIAL ACCOUNT
-// ============================================================
-
-enum FinancialAccountType {
-  INDIVIDUAL
-  PLATFORM
-}
-
-enum FinancialAccountPurpose {
-  USER_WALLET
-  CUSTOMER_FUNDS
-  JOURNEY_SETTLEMENT
-  PLATFORM_REVENUE
-  PLATFORM_OPERATING
-  EXTERNAL_CLEARING
-}
-
-enum FinancialAccountStatus {
-  ACTIVE
-  SUSPENDED
-  CLOSED
-}
-
-enum FinancialEntryDirection {
-  CREDIT
-  DEBIT
-}
-
-enum FinancialBalanceBucket {
-  AVAILABLE
-  PENDING
-}
-
-enum FinancialTransactionType {
-  MONEY_IN
-  BOOKING_PAYMENT
-  JOURNEY_SETTLEMENT
-  BOOKING_FEE
-  JOURNEY_COMMISSION
-  REFUND
-  MONEY_OUT
-  ADJUSTMENT
-}
-
-enum FinancialTransactionStatus {
-  PENDING
-  COMPLETED
-  FAILED
-  REVERSED
-  CANCELLED
-}
-
-enum FinancialMoneyInMethod {
-  MPESA
-  BANK
-  CARD
-  OTHER
-}
-
-enum FinancialMoneyInStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  FAILED
-  CANCELLED
-}
-
-enum FinancialMoneyOutMethod {
-  MPESA
-  BANK
-}
-
-enum FinancialMoneyOutStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  FAILED
-  CANCELLED
-}
-
-enum SupportResolutionType {
-  INFORMATION_PROVIDED
-  ACTION_TAKEN
-  REFUND_ISSUED
-  BOOKING_CANCELLED
-  JOURNEY_CANCELLED
-  ACCOUNT_RESTRICTED
-  TRUST_ACTION
-  VERIFICATION_ACTION
-  NO_ACTION_REQUIRED
-  REFERRED
-  OTHER
-}
-
-enum SupportMessageType {
-  TEXT
-  IMAGE
-  FILE
-  SYSTEM
-}
-
-enum SupportCaseParticipantRole {
-  REQUESTER
-  RESPONDENT
-  SUPPORT_AGENT
-  REVIEWER
-}
-
-enum SupportCaseStatus {
-  OPEN
-  IN_PROGRESS
-  WAITING_FOR_MEMBER
-  WAITING_FOR_INTERNAL_ACTION
-  RESOLVED
-  CLOSED
-  CANCELLED
-}
-
-enum SupportCasePriority {
-  LOW
-  NORMAL
-  HIGH
-  URGENT
-}
-
-enum SupportCaseCategory {
-  JOURNEY
-  BOOKING
-  PAYMENT
-  WALLET
-  REFUND
-  TRUST
-  VERIFICATION
-  MESSAGING
-  ACCOUNT
-  SAFETY
-  OTHER
-}
-
-// ============================================================
-// NOTIFICATION
-// ============================================================
-
-enum NotificationChannel {
-  IN_APP
-  PUSH
-  EMAIL
-  SMS
-}
-
-enum NotificationDeliveryStatus {
-  PENDING
-  SENT
-  DELIVERED
-  FAILED
-  CANCELLED
-}
-
-enum NotificationType {
-  JOURNEY
-  BOOKING
-  PAYMENT
-  WALLET
-  TRUST
-  VERIFICATION
-  MESSAGE
-  SUPPORT
-  SYSTEM
-}
-
-enum NotificationPriority {
-  LOW
-  NORMAL
-  HIGH
-  CRITICAL
-}
-
-enum NotificationStatus {
-  PENDING
-  SENT
-  READ
-  FAILED
-  CANCELLED
-}
-
-enum MessagingParticipantRole {
-  PROVIDER
-  PASSENGER
-}
-
-enum MessagingParticipantStatus {
-  ACTIVE
-  LEFT
-  REMOVED
-}
-
-enum MessagingMessageType {
-  TEXT
-  IMAGE
-  FILE
-  SYSTEM
-}
-
-enum MessagingMessageStatus {
-  SENT
-  EDITED
-  DELETED
-  MODERATED
-}
-
-enum MessagingConversationStatus {
-  ACTIVE
-  CLOSED
-}
-
-enum MessagingConversationType {
-  JOURNEY
-  DIRECT
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
+
+  @@index([resolvedByPublicId])
+  @@map("support_case_resolutions")
 }
 
 // ============================================================
@@ -3910,4 +4808,357 @@ enum JourneyBoardingEventType {
   PARTICIPANT_REMOVED
   JOURNEY_STARTED
   BOARDING_CANCELLED
+}
+
+// =============================================================================
+// COMMERCIAL ENUMS
+// =============================================================================
+
+enum CommercialCommissionType {
+  BOOKING
+  EARNING
+}
+
+enum CommercialCommissionRuleStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum CommercialCommissionStatus {
+  PENDING
+  ASSESSED
+  CANCELLED
+}
+
+// =============================================================================
+// DISBURSEMENT
+// =============================================================================
+
+enum FinancialDisbursementStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum FinancialDisbursementAttemptStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum FinancialDisbursementDestinationType {
+  MOBILE_MONEY
+  BANK
+  OTHER
+}
+
+enum FinancialAccountType {
+  USER
+  PLATFORM
+  MERCHANT
+  HOLDING
+  SETTLEMENT
+}
+
+enum FinancialAccountStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum FinancialTransactionType {
+  PAYMENT
+  TRANSFER
+  HOLD
+  RELEASE
+  CAPTURE
+  SETTLEMENT
+  DISBURSEMENT
+  REFUND
+  REVERSAL
+  ADJUSTMENT
+}
+
+enum FinancialTransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+  CANCELLED
+}
+
+enum FinancialTransactionEntryType {
+  DEBIT
+  CREDIT
+}
+
+enum FinancialBalanceType {
+  AVAILABLE
+  PENDING
+  HELD
+}
+
+// =============================================================================
+// ACCOUNT HOLD
+// =============================================================================
+
+enum FinancialAccountHoldStatus {
+  ACTIVE
+  RELEASED
+  CAPTURED
+  CANCELLED
+}
+
+// =============================================================================
+// EXTERNAL PAYMENT
+// =============================================================================
+
+enum FinancialPaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+enum FinancialPaymentMethodType {
+  MOBILE_MONEY
+  BANK
+  CARD
+  WALLET
+  OTHER
+}
+
+enum FinancialPaymentAttemptStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+// =============================================================================
+// SETTLEMENT
+// =============================================================================
+
+enum FinancialSettlementStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum FinancialSettlementItemStatus {
+  PENDING
+  ALLOCATED
+  SETTLED
+  CANCELLED
+}
+
+enum FinancialSettlementAllocationType {
+  PRINCIPAL
+  COMMISSION
+  FEE
+  ADJUSTMENT
+}
+
+// =============================================================================
+// ACCOUNT WITHDRAWAL
+// =============================================================================
+
+enum FinancialAccountWithdrawalStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+// =============================================================================
+// ACCOUNTING KERNEL
+// =============================================================================
+
+enum AccountingAccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum AccountingAccountStatus {
+  ACTIVE
+  INACTIVE
+  CLOSED
+}
+
+enum AccountingPeriodStatus {
+  OPEN
+  CLOSED
+}
+
+enum AccountingJournalStatus {
+  DRAFT
+  POSTED
+  REVERSED
+}
+
+enum AccountingJournalLineType {
+  DEBIT
+  CREDIT
+}
+
+// ============================================================
+// SUPPORT
+// ============================================================
+
+enum SupportResolutionType {
+  INFORMATION_PROVIDED
+  ACTION_TAKEN
+  REFUND_ISSUED
+  BOOKING_CANCELLED
+  JOURNEY_CANCELLED
+  ACCOUNT_RESTRICTED
+  TRUST_ACTION
+  VERIFICATION_ACTION
+  NO_ACTION_REQUIRED
+  REFERRED
+  OTHER
+}
+
+enum SupportMessageType {
+  TEXT
+  IMAGE
+  FILE
+  SYSTEM
+}
+
+enum SupportCaseParticipantRole {
+  REQUESTER
+  RESPONDENT
+  SUPPORT_AGENT
+  REVIEWER
+}
+
+enum SupportCaseStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_FOR_MEMBER
+  WAITING_FOR_INTERNAL_ACTION
+  RESOLVED
+  CLOSED
+  CANCELLED
+}
+
+enum SupportCasePriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum SupportCaseCategory {
+  JOURNEY
+  BOOKING
+  PAYMENT
+  WALLET
+  REFUND
+  TRUST
+  VERIFICATION
+  MESSAGING
+  ACCOUNT
+  SAFETY
+  OTHER
+}
+
+// ============================================================
+// NOTIFICATION
+// ============================================================
+
+enum NotificationChannel {
+  IN_APP
+  PUSH
+  EMAIL
+  SMS
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  CANCELLED
+}
+
+enum NotificationType {
+  JOURNEY
+  BOOKING
+  PAYMENT
+  WALLET
+  TRUST
+  VERIFICATION
+  MESSAGE
+  SUPPORT
+  SYSTEM
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  READ
+  FAILED
+  CANCELLED
+}
+
+// ============================================================
+// MESSAGING
+// ============================================================
+
+enum MessagingParticipantRole {
+  PROVIDER
+  PASSENGER
+}
+
+enum MessagingParticipantStatus {
+  ACTIVE
+  LEFT
+  REMOVED
+}
+
+enum MessagingMessageType {
+  TEXT
+  IMAGE
+  FILE
+  SYSTEM
+}
+
+enum MessagingMessageStatus {
+  SENT
+  EDITED
+  DELETED
+  MODERATED
+}
+
+enum MessagingConversationStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum MessagingConversationType {
+  JOURNEY
+  DIRECT
 }

@@ -2,11 +2,7 @@
 
 import { Injectable } from '@nestjs/common';
 
-import {
-  FinancialAccountPurpose,
-  FinancialAccountStatus,
-  FinancialAccountType,
-} from '@prisma/client';
+import { FinancialAccountStatus, FinancialAccountType } from '@prisma/client';
 
 import { UniqueEntityId } from '../../../../foundation/kernel/domain/unique-entity-id';
 import { PrismaService } from '../../../../infrastructure/database/prisma/prisma.service';
@@ -45,43 +41,17 @@ export class IdentityPrismaRepository implements IdentityRepository {
 
     await this.prisma.$transaction(async (tx) => {
       // -----------------------------------------------------------------------
-      // Financial Account
-      //
-      // Identity.financialAccountId is required by Prisma.
-      // The financial account is created atomically with the identity.
-      // -----------------------------------------------------------------------
-
-      const financialAccount = await tx.financialAccount.create({
-        data: {
-          publicId: `FIN-${identity.publicId.value}`,
-
-          type: FinancialAccountType.INDIVIDUAL,
-
-          purpose: FinancialAccountPurpose.USER_WALLET,
-
-          ownerPublicId: identity.publicId.value,
-
-          currency: 'KES',
-
-          availableBalance: 0,
-          pendingBalance: 0,
-
-          status: FinancialAccountStatus.ACTIVE,
-
-          version: 1,
-        },
-      });
-
-      // -----------------------------------------------------------------------
       // Identity
+      //
+      // Identity is persisted independently from the Financial domain.
+      //
+      // No financial account is created here.
+      // Identity has no financialAccountId or other Finance-owned persistence
+      // coupling.
       // -----------------------------------------------------------------------
 
       await tx.identity.create({
-        data: {
-          ...identityData,
-
-          financialAccountId: financialAccount.id,
-        },
+        data: identityData,
       });
 
       // -----------------------------------------------------------------------
@@ -93,7 +63,6 @@ export class IdentityPrismaRepository implements IdentityRepository {
       });
     });
   }
-
   // ===========================================================================
   // UPDATE
   // ===========================================================================
