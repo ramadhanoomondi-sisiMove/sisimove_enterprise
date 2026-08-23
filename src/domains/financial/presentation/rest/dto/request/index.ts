@@ -17,3 +17,13 @@ export { ActivateFinancialAccountDto } from './activate-financial-account.reques
 export { SuspendFinancialAccountDto } from './suspend-financial-account.request.dto';
 
 export { CloseFinancialAccountDto } from './close-financial-account.request.dto';
+
+export { CreateFinancialTransactionDto } from './create-financial-transaction.request.dto';
+
+export { CompleteFinancialTransactionDto } from './complete-financial-transaction.request.dto';
+
+export { FailFinancialTransactionDto } from './fail-financial-transaction.request.dto';
+
+export { ReverseFinancialTransactionDto } from './reverse-financial-transaction.request.dto';
+
+export { CancelFinancialTransactionDto } from './cancel-financial-transaction.request.dto';

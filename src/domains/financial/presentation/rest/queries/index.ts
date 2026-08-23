@@ -1,11 +1,12 @@
 // -----------------------------------------------------------------------------
-// Financial Account — Query Handlers
+// Financial — REST Query DTO Exports
 // -----------------------------------------------------------------------------
 //
-// Public barrel export for all Financial Account query handlers.
+// Central export surface for Financial REST query DTOs.
 //
-// Query handlers retrieve FinancialAccountAggregate instances and do not
-// perform domain mutations or create domain events.
+// These DTOs belong to the presentation boundary and contain transport-level
+// primitives. Conversion into domain value objects is performed by the
+// controller/application boundary.
 //
 // -----------------------------------------------------------------------------
 
@@ -13,22 +14,22 @@
 // Financial Account
 // -----------------------------------------------------------------------------
 
-export * from './get-financial-account.handler';
+export { GetFinancialAccountDto } from './get-financial-account.query.dto';
 
 // -----------------------------------------------------------------------------
 // Financial Account Balance
 // -----------------------------------------------------------------------------
 
-export * from './get-financial-account-balance.handler';
-
-// -----------------------------------------------------------------------------
-// Financial Transaction
-// -----------------------------------------------------------------------------
-
-export * from './get-financial-transaction.handler';
+export { GetFinancialAccountBalanceDto } from './get-financial-account-balance.query.dto';
 
 // -----------------------------------------------------------------------------
 // Financial Account Transactions
 // -----------------------------------------------------------------------------
 
-export * from './get-financial-account-transactions.handler';
+export { GetFinancialAccountTransactionsDto } from './get-financial-account-transactions.query.dto';
+
+// -----------------------------------------------------------------------------
+// Financial Transaction
+// -----------------------------------------------------------------------------
+
+export { GetFinancialTransactionDto } from './get-financial-transaction.query.dto';
