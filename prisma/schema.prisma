@@ -4831,30 +4831,8 @@ enum CommercialCommissionStatus {
 }
 
 // =============================================================================
-// DISBURSEMENT
+// FINANCIAL ACCOUNT
 // =============================================================================
-
-enum FinancialDisbursementStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  FAILED
-  CANCELLED
-}
-
-enum FinancialDisbursementAttemptStatus {
-  PENDING
-  PROCESSING
-  SUCCEEDED
-  FAILED
-  CANCELLED
-}
-
-enum FinancialDisbursementDestinationType {
-  MOBILE_MONEY
-  BANK
-  OTHER
-}
 
 enum FinancialAccountType {
   USER
@@ -4869,6 +4847,10 @@ enum FinancialAccountStatus {
   SUSPENDED
   CLOSED
 }
+
+// =============================================================================
+// FINANCIAL TRANSACTION
+// =============================================================================
 
 enum FinancialTransactionType {
   PAYMENT
@@ -4979,6 +4961,32 @@ enum FinancialAccountWithdrawalStatus {
   COMPLETED
   FAILED
   CANCELLED
+}
+
+// =============================================================================
+// DISBURSEMENT
+// =============================================================================
+
+enum FinancialDisbursementStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum FinancialDisbursementAttemptStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum FinancialDisbursementDestinationType {
+  MOBILE_MONEY
+  BANK_ACCOUNT
+  OTHER
 }
 
 // =============================================================================

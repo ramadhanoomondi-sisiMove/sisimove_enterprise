@@ -26,6 +26,8 @@ import { JourneyCompletionModule } from './domains/journey-completion/journey-co
 
 import { CommercialModule } from './domains/commercial/commercial.module';
 
+import { FinancialModule } from './domains/financial/financial.module';
+
 // -----------------------------------------------------------------------------
 // Infrastructure
 // -----------------------------------------------------------------------------
@@ -83,6 +85,8 @@ import { SecurityModule } from './infrastructure/security/security.module';
     JourneyCompletionModule,
 
     CommercialModule,
+
+    FinancialModule,
   ],
 })
 export class AppModule {}

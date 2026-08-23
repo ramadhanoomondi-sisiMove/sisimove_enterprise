@@ -2,8 +2,6 @@
 
 import { Injectable } from '@nestjs/common';
 
-import { FinancialAccountStatus, FinancialAccountType } from '@prisma/client';
-
 import { UniqueEntityId } from '../../../../foundation/kernel/domain/unique-entity-id';
 import { PrismaService } from '../../../../infrastructure/database/prisma/prisma.service';
 
