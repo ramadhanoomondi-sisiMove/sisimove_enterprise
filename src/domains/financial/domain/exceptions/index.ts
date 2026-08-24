@@ -46,6 +46,8 @@ export * from './financial-payment-invalid-status.exception';
 export * from './financial-payment-attempt.exception';
 export * from './financial-payment-method.exception';
 
+export * from './financial-payment-method-not-found.exception';
+export * from './financial-payment-not-found.exception';
 // -----------------------------------------------------------------------------
 // Financial Account Hold Exceptions
 // -----------------------------------------------------------------------------

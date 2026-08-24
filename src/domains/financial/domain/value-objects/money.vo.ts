@@ -68,6 +68,9 @@ export class Money extends ValueObject<MoneyProps> {
   // Factory
   // ---------------------------------------------------------------------------
 
+  /**
+   * Creates a Money value object.
+   */
   public static create(amount: number, currency: Currency): Money {
     Money.validateAmount(amount);
 
@@ -117,15 +120,28 @@ export class Money extends ValueObject<MoneyProps> {
   // Arithmetic
   // ---------------------------------------------------------------------------
 
+  /**
+   * Adds another monetary amount.
+   *
+   * Both Money objects must use the same currency.
+   */
   public add(other: Money): Money {
     this.ensureSameCurrency(other);
 
-    return Money.create(
-      this.props.amount + other.props.amount,
-      this.props.currency,
-    );
+    const result = this.props.amount + other.props.amount;
+
+    if (!Number.isSafeInteger(result)) {
+      throw new Error('Financial Money addition exceeds safe integer range');
+    }
+
+    return Money.create(result, this.props.currency);
   }
 
+  /**
+   * Subtracts another monetary amount.
+   *
+   * Both Money objects must use the same currency.
+   */
   public subtract(other: Money): Money {
     this.ensureSameCurrency(other);
 
@@ -140,6 +156,9 @@ export class Money extends ValueObject<MoneyProps> {
     return Money.create(result, this.props.currency);
   }
 
+  /**
+   * Multiplies the monetary amount by a non-negative integer multiplier.
+   */
   public multiply(multiplier: number): Money {
     if (!Number.isFinite(multiplier)) {
       throw new Error('Financial Money multiplier must be a finite number');
@@ -162,6 +181,23 @@ export class Money extends ValueObject<MoneyProps> {
     }
 
     return Money.create(result, this.props.currency);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Equality
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Determines whether another Money value represents exactly the same
+   * monetary amount in the same currency.
+   *
+   * Both amount and currency must match.
+   */
+  public override equals(other: Money): boolean {
+    return (
+      this.props.amount === other.props.amount &&
+      this.props.currency.equals(other.props.currency)
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -208,14 +244,22 @@ export class Money extends ValueObject<MoneyProps> {
   // Currency
   // ---------------------------------------------------------------------------
 
+  /**
+   * Determines whether this Money uses the supplied currency.
+   */
   public hasCurrency(currency: Currency): boolean {
     return this.props.currency.equals(currency);
   }
 
+  /**
+   * Ensures that two Money values use the same currency.
+   */
   private ensureSameCurrency(other: Money): void {
     if (!this.props.currency.equals(other.props.currency)) {
       throw new Error(
-        `Financial Money currency mismatch: ${this.props.currency.value} and ${other.props.currency.value}`,
+        `Financial Money currency mismatch: ` +
+          `${this.props.currency.value} and ` +
+          `${other.props.currency.value}`,
       );
     }
   }

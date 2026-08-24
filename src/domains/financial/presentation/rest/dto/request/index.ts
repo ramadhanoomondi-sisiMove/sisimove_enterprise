@@ -1,13 +1,24 @@
 // -----------------------------------------------------------------------------
-// Financial Account — REST Request DTO Exports
+// Financial REST Request DTO Exports
 // -----------------------------------------------------------------------------
 //
-// Central export surface for Financial Account REST request DTOs.
+// Central export surface for Financial REST request DTOs.
 //
 // These DTOs belong to the presentation boundary and contain transport-level
 // primitives. Conversion into domain value objects is performed by the
 // controller/application boundary.
 //
+// Covered areas:
+//
+// - Financial Account
+// - Financial Transaction
+// - Financial Payment
+// - Financial Payment Method
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Financial Account
 // -----------------------------------------------------------------------------
 
 export { CreateFinancialAccountDto } from './create-financial-account.request.dto';
@@ -18,6 +29,10 @@ export { SuspendFinancialAccountDto } from './suspend-financial-account.request.
 
 export { CloseFinancialAccountDto } from './close-financial-account.request.dto';
 
+// -----------------------------------------------------------------------------
+// Financial Transaction
+// -----------------------------------------------------------------------------
+
 export { CreateFinancialTransactionDto } from './create-financial-transaction.request.dto';
 
 export { CompleteFinancialTransactionDto } from './complete-financial-transaction.request.dto';
@@ -27,3 +42,31 @@ export { FailFinancialTransactionDto } from './fail-financial-transaction.reques
 export { ReverseFinancialTransactionDto } from './reverse-financial-transaction.request.dto';
 
 export { CancelFinancialTransactionDto } from './cancel-financial-transaction.request.dto';
+
+// -----------------------------------------------------------------------------
+// Financial Payment
+// -----------------------------------------------------------------------------
+
+export { CreateFinancialPaymentDto } from './create-financial-payment.request.dto';
+
+export { ProcessFinancialPaymentDto } from './process-financial-payment.request.dto';
+
+export { SucceedFinancialPaymentDto } from './succeed-financial-payment.request.dto';
+
+export { FailFinancialPaymentDto } from './fail-financial-payment.request.dto';
+
+export { CancelFinancialPaymentDto } from './cancel-financial-payment.request.dto';
+
+export { ExpireFinancialPaymentDto } from './expire-financial-payment.request.dto';
+
+export { LinkFinancialPaymentTransactionDto } from './link-financial-payment-transaction.request.dto';
+
+// -----------------------------------------------------------------------------
+// Financial Payment Method
+// -----------------------------------------------------------------------------
+
+export { AddFinancialPaymentMethodDto } from './add-financial-payment-method.request.dto';
+
+export { SetDefaultFinancialPaymentMethodDto } from './set-default-financial-payment-method.request.dto';
+
+export { DeactivateFinancialPaymentMethodDto } from './deactivate-financial-payment-method.request.dto';
