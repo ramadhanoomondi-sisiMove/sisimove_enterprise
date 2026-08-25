@@ -73,3 +73,19 @@ export { FinancialPaymentMethodAddedEvent } from './financial-payment-method-add
 export { FinancialPaymentMethodDefaultedEvent } from './financial-payment-method-defaulted.event';
 
 export { FinancialPaymentMethodDeactivatedEvent } from './financial-payment-method-deactivated.event';
+
+// -----------------------------------------------------------------------------
+// Financial Settlement
+// -----------------------------------------------------------------------------
+
+export { FinancialSettlementCreatedEvent } from './financial-settlement-created.event';
+
+export { FinancialSettlementProcessingEvent } from './financial-settlement-processing.event';
+
+export { FinancialSettlementAllocatedEvent } from './financial-settlement-allocated.event';
+
+export { FinancialSettlementCompletedEvent } from './financial-settlement-completed.event';
+
+export { FinancialSettlementFailedEvent } from './financial-settlement-failed.event';
+
+export { FinancialSettlementCancelledEvent } from './financial-settlement-cancelled.event';

@@ -62,6 +62,7 @@ export * from './financial-account-hold-expired.exception';
 // -----------------------------------------------------------------------------
 
 export * from './financial-settlement.exception';
+export * from './financial-settlement-not-found.exception';
 export * from './financial-settlement-invalid-status.exception';
 export * from './financial-settlement-item.exception';
 export * from './financial-settlement-allocation.exception';

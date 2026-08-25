@@ -1,15 +1,16 @@
 // -----------------------------------------------------------------------------
-// Financial Account — Command Handlers
+// Financial — Command Handlers
 // -----------------------------------------------------------------------------
 //
-// Public barrel export for all Financial Account command handlers.
+// Public barrel export for all Financial command handlers.
 //
 // All command handlers operate through their respective aggregate roots.
 //
-// Domain behavior, invariants, state transitions, and domain events remain
+// Domain behavior, invariants, lifecycle transitions, and domain events remain
 // inside the aggregates.
 //
 // Application handlers are responsible for:
+//
 // - Resolving aggregates.
 // - Coordinating application workflows.
 // - Delegating domain behavior to aggregates.
@@ -105,7 +106,7 @@ export * from './create-financial-account-hold.handler';
 //        ├── CAPTURED
 //        └── CANCELLED
 //
-// RELEASED, CAPTURED and CANCELLED are terminal states.
+// RELEASED, CAPTURED, and CANCELLED are terminal states.
 //
 // -----------------------------------------------------------------------------
 
@@ -114,3 +115,64 @@ export * from './capture-financial-account-hold.handler';
 export * from './release-financial-account-hold.handler';
 
 export * from './cancel-financial-account-hold.handler';
+
+// -----------------------------------------------------------------------------
+// Financial Settlement Creation
+// -----------------------------------------------------------------------------
+//
+// Financial Settlement represents the settlement lifecycle aggregate.
+//
+// Settlement creation establishes the Settlement and its initial lifecycle
+// state. Settlement Items are subsequently managed through the Settlement
+// aggregate.
+//
+// -----------------------------------------------------------------------------
+
+export * from './create-financial-settlement.handler';
+
+// -----------------------------------------------------------------------------
+// Financial Settlement Lifecycle
+// -----------------------------------------------------------------------------
+//
+// Financial Settlement lifecycle:
+//
+//     PENDING
+//        │
+//        ├── PROCESSING
+//        │      │
+//        │      ├── COMPLETED
+//        │      ├── FAILED
+//        │      └── CANCELLED
+//        │
+//        ├── FAILED
+//        └── CANCELLED
+//
+// COMPLETED, FAILED, and CANCELLED are terminal states.
+//
+// The aggregate remains responsible for validating every lifecycle
+// transition.
+//
+// -----------------------------------------------------------------------------
+
+export * from './process-financial-settlement.handler';
+
+export * from './complete-financial-settlement.handler';
+
+export * from './fail-financial-settlement.handler';
+
+export * from './cancel-financial-settlement.handler';
+
+// -----------------------------------------------------------------------------
+// Financial Settlement Item
+// -----------------------------------------------------------------------------
+//
+// Settlement Item allocation is an operation on the Financial Settlement
+// aggregate.
+//
+// Allocation does not itself move money or execute a Financial Transaction.
+// It records the domain allocation state required by the Settlement
+// lifecycle.
+//
+// -----------------------------------------------------------------------------
+
+export * from './allocate-financial-settlement-item.handler';

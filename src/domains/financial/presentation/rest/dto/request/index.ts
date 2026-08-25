@@ -15,6 +15,7 @@
 // - Financial Transaction
 // - Financial Payment
 // - Financial Payment Method
+// - Financial Settlement
 //
 // -----------------------------------------------------------------------------
 
@@ -83,3 +84,19 @@ export { AddFinancialPaymentMethodDto } from './add-financial-payment-method.req
 export { SetDefaultFinancialPaymentMethodDto } from './set-default-financial-payment-method.request.dto';
 
 export { DeactivateFinancialPaymentMethodDto } from './deactivate-financial-payment-method.request.dto';
+
+// -----------------------------------------------------------------------------
+// Financial Settlement
+// -----------------------------------------------------------------------------
+
+export { CreateFinancialSettlementRequestDto } from './create-financial-settlement.request.dto';
+
+export { ProcessFinancialSettlementRequestDto } from './process-financial-settlement.request.dto';
+
+export { AllocateFinancialSettlementItemRequestDto } from './allocate-financial-settlement-item.request.dto';
+
+export { CompleteFinancialSettlementRequestDto } from './complete-financial-settlement.request.dto';
+
+export { FailFinancialSettlementRequestDto } from './fail-financial-settlement.request.dto';
+
+export { CancelFinancialSettlementRequestDto } from './cancel-financial-settlement.request.dto';

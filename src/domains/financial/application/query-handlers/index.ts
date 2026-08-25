@@ -68,9 +68,46 @@ export * from './get-default-financial-payment-method.handler';
 // Retrieves all ACTIVE Financial Account Holds belonging to a Financial
 // Account.
 //
-// Multiple ACTIVE holds are valid. RELEASED, CAPTURED and CANCELLED holds
-// are terminal and are excluded by the query.
+// Multiple ACTIVE holds are valid.
+//
+// RELEASED, CAPTURED and CANCELLED holds are terminal and are excluded
+// by the corresponding application query.
 //
 // -----------------------------------------------------------------------------
 
 export * from './get-financial-account-holds.handler';
+
+// -----------------------------------------------------------------------------
+// Financial Settlement
+// -----------------------------------------------------------------------------
+//
+// Retrieves a complete Financial Settlement aggregate.
+//
+// Aggregate:
+//
+// FinancialSettlementAggregate
+// └── FinancialSettlementEntity
+//     └── FinancialSettlementItemEntity[]
+//         └── FinancialSettlementAllocationEntity[]
+//
+// The Settlement aggregate remains the persistence and domain boundary.
+//
+// -----------------------------------------------------------------------------
+
+export * from './get-financial-settlement.handler';
+
+// -----------------------------------------------------------------------------
+// Financial Settlement Items
+// -----------------------------------------------------------------------------
+//
+// Retrieves Settlement Items owned by a Financial Settlement aggregate.
+//
+// Settlement Items are aggregate-owned entities and are therefore retrieved
+// through the FinancialSettlementAggregate.
+//
+// They are not independent aggregate roots and do not have a separate
+// repository boundary.
+//
+// -----------------------------------------------------------------------------
+
+export * from './get-financial-settlement-items.handler';

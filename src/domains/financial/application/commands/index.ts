@@ -11,6 +11,7 @@
 // - Financial Transaction commands
 // - Financial Payment commands
 // - Financial Payment Method commands
+// - Financial Settlement commands
 //
 // -----------------------------------------------------------------------------
 
@@ -19,6 +20,14 @@
 // -----------------------------------------------------------------------------
 //
 // Central export surface for Financial Account application commands.
+//
+// Lifecycle:
+//
+//     PENDING
+//        │
+//        ├── ACTIVE
+//        ├── SUSPENDED
+//        └── CLOSED
 //
 // -----------------------------------------------------------------------------
 
@@ -107,3 +116,44 @@ export { AddFinancialPaymentMethodCommand } from './add-financial-payment-method
 export { SetDefaultFinancialPaymentMethodCommand } from './set-default-financial-payment-method.command';
 
 export { DeactivateFinancialPaymentMethodCommand } from './deactivate-financial-payment-method.command';
+
+// -----------------------------------------------------------------------------
+// Financial Settlement Commands
+// -----------------------------------------------------------------------------
+//
+// Central export surface for Financial Settlement application commands.
+//
+// Settlement lifecycle:
+//
+//     PENDING
+//        │
+//        ├── PROCESSING
+//        │      │
+//        │      ├── item allocation
+//        │      │      PENDING → ALLOCATED
+//        │      │
+//        │      └── item settlement
+//        │             ALLOCATED → SETTLED
+//        │
+//        ├── FAILED
+//        └── CANCELLED
+//
+//     PROCESSING → COMPLETED
+//
+// Allocation is an Item-level operation and is therefore intentionally
+// represented by AllocateFinancialSettlementItemCommand rather than by an
+// aggregate-level ALLOCATED lifecycle command.
+//
+// -----------------------------------------------------------------------------
+
+export { CreateFinancialSettlementCommand } from './create-financial-settlement.command';
+
+export { ProcessFinancialSettlementCommand } from './process-financial-settlement.command';
+
+export { AllocateFinancialSettlementItemCommand } from './allocate-financial-settlement-item.command';
+
+export { CompleteFinancialSettlementCommand } from './complete-financial-settlement.command';
+
+export { FailFinancialSettlementCommand } from './fail-financial-settlement.command';
+
+export { CancelFinancialSettlementCommand } from './cancel-financial-settlement.command';

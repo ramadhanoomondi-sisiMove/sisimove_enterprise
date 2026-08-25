@@ -11,11 +11,14 @@
 // - Financial Transaction management;
 // - Financial Payment management;
 // - Financial Payment Method management;
+// - Financial Settlement management;
 // - Financial account balance queries;
 // - Financial account hold queries;
 // - Financial account transaction queries;
+// - Financial account payment queries;
 // - Financial payment queries;
 // - Financial payment method queries;
+// - Financial settlement queries;
 // - Financial lifecycle orchestration.
 //
 // The module owns the Financial bounded-context dependency graph.
@@ -61,6 +64,8 @@ import { FinancialPaymentsController } from './presentation/rest/controllers/fin
 
 import { FinancialPaymentMethodsController } from './presentation/rest/controllers/financial-payment-methods.controller';
 
+import { FinancialSettlementsController } from './presentation/rest/controllers/financial-settlements.controller';
+
 // -----------------------------------------------------------------------------
 // Infrastructure — Financial Account Dependency Injection
 // -----------------------------------------------------------------------------
@@ -92,6 +97,12 @@ import { FINANCIAL_PAYMENT_PROVIDERS } from './infrastructure/dependency-injecti
 import { FINANCIAL_PAYMENT_METHOD_PROVIDERS } from './infrastructure/dependency-injection/financial-payment-method.providers';
 
 // -----------------------------------------------------------------------------
+// Infrastructure — Financial Settlement Dependency Injection
+// -----------------------------------------------------------------------------
+
+import { FINANCIAL_SETTLEMENT_PROVIDERS } from './infrastructure/dependency-injection/financial-settlement.providers';
+
+// -----------------------------------------------------------------------------
 // Application — Tokens
 // -----------------------------------------------------------------------------
 
@@ -105,21 +116,22 @@ import { FINANCIAL_PAYMENT_TOKENS } from './application/financial-payment.tokens
 
 import { FINANCIAL_PAYMENT_METHOD_TOKENS } from './application/financial-payment-method.tokens';
 
+import { FINANCIAL_SETTLEMENT_TOKENS } from './application/financial-settlement.tokens';
+
 // -----------------------------------------------------------------------------
-// Application — Command Handlers
+// Application — Account Command Handlers
 // -----------------------------------------------------------------------------
 
 import {
   ActivateFinancialAccountHandler,
-  CancelFinancialTransactionHandler,
   CloseFinancialAccountHandler,
-  CompleteFinancialTransactionHandler,
   CreateFinancialAccountHandler,
-  CreateFinancialTransactionHandler,
-  FailFinancialTransactionHandler,
-  ReverseFinancialTransactionHandler,
   SuspendFinancialAccountHandler,
 } from './application/command-handlers';
+
+// -----------------------------------------------------------------------------
+// Application — Account Hold Command Handlers
+// -----------------------------------------------------------------------------
 
 import {
   CancelFinancialAccountHoldHandler,
@@ -127,6 +139,22 @@ import {
   CreateFinancialAccountHoldHandler,
   ReleaseFinancialAccountHoldHandler,
 } from './application/command-handlers';
+
+// -----------------------------------------------------------------------------
+// Application — Transaction Command Handlers
+// -----------------------------------------------------------------------------
+
+import {
+  CancelFinancialTransactionHandler,
+  CompleteFinancialTransactionHandler,
+  CreateFinancialTransactionHandler,
+  FailFinancialTransactionHandler,
+  ReverseFinancialTransactionHandler,
+} from './application/command-handlers';
+
+// -----------------------------------------------------------------------------
+// Application — Payment Command Handlers
+// -----------------------------------------------------------------------------
 
 import {
   CancelFinancialPaymentHandler,
@@ -138,6 +166,10 @@ import {
   SucceedFinancialPaymentHandler,
 } from './application/command-handlers';
 
+// -----------------------------------------------------------------------------
+// Application — Payment Method Command Handlers
+// -----------------------------------------------------------------------------
+
 import {
   AddFinancialPaymentMethodHandler,
   DeactivateFinancialPaymentMethodHandler,
@@ -145,23 +177,62 @@ import {
 } from './application/command-handlers';
 
 // -----------------------------------------------------------------------------
-// Application — Query Handlers
+// Application — Settlement Command Handlers
+// -----------------------------------------------------------------------------
+
+import {
+  AllocateFinancialSettlementItemHandler,
+  CancelFinancialSettlementHandler,
+  CompleteFinancialSettlementHandler,
+  CreateFinancialSettlementHandler,
+  FailFinancialSettlementHandler,
+  ProcessFinancialSettlementHandler,
+} from './application/command-handlers';
+
+// -----------------------------------------------------------------------------
+// Application — Account Query Handlers
 // -----------------------------------------------------------------------------
 
 import {
   GetFinancialAccountBalanceHandler,
   GetFinancialAccountHandler,
   GetFinancialAccountTransactionsHandler,
-  GetFinancialTransactionHandler,
 } from './application/query-handlers';
+
+// -----------------------------------------------------------------------------
+// Application — Account Hold Query Handlers
+// -----------------------------------------------------------------------------
 
 import { GetFinancialAccountHoldsHandler } from './application/query-handlers';
 
+// -----------------------------------------------------------------------------
+// Application — Transaction Query Handlers
+// -----------------------------------------------------------------------------
+
+import { GetFinancialTransactionHandler } from './application/query-handlers';
+
+// -----------------------------------------------------------------------------
+// Application — Payment Query Handlers
+// -----------------------------------------------------------------------------
+
 import { GetFinancialPaymentHandler } from './application/query-handlers';
+
+// -----------------------------------------------------------------------------
+// Application — Payment Method Query Handlers
+// -----------------------------------------------------------------------------
 
 import {
   GetDefaultFinancialPaymentMethodHandler,
   GetFinancialPaymentMethodHandler,
+} from './application/query-handlers';
+
+// -----------------------------------------------------------------------------
+// Application — Settlement Query Handlers
+// -----------------------------------------------------------------------------
+
+import {
+  GetFinancialSettlementHandler,
+  GetFinancialSettlementItemsHandler,
 } from './application/query-handlers';
 
 // -----------------------------------------------------------------------------
@@ -221,6 +292,12 @@ import {
     // -------------------------------------------------------------------------
 
     FinancialPaymentMethodsController,
+
+    // -------------------------------------------------------------------------
+    // Financial Settlement
+    // -------------------------------------------------------------------------
+
+    FinancialSettlementsController,
   ],
 
   // ===========================================================================
@@ -257,6 +334,12 @@ import {
     // =========================================================================
 
     ...FINANCIAL_PAYMENT_METHOD_PROVIDERS,
+
+    // =========================================================================
+    // Infrastructure — Financial Settlement
+    // =========================================================================
+
+    ...FINANCIAL_SETTLEMENT_PROVIDERS,
 
     // =========================================================================
     // Financial Account — Command Handlers
@@ -453,6 +536,54 @@ import {
       provide: FINANCIAL_PAYMENT_METHOD_TOKENS.QUERY_HANDLERS.GET_DEFAULT,
       useClass: GetDefaultFinancialPaymentMethodHandler,
     },
+
+    // =========================================================================
+    // Financial Settlement — Command Handlers
+    // =========================================================================
+
+    {
+      provide: FINANCIAL_SETTLEMENT_TOKENS.COMMAND_HANDLERS.CREATE,
+      useClass: CreateFinancialSettlementHandler,
+    },
+
+    {
+      provide: FINANCIAL_SETTLEMENT_TOKENS.COMMAND_HANDLERS.PROCESS,
+      useClass: ProcessFinancialSettlementHandler,
+    },
+
+    {
+      provide: FINANCIAL_SETTLEMENT_TOKENS.COMMAND_HANDLERS.ALLOCATE_ITEM,
+      useClass: AllocateFinancialSettlementItemHandler,
+    },
+
+    {
+      provide: FINANCIAL_SETTLEMENT_TOKENS.COMMAND_HANDLERS.COMPLETE,
+      useClass: CompleteFinancialSettlementHandler,
+    },
+
+    {
+      provide: FINANCIAL_SETTLEMENT_TOKENS.COMMAND_HANDLERS.FAIL,
+      useClass: FailFinancialSettlementHandler,
+    },
+
+    {
+      provide: FINANCIAL_SETTLEMENT_TOKENS.COMMAND_HANDLERS.CANCEL,
+      useClass: CancelFinancialSettlementHandler,
+    },
+
+    // =========================================================================
+    // Financial Settlement — Query Handlers
+    // =========================================================================
+
+    {
+      provide: FINANCIAL_SETTLEMENT_TOKENS.QUERY_HANDLERS.GET,
+      useClass: GetFinancialSettlementHandler,
+    },
+
+    {
+      provide: FINANCIAL_SETTLEMENT_TOKENS.QUERY_HANDLERS.GET_ITEMS,
+      useClass: GetFinancialSettlementItemsHandler,
+    },
   ],
 
   // ===========================================================================
@@ -499,6 +630,12 @@ import {
     // -------------------------------------------------------------------------
 
     FINANCIAL_PAYMENT_METHOD_TOKENS.REPOSITORY,
+
+    // -------------------------------------------------------------------------
+    // Financial Settlement Repository
+    // -------------------------------------------------------------------------
+
+    FINANCIAL_SETTLEMENT_TOKENS.REPOSITORY,
   ],
 })
 export class FinancialModule {}

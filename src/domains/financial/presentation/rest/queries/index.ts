@@ -18,6 +18,8 @@
 // - Financial Transaction
 // - Financial Payment
 // - Financial Payment Method
+// - Financial Settlement
+// - Financial Settlement Items
 //
 // -----------------------------------------------------------------------------
 
@@ -74,3 +76,15 @@ export { GetFinancialPaymentMethodDto } from './get-financial-payment-method.que
 // -----------------------------------------------------------------------------
 
 export { GetDefaultFinancialPaymentMethodDto } from './get-default-financial-payment-method.query.dto';
+
+// -----------------------------------------------------------------------------
+// Financial Settlement
+// -----------------------------------------------------------------------------
+
+export { GetFinancialSettlementRequestDto } from './get-financial-settlement.query.dto';
+
+// -----------------------------------------------------------------------------
+// Financial Settlement Items
+// -----------------------------------------------------------------------------
+
+export { GetFinancialSettlementItemsRequestDto } from './get-financial-settlement-items.query.dto';
