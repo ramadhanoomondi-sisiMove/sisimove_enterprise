@@ -5,7 +5,9 @@
 // Central export surface for Financial application commands.
 //
 // Covers:
+//
 // - Financial Account commands
+// - Financial Account Hold commands
 // - Financial Transaction commands
 // - Financial Payment commands
 // - Financial Payment Method commands
@@ -27,6 +29,30 @@ export { ActivateFinancialAccountCommand } from './activate-financial-account.co
 export { SuspendFinancialAccountCommand } from './suspend-financial-account.command';
 
 export { CloseFinancialAccountCommand } from './close-financial-account.command';
+
+// -----------------------------------------------------------------------------
+// Financial Account Hold Commands
+// -----------------------------------------------------------------------------
+//
+// Central export surface for Financial Account Hold application commands.
+//
+// Lifecycle:
+//
+//     ACTIVE
+//        │
+//        ├── RELEASED
+//        ├── CAPTURED
+//        └── CANCELLED
+//
+// -----------------------------------------------------------------------------
+
+export { CreateFinancialAccountHoldCommand } from './create-financial-account-hold.command';
+
+export { CaptureFinancialAccountHoldCommand } from './capture-financial-account-hold.command';
+
+export { ReleaseFinancialAccountHoldCommand } from './release-financial-account-hold.command';
+
+export { CancelFinancialAccountHoldCommand } from './cancel-financial-account-hold.command';
 
 // -----------------------------------------------------------------------------
 // Financial Transaction Commands

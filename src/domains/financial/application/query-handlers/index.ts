@@ -60,3 +60,17 @@ export * from './get-financial-payment-method.handler';
 // -----------------------------------------------------------------------------
 
 export * from './get-default-financial-payment-method.handler';
+
+// -----------------------------------------------------------------------------
+// Financial Account Holds
+// -----------------------------------------------------------------------------
+//
+// Retrieves all ACTIVE Financial Account Holds belonging to a Financial
+// Account.
+//
+// Multiple ACTIVE holds are valid. RELEASED, CAPTURED and CANCELLED holds
+// are terminal and are excluded by the query.
+//
+// -----------------------------------------------------------------------------
+
+export * from './get-financial-account-holds.handler';

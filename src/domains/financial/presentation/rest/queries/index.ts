@@ -8,6 +8,17 @@
 // primitives. Conversion into domain value objects is performed by the
 // controller/application boundary.
 //
+// Covered areas:
+//
+// - Financial Account
+// - Financial Account Balance
+// - Financial Account Holds
+// - Financial Account Transactions
+// - Financial Account Payments
+// - Financial Transaction
+// - Financial Payment
+// - Financial Payment Method
+//
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
@@ -21,6 +32,12 @@ export { GetFinancialAccountDto } from './get-financial-account.query.dto';
 // -----------------------------------------------------------------------------
 
 export { GetFinancialAccountBalanceDto } from './get-financial-account-balance.query.dto';
+
+// -----------------------------------------------------------------------------
+// Financial Account Holds
+// -----------------------------------------------------------------------------
+
+export { GetFinancialAccountHoldsQueryDto } from './get-financial-account-holds.query.dto';
 
 // -----------------------------------------------------------------------------
 // Financial Account Transactions

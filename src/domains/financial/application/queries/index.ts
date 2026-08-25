@@ -8,7 +8,11 @@
 // - Financial Account
 // - Financial Account Balance
 // - Financial Account Transactions
+// - Financial Transaction
 // - Financial Payment Method
+// - Financial Payment
+// - Financial Account Payments
+// - Financial Account Holds
 //
 // -----------------------------------------------------------------------------
 
@@ -27,7 +31,6 @@ export * from './get-financial-account-balance.query';
 // -----------------------------------------------------------------------------
 // Financial Account Transactions
 // -----------------------------------------------------------------------------
-
 //
 // Retrieves Financial Transactions associated with a Financial Account.
 //
@@ -62,3 +65,17 @@ export * from './get-financial-payment.query';
 // -----------------------------------------------------------------------------
 
 export * from './get-financial-account-payments.query';
+
+// -----------------------------------------------------------------------------
+// Financial Account Holds
+// -----------------------------------------------------------------------------
+//
+// Retrieves the ACTIVE Financial Account Holds associated with a
+// Financial Account.
+//
+// A Financial Account may have multiple ACTIVE holds simultaneously.
+// RELEASED, CAPTURED and CANCELLED holds are terminal and are not part
+// of this application query.
+//
+
+export * from './get-financial-account-holds.query';

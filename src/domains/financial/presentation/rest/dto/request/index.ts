@@ -11,6 +11,7 @@
 // Covered areas:
 //
 // - Financial Account
+// - Financial Account Hold
 // - Financial Transaction
 // - Financial Payment
 // - Financial Payment Method
@@ -28,6 +29,18 @@ export { ActivateFinancialAccountDto } from './activate-financial-account.reques
 export { SuspendFinancialAccountDto } from './suspend-financial-account.request.dto';
 
 export { CloseFinancialAccountDto } from './close-financial-account.request.dto';
+
+// -----------------------------------------------------------------------------
+// Financial Account Hold
+// -----------------------------------------------------------------------------
+
+export { CreateFinancialAccountHoldRequestDto } from './create-financial-account-hold.request.dto';
+
+export { CaptureFinancialAccountHoldRequestDto } from './capture-financial-account-hold.request.dto';
+
+export { ReleaseFinancialAccountHoldRequestDto } from './release-financial-account-hold.request.dto';
+
+export { CancelFinancialAccountHoldRequestDto } from './cancel-financial-account-hold.request.dto';
 
 // -----------------------------------------------------------------------------
 // Financial Transaction

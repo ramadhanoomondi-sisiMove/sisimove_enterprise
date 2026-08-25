@@ -7,10 +7,12 @@
 // Responsibilities:
 //
 // - Financial Account management;
+// - Financial Account Hold management;
 // - Financial Transaction management;
 // - Financial Payment management;
 // - Financial Payment Method management;
 // - Financial account balance queries;
+// - Financial account hold queries;
 // - Financial account transaction queries;
 // - Financial payment queries;
 // - Financial payment method queries;
@@ -51,6 +53,8 @@ import { PrismaModule } from '../../infrastructure/database/prisma/prisma.module
 
 import { FinancialAccountsController } from './presentation/rest/controllers/financial-accounts.controller';
 
+import { FinancialAccountHoldsController } from './presentation/rest/controllers/financial-account-holds.controller';
+
 import { FinancialTransactionsController } from './presentation/rest/controllers/financial-transactions.controller';
 
 import { FinancialPaymentsController } from './presentation/rest/controllers/financial-payments.controller';
@@ -62,6 +66,12 @@ import { FinancialPaymentMethodsController } from './presentation/rest/controlle
 // -----------------------------------------------------------------------------
 
 import { FINANCIAL_ACCOUNT_PROVIDERS } from './infrastructure/dependency-injection/financial-account.providers';
+
+// -----------------------------------------------------------------------------
+// Infrastructure — Financial Account Hold Dependency Injection
+// -----------------------------------------------------------------------------
+
+import { FINANCIAL_ACCOUNT_HOLD_PROVIDERS } from './infrastructure/dependency-injection/financial-account-hold.providers';
 
 // -----------------------------------------------------------------------------
 // Infrastructure — Financial Transaction Dependency Injection
@@ -87,6 +97,8 @@ import { FINANCIAL_PAYMENT_METHOD_PROVIDERS } from './infrastructure/dependency-
 
 import { FINANCIAL_ACCOUNT_TOKENS } from './application/financial-account.tokens';
 
+import { FINANCIAL_ACCOUNT_HOLD_TOKENS } from './application/financial-account-hold.tokens';
+
 import { FINANCIAL_TRANSACTION_TOKENS } from './application/financial-transaction.tokens';
 
 import { FINANCIAL_PAYMENT_TOKENS } from './application/financial-payment.tokens';
@@ -107,6 +119,13 @@ import {
   FailFinancialTransactionHandler,
   ReverseFinancialTransactionHandler,
   SuspendFinancialAccountHandler,
+} from './application/command-handlers';
+
+import {
+  CancelFinancialAccountHoldHandler,
+  CaptureFinancialAccountHoldHandler,
+  CreateFinancialAccountHoldHandler,
+  ReleaseFinancialAccountHoldHandler,
 } from './application/command-handlers';
 
 import {
@@ -135,6 +154,8 @@ import {
   GetFinancialAccountTransactionsHandler,
   GetFinancialTransactionHandler,
 } from './application/query-handlers';
+
+import { GetFinancialAccountHoldsHandler } from './application/query-handlers';
 
 import { GetFinancialPaymentHandler } from './application/query-handlers';
 
@@ -178,6 +199,12 @@ import {
     FinancialAccountsController,
 
     // -------------------------------------------------------------------------
+    // Financial Account Hold
+    // -------------------------------------------------------------------------
+
+    FinancialAccountHoldsController,
+
+    // -------------------------------------------------------------------------
     // Financial Transaction
     // -------------------------------------------------------------------------
 
@@ -206,6 +233,12 @@ import {
     // =========================================================================
 
     ...FINANCIAL_ACCOUNT_PROVIDERS,
+
+    // =========================================================================
+    // Infrastructure — Financial Account Hold
+    // =========================================================================
+
+    ...FINANCIAL_ACCOUNT_HOLD_PROVIDERS,
 
     // =========================================================================
     // Infrastructure — Financial Transaction
@@ -261,6 +294,39 @@ import {
     {
       provide: FINANCIAL_ACCOUNT_TOKENS.QUERY_HANDLERS.GET_BALANCE,
       useClass: GetFinancialAccountBalanceHandler,
+    },
+
+    // =========================================================================
+    // Financial Account Hold — Command Handlers
+    // =========================================================================
+
+    {
+      provide: FINANCIAL_ACCOUNT_HOLD_TOKENS.COMMAND_HANDLERS.CREATE,
+      useClass: CreateFinancialAccountHoldHandler,
+    },
+
+    {
+      provide: FINANCIAL_ACCOUNT_HOLD_TOKENS.COMMAND_HANDLERS.CAPTURE,
+      useClass: CaptureFinancialAccountHoldHandler,
+    },
+
+    {
+      provide: FINANCIAL_ACCOUNT_HOLD_TOKENS.COMMAND_HANDLERS.RELEASE,
+      useClass: ReleaseFinancialAccountHoldHandler,
+    },
+
+    {
+      provide: FINANCIAL_ACCOUNT_HOLD_TOKENS.COMMAND_HANDLERS.CANCEL,
+      useClass: CancelFinancialAccountHoldHandler,
+    },
+
+    // =========================================================================
+    // Financial Account Hold — Query Handlers
+    // =========================================================================
+
+    {
+      provide: FINANCIAL_ACCOUNT_HOLD_TOKENS.QUERY_HANDLERS.GET,
+      useClass: GetFinancialAccountHoldsHandler,
     },
 
     // =========================================================================
@@ -409,6 +475,12 @@ import {
     // -------------------------------------------------------------------------
 
     FINANCIAL_ACCOUNT_TOKENS.REPOSITORY,
+
+    // -------------------------------------------------------------------------
+    // Financial Account Hold Repository
+    // -------------------------------------------------------------------------
+
+    FINANCIAL_ACCOUNT_HOLD_TOKENS.REPOSITORY,
 
     // -------------------------------------------------------------------------
     // Financial Transaction Repository

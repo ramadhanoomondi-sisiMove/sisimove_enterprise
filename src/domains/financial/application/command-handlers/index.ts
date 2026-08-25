@@ -5,8 +5,15 @@
 // Public barrel export for all Financial Account command handlers.
 //
 // All command handlers operate through their respective aggregate roots.
+//
 // Domain behavior, invariants, state transitions, and domain events remain
 // inside the aggregates.
+//
+// Application handlers are responsible for:
+// - Resolving aggregates.
+// - Coordinating application workflows.
+// - Delegating domain behavior to aggregates.
+// - Persisting aggregate changes.
 //
 // -----------------------------------------------------------------------------
 
@@ -79,3 +86,31 @@ export * from './add-financial-payment-method.handler';
 export * from './set-default-financial-payment-method.handler';
 
 export * from './deactivate-financial-payment-method.handler';
+
+// -----------------------------------------------------------------------------
+// Financial Account Hold Creation
+// -----------------------------------------------------------------------------
+
+export * from './create-financial-account-hold.handler';
+
+// -----------------------------------------------------------------------------
+// Financial Account Hold Lifecycle
+// -----------------------------------------------------------------------------
+//
+// Financial Account Hold lifecycle:
+//
+//     ACTIVE
+//        │
+//        ├── RELEASED
+//        ├── CAPTURED
+//        └── CANCELLED
+//
+// RELEASED, CAPTURED and CANCELLED are terminal states.
+//
+// -----------------------------------------------------------------------------
+
+export * from './capture-financial-account-hold.handler';
+
+export * from './release-financial-account-hold.handler';
+
+export * from './cancel-financial-account-hold.handler';
