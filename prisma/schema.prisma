@@ -2956,13 +2956,16 @@ model FinancialAccountWithdrawal {
   amount   Int
   currency String @default("KES")
 
+  destinationType  FinancialDisbursementDestinationType
+  destinationValue String
+
   status FinancialAccountWithdrawalStatus @default(PENDING)
 
-  destinationId String?
-
-  destination FinancialDisbursementDestination? @relation(fields: [destinationId], references: [id], onDelete: SetNull)
+  referenceType     String?
+  referencePublicId String?
 
   disbursementPublicId String?
+  transactionPublicId  String?
 
   requestedAt DateTime  @default(now())
   completedAt DateTime?
@@ -2973,9 +2976,11 @@ model FinancialAccountWithdrawal {
   updatedAt DateTime @updatedAt
 
   @@index([accountId])
-  @@index([destinationId])
   @@index([status])
+  @@index([destinationType])
+  @@index([referenceType, referencePublicId])
   @@index([disbursementPublicId])
+  @@index([transactionPublicId])
   @@index([requestedAt])
   @@map("financial_account_withdrawals")
 }
@@ -3118,10 +3123,6 @@ model FinancialDisbursement {
   @@map("financial_disbursements")
 }
 
-// =============================================================================
-// FINANCIAL DISBURSEMENT DESTINATION
-// =============================================================================
-
 model FinancialDisbursementDestination {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())
@@ -3143,8 +3144,6 @@ model FinancialDisbursementDestination {
 
   disbursements FinancialDisbursement[]
 
-  withdrawals FinancialAccountWithdrawal[]
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -3158,8 +3157,7 @@ model FinancialDisbursementDestination {
 
 // =============================================================================
 // FINANCIAL DISBURSEMENT ATTEMPT
-// =============================================================================
-
+// =============================================================================--
 model FinancialDisbursementAttempt {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())

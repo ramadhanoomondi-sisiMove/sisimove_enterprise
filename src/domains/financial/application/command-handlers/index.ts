@@ -117,6 +117,56 @@ export * from './release-financial-account-hold.handler';
 export * from './cancel-financial-account-hold.handler';
 
 // -----------------------------------------------------------------------------
+// Financial Account Withdrawal Request
+// -----------------------------------------------------------------------------
+//
+// Financial Account Withdrawal lifecycle:
+//
+//     PENDING
+//        │
+//        ├── PROCESSING
+//        │      ├── COMPLETED
+//        │      ├── FAILED
+//        │      └── CANCELLED
+//        │
+//        └── CANCELLED
+//
+// The withdrawal aggregate owns lifecycle validation and state transitions.
+//
+// Withdrawal handlers do not directly move money, modify Financial Account
+// balances, create transactions, or execute Financial Disbursements.
+//
+// -----------------------------------------------------------------------------
+
+export * from './request-financial-account-withdrawal.handler';
+
+// -----------------------------------------------------------------------------
+// Financial Account Withdrawal Lifecycle
+// -----------------------------------------------------------------------------
+//
+// Valid lifecycle transitions:
+//
+//     PENDING    -> PROCESSING
+//
+//     PROCESSING -> COMPLETED
+//     PROCESSING -> FAILED
+//     PROCESSING -> CANCELLED
+//
+//     PENDING    -> CANCELLED
+//
+// COMPLETED, FAILED, and CANCELLED are terminal states.
+//
+// -----------------------------------------------------------------------------
+
+export * from './process-financial-account-withdrawal.handler';
+
+export * from './complete-financial-account-withdrawal.handler';
+
+export * from './fail-financial-account-withdrawal.handler';
+
+export * from './cancel-financial-account-withdrawal.handler';
+
+// -----------------------------------------------------------------------------
 // Financial Settlement Creation
 // -----------------------------------------------------------------------------
 //

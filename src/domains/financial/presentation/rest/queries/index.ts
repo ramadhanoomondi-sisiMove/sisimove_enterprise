@@ -20,6 +20,7 @@
 // - Financial Payment Method
 // - Financial Settlement
 // - Financial Settlement Items
+// - Financial Account Withdrawal
 //
 // -----------------------------------------------------------------------------
 
@@ -88,3 +89,13 @@ export { GetFinancialSettlementRequestDto } from './get-financial-settlement.que
 // -----------------------------------------------------------------------------
 
 export { GetFinancialSettlementItemsRequestDto } from './get-financial-settlement-items.query.dto';
+
+// -----------------------------------------------------------------------------
+// Financial Account Withdrawal
+// -----------------------------------------------------------------------------
+
+export { GetFinancialAccountWithdrawalQueryDto } from './get-financial-account-withdrawal.query.dto';
+
+export { GetFinancialAccountWithdrawalsQueryDto } from './get-financial-account-withdrawals.query.dto';
+
+export { GetFinancialAccountWithdrawalsByStatusQueryDto } from './get-financial-account-withdrawals-by-status.query.dto';

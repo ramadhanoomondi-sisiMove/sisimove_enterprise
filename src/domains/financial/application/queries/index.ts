@@ -14,6 +14,7 @@
 // - Financial Payment
 // - Financial Account Payments
 // - Financial Account Holds
+// - Financial Account Withdrawals
 // - Financial Settlement
 // - Financial Settlement Items
 //
@@ -37,8 +38,8 @@ export * from './get-financial-account-balance.query';
 //
 // Retrieves Financial Transactions associated with a Financial Account.
 //
-// FinancialAccountAggregate and FinancialTransactionAggregate remain
-// separate aggregate roots.
+// FinancialAccountAggregate and FinancialTransactionAggregate remain separate
+// aggregate roots.
 //
 // -----------------------------------------------------------------------------
 
@@ -85,6 +86,35 @@ export * from './get-financial-account-payments.query';
 export * from './get-financial-account-holds.query';
 
 // -----------------------------------------------------------------------------
+// Financial Account Withdrawals
+// -----------------------------------------------------------------------------
+//
+// Retrieves Financial Account Withdrawals associated with a Financial Account.
+//
+// Withdrawal lifecycle:
+//
+//     PENDING
+//        │
+//        ├── PROCESSING
+//        │      ├── COMPLETED
+//        │      ├── FAILED
+//        │      └── CANCELLED
+//        │
+//        └── CANCELLED
+//
+// The withdrawal aggregate remains separate from the Financial Account
+// aggregate. These queries provide read access to withdrawal state without
+// exposing lifecycle behavior through the query layer.
+//
+// -----------------------------------------------------------------------------
+
+export * from './get-financial-account-withdrawal.query';
+
+export * from './get-financial-account-withdrawals.query';
+
+export * from './get-financial-account-withdrawals-by-status.query';
+
+// -----------------------------------------------------------------------------
 // Financial Settlement
 // -----------------------------------------------------------------------------
 //
@@ -102,8 +132,8 @@ export * from './get-financial-settlement.query';
 //
 // Retrieves the Settlement Items belonging to a Financial Settlement.
 //
-// Settlement Items remain child entities of the Financial Settlement
-// aggregate and are not independent aggregate roots.
+// Settlement Items remain child entities of the Financial Settlement aggregate
+// and are not independent aggregate roots.
 //
 // -----------------------------------------------------------------------------
 

@@ -9,6 +9,10 @@
 // - Financial Transaction events
 // - Financial Payment events
 // - Financial Payment Method events
+// - Financial Account Hold events
+// - Financial Settlement events
+// - Financial Account Withdrawal events
+// - Financial Disbursement events
 //
 // -----------------------------------------------------------------------------
 
@@ -75,6 +79,18 @@ export { FinancialPaymentMethodDefaultedEvent } from './financial-payment-method
 export { FinancialPaymentMethodDeactivatedEvent } from './financial-payment-method-deactivated.event';
 
 // -----------------------------------------------------------------------------
+// Financial Account Hold
+// -----------------------------------------------------------------------------
+
+export { FinancialAccountHoldCreatedEvent } from './financial-account-hold-created.event';
+
+export { FinancialAccountHoldReleasedEvent } from './financial-account-hold-released.event';
+
+export { FinancialAccountHoldCapturedEvent } from './financial-account-hold-captured.event';
+
+export { FinancialAccountHoldCancelledEvent } from './financial-account-hold-cancelled.event';
+
+// -----------------------------------------------------------------------------
 // Financial Settlement
 // -----------------------------------------------------------------------------
 
@@ -89,3 +105,27 @@ export { FinancialSettlementCompletedEvent } from './financial-settlement-comple
 export { FinancialSettlementFailedEvent } from './financial-settlement-failed.event';
 
 export { FinancialSettlementCancelledEvent } from './financial-settlement-cancelled.event';
+
+// -----------------------------------------------------------------------------
+// Financial Account Withdrawal
+// -----------------------------------------------------------------------------
+
+export { FinancialAccountWithdrawalRequestedEvent } from './financial-account-withdrawal-requested.event';
+
+export { FinancialAccountWithdrawalProcessingEvent } from './financial-account-withdrawal-processing.event';
+
+export { FinancialAccountWithdrawalCompletedEvent } from './financial-account-withdrawal-completed.event';
+
+export { FinancialAccountWithdrawalFailedEvent } from './financial-account-withdrawal-failed.event';
+
+export { FinancialAccountWithdrawalCancelledEvent } from './financial-account-withdrawal-cancelled.event';
+
+// -----------------------------------------------------------------------------
+// Financial Disbursement
+// -----------------------------------------------------------------------------
+//
+// Disbursement events should be added here once the Financial Disbursement
+// Aggregate event set has been defined.
+//
+
+// -----------------------------------------------------------------------------

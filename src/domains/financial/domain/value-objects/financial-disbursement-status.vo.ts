@@ -1,6 +1,24 @@
 // -----------------------------------------------------------------------------
 // Financial Disbursement Status
 // -----------------------------------------------------------------------------
+//
+// Lifecycle:
+//
+// PENDING
+//   -> PROCESSING
+//   -> CANCELLED
+//
+// PROCESSING
+//   -> COMPLETED
+//   -> FAILED
+//   -> CANCELLED
+//
+// Terminal:
+//   - COMPLETED
+//   - FAILED
+//   - CANCELLED
+//
+// -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
 // Foundation
@@ -32,28 +50,6 @@ interface FinancialDisbursementStatusProps {
 // Value Object
 // -----------------------------------------------------------------------------
 
-/**
- * Lifecycle status of a Financial Disbursement.
- *
- * A disbursement represents the movement of funds from a Financial Account
- * to an external Financial Disbursement Destination.
- *
- * Lifecycle:
- *
- * PENDING
- *   -> PROCESSING
- *   -> CANCELLED
- *
- * PROCESSING
- *   -> COMPLETED
- *   -> FAILED
- *   -> CANCELLED
- *
- * Terminal states:
- * COMPLETED
- * FAILED
- * CANCELLED
- */
 export class FinancialDisbursementStatus extends ValueObject<FinancialDisbursementStatusProps> {
   // ---------------------------------------------------------------------------
   // Constructor
@@ -132,8 +128,30 @@ export class FinancialDisbursementStatus extends ValueObject<FinancialDisburseme
   }
 
   // ---------------------------------------------------------------------------
-  // Transition Predicates
+  // Lifecycle
   // ---------------------------------------------------------------------------
+
+  public canTransitionTo(nextStatus: FinancialDisbursementStatus): boolean {
+    switch (this.props.value) {
+      case FinancialDisbursementStatusValue.PENDING:
+        return (
+          nextStatus.value === FinancialDisbursementStatusValue.PROCESSING ||
+          nextStatus.value === FinancialDisbursementStatusValue.CANCELLED
+        );
+
+      case FinancialDisbursementStatusValue.PROCESSING:
+        return (
+          nextStatus.value === FinancialDisbursementStatusValue.COMPLETED ||
+          nextStatus.value === FinancialDisbursementStatusValue.FAILED ||
+          nextStatus.value === FinancialDisbursementStatusValue.CANCELLED
+        );
+
+      case FinancialDisbursementStatusValue.COMPLETED:
+      case FinancialDisbursementStatusValue.FAILED:
+      case FinancialDisbursementStatusValue.CANCELLED:
+        return false;
+    }
+  }
 
   public canProcess(): boolean {
     return this.isPending();

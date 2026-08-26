@@ -8,6 +8,7 @@
 //
 // - Financial Account commands
 // - Financial Account Hold commands
+// - Financial Account Withdrawal commands
 // - Financial Transaction commands
 // - Financial Payment commands
 // - Financial Payment Method commands
@@ -62,6 +63,45 @@ export { CaptureFinancialAccountHoldCommand } from './capture-financial-account-
 export { ReleaseFinancialAccountHoldCommand } from './release-financial-account-hold.command';
 
 export { CancelFinancialAccountHoldCommand } from './cancel-financial-account-hold.command';
+
+// -----------------------------------------------------------------------------
+// Financial Account Withdrawal Commands
+// -----------------------------------------------------------------------------
+//
+// Central export surface for Financial Account Withdrawal application
+// commands.
+//
+// Lifecycle:
+//
+//     PENDING
+//        │
+//        ├── PROCESSING
+//        │      │
+//        │      ├── COMPLETED
+//        │      ├── FAILED
+//        │      └── CANCELLED
+//        │
+//        └── CANCELLED
+//
+// COMPLETED, FAILED and CANCELLED are terminal states.
+//
+// The withdrawal aggregate represents the withdrawal workflow and references
+// a Financial Disbursement responsible for executing the actual payout.
+//
+// Withdrawal commands do NOT directly move money, modify Financial Account
+// balances, or execute external disbursement providers.
+//
+// -----------------------------------------------------------------------------
+
+export { RequestFinancialAccountWithdrawalCommand } from './request-financial-account-withdrawal.command';
+
+export { ProcessFinancialAccountWithdrawalCommand } from './process-financial-account-withdrawal.command';
+
+export { CompleteFinancialAccountWithdrawalCommand } from './complete-financial-account-withdrawal.command';
+
+export { FailFinancialAccountWithdrawalCommand } from './fail-financial-account-withdrawal.command';
+
+export { CancelFinancialAccountWithdrawalCommand } from './cancel-financial-account-withdrawal.command';
 
 // -----------------------------------------------------------------------------
 // Financial Transaction Commands

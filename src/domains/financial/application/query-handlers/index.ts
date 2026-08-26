@@ -65,14 +65,12 @@ export * from './get-default-financial-payment-method.handler';
 // Financial Account Holds
 // -----------------------------------------------------------------------------
 //
-// Retrieves all ACTIVE Financial Account Holds belonging to a Financial
-// Account.
+// Retrieves Financial Account Holds belonging to a Financial Account.
 //
 // Multiple ACTIVE holds are valid.
 //
-// RELEASED, CAPTURED and CANCELLED holds are terminal and are excluded
-// by the corresponding application query.
-//
+// RELEASED, CAPTURED and CANCELLED holds remain historical lifecycle states
+// and are returned according to the corresponding application query.
 // -----------------------------------------------------------------------------
 
 export * from './get-financial-account-holds.handler';
@@ -91,7 +89,6 @@ export * from './get-financial-account-holds.handler';
 //         └── FinancialSettlementAllocationEntity[]
 //
 // The Settlement aggregate remains the persistence and domain boundary.
-//
 // -----------------------------------------------------------------------------
 
 export * from './get-financial-settlement.handler';
@@ -107,7 +104,38 @@ export * from './get-financial-settlement.handler';
 //
 // They are not independent aggregate roots and do not have a separate
 // repository boundary.
-//
 // -----------------------------------------------------------------------------
 
 export * from './get-financial-settlement-items.handler';
+
+// -----------------------------------------------------------------------------
+// Financial Account Withdrawal
+// -----------------------------------------------------------------------------
+//
+// Retrieves a Financial Account Withdrawal aggregate by its public identity.
+//
+// -----------------------------------------------------------------------------
+
+export * from './get-financial-account-withdrawal.handler';
+
+// -----------------------------------------------------------------------------
+// Financial Account Withdrawals
+// -----------------------------------------------------------------------------
+//
+// Retrieves all Financial Account Withdrawal aggregates belonging to a
+// Financial Account.
+//
+// -----------------------------------------------------------------------------
+
+export * from './get-financial-account-withdrawals.handler';
+
+// -----------------------------------------------------------------------------
+// Financial Account Withdrawals By Status
+// -----------------------------------------------------------------------------
+//
+// Retrieves Financial Account Withdrawal aggregates belonging to a Financial
+// Account and matching the supplied lifecycle status.
+//
+// -----------------------------------------------------------------------------
+
+export * from './get-financial-account-withdrawals-by-status.handler';

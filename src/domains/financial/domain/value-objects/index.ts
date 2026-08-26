@@ -93,6 +93,7 @@ export * from './financial-disbursement-attempt-public-id.vo';
 export * from './financial-disbursement-attempt-status.vo';
 export * from './financial-disbursement-destination-public-id.vo';
 export * from './financial-disbursement-destination-type.vo';
+export * from './financial-account-withdrawal-destination.vo';
 
 // -----------------------------------------------------------------------------
 // Financial References
