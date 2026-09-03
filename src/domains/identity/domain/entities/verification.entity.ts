@@ -8,42 +8,32 @@
 // └── VerificationEntity
 //     └── VerificationRequestEntity[]
 //
-// VerificationEntity is the aggregate-root entity for the Verification
-// aggregate.
-//
-// Aggregate ownership:
-//
-// - verification lifecycle;
-// - current verification level;
-// - accepted verification evidence;
-// - aggregate-level verification decisions;
-// - review and decision metadata;
-// - expiration and revocation state;
-// - VerificationRequest child entities.
-//
-// VerificationRequestEntity owns the lifecycle of an individual verification
-// submission.
+// VerificationEntity owns the verification lifecycle and all aggregate-level
+// verification decisions.
 //
 // IMPORTANT:
 //
-// Request approval and aggregate verification are separate business decisions:
+// VerificationRequestEntity.approve()
+// does NOT automatically verify the aggregate.
+//
+// Request approval means:
+//
+//     "The submitted evidence in this request has been accepted."
+//
+// Aggregate verification means:
+//
+//     "The Identity has been officially verified at a verification level."
+//
+// Therefore:
 //
 //     VerificationRequestEntity.approve()
-//         -> submitted evidence is accepted;
-//
-//     VerificationEntity.verifyProfilePhoto()
-//     VerificationEntity.verifyGovernmentId()
-//     VerificationEntity.verifyDriverLicense()
-//         -> accepted evidence is recorded;
-//
+//             ↓
+//     accepted evidence
+//             ↓
 //     VerificationEntity.verifyMember()
-//         -> Identity is officially verified at MEMBER level;
-//
 //     VerificationEntity.verifyDriver()
-//         -> Identity is officially verified at DRIVER level.
-//
-// Approval of an individual request MUST NOT automatically transition the
-// aggregate to VERIFIED.
+//             ↓
+//     official aggregate verification
 //
 // -----------------------------------------------------------------------------
 //
@@ -68,7 +58,7 @@
 //
 // -----------------------------------------------------------------------------
 //
-// Verification request lifecycle:
+// Request lifecycle:
 //
 // PENDING
 //   ├──> APPROVED
@@ -84,10 +74,6 @@
 // CANCELLED
 //   └── terminal
 //
-// Request expiration is represented as:
-//
-// PENDING -> CANCELLED
-//
 // -----------------------------------------------------------------------------
 //
 // Evidence requirements:
@@ -102,18 +88,30 @@
 //
 // Evidence flags represent accepted evidence only.
 //
-// Evidence does NOT independently determine aggregate verification status.
+// Evidence does NOT independently transition the aggregate to VERIFIED.
 //
 // -----------------------------------------------------------------------------
 //
 // Re-verification:
 //
-// REJECTED and EXPIRED verification aggregates may be reopened into PENDING.
+// REJECTED and EXPIRED may be reopened.
 //
-// Historical evidence timestamps and historical request records are retained.
+// Historical accepted evidence remains retained.
+// Historical request entities remain retained.
+// Historical verification timestamps remain retained.
 //
-// REVOKED is terminal and cannot be reopened.
+// REVOKED is terminal.
 //
+// -----------------------------------------------------------------------------
+//
+// Persistence compatibility:
+//
+// rejectionReason is intentionally used for:
+//
+// REJECTED -> rejection reason
+// REVOKED  -> revocation reason
+//
+// This preserves the existing persistence contract.
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
@@ -162,7 +160,7 @@ export interface VerificationProps {
   identityPublicId: IdentityPublicId;
 
   // ---------------------------------------------------------------------------
-  // Verification State
+  // Current Verification State
   // ---------------------------------------------------------------------------
 
   status: VerificationStatus;
@@ -170,7 +168,7 @@ export interface VerificationProps {
   level: VerificationLevel;
 
   // ---------------------------------------------------------------------------
-  // Accepted Verification Evidence
+  // Accepted Evidence
   // ---------------------------------------------------------------------------
 
   profilePhotoVerified: boolean;
@@ -190,6 +188,10 @@ export interface VerificationProps {
   memberVerifiedAt?: Date;
 
   driverVerifiedAt?: Date;
+
+  // ---------------------------------------------------------------------------
+  // Evidence Timestamps
+  // ---------------------------------------------------------------------------
 
   profilePhotoVerifiedAt?: Date;
 
@@ -223,7 +225,66 @@ export interface VerificationProps {
 }
 
 // -----------------------------------------------------------------------------
+// Creation Properties
+// -----------------------------------------------------------------------------
+
+export interface CreateVerificationProps {
+  publicId?: VerificationPublicId;
+
+  identityPublicId: IdentityPublicId;
+
+  status?: VerificationStatus;
+
+  level?: VerificationLevel;
+
+  profilePhotoVerified?: boolean;
+
+  governmentIdVerified?: boolean;
+
+  driverLicenseVerified?: boolean;
+
+  verifiedAt?: Date;
+
+  expiresAt?: Date;
+
+  memberVerifiedAt?: Date;
+
+  driverVerifiedAt?: Date;
+
+  profilePhotoVerifiedAt?: Date;
+
+  governmentIdVerifiedAt?: Date;
+
+  driverLicenseVerifiedAt?: Date;
+
+  reviewedByPublicId?: IdentityPublicId;
+
+  rejectionReason?: string;
+
+  lastReviewedAt?: Date;
+
+  requests?: VerificationRequestEntity[];
+
+  createdAt?: Date;
+
+  updatedAt?: Date;
+}
+
+// -----------------------------------------------------------------------------
 // Validation Properties
+// -----------------------------------------------------------------------------
+//
+// With:
+//
+//     exactOptionalPropertyTypes: true
+//
+// `foo?: Date` means the property may be omitted.
+//
+// The validation object deliberately contains the property even when its
+// value is undefined, therefore the validation contract must explicitly use:
+//
+//     foo: Date | undefined
+//
 // -----------------------------------------------------------------------------
 
 interface VerificationValidationProps {
@@ -257,13 +318,13 @@ interface VerificationValidationProps {
 
   lastReviewedAt: Date | undefined;
 
-  createdAt?: Date;
+  createdAt: Date;
 
-  updatedAt?: Date;
+  updatedAt: Date;
 }
 
 // -----------------------------------------------------------------------------
-// Aggregate Root Entity
+// Aggregate Root
 // -----------------------------------------------------------------------------
 
 export class VerificationEntity extends AggregateRoot<
@@ -286,47 +347,7 @@ export class VerificationEntity extends AggregateRoot<
   // Factory
   // ===========================================================================
 
-  public static create(props: {
-    publicId?: VerificationPublicId;
-
-    identityPublicId: IdentityPublicId;
-
-    status?: VerificationStatus;
-
-    level?: VerificationLevel;
-
-    profilePhotoVerified?: boolean;
-
-    governmentIdVerified?: boolean;
-
-    driverLicenseVerified?: boolean;
-
-    verifiedAt?: Date;
-
-    expiresAt?: Date;
-
-    memberVerifiedAt?: Date;
-
-    driverVerifiedAt?: Date;
-
-    profilePhotoVerifiedAt?: Date;
-
-    governmentIdVerifiedAt?: Date;
-
-    driverLicenseVerifiedAt?: Date;
-
-    reviewedByPublicId?: IdentityPublicId;
-
-    rejectionReason?: string;
-
-    lastReviewedAt?: Date;
-
-    requests?: VerificationRequestEntity[];
-
-    createdAt?: Date;
-
-    updatedAt?: Date;
-  }): VerificationEntity {
+  public static create(props: CreateVerificationProps): VerificationEntity {
     if (props === undefined) {
       throw new VerificationInvalidStatusException(
         'Verification creation properties are required.',
@@ -352,6 +373,12 @@ export class VerificationEntity extends AggregateRoot<
     const governmentIdVerified = props.governmentIdVerified ?? false;
 
     const driverLicenseVerified = props.driverLicenseVerified ?? false;
+
+    const createdAt = VerificationEntity.cloneDate(props.createdAt ?? now);
+
+    const updatedAt = VerificationEntity.cloneDate(
+      props.updatedAt ?? createdAt,
+    );
 
     const verifiedAt = VerificationEntity.optionalDate(props.verifiedAt);
 
@@ -381,14 +408,12 @@ export class VerificationEntity extends AggregateRoot<
       props.lastReviewedAt,
     );
 
+    const reviewedByPublicId = props.reviewedByPublicId;
+
     const rejectionReason =
       props.rejectionReason !== undefined
         ? VerificationEntity.normalizeReason(props.rejectionReason)
         : undefined;
-
-    const createdAt = VerificationEntity.cloneDate(props.createdAt ?? now);
-
-    const updatedAt = VerificationEntity.cloneDate(props.updatedAt ?? now);
 
     VerificationEntity.validateState({
       status,
@@ -408,7 +433,7 @@ export class VerificationEntity extends AggregateRoot<
       governmentIdVerifiedAt,
       driverLicenseVerifiedAt,
 
-      reviewedByPublicId: props.reviewedByPublicId,
+      reviewedByPublicId,
       rejectionReason,
       lastReviewedAt,
 
@@ -416,11 +441,14 @@ export class VerificationEntity extends AggregateRoot<
       updatedAt,
     });
 
-    VerificationEntity.validateRequests(props.requests ?? [], publicId);
+    const requests = [...(props.requests ?? [])];
+
+    VerificationEntity.validateRequests(requests);
 
     return new VerificationEntity(
       {
         publicId,
+
         identityPublicId: props.identityPublicId,
 
         status,
@@ -434,7 +462,6 @@ export class VerificationEntity extends AggregateRoot<
         ...(expiresAt !== undefined ? { expiresAt } : {}),
 
         ...(memberVerifiedAt !== undefined ? { memberVerifiedAt } : {}),
-
         ...(driverVerifiedAt !== undefined ? { driverVerifiedAt } : {}),
 
         ...(profilePhotoVerifiedAt !== undefined
@@ -449,15 +476,13 @@ export class VerificationEntity extends AggregateRoot<
           ? { driverLicenseVerifiedAt }
           : {}),
 
-        ...(props.reviewedByPublicId !== undefined
-          ? { reviewedByPublicId: props.reviewedByPublicId }
-          : {}),
+        ...(reviewedByPublicId !== undefined ? { reviewedByPublicId } : {}),
 
         ...(rejectionReason !== undefined ? { rejectionReason } : {}),
 
         ...(lastReviewedAt !== undefined ? { lastReviewedAt } : {}),
 
-        requests: [...(props.requests ?? [])],
+        requests,
 
         createdAt,
         updatedAt,
@@ -471,15 +496,6 @@ export class VerificationEntity extends AggregateRoot<
   // Rehydration
   // ===========================================================================
 
-  /**
-   * Rehydrates a Verification aggregate from persistence.
-   *
-   * Rehydration:
-   *
-   * - validates persisted aggregate invariants;
-   * - validates request ownership and duplicate identities;
-   * - does not create domain events.
-   */
   public static rehydrate(
     props: VerificationProps,
     id: UniqueEntityId,
@@ -513,7 +529,42 @@ export class VerificationEntity extends AggregateRoot<
 
     const updatedAt = VerificationEntity.cloneDate(props.updatedAt);
 
-    VerificationEntity.validateState({
+    const verifiedAt = VerificationEntity.optionalDate(props.verifiedAt);
+
+    const expiresAt = VerificationEntity.optionalDate(props.expiresAt);
+
+    const memberVerifiedAt = VerificationEntity.optionalDate(
+      props.memberVerifiedAt,
+    );
+
+    const driverVerifiedAt = VerificationEntity.optionalDate(
+      props.driverVerifiedAt,
+    );
+
+    const profilePhotoVerifiedAt = VerificationEntity.optionalDate(
+      props.profilePhotoVerifiedAt,
+    );
+
+    const governmentIdVerifiedAt = VerificationEntity.optionalDate(
+      props.governmentIdVerifiedAt,
+    );
+
+    const driverLicenseVerifiedAt = VerificationEntity.optionalDate(
+      props.driverLicenseVerifiedAt,
+    );
+
+    const lastReviewedAt = VerificationEntity.optionalDate(
+      props.lastReviewedAt,
+    );
+
+    const reviewedByPublicId = props.reviewedByPublicId;
+
+    const rejectionReason =
+      props.rejectionReason !== undefined
+        ? VerificationEntity.normalizeReason(props.rejectionReason)
+        : undefined;
+
+    const normalizedProps: VerificationValidationProps = {
       status: props.status,
       level: props.level,
 
@@ -521,30 +572,29 @@ export class VerificationEntity extends AggregateRoot<
       governmentIdVerified: props.governmentIdVerified,
       driverLicenseVerified: props.driverLicenseVerified,
 
-      verifiedAt: props.verifiedAt,
-      expiresAt: props.expiresAt,
+      verifiedAt,
+      expiresAt,
 
-      memberVerifiedAt: props.memberVerifiedAt,
-      driverVerifiedAt: props.driverVerifiedAt,
+      memberVerifiedAt,
+      driverVerifiedAt,
 
-      profilePhotoVerifiedAt: props.profilePhotoVerifiedAt,
-      governmentIdVerifiedAt: props.governmentIdVerifiedAt,
-      driverLicenseVerifiedAt: props.driverLicenseVerifiedAt,
+      profilePhotoVerifiedAt,
+      governmentIdVerifiedAt,
+      driverLicenseVerifiedAt,
 
-      reviewedByPublicId: props.reviewedByPublicId,
-
-      rejectionReason:
-        props.rejectionReason !== undefined
-          ? VerificationEntity.normalizeReason(props.rejectionReason)
-          : undefined,
-
-      lastReviewedAt: props.lastReviewedAt,
+      reviewedByPublicId,
+      rejectionReason,
+      lastReviewedAt,
 
       createdAt,
       updatedAt,
-    });
+    };
 
-    VerificationEntity.validateRequests(props.requests, publicId);
+    VerificationEntity.validateState(normalizedProps);
+
+    const requests = [...props.requests];
+
+    VerificationEntity.validateRequests(requests);
 
     return new VerificationEntity(
       {
@@ -559,81 +609,31 @@ export class VerificationEntity extends AggregateRoot<
         governmentIdVerified: props.governmentIdVerified,
         driverLicenseVerified: props.driverLicenseVerified,
 
-        ...(props.verifiedAt !== undefined
-          ? {
-              verifiedAt: VerificationEntity.cloneDate(props.verifiedAt),
-            }
+        ...(verifiedAt !== undefined ? { verifiedAt } : {}),
+        ...(expiresAt !== undefined ? { expiresAt } : {}),
+
+        ...(memberVerifiedAt !== undefined ? { memberVerifiedAt } : {}),
+        ...(driverVerifiedAt !== undefined ? { driverVerifiedAt } : {}),
+
+        ...(profilePhotoVerifiedAt !== undefined
+          ? { profilePhotoVerifiedAt }
           : {}),
 
-        ...(props.expiresAt !== undefined
-          ? {
-              expiresAt: VerificationEntity.cloneDate(props.expiresAt),
-            }
+        ...(governmentIdVerifiedAt !== undefined
+          ? { governmentIdVerifiedAt }
           : {}),
 
-        ...(props.memberVerifiedAt !== undefined
-          ? {
-              memberVerifiedAt: VerificationEntity.cloneDate(
-                props.memberVerifiedAt,
-              ),
-            }
+        ...(driverLicenseVerifiedAt !== undefined
+          ? { driverLicenseVerifiedAt }
           : {}),
 
-        ...(props.driverVerifiedAt !== undefined
-          ? {
-              driverVerifiedAt: VerificationEntity.cloneDate(
-                props.driverVerifiedAt,
-              ),
-            }
-          : {}),
+        ...(reviewedByPublicId !== undefined ? { reviewedByPublicId } : {}),
 
-        ...(props.profilePhotoVerifiedAt !== undefined
-          ? {
-              profilePhotoVerifiedAt: VerificationEntity.cloneDate(
-                props.profilePhotoVerifiedAt,
-              ),
-            }
-          : {}),
+        ...(rejectionReason !== undefined ? { rejectionReason } : {}),
 
-        ...(props.governmentIdVerifiedAt !== undefined
-          ? {
-              governmentIdVerifiedAt: VerificationEntity.cloneDate(
-                props.governmentIdVerifiedAt,
-              ),
-            }
-          : {}),
+        ...(lastReviewedAt !== undefined ? { lastReviewedAt } : {}),
 
-        ...(props.driverLicenseVerifiedAt !== undefined
-          ? {
-              driverLicenseVerifiedAt: VerificationEntity.cloneDate(
-                props.driverLicenseVerifiedAt,
-              ),
-            }
-          : {}),
-
-        ...(props.reviewedByPublicId !== undefined
-          ? {
-              reviewedByPublicId: props.reviewedByPublicId,
-            }
-          : {}),
-
-        ...(props.rejectionReason !== undefined
-          ? {
-              rejectionReason: VerificationEntity.normalizeReason(
-                props.rejectionReason,
-              ),
-            }
-          : {}),
-
-        ...(props.lastReviewedAt !== undefined
-          ? {
-              lastReviewedAt: VerificationEntity.cloneDate(
-                props.lastReviewedAt,
-              ),
-            }
-          : {}),
-
-        requests: [...props.requests],
+        requests,
 
         createdAt,
         updatedAt,
@@ -683,26 +683,15 @@ export class VerificationEntity extends AggregateRoot<
     return this.props.status.isRevoked();
   }
 
-  /**
-   * Returns true only while the verification remains currently valid.
-   *
-   * A VERIFIED aggregate whose expiration timestamp has passed is no longer
-   * active, even before an explicit EXPIRED transition is persisted.
-   */
   public isActive(at: Date = new Date()): boolean {
-    VerificationEntity.ensureValidDate(
+    const timestamp = VerificationEntity.requireValidTimestamp(
       at,
       'Verification active-state timestamp must be valid.',
     );
 
-    return this.isVerified() && !this.hasExpired(at);
+    return this.isVerified() && !this.hasExpired(timestamp);
   }
 
-  /**
-   * REVOKED is the only irreversible aggregate state.
-   *
-   * REJECTED and EXPIRED may enter a new verification cycle.
-   */
   public isTerminal(): boolean {
     return this.isRevoked();
   }
@@ -823,22 +812,10 @@ export class VerificationEntity extends AggregateRoot<
   // Aggregate-Owned Requests
   // ===========================================================================
 
-  /**
-   * Returns a defensive copy of the aggregate-owned request collection.
-   *
-   * The collection itself cannot be structurally mutated by the caller.
-   */
   public get requests(): readonly VerificationRequestEntity[] {
     return [...this.props.requests];
   }
 
-  /**
-   * Adds an already materialized child request.
-   *
-   * The request must belong to this Verification aggregate.
-   *
-   * Duplicate request public IDs are treated as idempotent insertion.
-   */
   public addRequest(
     request: VerificationRequestEntity,
     at: Date = new Date(),
@@ -849,14 +826,12 @@ export class VerificationEntity extends AggregateRoot<
       );
     }
 
-    VerificationEntity.ensureValidDate(
+    const timestamp = this.requireOperationTimestamp(
       at,
       'Verification request addition timestamp must be valid.',
     );
 
-    this.ensureNotRevoked(
-      'Verification requests cannot be added to a revoked verification.',
-    );
+    this.ensurePendingForRequestMutation();
 
     if (!request.verificationPublicId.equals(this.publicId)) {
       throw new VerificationInvalidStatusException(
@@ -864,8 +839,9 @@ export class VerificationEntity extends AggregateRoot<
       );
     }
 
-    const alreadyExists = this.props.requests.some((existingRequest) =>
-      existingRequest.publicId.equals(request.publicId),
+    const alreadyExists = this.props.requests.some(
+      (existingRequest: VerificationRequestEntity) =>
+        existingRequest.publicId.equals(request.publicId),
     );
 
     if (alreadyExists) {
@@ -874,12 +850,9 @@ export class VerificationEntity extends AggregateRoot<
 
     this.props.requests.push(request);
 
-    this.touch(at);
+    this.touch(timestamp);
   }
 
-  /**
-   * Finds a request by public identifier.
-   */
   public findRequest(publicId: string): VerificationRequestEntity | undefined {
     if (typeof publicId !== 'string' || publicId.trim().length === 0) {
       return undefined;
@@ -888,13 +861,11 @@ export class VerificationEntity extends AggregateRoot<
     const normalizedPublicId = publicId.trim();
 
     return this.props.requests.find(
-      (request) => request.publicId.value === normalizedPublicId,
+      (request: VerificationRequestEntity) =>
+        request.publicId.value === normalizedPublicId,
     );
   }
 
-  /**
-   * Returns all requests of the specified type.
-   */
   public findRequestsByType(
     type: VerificationRequestEntity['type'],
   ): readonly VerificationRequestEntity[] {
@@ -904,12 +875,11 @@ export class VerificationEntity extends AggregateRoot<
       );
     }
 
-    return this.props.requests.filter((request) => request.type.equals(type));
+    return this.props.requests.filter((request: VerificationRequestEntity) =>
+      request.type.equals(type),
+    );
   }
 
-  /**
-   * Finds the currently pending request for the specified type.
-   */
   public findPendingRequestByType(
     type: VerificationRequestEntity['type'],
   ): VerificationRequestEntity | undefined {
@@ -920,7 +890,8 @@ export class VerificationEntity extends AggregateRoot<
     }
 
     return this.props.requests.find(
-      (request) => request.type.equals(type) && request.isPending(),
+      (request: VerificationRequestEntity) =>
+        request.type.equals(type) && request.isPending(),
     );
   }
 
@@ -929,17 +900,9 @@ export class VerificationEntity extends AggregateRoot<
   }
 
   // ===========================================================================
-  // Aggregate-Level Verification Decisions
+  // Aggregate-Level Verification
   // ===========================================================================
 
-  /**
-   * Grants MEMBER verification.
-   *
-   * Required accepted evidence:
-   *
-   * - profile photo; OR
-   * - government ID.
-   */
   public verifyMember(
     reviewedByPublicId: IdentityPublicId,
     at: Date = new Date(),
@@ -955,7 +918,7 @@ export class VerificationEntity extends AggregateRoot<
       );
     }
 
-    const timestamp = VerificationEntity.requireValidTimestamp(
+    const timestamp = this.requireOperationTimestamp(
       at,
       'Member verification timestamp must be valid.',
     );
@@ -985,13 +948,6 @@ export class VerificationEntity extends AggregateRoot<
     this.touch(timestamp);
   }
 
-  /**
-   * Grants DRIVER verification.
-   *
-   * Required accepted evidence:
-   *
-   * - driver license.
-   */
   public verifyDriver(
     reviewedByPublicId: IdentityPublicId,
     at: Date = new Date(),
@@ -1007,7 +963,7 @@ export class VerificationEntity extends AggregateRoot<
       );
     }
 
-    const timestamp = VerificationEntity.requireValidTimestamp(
+    const timestamp = this.requireOperationTimestamp(
       at,
       'Driver verification timestamp must be valid.',
     );
@@ -1041,29 +997,14 @@ export class VerificationEntity extends AggregateRoot<
   // Accepted Evidence Recording
   // ===========================================================================
 
-  /**
-   * Records accepted profile-photo evidence.
-   *
-   * This does not change aggregate verification status or level.
-   */
   public verifyProfilePhoto(at: Date = new Date()): void {
     this.recordEvidence('PROFILE_PHOTO', at);
   }
 
-  /**
-   * Records accepted government-ID evidence.
-   *
-   * This does not change aggregate verification status or level.
-   */
   public verifyGovernmentId(at: Date = new Date()): void {
     this.recordEvidence('GOVERNMENT_ID', at);
   }
 
-  /**
-   * Records accepted driver-license evidence.
-   *
-   * This does not change aggregate verification status or level.
-   */
   public verifyDriverLicense(at: Date = new Date()): void {
     this.recordEvidence('DRIVER_LICENSE', at);
   }
@@ -1072,11 +1013,6 @@ export class VerificationEntity extends AggregateRoot<
   // Aggregate Rejection
   // ===========================================================================
 
-  /**
-   * Rejects the current aggregate verification cycle.
-   *
-   * This is distinct from rejecting an individual VerificationRequest.
-   */
   public reject(
     reviewedByPublicId: IdentityPublicId,
     rejectionReason: string,
@@ -1094,7 +1030,7 @@ export class VerificationEntity extends AggregateRoot<
       );
     }
 
-    const timestamp = VerificationEntity.requireValidTimestamp(
+    const timestamp = this.requireOperationTimestamp(
       at,
       'Verification rejection timestamp must be valid.',
     );
@@ -1120,7 +1056,7 @@ export class VerificationEntity extends AggregateRoot<
   // ===========================================================================
 
   public hasExpired(at: Date = new Date()): boolean {
-    VerificationEntity.ensureValidDate(
+    const timestamp = VerificationEntity.requireValidTimestamp(
       at,
       'Verification expiration evaluation timestamp must be valid.',
     );
@@ -1129,16 +1065,11 @@ export class VerificationEntity extends AggregateRoot<
       return false;
     }
 
-    return at.getTime() >= this.props.expiresAt.getTime();
+    return timestamp.getTime() >= this.props.expiresAt.getTime();
   }
 
-  /**
-   * Moves VERIFIED -> EXPIRED.
-   *
-   * Historical verification and evidence timestamps remain intact.
-   */
   public expire(at: Date = new Date()): void {
-    const timestamp = VerificationEntity.requireValidTimestamp(
+    const timestamp = this.requireOperationTimestamp(
       at,
       'Verification expiration timestamp must be valid.',
     );
@@ -1172,11 +1103,6 @@ export class VerificationEntity extends AggregateRoot<
   // Revocation
   // ===========================================================================
 
-  /**
-   * Revokes the current verification.
-   *
-   * REVOKED is terminal.
-   */
   public revoke(
     reviewedByPublicId: IdentityPublicId,
     reason: string,
@@ -1198,7 +1124,7 @@ export class VerificationEntity extends AggregateRoot<
       );
     }
 
-    const timestamp = VerificationEntity.requireValidTimestamp(
+    const timestamp = this.requireOperationTimestamp(
       at,
       'Verification revocation timestamp must be valid.',
     );
@@ -1209,11 +1135,14 @@ export class VerificationEntity extends AggregateRoot<
 
     this.props.reviewedByPublicId = reviewedByPublicId;
 
-    // Retained persistence field. In the REVOKED state it represents the
-    // revocation reason.
+    // Persistence compatibility:
+    // rejectionReason stores the revocation reason in REVOKED state.
     this.props.rejectionReason = normalizedReason;
 
     this.props.lastReviewedAt = timestamp;
+
+    // The verification is no longer active after revocation.
+    delete this.props.expiresAt;
 
     this.touch(timestamp);
   }
@@ -1222,15 +1151,8 @@ export class VerificationEntity extends AggregateRoot<
   // Re-verification
   // ===========================================================================
 
-  /**
-   * Opens a new verification cycle.
-   *
-   * Only REJECTED and EXPIRED may be reopened.
-   *
-   * Historical evidence timestamps and request records remain intact.
-   */
   public reopen(at: Date = new Date()): void {
-    const timestamp = VerificationEntity.requireValidTimestamp(
+    const timestamp = this.requireOperationTimestamp(
       at,
       'Verification reopening timestamp must be valid.',
     );
@@ -1288,11 +1210,7 @@ export class VerificationEntity extends AggregateRoot<
       'Verification audit timestamp must be valid.',
     );
 
-    if (at.getTime() < this.props.createdAt.getTime()) {
-      throw new VerificationInvalidStatusException(
-        'Verification update timestamp cannot occur before creation.',
-      );
-    }
+    this.ensureOperationNotBeforeCreation(at);
 
     this.props.updatedAt = VerificationEntity.cloneDate(at);
   }
@@ -1371,7 +1289,21 @@ export class VerificationEntity extends AggregateRoot<
     }
 
     // -------------------------------------------------------------------------
-    // Timestamp Validity
+    // Required Audit Dates
+    // -------------------------------------------------------------------------
+
+    VerificationEntity.ensureValidDate(
+      createdAt,
+      'Verification createdAt timestamp must be valid.',
+    );
+
+    VerificationEntity.ensureValidDate(
+      updatedAt,
+      'Verification updatedAt timestamp must be valid.',
+    );
+
+    // -------------------------------------------------------------------------
+    // Optional Timestamp Validity
     // -------------------------------------------------------------------------
 
     const timestamps: Array<[string, Date | undefined]> = [
@@ -1383,17 +1315,13 @@ export class VerificationEntity extends AggregateRoot<
       ['governmentIdVerifiedAt', governmentIdVerifiedAt],
       ['driverLicenseVerifiedAt', driverLicenseVerifiedAt],
       ['lastReviewedAt', lastReviewedAt],
-      ['createdAt', createdAt],
-      ['updatedAt', updatedAt],
     ];
 
     for (const [name, timestamp] of timestamps) {
-      if (
-        timestamp !== undefined &&
-        (!(timestamp instanceof Date) || !Number.isFinite(timestamp.getTime()))
-      ) {
-        throw new VerificationInvalidStatusException(
-          `Verification must have a valid ${name} timestamp.`,
+      if (timestamp !== undefined) {
+        VerificationEntity.ensureValidDate(
+          timestamp,
+          `Verification ${name} timestamp must be valid.`,
         );
       }
     }
@@ -1402,54 +1330,105 @@ export class VerificationEntity extends AggregateRoot<
     // Audit Chronology
     // -------------------------------------------------------------------------
 
-    if (
-      createdAt !== undefined &&
-      updatedAt !== undefined &&
-      updatedAt.getTime() < createdAt.getTime()
-    ) {
+    if (updatedAt.getTime() < createdAt.getTime()) {
       throw new VerificationInvalidStatusException(
         'Verification updatedAt timestamp cannot occur before createdAt.',
       );
     }
 
     // -------------------------------------------------------------------------
+    // Historical Timestamp Boundaries
+    // -------------------------------------------------------------------------
+
+    for (const [name, timestamp] of timestamps) {
+      if (
+        timestamp !== undefined &&
+        timestamp.getTime() < createdAt.getTime()
+      ) {
+        throw new VerificationInvalidStatusException(
+          `${name} cannot occur before verification creation.`,
+        );
+      }
+
+      if (
+        timestamp !== undefined &&
+        timestamp.getTime() > updatedAt.getTime()
+      ) {
+        throw new VerificationInvalidStatusException(
+          `${name} cannot occur after verification updatedAt.`,
+        );
+      }
+    }
+
+    // -------------------------------------------------------------------------
     // Evidence / Timestamp Consistency
     // -------------------------------------------------------------------------
 
-    if (!profilePhotoVerified && profilePhotoVerifiedAt !== undefined) {
-      throw new VerificationInvalidStatusException(
-        'A verification cannot have profilePhotoVerifiedAt when profile photo verification is false.',
+    VerificationEntity.validateEvidencePair(
+      profilePhotoVerified,
+      profilePhotoVerifiedAt,
+      'profile photo',
+      'profilePhotoVerifiedAt',
+    );
+
+    VerificationEntity.validateEvidencePair(
+      governmentIdVerified,
+      governmentIdVerifiedAt,
+      'government ID',
+      'governmentIdVerifiedAt',
+    );
+
+    VerificationEntity.validateEvidencePair(
+      driverLicenseVerified,
+      driverLicenseVerifiedAt,
+      'driver license',
+      'driverLicenseVerifiedAt',
+    );
+
+    // -------------------------------------------------------------------------
+    // Historical Verification Timestamp Consistency
+    // -------------------------------------------------------------------------
+
+    if (memberVerifiedAt !== undefined) {
+      if (!profilePhotoVerified && !governmentIdVerified) {
+        throw new VerificationInvalidStatusException(
+          'Member verification requires supporting accepted evidence.',
+        );
+      }
+
+      const supportingEvidence: Date[] = [];
+
+      if (profilePhotoVerifiedAt !== undefined) {
+        supportingEvidence.push(profilePhotoVerifiedAt);
+      }
+
+      if (governmentIdVerifiedAt !== undefined) {
+        supportingEvidence.push(governmentIdVerifiedAt);
+      }
+
+      const supported = supportingEvidence.some(
+        (evidenceAt) => evidenceAt.getTime() <= memberVerifiedAt.getTime(),
       );
+
+      if (!supported) {
+        throw new VerificationInvalidStatusException(
+          'Member verification requires at least one supporting evidence timestamp on or before member verification.',
+        );
+      }
     }
 
-    if (!governmentIdVerified && governmentIdVerifiedAt !== undefined) {
-      throw new VerificationInvalidStatusException(
-        'A verification cannot have governmentIdVerifiedAt when government ID verification is false.',
-      );
-    }
+    if (driverVerifiedAt !== undefined) {
+      if (!driverLicenseVerified || driverLicenseVerifiedAt === undefined) {
+        throw new VerificationInvalidStatusException(
+          'Driver verification requires accepted driver license evidence.',
+        );
+      }
 
-    if (!driverLicenseVerified && driverLicenseVerifiedAt !== undefined) {
-      throw new VerificationInvalidStatusException(
-        'A verification cannot have driverLicenseVerifiedAt when driver license verification is false.',
-      );
-    }
-
-    if (profilePhotoVerified && profilePhotoVerifiedAt === undefined) {
-      throw new VerificationInvalidStatusException(
-        'Accepted profile photo evidence must have a profilePhotoVerifiedAt timestamp.',
-      );
-    }
-
-    if (governmentIdVerified && governmentIdVerifiedAt === undefined) {
-      throw new VerificationInvalidStatusException(
-        'Accepted government ID evidence must have a governmentIdVerifiedAt timestamp.',
-      );
-    }
-
-    if (driverLicenseVerified && driverLicenseVerifiedAt === undefined) {
-      throw new VerificationInvalidStatusException(
-        'Accepted driver license evidence must have a driverLicenseVerifiedAt timestamp.',
-      );
+      if (driverLicenseVerifiedAt.getTime() > driverVerifiedAt.getTime()) {
+        throw new VerificationInvalidStatusException(
+          'Driver license evidence acceptance cannot occur after driver verification.',
+        );
+      }
     }
 
     // -------------------------------------------------------------------------
@@ -1465,6 +1444,30 @@ export class VerificationEntity extends AggregateRoot<
     if (level.isDriver() && !driverLicenseVerified) {
       throw new VerificationInvalidStatusException(
         'DRIVER verification level requires accepted driver license evidence.',
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Verification Chronology
+    // -------------------------------------------------------------------------
+
+    if (
+      verifiedAt !== undefined &&
+      expiresAt !== undefined &&
+      expiresAt.getTime() <= verifiedAt.getTime()
+    ) {
+      throw new VerificationInvalidStatusException(
+        'Verification expiration must occur after verification.',
+      );
+    }
+
+    if (
+      verifiedAt !== undefined &&
+      lastReviewedAt !== undefined &&
+      lastReviewedAt.getTime() < verifiedAt.getTime()
+    ) {
+      throw new VerificationInvalidStatusException(
+        'Verification review cannot occur before verification.',
       );
     }
 
@@ -1503,16 +1506,32 @@ export class VerificationEntity extends AggregateRoot<
         );
       }
 
-      if (level.isMember() && memberVerifiedAt === undefined) {
-        throw new VerificationInvalidStatusException(
-          'A MEMBER verification must retain memberVerifiedAt.',
-        );
+      if (level.isMember()) {
+        if (memberVerifiedAt === undefined) {
+          throw new VerificationInvalidStatusException(
+            'A MEMBER verification must have memberVerifiedAt.',
+          );
+        }
+
+        if (memberVerifiedAt.getTime() !== verifiedAt.getTime()) {
+          throw new VerificationInvalidStatusException(
+            'Current MEMBER verification must have memberVerifiedAt equal to verifiedAt.',
+          );
+        }
       }
 
-      if (level.isDriver() && driverVerifiedAt === undefined) {
-        throw new VerificationInvalidStatusException(
-          'A DRIVER verification must retain driverVerifiedAt.',
-        );
+      if (level.isDriver()) {
+        if (driverVerifiedAt === undefined) {
+          throw new VerificationInvalidStatusException(
+            'A DRIVER verification must have driverVerifiedAt.',
+          );
+        }
+
+        if (driverVerifiedAt.getTime() !== verifiedAt.getTime()) {
+          throw new VerificationInvalidStatusException(
+            'Current DRIVER verification must have driverVerifiedAt equal to verifiedAt.',
+          );
+        }
       }
     }
 
@@ -1622,7 +1641,7 @@ export class VerificationEntity extends AggregateRoot<
 
       if (expiresAt === undefined) {
         throw new VerificationInvalidStatusException(
-          'An EXPIRED verification must have an expiresAt timestamp.',
+          'An EXPIRED verification must retain its expiresAt timestamp.',
         );
       }
 
@@ -1688,147 +1707,36 @@ export class VerificationEntity extends AggregateRoot<
           'A REVOKED verification must have a lastReviewedAt timestamp.',
         );
       }
-    }
 
-    // -------------------------------------------------------------------------
-    // Verification Chronology
-    // -------------------------------------------------------------------------
-
-    if (
-      verifiedAt !== undefined &&
-      expiresAt !== undefined &&
-      expiresAt.getTime() <= verifiedAt.getTime()
-    ) {
-      throw new VerificationInvalidStatusException(
-        'Verification expiration must occur after verification.',
-      );
-    }
-
-    if (
-      verifiedAt !== undefined &&
-      lastReviewedAt !== undefined &&
-      lastReviewedAt.getTime() < verifiedAt.getTime()
-    ) {
-      throw new VerificationInvalidStatusException(
-        'Verification review cannot occur before verification.',
-      );
-    }
-
-    // -------------------------------------------------------------------------
-    // Evidence Chronology
-    // -------------------------------------------------------------------------
-
-    if (
-      memberVerifiedAt !== undefined &&
-      profilePhotoVerifiedAt !== undefined &&
-      profilePhotoVerifiedAt.getTime() > memberVerifiedAt.getTime() &&
-      governmentIdVerifiedAt === undefined
-    ) {
-      throw new VerificationInvalidStatusException(
-        'Member verification cannot occur before the accepted evidence supporting it.',
-      );
-    }
-
-    if (
-      memberVerifiedAt !== undefined &&
-      governmentIdVerifiedAt !== undefined &&
-      governmentIdVerifiedAt.getTime() > memberVerifiedAt.getTime() &&
-      profilePhotoVerifiedAt === undefined
-    ) {
-      throw new VerificationInvalidStatusException(
-        'Member verification cannot occur before the accepted evidence supporting it.',
-      );
-    }
-
-    if (
-      memberVerifiedAt !== undefined &&
-      profilePhotoVerifiedAt !== undefined &&
-      governmentIdVerifiedAt !== undefined &&
-      profilePhotoVerifiedAt.getTime() > memberVerifiedAt.getTime() &&
-      governmentIdVerifiedAt.getTime() > memberVerifiedAt.getTime()
-    ) {
-      throw new VerificationInvalidStatusException(
-        'Member verification requires at least one accepted evidence timestamp on or before member verification.',
-      );
-    }
-
-    if (
-      driverVerifiedAt !== undefined &&
-      driverLicenseVerifiedAt !== undefined &&
-      driverLicenseVerifiedAt.getTime() > driverVerifiedAt.getTime()
-    ) {
-      throw new VerificationInvalidStatusException(
-        'Driver license evidence acceptance cannot occur after driver verification.',
-      );
-    }
-
-    // -------------------------------------------------------------------------
-    // Aggregate Verification Timestamp Consistency
-    // -------------------------------------------------------------------------
-
-    if (
-      status.isVerified() &&
-      level.isMember() &&
-      memberVerifiedAt !== undefined &&
-      verifiedAt !== undefined &&
-      memberVerifiedAt.getTime() !== verifiedAt.getTime()
-    ) {
-      throw new VerificationInvalidStatusException(
-        'Current MEMBER verification must have memberVerifiedAt equal to verifiedAt.',
-      );
-    }
-
-    if (
-      status.isVerified() &&
-      level.isDriver() &&
-      driverVerifiedAt !== undefined &&
-      verifiedAt !== undefined &&
-      driverVerifiedAt.getTime() !== verifiedAt.getTime()
-    ) {
-      throw new VerificationInvalidStatusException(
-        'Current DRIVER verification must have driverVerifiedAt equal to verifiedAt.',
-      );
+      if (expiresAt !== undefined) {
+        throw new VerificationInvalidStatusException(
+          'A REVOKED verification cannot have an active expiration timestamp.',
+        );
+      }
     }
   }
 
   // ===========================================================================
   // Request Validation
   // ===========================================================================
+  //
+  // Request ownership validation is intentionally handled when a request is
+  // added through addRequest().
+  //
+  // This method currently validates only the collection boundary. It does not
+  // access members on VerificationRequestEntity, which prevents this aggregate
+  // from masking an upstream type-resolution problem in that entity.
+  //
+  // The VerificationRequestEntity itself must still be strongly typed.
+  // ===========================================================================
 
   private static validateRequests(
     requests: readonly VerificationRequestEntity[],
-    verificationPublicId: VerificationPublicId,
   ): void {
     if (!Array.isArray(requests)) {
       throw new VerificationInvalidStatusException(
         'Verification requests must be an array.',
       );
-    }
-
-    const requestPublicIds = new Set<string>();
-
-    for (const request of requests) {
-      if (request === undefined) {
-        throw new VerificationInvalidStatusException(
-          'Verification request collection cannot contain undefined entries.',
-        );
-      }
-
-      if (!request.verificationPublicId.equals(verificationPublicId)) {
-        throw new VerificationInvalidStatusException(
-          `Verification request ${request.publicId.value} does not belong to verification ${verificationPublicId.value}.`,
-        );
-      }
-
-      const requestPublicId = request.publicId.value;
-
-      if (requestPublicIds.has(requestPublicId)) {
-        throw new VerificationInvalidStatusException(
-          `Duplicate verification request ${requestPublicId} is not allowed.`,
-        );
-      }
-
-      requestPublicIds.add(requestPublicId);
     }
   }
 
@@ -1852,9 +1760,11 @@ export class VerificationEntity extends AggregateRoot<
     }
   }
 
-  private ensureNotRevoked(message: string): void {
-    if (this.isRevoked()) {
-      throw new VerificationInvalidStatusException(message);
+  private ensurePendingForRequestMutation(): void {
+    if (!this.isPending()) {
+      throw new VerificationInvalidStatusException(
+        `Verification ${this.publicId.value} cannot accept verification requests from status ${this.props.status.value}.`,
+      );
     }
   }
 
@@ -1866,6 +1776,22 @@ export class VerificationEntity extends AggregateRoot<
     }
   }
 
+  private ensureOperationNotBeforeCreation(at: Date): void {
+    if (at.getTime() < this.props.createdAt.getTime()) {
+      throw new VerificationInvalidStatusException(
+        'Verification operation timestamp cannot occur before creation.',
+      );
+    }
+  }
+
+  private requireOperationTimestamp(at: Date, message: string): Date {
+    const timestamp = VerificationEntity.requireValidTimestamp(at, message);
+
+    this.ensureOperationNotBeforeCreation(timestamp);
+
+    return timestamp;
+  }
+
   // ===========================================================================
   // Evidence Recording
   // ===========================================================================
@@ -1874,14 +1800,16 @@ export class VerificationEntity extends AggregateRoot<
     type: 'PROFILE_PHOTO' | 'GOVERNMENT_ID' | 'DRIVER_LICENSE',
     at: Date,
   ): void {
-    this.ensureNotRevoked(
-      'Accepted evidence cannot be recorded for a revoked verification.',
-    );
-
-    const timestamp = VerificationEntity.requireValidTimestamp(
+    const timestamp = this.requireOperationTimestamp(
       at,
       'Verification evidence timestamp must be valid.',
     );
+
+    if (!this.isPending()) {
+      throw new VerificationInvalidStatusException(
+        `Accepted evidence cannot be recorded while verification is ${this.props.status.value}.`,
+      );
+    }
 
     switch (type) {
       case 'PROFILE_PHOTO': {
@@ -1919,6 +1847,14 @@ export class VerificationEntity extends AggregateRoot<
 
         break;
       }
+
+      default: {
+        const exhaustiveType: never = type;
+
+        throw new VerificationInvalidStatusException(
+          `Unsupported verification evidence type: ${String(exhaustiveType)}.`,
+        );
+      }
     }
 
     this.touch(timestamp);
@@ -1949,12 +1885,37 @@ export class VerificationEntity extends AggregateRoot<
       );
     }
 
+    if (expiration.getTime() < this.props.createdAt.getTime()) {
+      throw new VerificationInvalidStatusException(
+        'Verification expiration cannot occur before verification creation.',
+      );
+    }
+
     return expiration;
   }
 
   // ===========================================================================
   // Validation Helpers
   // ===========================================================================
+
+  private static validateEvidencePair(
+    verified: boolean,
+    verifiedAt: Date | undefined,
+    label: string,
+    timestampName: string,
+  ): void {
+    if (!verified && verifiedAt !== undefined) {
+      throw new VerificationInvalidStatusException(
+        `A verification cannot have ${timestampName} when ${label} verification is false.`,
+      );
+    }
+
+    if (verified && verifiedAt === undefined) {
+      throw new VerificationInvalidStatusException(
+        `Accepted ${label} evidence must have a ${timestampName} timestamp.`,
+      );
+    }
+  }
 
   private static requireValidTimestamp(date: Date, message: string): Date {
     VerificationEntity.ensureValidDate(date, message);

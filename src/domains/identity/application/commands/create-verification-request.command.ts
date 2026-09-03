@@ -2,8 +2,8 @@
 // Verification Request — Create Command
 // -----------------------------------------------------------------------------
 //
-// Application command for creating a VerificationRequestEntity within a
-// Verification aggregate.
+// Application command for creating and submitting a VerificationRequestEntity
+// within an existing Verification aggregate.
 //
 // Aggregate boundary:
 //
@@ -11,25 +11,38 @@
 // └── VerificationEntity
 //     └── VerificationRequestEntity
 //
-// The command represents the intent to create and submit one verification
-// request.
+// This command represents the application-level intent to submit one piece of
+// verification evidence.
 //
-// IMPORTANT:
+// The command does NOT create or mutate domain objects directly.
 //
-// VerificationRequestEntity creation represents submission.
+// The application handler is responsible for:
+// - resolving the VerificationAggregate;
+// - invoking the aggregate operation;
+// - persisting the resulting aggregate.
 //
-// Therefore this command does NOT:
+// The VerificationAggregate is responsible for all domain invariants related
+// to VerificationRequest creation and submission.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Command Semantics
+// -----------------------------------------------------------------------------
+//
+// This command does NOT:
 //
 // - create a Verification aggregate;
 // - construct VerificationEntity;
 // - construct VerificationRequestEntity directly;
 // - mutate VerificationEntity directly;
-// - call submitRequest();
+// - call submitRequest() directly;
 // - approve the VerificationRequest;
 // - reject the VerificationRequest;
 // - cancel the VerificationRequest;
 // - expire the VerificationRequest;
 // - approve the Verification aggregate;
+// - verify the Identity;
 // - modify Identity;
 // - modify Identity roles;
 // - perform verification-provider operations;
@@ -50,38 +63,47 @@
 // - preventing duplicate pending requests of the same type;
 // - creating VerificationRequestEntity;
 // - establishing aggregate ownership;
+// - initializing the request in PENDING state;
 // - recording VerificationRequestCreatedEvent;
 // - recording VerificationRequestSubmittedEvent.
 //
 // -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Request Lifecycle
+// -----------------------------------------------------------------------------
 //
-// Request lifecycle:
+// Creation always produces a PENDING VerificationRequest.
 //
 // PENDING
 //   ├──> APPROVED
 //   ├──> REJECTED
 //   └──> CANCELLED
 //
-// Creation always produces a PENDING VerificationRequest.
-//
 // APPROVED, REJECTED, and CANCELLED are terminal request states.
 //
-// A VerificationRequest does NOT expire. Expiration is not part of the
-// VerificationRequest lifecycle.
+// A VerificationRequest does NOT have an independent expiration transition.
+//
+// Expiration is not part of the VerificationRequest lifecycle.
 //
 // -----------------------------------------------------------------------------
-//
-// Verification lifecycle:
+
+// -----------------------------------------------------------------------------
+// Verification Lifecycle
+// -----------------------------------------------------------------------------
 //
 // The parent Verification aggregate must currently be PENDING before a new
 // VerificationRequest may be created.
 //
-// The command does not decide or enforce this rule; the VerificationAggregate
-// enforces it.
+// This command does not enforce that invariant.
+//
+// The VerificationAggregate is the authoritative owner of that rule.
 //
 // -----------------------------------------------------------------------------
-//
-// Verification Request Type:
+
+// -----------------------------------------------------------------------------
+// Verification Request Type
+// -----------------------------------------------------------------------------
 //
 // Examples:
 //
@@ -91,43 +113,81 @@
 //
 // The command carries the domain VerificationRequestType value object.
 //
-// The command does not interpret or enforce request-type-specific business
-// rules.
+// The command does not interpret request-type-specific business rules.
+//
+// Those rules belong to the appropriate domain boundary.
 //
 // -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Asset
+// -----------------------------------------------------------------------------
 //
-// Asset:
-//
-// `assetPublicId` identifies the submitted verification evidence through the
-// external asset/storage boundary.
+// `assetPublicId` identifies the evidence being submitted through the external
+// asset/storage boundary.
 //
 // The command carries only the opaque public identifier.
 //
-// It does not access, validate, or mutate the asset itself.
+// It does NOT:
 //
-// Asset existence, ownership, eligibility, and other asset-related invariants
-// are enforced by the appropriate domain/application boundary.
+// - load the asset;
+// - inspect the asset;
+// - mutate the asset;
+// - determine asset ownership;
+// - determine asset eligibility.
+//
+// Asset existence, ownership, eligibility, and storage concerns are handled by
+// the appropriate application/domain boundary.
 //
 // -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Identity Context
+// -----------------------------------------------------------------------------
 //
-// Correlation / causation:
+// `identityPublicId` identifies the Identity whose Verification aggregate is
+// being resolved.
+//
+// It is an opaque cross-aggregate public identifier.
+//
+// It is NOT:
+//
+// - a database identifier;
+// - a VerificationRequest ownership field;
+// - a direct Identity relationship on VerificationRequestEntity.
+//
+// The application layer uses this identifier to resolve the existing
+// Verification aggregate.
+//
+// Once the aggregate is loaded, the VerificationAggregate establishes and
+// enforces VerificationRequest ownership.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Correlation / Causation
+// -----------------------------------------------------------------------------
 //
 // - correlationId identifies the complete request-creation/submission
 //   operation;
 // - causationId optionally identifies the command, event, or operation that
-//   caused this request.
+//   caused this operation.
 //
-// Both are application-level metadata propagated to resulting domain events.
+// These are application-level metadata values propagated to resulting domain
+// events by the appropriate application/domain event mechanism.
 //
 // -----------------------------------------------------------------------------
-//
-// Timestamp:
+
+// -----------------------------------------------------------------------------
+// Timestamp
+// -----------------------------------------------------------------------------
 //
 // `submittedAt` is optional.
 //
-// When omitted, the application handler/aggregate uses the current time.
+// When omitted, the aggregate/application boundary determines the effective
+// current timestamp.
 //
-// The aggregate validates the resulting submission timestamp.
+// The aggregate remains responsible for validating the effective timestamp.
 //
 // -----------------------------------------------------------------------------
 
@@ -152,16 +212,14 @@ import type {
 // -----------------------------------------------------------------------------
 
 /**
- * Command for creating and submitting a VerificationRequestEntity.
- *
- * Creating the request establishes its initial PENDING lifecycle state.
+ * Application command for creating and submitting a verification request.
  *
  * The command carries domain-ready value objects rather than raw transport
  * primitives.
  *
  * DTO-to-domain conversion belongs to the presentation/application boundary.
  *
- * Required domain inputs:
+ * Required inputs:
  *
  * - identityPublicId;
  * - type;
@@ -173,8 +231,11 @@ import type {
  * - causationId;
  * - submittedAt.
  *
- * The application layer is responsible for resolving the VerificationAggregate
- * from the Verification repository using the Identity public identity.
+ * The application layer resolves the existing VerificationAggregate using
+ * identityPublicId.
+ *
+ * The aggregate then creates the VerificationRequestEntity and establishes its
+ * initial PENDING state.
  */
 export class CreateVerificationRequestCommand implements Command {
   // ===========================================================================
@@ -183,10 +244,13 @@ export class CreateVerificationRequestCommand implements Command {
 
   public constructor(
     /**
-     * Public identity of the Identity that owns the Verification aggregate.
+     * Public identity of the Identity whose Verification aggregate is being
+     * resolved.
      *
-     * This is an opaque cross-aggregate public identifier and not a
-     * persistence/database identifier.
+     * This is an opaque cross-aggregate public identifier.
+     *
+     * It is used by the application layer to locate the Verification aggregate
+     * and is not stored as VerificationRequest ownership.
      */
     public readonly identityPublicId: IdentityPublicId,
 
@@ -198,6 +262,9 @@ export class CreateVerificationRequestCommand implements Command {
      * - PROFILE_PHOTO;
      * - GOVERNMENT_ID;
      * - DRIVER_LICENSE.
+     *
+     * The command carries the domain value object without interpreting its
+     * business semantics.
      */
     public readonly type: VerificationRequestType,
 
@@ -209,8 +276,8 @@ export class CreateVerificationRequestCommand implements Command {
     public readonly assetPublicId: VerificationRequestAssetPublicId,
 
     /**
-     * Correlation identifier for the verification-request creation and
-     * submission operation.
+     * Correlation identifier for the complete verification-request creation
+     * and submission operation.
      */
     public readonly correlationId: string,
 
@@ -221,10 +288,11 @@ export class CreateVerificationRequestCommand implements Command {
     public readonly causationId?: string,
 
     /**
-     * Optional timestamp at which the VerificationRequest is considered
+     * Optional timestamp at which the verification request is considered
      * submitted.
      *
-     * When omitted, the application handler/aggregate uses the current time.
+     * When omitted, the application/domain boundary determines the effective
+     * current timestamp.
      */
     public readonly submittedAt?: Date,
   ) {}

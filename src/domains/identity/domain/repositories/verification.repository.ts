@@ -90,8 +90,8 @@
 //
 //     cancelRequest()
 //
-// Request persistence remains part of the Verification aggregate persistence
-// boundary.
+// VerificationRequest persistence remains part of the Verification aggregate
+// persistence boundary.
 //
 // -----------------------------------------------------------------------------
 //
@@ -107,8 +107,6 @@
 // - Modify Identity roles.
 // - Determine platform-wide verification policy.
 // - Expire VerificationRequestEntity instances.
-//
-// -----------------------------------------------------------------------------
 //
 // IMPORTANT:
 //
@@ -146,19 +144,19 @@ import type { VerificationAggregate } from '../aggregates/verification.aggregate
 // Value Objects
 // -----------------------------------------------------------------------------
 
-import type { VerificationPublicId } from '../value-objects/verification-public-id.vo';
-
 import type { IdentityPublicId } from '../value-objects/identity-public-id.vo';
-
-import type { VerificationStatus } from '../value-objects/verification-status.vo';
 
 import type { VerificationLevel } from '../value-objects/verification-level.vo';
 
-import type { VerificationRequestType } from '../value-objects/verification-request-type.vo';
+import type { VerificationPublicId } from '../value-objects/verification-public-id.vo';
+
+import type { VerificationRequestAssetPublicId } from '../value-objects/verification-request-asset-public-id.vo';
 
 import type { VerificationRequestStatus } from '../value-objects/verification-request-status.vo';
 
-import type { VerificationRequestAssetPublicId } from '../value-objects/verification-request-asset-public-id.vo';
+import type { VerificationRequestType } from '../value-objects/verification-request-type.vo';
+
+import type { VerificationStatus } from '../value-objects/verification-status.vo';
 
 // =============================================================================
 // Repository
@@ -170,7 +168,7 @@ import type { VerificationRequestAssetPublicId } from '../value-objects/verifica
  * VerificationAggregate is the persistence unit.
  *
  * VerificationRequestEntity instances are aggregate-owned children and are
- * therefore persisted atomically with their owning VerificationAggregate.
+ * persisted atomically with their owning VerificationAggregate.
  */
 export interface VerificationRepository {
   // ===========================================================================
@@ -186,12 +184,12 @@ export interface VerificationRepository {
    * ├── VerificationEntity
    * └── VerificationRequestEntity[]
    *
-   * No VerificationRequestEntity is persisted independently.
+   * VerificationRequestEntity instances are never persisted independently.
    */
   create(aggregate: VerificationAggregate): Promise<void>;
 
   /**
-   * Persists the current state of an existing Verification aggregate.
+   * Persists the complete current state of an existing Verification aggregate.
    *
    * The aggregate root and all aggregate-owned VerificationRequestEntity
    * instances are synchronized within the same persistence transaction.
@@ -199,10 +197,13 @@ export interface VerificationRepository {
   save(aggregate: VerificationAggregate): Promise<void>;
 
   /**
-   * Deletes the complete Verification aggregate atomically.
+   * Deletes the complete Verification aggregate.
    *
-   * All aggregate-owned VerificationRequestEntity persistence records are
-   * removed according to aggregate ownership rules.
+   * Aggregate-owned VerificationRequestEntity persistence records are deleted
+   * as part of the aggregate deletion operation.
+   *
+   * VerificationRequestEntity instances are never deleted through an
+   * independent repository operation.
    */
   delete(aggregate: VerificationAggregate): Promise<void>;
 
@@ -269,9 +270,9 @@ export interface VerificationRepository {
    * - EXPIRED;
    * - REVOKED.
    *
-   * EXPIRED applies to the Verification aggregate only.
+   * EXPIRED applies exclusively to the Verification aggregate.
    *
-   * VerificationRequest does not have an EXPIRED status.
+   * VerificationRequestEntity does not have an EXPIRED status.
    */
   findByStatus(status: VerificationStatus): Promise<VerificationAggregate[]>;
 
@@ -323,10 +324,7 @@ export interface VerificationRepository {
 
   /**
    * Finds complete Verification aggregates containing at least one
-   * VerificationRequest with the supplied lifecycle status.
-   *
-   * Valid VerificationRequest statuses are determined by
-   * VerificationRequestStatus.
+   * VerificationRequestEntity with the supplied lifecycle status.
    *
    * The request lifecycle is:
    *
@@ -334,6 +332,15 @@ export interface VerificationRepository {
    *   ├──> APPROVED
    *   ├──> REJECTED
    *   └──> CANCELLED
+   *
+   * APPROVED
+   *   └── terminal
+   *
+   * REJECTED
+   *   └── terminal
+   *
+   * CANCELLED
+   *   └── terminal
    *
    * There is intentionally no EXPIRED request status.
    */
@@ -343,15 +350,15 @@ export interface VerificationRepository {
 
   /**
    * Finds complete Verification aggregates containing at least one pending
-   * VerificationRequest.
+   * VerificationRequestEntity.
    *
-   * Pending requests are requests currently awaiting review or processing.
+   * Pending requests are currently awaiting review or processing.
    */
   findWithPendingRequests(): Promise<VerificationAggregate[]>;
 
   /**
-   * Finds complete Verification aggregates containing requests of the supplied
-   * verification request type.
+   * Finds complete Verification aggregates containing at least one
+   * VerificationRequestEntity of the supplied type.
    */
   findByRequestType(
     type: VerificationRequestType,
@@ -362,8 +369,8 @@ export interface VerificationRepository {
   // ===========================================================================
 
   /**
-   * Finds the Verification aggregate containing a VerificationRequest that
-   * references the supplied Asset public identity.
+   * Finds the Verification aggregate containing a VerificationRequestEntity
+   * that references the supplied Asset public identity.
    *
    * Asset identity remains an opaque cross-aggregate reference.
    */
@@ -372,8 +379,8 @@ export interface VerificationRepository {
   ): Promise<VerificationAggregate | null>;
 
   /**
-   * Determines whether a VerificationRequest references the supplied Asset
-   * public identity.
+   * Determines whether any aggregate-owned VerificationRequestEntity references
+   * the supplied Asset public identity.
    */
   existsByRequestAssetPublicId(
     assetPublicId: VerificationRequestAssetPublicId,

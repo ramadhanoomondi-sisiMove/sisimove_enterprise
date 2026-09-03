@@ -11,58 +11,59 @@
 // └── VerificationEntity
 //     └── VerificationRequestEntity
 //
+// Applicant flow:
+//
+// 1. POST   /verifications
+//    Start verification for the authenticated identity.
+//
+// 2. POST   /verifications/:verificationPublicId/requests
+//    Submit a verification request for the authenticated identity's
+//    verification aggregate.
+//
+// Reviewer flow:
+//
+// 3. PATCH  /verifications/:verificationPublicId/requests/:requestId/approve
+// 4. PATCH  /verifications/:verificationPublicId/requests/:requestId/reject
+// 5. PATCH  /verifications/:verificationPublicId/grant-member
+// 6. PATCH  /verifications/:verificationPublicId/grant-driver
+// 7. PATCH  /verifications/:verificationPublicId/reject
+// 8. PATCH  /verifications/:verificationPublicId/reopen
+// 9. PATCH  /verifications/:verificationPublicId/expire
+// 10. PATCH /verifications/:verificationPublicId/revoke
+//
 // Responsibilities:
 //
 // - HTTP transport;
 // - DTO binding and validation;
+// - extraction of authenticated identity from JWT security context;
 // - conversion of transport primitives to domain value objects;
+// - generation of application correlation metadata;
 // - dispatching application commands and queries;
 // - mapping domain results to HTTP response models.
 //
-// The controller contains no business rules.
+// The controller contains NO business rules.
 //
-// Domain behavior:
+// Domain behavior remains inside:
+//
 // - VerificationAggregate;
 // - VerificationRequestEntity.
 //
-// Application orchestration:
+// Application orchestration remains inside:
+//
 // - command handlers;
 // - query handlers.
 //
-// Persistence:
+// Persistence remains behind:
+//
 // - VerificationRepository.
 //
-// IMPORTANT:
-//
-// Verification and VerificationRequest are distinct responsibilities.
-//
-// Verification commands operate on the Verification aggregate:
-//
-// - create verification;
-// - grant MEMBER verification;
-// - grant DRIVER verification;
-// - reject verification;
-// - reopen verification;
-// - expire verification;
-// - revoke verification.
-//
-// Verification Request commands operate on an individual child request:
-//
-// - create request;
-// - approve request;
-// - reject request;
-// - cancel request.
-//
-// VerificationRequest does NOT have an independent expiration operation.
-//
-// There is intentionally no generic APPROVE_VERIFICATION command.
-//
-// Approving a VerificationRequest and granting Verification are different
-// business operations.
-//
-// VerificationRequest is owned by VerificationAggregate.
-//
 // -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Node.js
+// -----------------------------------------------------------------------------
+
+import { randomUUID } from 'node:crypto';
 
 // -----------------------------------------------------------------------------
 // NestJS
@@ -76,17 +77,20 @@ import {
   Param,
   Patch,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+
+import type { Request } from 'express';
 
 // -----------------------------------------------------------------------------
 // Swagger
 // -----------------------------------------------------------------------------
 
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 // -----------------------------------------------------------------------------
-// Identity — Authentication & Authorization
+// Foundation — Security
 // -----------------------------------------------------------------------------
 
 import {
@@ -95,11 +99,14 @@ import {
   RequirePermissions,
 } from '../../../../../foundation/security/auth';
 
+import type { AuthenticatedIdentity } from '../../../../../foundation/security/auth/authenticated-identity.interface';
+
 // -----------------------------------------------------------------------------
 // Foundation — Application
 // -----------------------------------------------------------------------------
 
 import type { CommandHandler } from '../../../../../foundation/kernel/application/command-handler';
+
 import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
 
 // -----------------------------------------------------------------------------
@@ -165,16 +172,11 @@ import {
 // -----------------------------------------------------------------------------
 
 import {
-  ApproveVerificationRequestRequestDto,
-  CancelVerificationRequestRequestDto,
-  CreateVerificationRequestDto,
   CreateVerificationRequestRequestDto,
-  ExpireVerificationRequestDto,
   GrantDriverVerificationRequestDto,
   GrantMemberVerificationRequestDto,
   RejectVerificationRequestDto,
   RejectVerificationRequestRequestDto,
-  ReopenVerificationRequestDto,
   RevokeVerificationRequestDto,
 } from '../dto/request';
 
@@ -204,12 +206,45 @@ import type {
 import { VerificationResponseMapper } from '../mappers/verification.response.mapper';
 
 // =============================================================================
+// Authenticated Request
+// =============================================================================
+//
+// JwtAuthGuard populates req.user from the value returned by JwtStrategy.
+//
+// The JWT itself contains:
+//
+//     sub = IdentityPublicId
+//
+// JwtStrategy validates that token and maps:
+//
+//     payload.sub
+//          ↓
+//     request.user.identityPublicId
+//
+// Therefore the controller must read:
+//
+//     req.user.identityPublicId
+//
+// and must NOT read:
+//
+//     req.user.sub
+//
+// The controller trusts only the authenticated security context for the actor
+// identity. Identity must never be accepted from a caller-controlled DTO when
+// it can be obtained from the JWT.
+//
+// -----------------------------------------------------------------------------
+
+interface AuthenticatedRequest extends Request {
+  user: AuthenticatedIdentity;
+}
+
+// =============================================================================
 // Controller
 // =============================================================================
 
 @ApiTags('Verifications')
 @Controller('verifications')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class VerificationsController {
   // ===========================================================================
   // Constructor
@@ -314,14 +349,20 @@ export class VerificationsController {
   ) {}
 
   // ===========================================================================
-  // Queries
+  // Verification Queries
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Get Verification
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get a verification',
+    description: 'Returns a verification aggregate by its public ID.',
+  })
   @Get(':verificationPublicId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('verification:read')
   public async get(
     @Param() dto: GetVerificationQueryDto,
@@ -343,7 +384,14 @@ export class VerificationsController {
   // Get Verification Requests
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'List verification requests',
+    description:
+      'Returns all verification requests belonging to the specified verification.',
+  })
   @Get(':verificationPublicId/requests')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('verification-request:read')
   public async getRequests(
     @Param() dto: GetVerificationRequestsQueryDto,
@@ -361,7 +409,14 @@ export class VerificationsController {
   // Get Verification Request
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get a verification request',
+    description:
+      'Returns a single verification request belonging to the specified verification.',
+  })
   @Get(':verificationPublicId/requests/:verificationRequestPublicId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('verification-request:read')
   public async getRequest(
     @Param() dto: GetVerificationRequestQueryDto,
@@ -381,33 +436,27 @@ export class VerificationsController {
   }
 
   // ===========================================================================
-  // Verification Commands
+  // Applicant — Verification
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
-  // Create Verification
+  // Start Verification
   // ---------------------------------------------------------------------------
-  //
-  // CreateVerificationCommand:
-  //
-  //   identityPublicId
-  //   correlationId
-  //   causationId?
-  //   createdAt?
-  //
-  // VerificationPublicId is generated by the aggregate.
-  //
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Start verification',
+    description:
+      'Creates the verification aggregate for the authenticated identity. This is the first step in the verification flow.',
+  })
   @Post()
-  @RequirePermissions('verification:create')
+  @UseGuards(JwtAuthGuard)
   public async create(
-    @Body() dto: CreateVerificationRequestDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<VerificationResponse> {
     const command = new CreateVerificationCommand(
-      new IdentityPublicId(dto.identityPublicId),
-      dto.correlationId,
-      dto.causationId,
-      dto.createdAt !== undefined ? new Date(dto.createdAt) : undefined,
+      new IdentityPublicId(req.user.identityPublicId),
+      randomUUID(),
     );
 
     const aggregate = await this.createVerificationHandler.execute(command);
@@ -415,45 +464,36 @@ export class VerificationsController {
     return VerificationResponseMapper.toResponse(aggregate);
   }
 
+  // ===========================================================================
+  // Reviewer — Verification
+  // ===========================================================================
+
   // ---------------------------------------------------------------------------
   // Grant Member Verification
   // ---------------------------------------------------------------------------
-  //
-  // GrantMemberVerificationCommand constructor order:
-  //
-  //   identityPublicId
-  //   verificationPublicId
-  //   verificationRequestPublicId
-  //   reviewedByPublicId
-  //   correlationId
-  //   causationId?
-  //   verifiedAt?
-  //   expiresAt?
-  //
-  // The verificationRequestPublicId identifies the approved VerificationRequest
-  // that provides the evidence required for MEMBER verification.
-  //
-  // The controller converts transport primitives into domain value objects.
-  // Aggregate-level eligibility and request validation remain inside the
-  // VerificationAggregate.
-  //
-  // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Grant member verification',
+    description:
+      'Grants member verification after a verification request has been reviewed and approved.',
+  })
   @Patch(':verificationPublicId/grant-member')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('verification:grant-member')
   public async grantMember(
     @Param('verificationPublicId') verificationPublicId: string,
+    @Req() req: AuthenticatedRequest,
     @Body() dto: GrantMemberVerificationRequestDto,
   ): Promise<VerificationResponse> {
+    const reviewerPublicId = new IdentityPublicId(req.user.identityPublicId);
+
     const command = new GrantMemberVerificationCommand(
-      new IdentityPublicId(dto.identityPublicId),
+      reviewerPublicId,
       new VerificationPublicId(verificationPublicId),
       new VerificationRequestPublicId(dto.verificationRequestPublicId),
-      new IdentityPublicId(dto.reviewedByPublicId),
-      dto.correlationId,
-      dto.causationId,
-      dto.verifiedAt,
-      dto.expiresAt,
+      reviewerPublicId,
+      randomUUID(),
     );
 
     const aggregate =
@@ -465,43 +505,29 @@ export class VerificationsController {
   // ---------------------------------------------------------------------------
   // Grant Driver Verification
   // ---------------------------------------------------------------------------
-  //
-  // GrantDriverVerificationCommand constructor order:
-  //
-  //   identityPublicId
-  //   verificationPublicId
-  //   verificationRequestPublicId
-  //   reviewedByPublicId
-  //   correlationId
-  //   causationId?
-  //   verifiedAt?
-  //   expiresAt?
-  //
-  // The verificationRequestPublicId identifies the approved DRIVER_LICENSE
-  // VerificationRequest that provides the evidence required for DRIVER
-  // verification.
-  //
-  // The controller converts transport primitives into domain value objects.
-  // Aggregate-level eligibility and request validation remain inside the
-  // VerificationAggregate.
-  //
-  // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Grant driver verification',
+    description:
+      'Grants driver verification after a verification request has been reviewed and approved.',
+  })
   @Patch(':verificationPublicId/grant-driver')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('verification:grant-driver')
   public async grantDriver(
     @Param('verificationPublicId') verificationPublicId: string,
+    @Req() req: AuthenticatedRequest,
     @Body() dto: GrantDriverVerificationRequestDto,
   ): Promise<VerificationResponse> {
+    const reviewerPublicId = new IdentityPublicId(req.user.identityPublicId);
+
     const command = new GrantDriverVerificationCommand(
-      new IdentityPublicId(dto.identityPublicId),
+      reviewerPublicId,
       new VerificationPublicId(verificationPublicId),
       new VerificationRequestPublicId(dto.verificationRequestPublicId),
-      new IdentityPublicId(dto.reviewedByPublicId),
-      dto.correlationId,
-      dto.causationId,
-      dto.verifiedAt,
-      dto.expiresAt,
+      reviewerPublicId,
+      randomUUID(),
     );
 
     const aggregate =
@@ -513,33 +539,27 @@ export class VerificationsController {
   // ---------------------------------------------------------------------------
   // Reject Verification
   // ---------------------------------------------------------------------------
-  //
-  // RejectVerificationCommand:
-  //
-  //   identityPublicId
-  //   requestPublicId
-  //   reviewedByPublicId
-  //   reason
-  //   correlationId
-  //   causationId?
-  //   reviewedAt?
-  //
-  // This command targets the Verification aggregate-level rejection operation.
-  //
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Reject verification',
+    description: 'Rejects the verification aggregate after review.',
+  })
   @Patch(':verificationPublicId/reject')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('verification:reject')
   public async reject(
+    @Req() req: AuthenticatedRequest,
     @Body() dto: RejectVerificationRequestDto,
   ): Promise<VerificationResponse> {
+    const reviewerPublicId = new IdentityPublicId(req.user.identityPublicId);
+
     const command = new RejectVerificationCommand(
-      new IdentityPublicId(dto.identityPublicId),
+      reviewerPublicId,
       new VerificationRequestPublicId(dto.requestPublicId),
-      new IdentityPublicId(dto.reviewedByPublicId),
+      reviewerPublicId,
       dto.reason,
-      dto.correlationId,
-      dto.causationId,
-      dto.reviewedAt !== undefined ? new Date(dto.reviewedAt) : undefined,
+      randomUUID(),
     );
 
     const aggregate = await this.rejectVerificationHandler.execute(command);
@@ -550,28 +570,22 @@ export class VerificationsController {
   // ---------------------------------------------------------------------------
   // Reopen Verification
   // ---------------------------------------------------------------------------
-  //
-  // ReopenVerificationCommand:
-  //
-  //   verificationPublicId
-  //   correlationId
-  //   reopenedAt?
-  //   causationId?
-  //
-  // No reviewer is required by the command.
-  //
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Reopen verification',
+    description:
+      'Reopens a verification that was previously rejected or expired according to domain rules.',
+  })
   @Patch(':verificationPublicId/reopen')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('verification:reopen')
   public async reopen(
     @Param('verificationPublicId') verificationPublicId: string,
-    @Body() dto: ReopenVerificationRequestDto,
   ): Promise<VerificationResponse> {
     const command = new ReopenVerificationCommand(
       new VerificationPublicId(verificationPublicId),
-      dto.correlationId,
-      dto.reopenedAt !== undefined ? new Date(dto.reopenedAt) : undefined,
-      dto.causationId,
+      randomUUID(),
     );
 
     const aggregate = await this.reopenVerificationHandler.execute(command);
@@ -582,25 +596,22 @@ export class VerificationsController {
   // ---------------------------------------------------------------------------
   // Expire Verification
   // ---------------------------------------------------------------------------
-  //
-  // ExpireVerificationCommand:
-  //
-  //   identityPublicId
-  //   correlationId
-  //   causationId?
-  //   expiredAt?
-  //
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Expire verification',
+    description:
+      'Expires a verification according to the application workflow.',
+  })
   @Patch(':verificationPublicId/expire')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('verification:expire')
   public async expire(
-    @Body() dto: ExpireVerificationRequestDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<VerificationResponse> {
     const command = new ExpireVerificationCommand(
-      new IdentityPublicId(dto.identityPublicId),
-      dto.correlationId,
-      dto.causationId,
-      dto.expiredAt !== undefined ? new Date(dto.expiredAt) : undefined,
+      new IdentityPublicId(req.user.identityPublicId),
+      randomUUID(),
     );
 
     const aggregate = await this.expireVerificationHandler.execute(command);
@@ -611,29 +622,26 @@ export class VerificationsController {
   // ---------------------------------------------------------------------------
   // Revoke Verification
   // ---------------------------------------------------------------------------
-  //
-  // RevokeVerificationCommand:
-  //
-  //   identityPublicId
-  //   revokedByPublicId
-  //   reason
-  //   correlationId
-  //   causationId?
-  //   revokedAt?
-  //
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Revoke verification',
+    description: 'Revokes an existing verification.',
+  })
   @Patch(':verificationPublicId/revoke')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('verification:revoke')
   public async revoke(
+    @Req() req: AuthenticatedRequest,
     @Body() dto: RevokeVerificationRequestDto,
   ): Promise<VerificationResponse> {
+    const actorPublicId = new IdentityPublicId(req.user.identityPublicId);
+
     const command = new RevokeVerificationCommand(
-      new IdentityPublicId(dto.identityPublicId),
-      new IdentityPublicId(dto.revokedByPublicId),
+      actorPublicId,
+      actorPublicId,
       dto.reason,
-      dto.correlationId,
-      dto.causationId,
-      dto.revokedAt !== undefined ? new Date(dto.revokedAt) : undefined,
+      randomUUID(),
     );
 
     const aggregate = await this.revokeVerificationHandler.execute(command);
@@ -642,37 +650,30 @@ export class VerificationsController {
   }
 
   // ===========================================================================
-  // Verification Request Commands
+  // Applicant — Verification Requests
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Create Verification Request
   // ---------------------------------------------------------------------------
-  //
-  // CreateVerificationRequestCommand:
-  //
-  //   identityPublicId
-  //   type
-  //   assetPublicId
-  //   correlationId
-  //   causationId?
-  //   submittedAt?
-  //
-  // The Verification aggregate is resolved through the owning Identity.
-  //
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Submit verification request',
+    description:
+      'Creates a verification request for the authenticated identity. Start verification first with POST /verifications.',
+  })
   @Post(':verificationPublicId/requests')
-  @RequirePermissions('verification-request:create')
+  @UseGuards(JwtAuthGuard)
   public async createRequest(
+    @Req() req: AuthenticatedRequest,
     @Body() dto: CreateVerificationRequestRequestDto,
   ): Promise<VerificationRequestResponse> {
     const command = new CreateVerificationRequestCommand(
-      new IdentityPublicId(dto.identityPublicId),
+      new IdentityPublicId(req.user.identityPublicId),
       VerificationRequestType.create(dto.type),
       new VerificationRequestAssetPublicId(dto.assetPublicId),
-      dto.correlationId,
-      dto.causationId,
-      dto.submittedAt !== undefined ? new Date(dto.submittedAt) : undefined,
+      randomUUID(),
     );
 
     const request =
@@ -681,39 +682,34 @@ export class VerificationsController {
     return VerificationResponseMapper.requestFromEntity(request);
   }
 
+  // ===========================================================================
+  // Reviewer — Verification Requests
+  // ===========================================================================
+
   // ---------------------------------------------------------------------------
   // Approve Verification Request
   // ---------------------------------------------------------------------------
-  //
-  // ApproveVerificationRequestCommand:
-  //
-  //   identityPublicId
-  //   requestPublicId
-  //   reviewedByPublicId
-  //   correlationId
-  //   expiresAt?
-  //   causationId?
-  //   reviewedAt?
-  //
-  // Approval is a VerificationRequest operation.
-  //
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Approve verification request',
+    description: 'Approves a verification request after reviewer validation.',
+  })
   @Patch(':verificationPublicId/requests/:verificationRequestPublicId/approve')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('verification-request:approve')
   public async approveRequest(
     @Param('verificationRequestPublicId')
     verificationRequestPublicId: string,
-
-    @Body()
-    dto: ApproveVerificationRequestRequestDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<VerificationRequestResponse> {
+    const reviewerPublicId = new IdentityPublicId(req.user.identityPublicId);
+
     const command = new ApproveVerificationRequestCommand(
-      new IdentityPublicId(dto.identityPublicId),
+      reviewerPublicId,
       new VerificationRequestPublicId(verificationRequestPublicId),
-      new IdentityPublicId(dto.reviewedByPublicId),
-      dto.correlationId,
-      dto.causationId,
-      dto.reviewedAt,
+      reviewerPublicId,
+      randomUUID(),
     );
 
     const request =
@@ -725,32 +721,29 @@ export class VerificationsController {
   // ---------------------------------------------------------------------------
   // Reject Verification Request
   // ---------------------------------------------------------------------------
-  //
-  // RejectVerificationRequestCommand:
-  //
-  //   identityPublicId
-  //   requestPublicId
-  //   reviewedByPublicId
-  //   reason
-  //   correlationId
-  //   causationId?
-  //   reviewedAt?
-  //
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Reject verification request',
+    description: 'Rejects a verification request after reviewer validation.',
+  })
   @Patch(':verificationPublicId/requests/:verificationRequestPublicId/reject')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('verification-request:reject')
   public async rejectRequest(
-    @Param('verificationRequestPublicId') verificationRequestPublicId: string,
+    @Param('verificationRequestPublicId')
+    verificationRequestPublicId: string,
+    @Req() req: AuthenticatedRequest,
     @Body() dto: RejectVerificationRequestRequestDto,
   ): Promise<VerificationRequestResponse> {
+    const reviewerPublicId = new IdentityPublicId(req.user.identityPublicId);
+
     const command = new RejectVerificationRequestCommand(
-      new IdentityPublicId(dto.identityPublicId),
+      reviewerPublicId,
       new VerificationRequestPublicId(verificationRequestPublicId),
-      new IdentityPublicId(dto.reviewedByPublicId),
+      reviewerPublicId,
       dto.reason,
-      dto.correlationId,
-      dto.causationId,
-      dto.reviewedAt !== undefined ? new Date(dto.reviewedAt) : undefined,
+      randomUUID(),
     );
 
     const request =
@@ -762,30 +755,23 @@ export class VerificationsController {
   // ---------------------------------------------------------------------------
   // Cancel Verification Request
   // ---------------------------------------------------------------------------
-  //
-  // CancelVerificationRequestCommand:
-  //
-  //   identityPublicId
-  //   requestPublicId
-  //   correlationId
-  //   causationId?
-  //   cancelledAt?
-  //
-  // No reviewer or cancellation reason exists in the command.
-  //
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Cancel verification request',
+    description:
+      'Cancels a pending verification request belonging to the authenticated identity.',
+  })
   @Patch(':verificationPublicId/requests/:verificationRequestPublicId/cancel')
-  @RequirePermissions('verification-request:cancel')
+  @UseGuards(JwtAuthGuard)
   public async cancelRequest(
     @Param('verificationRequestPublicId') verificationRequestPublicId: string,
-    @Body() dto: CancelVerificationRequestRequestDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<VerificationRequestResponse> {
     const command = new CancelVerificationRequestCommand(
-      new IdentityPublicId(dto.identityPublicId),
+      new IdentityPublicId(req.user.identityPublicId),
       new VerificationRequestPublicId(verificationRequestPublicId),
-      dto.correlationId,
-      dto.causationId,
-      dto.cancelledAt !== undefined ? new Date(dto.cancelledAt) : undefined,
+      randomUUID(),
     );
 
     const request =

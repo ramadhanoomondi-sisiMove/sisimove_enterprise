@@ -58,9 +58,6 @@ model Identity {
   // Assets owned by this identity.
   ownedAssets Asset[]
 
-  // Asset moderation actions performed by this identity.
-  assetModerations AssetModeration[]
-
   // ---------------------------------------------------------------------------
   // Indexes
   // ---------------------------------------------------------------------------
@@ -198,7 +195,6 @@ model VerificationRequest {
 
   rejectionReason String?
 
-
   // ---------------------------------------------------------------------------
   // Metadata
   // ---------------------------------------------------------------------------
@@ -270,7 +266,7 @@ model Role {
 // =============================================================================
 
 model IdentityRole {
-  id String @id @default(uuid())
+  id       String @id @default(uuid())
   publicId String @unique
 
   // ---------------------------------------------------------------------------
@@ -377,7 +373,7 @@ model Permission {
 // =============================================================================
 
 model RolePermission {
-  id String @id @default(uuid())
+  id       String @id @default(uuid())
   publicId String @unique
 
   // ---------------------------------------------------------------------------
@@ -429,8 +425,8 @@ model Authentication {
   passwordHash    String?
   passwordVersion Int     @default(1)
 
-  passwordChangedAt   DateTime?
-  passwordMustChange  Boolean @default(false)
+  passwordChangedAt  DateTime?
+  passwordMustChange Boolean   @default(false)
 
   failedAuthenticationCount  Int       @default(0)
   lastFailedAuthenticationAt DateTime?
@@ -447,10 +443,8 @@ model Authentication {
   @@index([status])
   @@index([lockedUntil])
   @@index([lastAuthenticatedAt])
-
   @@map("authentications")
 }
-
 
 // =============================================================================
 // SESSION
@@ -496,7 +490,6 @@ model Session {
   @@index([status])
   @@index([expiresAt])
   @@index([lastActivityAt])
-
   @@map("sessions")
 }
 
@@ -533,15 +526,12 @@ model Device {
   updatedAt DateTime @updatedAt
 
   @@unique([identityPublicId, fingerprint])
-
   @@index([identityPublicId])
   @@index([status])
   @@index([trustLevel])
   @@index([lastSeenAt])
-
   @@map("devices")
 }
-
 
 // =============================================================================
 // RECOVERY
@@ -574,7 +564,6 @@ model Recovery {
   @@index([requestedAt])
   @@index([identityPublicId, type])
   @@index([identityPublicId, status])
-
   @@map("recoveries")
 }
 
@@ -650,66 +639,98 @@ model OtpChallenge {
   @@index([identityPublicId, purpose])
   @@index([status])
   @@index([expiresAt])
-
   @@map("otp_challenges")
 }
+
+// =============================================================================
+// ASSET
+// =============================================================================
+//
+// Asset represents a stored file owned by an identity and referenced by
+// application domains.
+//
+// Examples:
+// - profile photo
+// - government ID
+// - driver's licence
+// - passport
+// - vehicle photo
+// - chat attachment
+//
+// Public API uses Asset.publicId.
+// Internal relationships use Asset.id.
+//
+// Ownership is established by the authenticated identity. Clients must not
+// be trusted to assign an asset to another identity.
+//
+// =============================================================================
 
 model Asset {
   id       String @id @default(uuid())
   publicId String @unique
 
+  // ---------------------------------------------------------------------------
+  // Ownership
+  // ---------------------------------------------------------------------------
+
   ownerIdentityId String?
   ownerIdentity   Identity? @relation(fields: [ownerIdentityId], references: [id], onDelete: SetNull)
 
-  type       AssetType
-  category   AssetCategory
+  // ---------------------------------------------------------------------------
+  // Classification
+  // ---------------------------------------------------------------------------
+
+  type     AssetType
+  category AssetCategory
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
   status     AssetStatus     @default(UPLOADING)
   visibility AssetVisibility @default(PRIVATE)
+
+  // ---------------------------------------------------------------------------
+  // Storage
+  // ---------------------------------------------------------------------------
 
   storageProvider StorageProvider
 
   bucket    String
   objectKey String @unique
 
+  // ---------------------------------------------------------------------------
+  // File Metadata
+  // ---------------------------------------------------------------------------
+
   originalFilename String?
-  storedFilename   String?
+  mimeType         String
+  sizeBytes        BigInt
 
-  mimeType  String
-  extension String?
-
-  sizeBytes BigInt
-
-  checksumAlgorithm ChecksumAlgorithm?
-  checksum          String?
-
-  width      Int?
-  height     Int?
-  colorDepth Int?
-
-  durationSeconds Int?
-  bitrate         Int?
-  frameRate       Float?
-
-  blurHash String?
-
-  metadata Json?
+  // ---------------------------------------------------------------------------
+  // Lifecycle Timestamps
+  // ---------------------------------------------------------------------------
 
   uploadedAt DateTime?
-
   archivedAt DateTime?
   deletedAt  DateTime?
+
+  // ---------------------------------------------------------------------------
+  // Domain References
+  // ---------------------------------------------------------------------------
+
+  verificationRequests VerificationRequest[]
+
+  // ---------------------------------------------------------------------------
+  // Audit
+  // ---------------------------------------------------------------------------
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  variants AssetVariant[]
-
-  references  AssetReference[]
-  processings AssetProcessing[]
-  scans       AssetScan[]
-  moderations AssetModeration[]
-
-  verificationRequests VerificationRequest[]
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
 
   @@index([ownerIdentityId])
   @@index([type])
@@ -717,187 +738,12 @@ model Asset {
   @@index([status])
   @@index([visibility])
   @@index([storageProvider])
-  @@index([uploadedAt])
-  @@index([archivedAt])
-  @@index([deletedAt])
   @@index([ownerIdentityId, status])
   @@index([ownerIdentityId, category])
-  @@index([storageProvider, status])
   @@index([type, status])
   @@index([category, status])
   @@index([visibility, status])
-  @@index([createdAt])
-  @@index([updatedAt])
-  @@index([ownerIdentityId, createdAt])
-  @@index([ownerIdentityId, visibility])
   @@map("assets")
-}
-
-model AssetVariant {
-  id       String @id @default(uuid())
-  publicId String @unique
-
-  assetId String
-  asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
-
-  variant AssetVariantType
-
-  status AssetVariantStatus @default(PENDING)
-
-  isGenerated Boolean @default(true)
-
-  storageProvider StorageProvider
-
-  bucket    String
-  objectKey String @unique
-
-  mimeType  String
-  extension String?
-
-  sizeBytes BigInt
-
-  width  Int?
-  height Int?
-
-  durationSeconds Int?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([assetId, variant])
-  @@index([assetId])
-  @@index([status])
-  @@index([variant])
-  @@index([assetId, status])
-  @@index([storageProvider])
-  @@index([createdAt])
-  @@map("asset_variants")
-}
-
-model AssetReference {
-  id       String @id @default(uuid())
-  publicId String @unique
-
-  assetId String
-  asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
-
-  resourceType AssetResourceType
-
-  resourcePublicId String
-
-  referenceField AssetReferenceField
-
-  createdAt DateTime @default(now())
-
-  @@unique([assetId, resourceType, resourcePublicId, referenceField])
-  @@index([assetId])
-  @@index([resourceType])
-  @@index([resourcePublicId])
-  @@index([resourceType, resourcePublicId])
-  @@map("asset_references")
-}
-
-model AssetProcessing {
-  id       String @id @default(uuid())
-  publicId String @unique
-
-  assetId String
-  asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
-
-  operation AssetProcessingOperation
-
-  status AssetProcessingStatus @default(PENDING)
-
-  processor AssetProcessor?
-
-  startedAt   DateTime?
-  completedAt DateTime?
-  failedAt    DateTime?
-
-  failureReason String?
-
-  metadata Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([assetId])
-  @@index([status])
-  @@index([operation])
-  @@index([createdAt])
-  @@index([assetId, operation])
-  @@index([assetId, status])
-  @@index([processor])
-  @@index([startedAt])
-  @@index([completedAt])
-  @@index([failedAt])
-  @@map("asset_processings")
-}
-
-model AssetScan {
-  id       String @id @default(uuid())
-  publicId String @unique
-
-  assetId String
-  asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
-
-  engine AssetScanEngine
-
-  status AssetScanStatus @default(PENDING)
-
-  scannedAt DateTime?
-
-  threatName String?
-
-  metadata Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([assetId])
-  @@index([status])
-  @@index([engine])
-  @@index([scannedAt])
-  @@index([assetId, engine])
-  @@index([assetId, status])
-  @@index([createdAt])
-  @@map("asset_scans")
-}
-
-model AssetModeration {
-  id       String @id @default(uuid())
-  publicId String @unique
-
-  assetId String
-  asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
-
-  type AssetModerationType
-
-  status AssetModerationStatus @default(PENDING)
-
-  moderatorIdentityId String?
-  moderatorIdentity   Identity? @relation(fields: [moderatorIdentityId], references: [id], onDelete: SetNull)
-
-  confidence Float?
-
-  reason String?
-
-  metadata Json?
-
-  moderatedAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([assetId])
-  @@index([status])
-  @@index([type])
-  @@index([moderatorIdentityId])
-  @@index([assetId, type])
-  @@index([assetId, status])
-  @@index([moderatedAt])
-  @@index([createdAt])
-  @@map("asset_moderations")
 }
 
 // ============================================================
@@ -4421,52 +4267,25 @@ enum JourneyDemandStatus {
   EXPIRED
 }
 
-enum AssetVariantType {
-  ORIGINAL
-  ICON
-  THUMBNAIL
-  TINY
-  SMALL
-  MEDIUM
-  LARGE
-  XLARGE
-  WEB
-  WEBP
-  AVIF
-  PREVIEW
-  COMPRESSED
-  HD
-  FULL_HD
-  QHD
-  UHD_4K
-}
+// =============================================================================
+// ASSET ENUMS
+// =============================================================================
 
-enum AssetProcessingOperation {
-  THUMBNAIL
-  PREVIEW
-  COMPRESS
-  RESIZE
-  ROTATE
-  WEBP
-  AVIF
-  TRANSCODE
-  OCR
-  BLUR_HASH
-  WATERMARK
-  STRIP_METADATA
-  FACE_DETECTION
-  AI_TAGGING
-  AI_CAPTION
-}
+// -----------------------------------------------------------------------------
+// Asset Type
+// -----------------------------------------------------------------------------
 
 enum AssetType {
   IMAGE
   VIDEO
   AUDIO
   DOCUMENT
-  ARCHIVE
   OTHER
 }
+
+// -----------------------------------------------------------------------------
+// Asset Category
+// -----------------------------------------------------------------------------
 
 enum AssetCategory {
   PROFILE_PHOTO
@@ -4478,48 +4297,35 @@ enum AssetCategory {
   PASSPORT
   SELFIE
 
-  POST_MEDIA
-  COMMENT_MEDIA
-  STORY_MEDIA
-  REEL_MEDIA
-
-  CHAT_ATTACHMENT
-
-  TRIP_MEDIA
-  DESTINATION_MEDIA
-
   VEHICLE_PHOTO
-
-  ORGANIZATION_LOGO
-  ORGANIZATION_BANNER
-
-  PRODUCT_MEDIA
-
-  EVENT_BANNER
-
+  CHAT_ATTACHMENT
   OTHER
 }
+
+// -----------------------------------------------------------------------------
+// Asset Status
+// -----------------------------------------------------------------------------
 
 enum AssetStatus {
   UPLOADING
   UPLOADED
-  SCANNING
-  SCAN_FAILED
-  PROCESSING
-  PROCESSING_FAILED
   READY
-  ARCHIVING
   ARCHIVED
-  DELETING
   DELETED
 }
 
+// -----------------------------------------------------------------------------
+// Asset Visibility
+// -----------------------------------------------------------------------------
+
 enum AssetVisibility {
   PUBLIC
-  COMMUNITY
-  CONNECTIONS
   PRIVATE
 }
+
+// -----------------------------------------------------------------------------
+// Storage Provider
+// -----------------------------------------------------------------------------
 
 enum StorageProvider {
   LOCAL
@@ -4527,96 +4333,6 @@ enum StorageProvider {
   GOOGLE_CLOUD_STORAGE
   AZURE_BLOB
   CLOUDINARY
-  OTHER
-}
-
-enum AssetVariantStatus {
-  PENDING
-  PROCESSING
-  READY
-  FAILED
-}
-
-enum ChecksumAlgorithm {
-  MD5
-  SHA1
-  SHA256
-  SHA512
-}
-
-enum AssetProcessingStatus {
-  PENDING
-  RUNNING
-  COMPLETED
-  FAILED
-  CANCELLED
-}
-
-enum AssetProcessor {
-  LIBVIPS
-  IMAGEMAGICK
-  FFMPEG
-  CLOUDINARY
-  CUSTOM
-  GDAL
-}
-
-enum AssetScanEngine {
-  CLAMAV
-  VIRUS_TOTAL
-  MICROSOFT_DEFENDER
-  CUSTOM
-}
-
-enum AssetScanStatus {
-  PENDING
-  CLEAN
-  INFECTED
-  FAILED
-}
-
-enum AssetModerationType {
-  AI
-  MANUAL
-  COMMUNITY
-  COPYRIGHT
-}
-
-enum AssetModerationStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
-enum AssetReferenceField {
-  PRIMARY
-  SECONDARY
-  AVATAR
-  COVER
-  BANNER
-  THUMBNAIL
-  PREVIEW
-  GALLERY
-  ATTACHMENT
-  DOCUMENT
-  OTHER
-}
-
-enum AssetResourceType {
-  IDENTITY
-  MEMBER
-  ORGANIZATION
-  POST
-  COMMENT
-  MESSAGE
-  STORY
-  REEL
-  TRIP
-  DESTINATION
-  EVENT
-  PRODUCT
-  VEHICLE
-  VERIFICATION
   OTHER
 }
 

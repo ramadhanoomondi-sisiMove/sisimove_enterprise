@@ -1,8 +1,0 @@
-export enum AssetProcessor {
-  LIBVIPS = 'LIBVIPS',
-  IMAGEMAGICK = 'IMAGEMAGICK',
-  FFMPEG = 'FFMPEG',
-  CLOUDINARY = 'CLOUDINARY',
-  CUSTOM = 'CUSTOM',
-  GDAL = 'GDAL',
-}

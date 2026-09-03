@@ -15,157 +15,6 @@
 // VerificationRequestEntity instances.
 //
 // -----------------------------------------------------------------------------
-//
-// Responsibilities:
-//
-// Verification lifecycle:
-//
-// - create Verification;
-// - grant MEMBER verification;
-// - grant DRIVER verification;
-// - reject Verification;
-// - expire Verification;
-// - reopen Verification;
-// - revoke Verification.
-//
-// Verification-request lifecycle:
-//
-// - create and submit VerificationRequest;
-// - approve VerificationRequest;
-// - reject VerificationRequest;
-// - cancel VerificationRequest.
-//
-// Aggregate coordination:
-//
-// - enforce request ownership;
-// - enforce request identity uniqueness;
-// - enforce one pending request per request type;
-// - translate approved request evidence into Verification evidence;
-// - evaluate whether approved evidence permits Verification;
-// - emit aggregate and request domain events.
-//
-// -----------------------------------------------------------------------------
-//
-// IMPORTANT DOMAIN DISTINCTION
-//
-// Request approval and Verification approval are different business actions.
-//
-// VerificationRequest approval:
-//
-//     approveRequest()
-//
-// means:
-//
-// - submitted evidence was reviewed;
-// - the evidence was accepted;
-// - the request became APPROVED.
-//
-// It does NOT by itself mean:
-//
-// - Verification is VERIFIED;
-// - Verification level is MEMBER;
-// - Verification level is DRIVER.
-//
-// Verification approval:
-//
-//     grantMemberVerification()
-//     grantDriverVerification()
-//
-// means:
-//
-// - sufficient approved evidence exists;
-// - Verification lifecycle advances to VERIFIED;
-// - the corresponding VerificationLevel is granted.
-//
-// -----------------------------------------------------------------------------
-//
-// Verification lifecycle:
-//
-// PENDING
-//   ├──> VERIFIED
-//   └──> REJECTED
-//
-// VERIFIED
-//   ├──> EXPIRED
-//   └──> REVOKED
-//
-// REJECTED
-//   └──> PENDING
-//
-// EXPIRED
-//   └──> PENDING
-//
-// REVOKED
-//   └── terminal
-//
-// -----------------------------------------------------------------------------
-//
-// Verification request lifecycle:
-//
-// PENDING
-//   ├──> APPROVED
-//   ├──> REJECTED
-//   └──> CANCELLED
-//
-// APPROVED
-//   └── terminal
-//
-// REJECTED
-//   └── terminal
-//
-// CANCELLED
-//   └── terminal
-//
-// There is intentionally no EXPIRED request status.
-//
-// -----------------------------------------------------------------------------
-//
-// Evidence mapping:
-//
-// PROFILE_PHOTO
-//     -> profilePhotoVerified
-//
-// GOVERNMENT_ID
-//     -> governmentIdVerified
-//
-// DRIVER_LICENSE
-//     -> driverLicenseVerified
-//
-// MEMBER verification:
-//
-//     profilePhotoVerified === true
-//     OR
-//     governmentIdVerified === true
-//
-// DRIVER verification:
-//
-//     driverLicenseVerified === true
-//
-// -----------------------------------------------------------------------------
-//
-// Progressive verification:
-//
-// The current VerificationEntity only permits:
-//
-//     PENDING -> VERIFIED
-//
-// Therefore:
-//
-//     MEMBER -> DRIVER
-//
-// is intentionally NOT supported.
-//
-// -----------------------------------------------------------------------------
-//
-// Cross-domain references:
-//
-// - IdentityPublicId
-// - VerificationRequestAssetPublicId
-// - VerificationRequestPublicId
-//
-// Persistence identifiers remain outside the aggregate contract.
-//
-// -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
 // Foundation
@@ -462,10 +311,18 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
     return this.verification.expiresAt;
   }
 
+  /**
+   * Historical timestamp at which MEMBER verification was granted.
+   *
+   * This remains preserved after promotion to DRIVER.
+   */
   public get memberVerifiedAt(): Date | undefined {
     return this.verification.memberVerifiedAt;
   }
 
+  /**
+   * Timestamp at which DRIVER verification was granted.
+   */
   public get driverVerifiedAt(): Date | undefined {
     return this.verification.driverVerifiedAt;
   }
@@ -566,6 +423,20 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
     return this.verification.isDriverLevel();
   }
 
+  /**
+   * Determines whether the aggregate currently represents a verified member.
+   */
+  public isMemberVerified(): boolean {
+    return this.isVerified() && this.isMemberLevel();
+  }
+
+  /**
+   * Determines whether the aggregate currently represents a verified driver.
+   */
+  public isDriverVerified(): boolean {
+    return this.isVerified() && this.isDriverLevel();
+  }
+
   // ===========================================================================
   // Evidence Queries
   // ===========================================================================
@@ -599,10 +470,14 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
     return this.hasDriverLicenseVerification();
   }
 
+  // ===========================================================================
+  // Verification Grant Queries
+  // ===========================================================================
+
   /**
    * Determines whether MEMBER verification may currently be granted.
    *
-   * Progressive promotion is intentionally unsupported.
+   * MEMBER verification is the initial verification level.
    */
   public canGrantMemberVerification(): boolean {
     return this.isPending() && this.hasRequiredMemberVerification();
@@ -611,11 +486,41 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
   /**
    * Determines whether DRIVER verification may currently be granted.
    *
-   * Progressive promotion is intentionally unsupported.
+   * DRIVER is a progressive upgrade from an active MEMBER verification.
+   *
+   * Therefore:
+   *
+   * - aggregate must currently be VERIFIED;
+   * - current level must be MEMBER;
+   * - current MEMBER verification must still be active;
+   * - accepted driver-license evidence must exist.
    */
-  public canGrantDriverVerification(): boolean {
-    return this.isPending() && this.hasRequiredDriverVerification();
+  public canGrantDriverVerification(at: Date = new Date()): boolean {
+    VerificationAggregate.ensureValidDate(
+      at,
+      'Verification driver-upgrade timestamp must be valid.',
+    );
+
+    return (
+      this.isMemberVerified() &&
+      this.isActive(at) &&
+      this.hasRequiredDriverVerification()
+    );
   }
+
+  /**
+   * Determines whether the aggregate may currently accept a DRIVER upgrade
+   * request.
+   */
+  public canRequestDriverVerification(at: Date = new Date()): boolean {
+    VerificationAggregate.ensureValidDate(
+      at,
+      'Verification driver-request timestamp must be valid.',
+    );
+
+    return this.isMemberVerified() && this.isActive(at);
+  }
+
   // ===========================================================================
   // Verification Requests — Queries
   // ===========================================================================
@@ -715,8 +620,6 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
 
   /**
    * Returns all currently pending VerificationRequests.
-   *
-   * The returned collection is readonly from the aggregate API perspective.
    */
   public get pendingRequests(): readonly VerificationRequestEntity[] {
     return this.requests.filter((request) => request.isPending());
@@ -739,34 +642,21 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
    *
    * Request creation is synonymous with request submission.
    *
-   * The arrow-function form intentionally preserves aggregate `this`
-   * semantics if the operation is passed around as a callback.
+   * Supported creation contexts:
    *
-   * Lifecycle:
+   * INITIAL MEMBER VERIFICATION:
    *
-   *     createRequest()
-   *          │
-   *          ├── create VerificationRequestEntity
-   *          │
-   *          ├── add request to Verification aggregate
-   *          │
-   *          ├── VerificationRequestCreatedEvent
-   *          │
-   *          └── VerificationRequestSubmittedEvent
+   *     PENDING
+   *       ├── PROFILE_PHOTO
+   *       └── GOVERNMENT_ID
    *
-   * Emits:
+   * PROGRESSIVE DRIVER VERIFICATION:
    *
-   * - VerificationRequestCreatedEvent;
-   * - VerificationRequestSubmittedEvent.
+   *     VERIFIED / MEMBER
+   *       └── DRIVER_LICENSE
    *
-   * IMPORTANT:
-   *
-   * VerificationRequestEntity exposes submittedAt through its method:
-   *
-   *     request.submittedAt()
-   *
-   * The resolved Date is captured once and reused by both events so both events
-   * carry the exact same submission timestamp.
+   * A DRIVER_LICENSE request therefore does not invalidate the existing
+   * MEMBER verification.
    */
   public readonly createRequest = (
     props: CreateVerificationRequestProps,
@@ -811,14 +701,10 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
     );
 
     // -------------------------------------------------------------------------
-    // Validate Verification lifecycle
+    // Validate request creation against aggregate lifecycle
     // -------------------------------------------------------------------------
 
-    if (!this.isPending()) {
-      throw new VerificationInvariantException(
-        `Verification ${this.publicId.value} cannot create a request from status ${this.status.value}.`,
-      );
-    }
+    this.ensureRequestCreationAllowed(props.type, submittedAt);
 
     // -------------------------------------------------------------------------
     // Enforce one pending request per request type
@@ -851,21 +737,6 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
 
     // -------------------------------------------------------------------------
     // Resolve request submission timestamp
-    // -------------------------------------------------------------------------
-    //
-    // VerificationRequestEntity exposes submittedAt as:
-    //
-    //     submittedAt(): Date
-    //
-    // Resolve it once rather than passing the method itself.
-    //
-    // This prevents:
-    //
-    //     Argument of type '() => Date' is not assignable to parameter of type
-    //     'Date'.
-    //
-    // It also guarantees both events receive the same Date value.
-    //
     // -------------------------------------------------------------------------
 
     const requestSubmittedAt = request.submittedAt();
@@ -920,6 +791,7 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
 
     return request;
   };
+
   // ===========================================================================
   // Verification Requests — Rehydration
   // ===========================================================================
@@ -963,6 +835,18 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
    * Approval accepts the submitted evidence at request level.
    *
    * Approval does not automatically grant aggregate Verification.
+   *
+   * For progressive verification this means:
+   *
+   *     DRIVER_LICENSE request
+   *          ↓
+   *     APPROVED
+   *          ↓
+   *     driverLicenseVerified = true
+   *          ↓
+   *     grantDriverVerification()
+   *          ↓
+   *     VERIFIED / DRIVER
    */
   public approveRequest(
     requestPublicId: VerificationRequestEntity['publicId'],
@@ -1016,6 +900,16 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
    * Rejects a VerificationRequest.
    *
    * Request rejection does not reject the parent Verification aggregate.
+   *
+   * This is especially important for DRIVER_LICENSE requests:
+   *
+   *     VERIFIED / MEMBER
+   *          +
+   *     DRIVER request rejected
+   *          =
+   *     VERIFIED / MEMBER
+   *
+   * The member remains verified and may submit another driver request later.
    */
   public rejectRequest(
     requestPublicId: VerificationRequestEntity['publicId'],
@@ -1075,6 +969,11 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
 
   /**
    * Cancels a pending VerificationRequest.
+   *
+   * Cancellation is allowed for both:
+   *
+   * - initial MEMBER verification requests;
+   * - progressive DRIVER verification requests.
    */
   public cancelRequest(
     requestPublicId: VerificationRequestEntity['publicId'],
@@ -1121,7 +1020,10 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
    *
    * - belong to this aggregate;
    * - be APPROVED;
-   * - contain MEMBER-eligible evidence.
+   * - be PROFILE_PHOTO or GOVERNMENT_ID;
+   * - have produced the corresponding accepted MEMBER evidence.
+   *
+   * This operation is only valid for the initial PENDING verification cycle.
    */
   public grantMemberVerification(
     requestPublicId: VerificationRequestEntity['publicId'],
@@ -1183,13 +1085,35 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
   // ===========================================================================
 
   /**
-   * Grants DRIVER verification.
+   * Grants DRIVER verification as a progressive upgrade from MEMBER.
    *
    * The supplied request must:
    *
    * - belong to this aggregate;
    * - be APPROVED;
-   * - represent DRIVER_LICENSE evidence.
+   * - be DRIVER_LICENSE;
+   * - have produced accepted driver-license evidence.
+   *
+   * The aggregate must currently be:
+   *
+   *     VERIFIED / MEMBER
+   *
+   * The existing MEMBER verification remains preserved.
+   *
+   * After successful promotion:
+   *
+   *     status = VERIFIED
+   *     level  = DRIVER
+   *
+   * and:
+   *
+   *     memberVerifiedAt
+   *
+   * remains unchanged.
+   *
+   *     driverVerifiedAt
+   *
+   * becomes the current verification timestamp.
    */
   public grantDriverVerification(
     requestPublicId: VerificationRequestEntity['publicId'],
@@ -1217,9 +1141,9 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
       'Verification expiration must occur after verification timestamp.',
     );
 
-    if (!this.canGrantDriverVerification()) {
+    if (!this.canGrantDriverVerification(verifiedAt)) {
       throw new VerificationInvariantException(
-        `Verification ${this.publicId.value} does not currently satisfy DRIVER verification requirements.`,
+        `Verification ${this.publicId.value} does not currently satisfy DRIVER upgrade requirements.`,
       );
     }
 
@@ -1251,9 +1175,19 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
   // ===========================================================================
 
   /**
-   * Rejects the Verification aggregate.
+   * Rejects the initial Verification aggregate.
    *
-   * This is distinct from request rejection.
+   * This operation is intentionally distinct from request rejection.
+   *
+   * It is valid only while the aggregate is in the initial PENDING state.
+   *
+   * A rejected DRIVER_LICENSE request must use:
+   *
+   *     rejectRequest()
+   *
+   * rather than this method.
+   *
+   * This preserves an already verified MEMBER when driver verification fails.
    */
   public reject(
     requestPublicId: VerificationRequestEntity['publicId'],
@@ -1281,7 +1215,15 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
       'Verification rejection timestamp must be valid.',
     );
 
+    if (!this.isPending()) {
+      throw new VerificationInvariantException(
+        `Only a PENDING verification can be rejected. Current status is ${this.status.value}.`,
+      );
+    }
+
     const request = this.getRequest(requestPublicId);
+
+    this.ensureApprovedMemberVerificationRequest(request);
 
     const normalizedReason = reason.trim();
 
@@ -1314,6 +1256,11 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
 
   /**
    * Expires a currently verified Verification.
+   *
+   * Expiration applies to the current aggregate-level verification state.
+   *
+   * Historical MEMBER and DRIVER verification timestamps remain owned by the
+   * VerificationEntity.
    */
   public expire(correlationId: string, expiredAt: Date = new Date()): void {
     this.ensureCorrelationId(correlationId);
@@ -1374,6 +1321,9 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
    *
    * REJECTED -> PENDING
    * EXPIRED  -> PENDING
+   *
+   * Historical evidence and historical verification timestamps are preserved
+   * by VerificationEntity.
    */
   public reopen(correlationId: string, reopenedAt: Date = new Date()): void {
     this.ensureCorrelationId(correlationId);
@@ -1404,6 +1354,10 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
    * Revokes Verification.
    *
    * REVOKED is terminal.
+   *
+   * Revocation applies to the complete Verification aggregate and therefore
+   * terminates both its current MEMBER/DRIVER verification state and any
+   * future progression.
    */
   public revoke(
     revokedByPublicId: IdentityPublicId,
@@ -1451,7 +1405,11 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
    * - request collection integrity;
    * - request identity uniqueness;
    * - request ownership;
-   * - one pending request per request type.
+   * - one pending request per request type;
+   * - request type is compatible with current aggregate state.
+   *
+   * The deeper Verification lifecycle invariants remain owned by
+   * VerificationEntity.
    */
   private ensureAggregateConsistency(): void {
     const verification = this.verification;
@@ -1526,6 +1484,92 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
   }
 
   // ===========================================================================
+  // Request Creation Guards
+  // ===========================================================================
+
+  /**
+   * Enforces the request types permitted by the current Verification state.
+   *
+   * Initial verification:
+   *
+   *     PENDING
+   *       ├── PROFILE_PHOTO
+   *       └── GOVERNMENT_ID
+   *
+   * Progressive verification:
+   *
+   *     VERIFIED / MEMBER
+   *       └── DRIVER_LICENSE
+   *
+   * No request may be created against:
+   *
+   * - VERIFIED / DRIVER;
+   * - REJECTED;
+   * - EXPIRED;
+   * - REVOKED.
+   */
+  private ensureRequestCreationAllowed(
+    type: VerificationRequestType,
+    submittedAt: Date,
+  ): void {
+    const requestType = type.value;
+
+    // -------------------------------------------------------------------------
+    // Initial MEMBER verification
+    // -------------------------------------------------------------------------
+
+    if (this.isPending()) {
+      switch (requestType) {
+        case 'PROFILE_PHOTO':
+        case 'GOVERNMENT_ID':
+          return;
+
+        case 'DRIVER_LICENSE':
+          throw new VerificationInvariantException(
+            `A DRIVER_LICENSE request cannot be submitted before MEMBER verification has been granted for verification ${this.publicId.value}.`,
+          );
+
+        default:
+          return this.assertNeverVerificationRequestType(requestType);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Progressive DRIVER verification
+    // -------------------------------------------------------------------------
+
+    if (this.isMemberVerified()) {
+      if (!this.isActive(submittedAt)) {
+        throw new VerificationInvariantException(
+          `Verification ${this.publicId.value} is no longer active and cannot accept a DRIVER verification request.`,
+        );
+      }
+
+      switch (requestType) {
+        case 'DRIVER_LICENSE':
+          return;
+
+        case 'PROFILE_PHOTO':
+        case 'GOVERNMENT_ID':
+          throw new VerificationInvariantException(
+            `A ${requestType} request is only valid during initial MEMBER verification.`,
+          );
+
+        default:
+          return this.assertNeverVerificationRequestType(requestType);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // All other states
+    // -------------------------------------------------------------------------
+
+    throw new VerificationInvariantException(
+      `Verification ${this.publicId.value} cannot create a ${requestType} request from status ${this.status.value} and level ${this.level.value}.`,
+    );
+  }
+
+  // ===========================================================================
   // Approved Evidence
   // ===========================================================================
 
@@ -1535,6 +1579,9 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
    * This changes evidence state only.
    *
    * It does not grant Verification or change Verification level.
+   *
+   * VerificationEntity controls whether the evidence itself may be accepted
+   * in the current lifecycle context.
    */
   private applyApprovedEvidence(
     request: VerificationRequestEntity,
@@ -1570,6 +1617,15 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
   // Verification Grant Guards
   // ===========================================================================
 
+  /**
+   * Ensures the supplied request is a valid approved MEMBER request and that
+   * the request itself has produced the corresponding accepted MEMBER
+   * evidence.
+   *
+   * This prevents an unrelated approved MEMBER request from being used to
+   * grant Verification merely because another request has already established
+   * sufficient aggregate-level evidence.
+   */
   private ensureApprovedMemberVerificationRequest(
     request: VerificationRequestEntity,
   ): void {
@@ -1583,7 +1639,21 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
 
     switch (type) {
       case 'PROFILE_PHOTO':
+        if (!this.hasProfilePhotoVerification()) {
+          throw new VerificationInvariantException(
+            `Approved PROFILE_PHOTO verification request ${request.publicId.value} has not produced accepted profile-photo evidence.`,
+          );
+        }
+
+        return;
+
       case 'GOVERNMENT_ID':
+        if (!this.hasGovernmentIdVerification()) {
+          throw new VerificationInvariantException(
+            `Approved GOVERNMENT_ID verification request ${request.publicId.value} has not produced accepted government-ID evidence.`,
+          );
+        }
+
         return;
 
       case 'DRIVER_LICENSE':
@@ -1596,6 +1666,10 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
     }
   }
 
+  /**
+   * Ensures the supplied request is a valid approved DRIVER request and that
+   * the request itself has produced accepted driver-license evidence.
+   */
   private ensureApprovedDriverVerificationRequest(
     request: VerificationRequestEntity,
   ): void {
@@ -1609,6 +1683,12 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
 
     switch (type) {
       case 'DRIVER_LICENSE':
+        if (!this.hasDriverLicenseVerification()) {
+          throw new VerificationInvariantException(
+            `Approved DRIVER_LICENSE verification request ${request.publicId.value} has not produced accepted driver-license evidence.`,
+          );
+        }
+
         return;
 
       case 'PROFILE_PHOTO':
@@ -1642,6 +1722,27 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
   /**
    * Records VerificationApprovedEvent only when the aggregate actually
    * advances its Verification status or level.
+   *
+   * This is important for progressive verification.
+   *
+   * Request approval:
+   *
+   *     VERIFIED / MEMBER
+   *         +
+   *     DRIVER request APPROVED
+   *
+   * does NOT emit VerificationApprovedEvent yet because the level has not
+   * changed.
+   *
+   * Only:
+   *
+   *     grantDriverVerification()
+   *
+   * changes:
+   *
+   *     MEMBER -> DRIVER
+   *
+   * and therefore emits VerificationApprovedEvent.
    */
   private recordVerificationApprovalIfChanged(
     previousStatus: VerificationStatus,
@@ -1703,8 +1804,6 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
 
   /**
    * Correlation validation has no instance state and therefore is static.
-   *
-   * This avoids unnecessary `this` binding semantics.
    */
   private static ensureCorrelationIdValue(correlationId: string): void {
     if (

@@ -15,7 +15,8 @@
 // - validates the command;
 // - enforces Identity → Verification uniqueness;
 // - creates the VerificationAggregate;
-// - persists the complete aggregate.
+// - persists the complete aggregate;
+// - returns the created VerificationAggregate.
 //
 // The handler does NOT:
 //
@@ -63,6 +64,9 @@
 //              │
 //              ▼
 // VerificationAggregate.create()
+//              │
+//              ▼
+// identity consistency guard
 //              │
 //              ▼
 // verificationRepository.create()
@@ -142,12 +146,19 @@ import { VerificationInvariantException } from '../../domain/exceptions/verifica
  *       ↓
  *     aggregate creation
  *       ↓
+ *     identity consistency check
+ *       ↓
  *     aggregate persistence
+ *       ↓
+ *     aggregate return
  *
  * All Verification state and lifecycle rules remain inside the aggregate.
  */
 @Injectable()
-export class CreateVerificationHandler implements CommandHandler<CreateVerificationCommand> {
+export class CreateVerificationHandler implements CommandHandler<
+  CreateVerificationCommand,
+  VerificationAggregate
+> {
   // ===========================================================================
   // Constructor
   // ===========================================================================
@@ -169,12 +180,14 @@ export class CreateVerificationHandler implements CommandHandler<CreateVerificat
    *
    * No verification request is created by this handler.
    */
-  public async execute(command: CreateVerificationCommand): Promise<void> {
+  public async execute(
+    command: CreateVerificationCommand,
+  ): Promise<VerificationAggregate> {
     // -------------------------------------------------------------------------
     // 1. Command guard
     // -------------------------------------------------------------------------
 
-    if (command === undefined) {
+    if (command === undefined || command === null) {
       throw new VerificationInvariantException(
         'Create verification command is required.',
       );
@@ -247,7 +260,36 @@ export class CreateVerificationHandler implements CommandHandler<CreateVerificat
     );
 
     // -------------------------------------------------------------------------
-    // 5. Persist Verification aggregate
+    // 5. Identity consistency guard
+    // -------------------------------------------------------------------------
+    //
+    // The authenticated Identity public ID is authoritative.
+    //
+    // The aggregate must retain exactly the same public identity that entered
+    // the application boundary.
+    //
+    // This guard deliberately compares PUBLIC IDs.
+    //
+    // It does not:
+    //
+    // - query Prisma;
+    // - resolve Identity.id;
+    // - modify Identity;
+    // - translate one public ID into another.
+    //
+    // Repository infrastructure remains responsible for:
+    //
+    //     Identity.publicId -> Identity.id
+    // -------------------------------------------------------------------------
+
+    if (aggregate.identityPublicId.value !== command.identityPublicId.value) {
+      throw new VerificationInvariantException(
+        `Verification aggregate identity mismatch: command identity "${command.identityPublicId.value}" does not match aggregate identity "${aggregate.identityPublicId.value}".`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // 6. Persist Verification aggregate
     // -------------------------------------------------------------------------
     //
     // VerificationRepository.create() persists the complete aggregate as the
@@ -265,6 +307,16 @@ export class CreateVerificationHandler implements CommandHandler<CreateVerificat
     // -------------------------------------------------------------------------
 
     await this.verificationRepository.create(aggregate);
+
+    // -------------------------------------------------------------------------
+    // 7. Return aggregate
+    // -------------------------------------------------------------------------
+    //
+    // The application operation returns the aggregate so the controller can
+    // map the domain result into the HTTP response model.
+    // -------------------------------------------------------------------------
+
+    return aggregate;
   }
 }
 

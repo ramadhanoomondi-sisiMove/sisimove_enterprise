@@ -25,7 +25,7 @@
 //
 // VerificationRequest does NOT expire.
 //
-// VerificationRequest lifecycle is:
+// VerificationRequest lifecycle:
 //
 // PENDING
 // APPROVED
@@ -153,18 +153,6 @@ import { VerificationPrismaMapper } from '../../../persistence/prisma/mappers/ve
 // =============================================================================
 // Prisma Include Graph
 // =============================================================================
-//
-// Verification
-// ├── identity
-// ├── reviewedBy
-// └── requests
-//     ├── verification
-//     ├── asset
-//     └── reviewedBy
-//
-// This is the complete aggregate rehydration graph.
-//
-// =============================================================================
 
 const verificationAggregateInclude = {
   identity: {
@@ -243,12 +231,6 @@ export class PrismaVerificationRepository implements VerificationRepository {
   // Prisma Enum Boundary
   // ===========================================================================
 
-  /**
-   * Converts a domain VerificationStatus value into the Prisma enum.
-   *
-   * The mapper persistence model intentionally exposes primitive values.
-   * Domain validation has already happened before the repository boundary.
-   */
   private toPrismaVerificationStatus(value: string): $Enums.VerificationStatus {
     switch (value) {
       case 'PENDING':
@@ -273,9 +255,6 @@ export class PrismaVerificationRepository implements VerificationRepository {
     }
   }
 
-  /**
-   * Converts a domain VerificationLevel value into the Prisma enum.
-   */
   private toPrismaVerificationLevel(value: string): $Enums.VerificationLevel {
     switch (value) {
       case 'NONE':
@@ -294,9 +273,6 @@ export class PrismaVerificationRepository implements VerificationRepository {
     }
   }
 
-  /**
-   * Converts a domain VerificationRequestType value into the Prisma enum.
-   */
   private toPrismaVerificationRequestType(
     value: string,
   ): $Enums.VerificationRequestType {
@@ -317,11 +293,6 @@ export class PrismaVerificationRepository implements VerificationRepository {
     }
   }
 
-  /**
-   * Converts a domain VerificationRequestStatus value into the Prisma enum.
-   *
-   * VerificationRequest has no EXPIRED state.
-   */
   private toPrismaVerificationRequestStatus(
     value: string,
   ): $Enums.VerificationRequestStatus {
@@ -349,32 +320,46 @@ export class PrismaVerificationRepository implements VerificationRepository {
   // Create
   // ===========================================================================
 
-  /**
-   * Persists a brand-new Verification aggregate atomically.
-   *
-   * The Verification root and all aggregate-owned VerificationRequest children
-   * are created inside the same transaction.
-   *
-   * VerificationRequest expiration is intentionally not persisted because
-   * VerificationRequest does not expire.
-   */
   public async create(aggregate: VerificationAggregate): Promise<void> {
     this.assertAggregate(aggregate);
 
     const persistence = VerificationPrismaMapper.toPersistence(aggregate);
 
     await this.prisma.$transaction(async (tx) => {
+      // -----------------------------------------------------------------------
+      // Verification.identityId is a required Prisma foreign key.
+      //
+      // The domain carries IdentityPublicId.
+      // Prisma Verification.identityId references Identity.id.
+      //
+      // Resolve the public identity to the internal persistence identity
+      // before writing the Verification row.
+      // -----------------------------------------------------------------------
+
+      const identityId = await this.resolveOwningIdentityId(
+        tx,
+        persistence.verification.publicId,
+        persistence.verification.identityPublicId,
+      );
+
+      // -----------------------------------------------------------------------
+      // Verification.reviewedById is optional.
+      // -----------------------------------------------------------------------
+
+      const reviewedById = await this.resolveOptionalIdentityId(
+        tx,
+        'Verification',
+        persistence.verification.publicId,
+        persistence.verification.reviewedByPublicId,
+      );
+
       const verification = await tx.verification.create({
         data: {
           id: persistence.verification.id,
 
           publicId: persistence.verification.publicId,
 
-          identity: {
-            connect: {
-              publicId: persistence.verification.identityPublicId,
-            },
-          },
+          identityId,
 
           status: this.toPrismaVerificationStatus(
             persistence.verification.status,
@@ -405,15 +390,7 @@ export class PrismaVerificationRepository implements VerificationRepository {
           driverLicenseVerifiedAt:
             persistence.verification.driverLicenseVerifiedAt,
 
-          ...(persistence.verification.reviewedByPublicId !== null
-            ? {
-                reviewedBy: {
-                  connect: {
-                    publicId: persistence.verification.reviewedByPublicId,
-                  },
-                },
-              }
-            : {}),
+          reviewedById,
 
           rejectionReason: persistence.verification.rejectionReason,
 
@@ -430,11 +407,15 @@ export class PrismaVerificationRepository implements VerificationRepository {
         },
       });
 
+      // -----------------------------------------------------------------------
+      // Persist aggregate-owned VerificationRequest children.
+      // -----------------------------------------------------------------------
+
       for (const request of persistence.requests) {
         await this.createVerificationRequest(
           tx,
           verification.id,
-          persistence.verification.publicId,
+          verification.publicId,
           request,
         );
       }
@@ -445,13 +426,6 @@ export class PrismaVerificationRepository implements VerificationRepository {
   // Save
   // ===========================================================================
 
-  /**
-   * Persists the complete current state of an existing Verification aggregate.
-   *
-   * Aggregate root and aggregate-owned requests are synchronized atomically.
-   *
-   * VerificationRequest does not contain expiration state.
-   */
   public async save(aggregate: VerificationAggregate): Promise<void> {
     this.assertAggregate(aggregate);
 
@@ -481,19 +455,36 @@ export class PrismaVerificationRepository implements VerificationRepository {
         );
       }
 
+      // -----------------------------------------------------------------------
+      // Verification.identityId is required.
+      // -----------------------------------------------------------------------
+
+      const identityId = await this.resolveOwningIdentityId(
+        tx,
+        persistence.verification.publicId,
+        persistence.verification.identityPublicId,
+      );
+
+      // -----------------------------------------------------------------------
+      // Verification.reviewedById is optional.
+      // -----------------------------------------------------------------------
+
+      const reviewedById = await this.resolveOptionalIdentityId(
+        tx,
+        'Verification',
+        persistence.verification.publicId,
+        persistence.verification.reviewedByPublicId,
+      );
+
       await tx.verification.update({
         where: {
-          id: persistence.verification.id,
+          id: verification.id,
         },
 
         data: {
           publicId: persistence.verification.publicId,
 
-          identity: {
-            connect: {
-              publicId: persistence.verification.identityPublicId,
-            },
-          },
+          identityId,
 
           status: this.toPrismaVerificationStatus(
             persistence.verification.status,
@@ -524,19 +515,7 @@ export class PrismaVerificationRepository implements VerificationRepository {
           driverLicenseVerifiedAt:
             persistence.verification.driverLicenseVerifiedAt,
 
-          ...(persistence.verification.reviewedByPublicId !== null
-            ? {
-                reviewedBy: {
-                  connect: {
-                    publicId: persistence.verification.reviewedByPublicId,
-                  },
-                },
-              }
-            : {
-                reviewedBy: {
-                  disconnect: true,
-                },
-              }),
+          reviewedById,
 
           rejectionReason: persistence.verification.rejectionReason,
 
@@ -547,7 +526,7 @@ export class PrismaVerificationRepository implements VerificationRepository {
       });
 
       // -----------------------------------------------------------------------
-      // Reconcile aggregate-owned VerificationRequest children
+      // Reconcile aggregate-owned VerificationRequest children.
       // -----------------------------------------------------------------------
 
       const persistedRequestIds = persistence.requests.map(
@@ -573,14 +552,14 @@ export class PrismaVerificationRepository implements VerificationRepository {
       }
 
       // -----------------------------------------------------------------------
-      // Persist current aggregate-owned requests
+      // Persist current aggregate-owned requests.
       // -----------------------------------------------------------------------
 
       for (const request of persistence.requests) {
         await this.upsertVerificationRequest(
           tx,
           verification.id,
-          persistence.verification.publicId,
+          verification.publicId,
           request,
         );
       }
@@ -591,9 +570,6 @@ export class PrismaVerificationRepository implements VerificationRepository {
   // Aggregate Lookup
   // ===========================================================================
 
-  /**
-   * Finds and rehydrates the complete Verification aggregate by persistence ID.
-   */
   public async findById(id: string): Promise<VerificationAggregate | null> {
     if (typeof id !== 'string' || id.trim().length === 0) {
       throw new VerificationInvariantException(
@@ -612,9 +588,6 @@ export class PrismaVerificationRepository implements VerificationRepository {
     return record === null ? null : this.toAggregate(record);
   }
 
-  /**
-   * Finds and rehydrates the complete Verification aggregate by public ID.
-   */
   public async findByPublicId(
     publicId: VerificationPublicId,
   ): Promise<VerificationAggregate | null> {
@@ -635,19 +608,22 @@ export class PrismaVerificationRepository implements VerificationRepository {
   // Identity Queries
   // ===========================================================================
 
-  /**
-   * Finds the Verification aggregate belonging to an Identity.
-   */
   public async findByIdentityPublicId(
     identityPublicId: IdentityPublicId,
   ): Promise<VerificationAggregate | null> {
     this.assertIdentityPublicId(identityPublicId);
 
-    const record = await this.prisma.verification.findFirst({
+    const identity = await this.findIdentityPersistenceReference(
+      identityPublicId.value,
+    );
+
+    if (identity === null) {
+      return null;
+    }
+
+    const record = await this.prisma.verification.findUnique({
       where: {
-        identity: {
-          publicId: identityPublicId.value,
-        },
+        identityId: identity.id,
       },
 
       include: verificationAggregateInclude,
@@ -656,28 +632,28 @@ export class PrismaVerificationRepository implements VerificationRepository {
     return record === null ? null : this.toAggregate(record);
   }
 
-  /**
-   * Determines whether an Identity has a Verification aggregate.
-   */
   public async existsByIdentityPublicId(
     identityPublicId: IdentityPublicId,
   ): Promise<boolean> {
     this.assertIdentityPublicId(identityPublicId);
 
+    const identity = await this.findIdentityPersistenceReference(
+      identityPublicId.value,
+    );
+
+    if (identity === null) {
+      return false;
+    }
+
     const count = await this.prisma.verification.count({
       where: {
-        identity: {
-          publicId: identityPublicId.value,
-        },
+        identityId: identity.id,
       },
     });
 
     return count > 0;
   }
 
-  /**
-   * Semantic alias for existsByIdentityPublicId().
-   */
   public async existsByIdentity(
     identityPublicId: IdentityPublicId,
   ): Promise<boolean> {
@@ -688,120 +664,40 @@ export class PrismaVerificationRepository implements VerificationRepository {
   // Verification Lifecycle Queries
   // ===========================================================================
 
-  /**
-   * Finds Verification aggregates by lifecycle status.
-   */
   public async findByStatus(
     status: VerificationStatus,
   ): Promise<VerificationAggregate[]> {
     this.assertVerificationStatus(status);
 
-    const records = await this.prisma.verification.findMany({
-      where: {
-        status: this.toPrismaVerificationStatus(status.value),
-      },
-
-      include: verificationAggregateInclude,
-
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-
-    return records.map((record) => this.toAggregate(record));
+    return this.findByStatusValue(
+      this.toPrismaVerificationStatus(status.value),
+    );
   }
 
-  /**
-   * Finds all PENDING Verification aggregates.
-   */
   public async findPending(): Promise<VerificationAggregate[]> {
     return this.findByStatusValue($Enums.VerificationStatus.PENDING);
   }
 
-  /**
-   * Finds all VERIFIED Verification aggregates.
-   */
   public async findVerified(): Promise<VerificationAggregate[]> {
     return this.findByStatusValue($Enums.VerificationStatus.VERIFIED);
   }
 
-  /**
-   * Finds all REJECTED Verification aggregates.
-   */
   public async findRejected(): Promise<VerificationAggregate[]> {
     return this.findByStatusValue($Enums.VerificationStatus.REJECTED);
   }
 
-  /**
-   * Finds all EXPIRED Verification aggregates.
-   *
-   * This refers to Verification expiration, NOT VerificationRequest
-   * expiration.
-   */
   public async findExpired(): Promise<VerificationAggregate[]> {
     return this.findByStatusValue($Enums.VerificationStatus.EXPIRED);
   }
 
-  /**
-   * Finds all REVOKED Verification aggregates.
-   */
   public async findRevoked(): Promise<VerificationAggregate[]> {
     return this.findByStatusValue($Enums.VerificationStatus.REVOKED);
-  }
-
-  /**
-   * Finds currently active Verification aggregates.
-   *
-   * Active means:
-   *
-   * status = VERIFIED
-   *
-   * AND
-   *
-   * expiresAt IS NULL
-   * OR
-   * expiresAt > now
-   *
-   * This expiration belongs to the Verification aggregate itself.
-   * VerificationRequest never expires.
-   */
-  public async findActive(): Promise<VerificationAggregate[]> {
-    const now = new Date();
-
-    const records = await this.prisma.verification.findMany({
-      where: {
-        status: $Enums.VerificationStatus.VERIFIED,
-
-        OR: [
-          {
-            expiresAt: null,
-          },
-
-          {
-            expiresAt: {
-              gt: now,
-            },
-          },
-        ],
-      },
-
-      include: verificationAggregateInclude,
-
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-
-    return records.map((record) => this.toAggregate(record));
   }
 
   // ===========================================================================
   // Verification Level Queries
   // ===========================================================================
 
-  /**
-   * Finds Verification aggregates by verification level.
-   */
   public async findByLevel(
     level: VerificationLevel,
   ): Promise<VerificationAggregate[]> {
@@ -826,19 +722,6 @@ export class PrismaVerificationRepository implements VerificationRepository {
   // Verification Request Queries
   // ===========================================================================
 
-  /**
-   * Finds Verification aggregates containing at least one request with the
-   * supplied status.
-   *
-   * VerificationRequest statuses are:
-   *
-   * - PENDING
-   * - APPROVED
-   * - REJECTED
-   * - CANCELLED
-   *
-   * There is intentionally no EXPIRED request status.
-   */
   public async findByRequestStatus(
     status: VerificationRequestStatus,
   ): Promise<VerificationAggregate[]> {
@@ -863,33 +746,12 @@ export class PrismaVerificationRepository implements VerificationRepository {
     return records.map((record) => this.toAggregate(record));
   }
 
-  /**
-   * Finds Verification aggregates with at least one pending request.
-   */
   public async findWithPendingRequests(): Promise<VerificationAggregate[]> {
-    const records = await this.prisma.verification.findMany({
-      where: {
-        requests: {
-          some: {
-            status: $Enums.VerificationRequestStatus.PENDING,
-          },
-        },
-      },
-
-      include: verificationAggregateInclude,
-
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-
-    return records.map((record) => this.toAggregate(record));
+    return this.findByRequestStatusValue(
+      $Enums.VerificationRequestStatus.PENDING,
+    );
   }
 
-  /**
-   * Finds Verification aggregates containing at least one request of the
-   * supplied type.
-   */
   public async findByRequestType(
     type: VerificationRequestType,
   ): Promise<VerificationAggregate[]> {
@@ -918,10 +780,6 @@ export class PrismaVerificationRepository implements VerificationRepository {
   // Verification Request Asset Queries
   // ===========================================================================
 
-  /**
-   * Finds the Verification aggregate containing a request referencing the
-   * supplied Asset public ID.
-   */
   public async findByRequestAssetPublicId(
     assetPublicId: VerificationRequestAssetPublicId,
   ): Promise<VerificationAggregate | null> {
@@ -948,9 +806,6 @@ export class PrismaVerificationRepository implements VerificationRepository {
     return record === null ? null : this.toAggregate(record);
   }
 
-  /**
-   * Determines whether any VerificationRequest references an Asset.
-   */
   public async existsByRequestAssetPublicId(
     assetPublicId: VerificationRequestAssetPublicId,
   ): Promise<boolean> {
@@ -971,9 +826,6 @@ export class PrismaVerificationRepository implements VerificationRepository {
   // Existence
   // ===========================================================================
 
-  /**
-   * Determines whether a Verification aggregate exists by public identity.
-   */
   public async existsByPublicId(
     publicId: VerificationPublicId,
   ): Promise<boolean> {
@@ -992,11 +844,6 @@ export class PrismaVerificationRepository implements VerificationRepository {
   // Delete
   // ===========================================================================
 
-  /**
-   * Deletes the complete Verification aggregate atomically.
-   *
-   * VerificationRequest is explicitly deleted before Verification.
-   */
   public async delete(aggregate: VerificationAggregate): Promise<void> {
     this.assertAggregate(aggregate);
 
@@ -1021,12 +868,6 @@ export class PrismaVerificationRepository implements VerificationRepository {
   // Aggregate-Owned Request Persistence
   // ===========================================================================
 
-  /**
-   * Creates an aggregate-owned VerificationRequest.
-   *
-   * VerificationRequest does not expire, therefore no expiresAt value is
-   * persisted here.
-   */
   private async createVerificationRequest(
     tx: Prisma.TransactionClient,
     verificationId: string,
@@ -1045,10 +886,10 @@ export class PrismaVerificationRepository implements VerificationRepository {
       request.assetPublicId,
     );
 
-    const reviewedById = await this.resolveIdentityId(
+    const reviewedById = await this.resolveOptionalIdentityId(
       tx,
+      'VerificationRequest',
       request.publicId,
-      'reviewing',
       request.reviewedByPublicId,
     );
 
@@ -1083,12 +924,6 @@ export class PrismaVerificationRepository implements VerificationRepository {
     });
   }
 
-  /**
-   * Upserts an aggregate-owned VerificationRequest.
-   *
-   * VerificationRequest does not expire, therefore no expiresAt value is
-   * synchronized here.
-   */
   private async upsertVerificationRequest(
     tx: Prisma.TransactionClient,
     verificationId: string,
@@ -1125,10 +960,10 @@ export class PrismaVerificationRepository implements VerificationRepository {
       request.assetPublicId,
     );
 
-    const reviewedById = await this.resolveIdentityId(
+    const reviewedById = await this.resolveOptionalIdentityId(
       tx,
+      'VerificationRequest',
       request.publicId,
-      'reviewing',
       request.reviewedByPublicId,
     );
 
@@ -1195,14 +1030,6 @@ export class PrismaVerificationRepository implements VerificationRepository {
   // Aggregate Reconstruction
   // ===========================================================================
 
-  /**
-   * Rehydrates the complete Verification aggregate.
-   *
-   * The complete relation graph is guaranteed by
-   * verificationAggregateInclude.
-   *
-   * Rehydration does not emit domain events.
-   */
   private toAggregate(
     record: VerificationAggregateRecord,
   ): VerificationAggregate {
@@ -1210,14 +1037,9 @@ export class PrismaVerificationRepository implements VerificationRepository {
   }
 
   // ===========================================================================
-  // Prisma Status Query
+  // Prisma Status Queries
   // ===========================================================================
 
-  /**
-   * Queries by an already converted Prisma VerificationStatus.
-   *
-   * This method accepts ONLY the Prisma enum.
-   */
   private async findByStatusValue(
     status: $Enums.VerificationStatus,
   ): Promise<VerificationAggregate[]> {
@@ -1236,29 +1058,53 @@ export class PrismaVerificationRepository implements VerificationRepository {
     return records.map((record) => this.toAggregate(record));
   }
 
+  private async findByRequestStatusValue(
+    status: $Enums.VerificationRequestStatus,
+  ): Promise<VerificationAggregate[]> {
+    const records = await this.prisma.verification.findMany({
+      where: {
+        requests: {
+          some: {
+            status,
+          },
+        },
+      },
+
+      include: verificationAggregateInclude,
+
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return records.map((record) => this.toAggregate(record));
+  }
+
   // ===========================================================================
-  // External Identity Resolution
+  // Identity Resolution
   // ===========================================================================
 
   /**
-   * Resolves an Identity public ID into its Prisma internal ID.
+   * Resolves the required owning Identity public ID into its Prisma internal
+   * persistence ID.
    *
-   * Identity remains a separate aggregate and is never rehydrated or
-   * persisted through this repository.
+   * Verification.identityId is required by the frozen Prisma schema:
+   *
+   *     identityId String @unique
+   *
+   * The domain carries IdentityPublicId, not Identity.id.
+   *
+   * Therefore this method intentionally returns Promise<string>, never
+   * Promise<string | null>.
    */
-  private async resolveIdentityId(
+  private async resolveOwningIdentityId(
     tx: Prisma.TransactionClient,
-    verificationRequestPublicId: string,
-    actorDescription: 'reviewing',
-    publicId: string | null,
-  ): Promise<string | null> {
-    if (publicId === null) {
-      return null;
-    }
-
+    verificationPublicId: string,
+    identityPublicId: string,
+  ): Promise<string> {
     const identity = await tx.identity.findUnique({
       where: {
-        publicId,
+        publicId: identityPublicId,
       },
 
       select: {
@@ -1268,22 +1114,76 @@ export class PrismaVerificationRepository implements VerificationRepository {
 
     if (identity === null) {
       throw new VerificationInvariantException(
-        `Cannot persist VerificationRequest "${verificationRequestPublicId}": ${actorDescription} Identity "${publicId}" was not found.`,
+        `Cannot persist Verification "${verificationPublicId}": owning Identity "${identityPublicId}" was not found.`,
       );
     }
 
     return identity.id;
   }
 
-  // ===========================================================================
-  // External Asset Resolution
-  // ===========================================================================
+  /**
+   * Resolves an optional reviewer Identity public ID into its Prisma internal
+   * persistence ID.
+   *
+   * Both Verification.reviewedById and VerificationRequest.reviewedById are
+   * nullable in the frozen Prisma schema.
+   *
+   * Therefore this method intentionally returns Promise<string | null>.
+   */
+  private async resolveOptionalIdentityId(
+    tx: Prisma.TransactionClient,
+    ownerDescription: 'Verification' | 'VerificationRequest',
+    ownerPublicId: string,
+    identityPublicId: string | null,
+  ): Promise<string | null> {
+    if (identityPublicId === null) {
+      return null;
+    }
+
+    const identity = await tx.identity.findUnique({
+      where: {
+        publicId: identityPublicId,
+      },
+
+      select: {
+        id: true,
+      },
+    });
+
+    if (identity === null) {
+      throw new VerificationInvariantException(
+        `Cannot persist ${ownerDescription} "${ownerPublicId}": reviewer Identity "${identityPublicId}" was not found.`,
+      );
+    }
+
+    return identity.id;
+  }
 
   /**
-   * Resolves an Asset public ID into its Prisma internal ID.
+   * Resolves an Identity public ID into its Prisma persistence identity for
+   * read-side queries.
    *
-   * Asset remains outside the Verification aggregate boundary.
+   * Identity remains a separate aggregate and is never rehydrated or
+   * persisted through this repository.
    */
+  private async findIdentityPersistenceReference(
+    identityPublicId: string,
+  ): Promise<{ id: string } | null> {
+    return this.prisma.identity.findUnique({
+      where: {
+        publicId: identityPublicId,
+      },
+
+      select: {
+        id: true,
+      },
+    });
+  }
+
+  // ===========================================================================
+  // Asset Resolution
+  // ===========================================================================
+
   private async resolveAssetId(
     tx: Prisma.TransactionClient,
     verificationRequestPublicId: string,
@@ -1312,10 +1212,6 @@ export class PrismaVerificationRepository implements VerificationRepository {
   // Aggregate Ownership Guard
   // ===========================================================================
 
-  /**
-   * Prevents an existing VerificationRequest from being accidentally
-   * reassigned to another Verification aggregate.
-   */
   private assertOwningVerification(
     requestPublicId: string,
     aggregateVerificationPublicId: string,
@@ -1332,11 +1228,6 @@ export class PrismaVerificationRepository implements VerificationRepository {
   // JSON Boundary
   // ===========================================================================
 
-  /**
-   * Converts domain metadata into Prisma's JSON input representation.
-   *
-   * Prisma.JsonNull is a VALUE, not a type.
-   */
   private toPrismaMetadata(
     metadata: Record<string, unknown> | null,
   ): Prisma.InputJsonValue | typeof Prisma.JsonNull {
