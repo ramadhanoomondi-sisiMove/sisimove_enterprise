@@ -100,39 +100,45 @@ export const AUTH_TOKENS = {
     /**
      * Password hashing abstraction.
      *
-     * Infrastructure bridges this token to the concrete password-hashing
-     * implementation.
+     * Used when provisioning or changing authentication credentials.
+     *
+     * Concrete infrastructure implementation is supplied through DI.
      */
     PASSWORD_HASHER: Symbol('PasswordHasher'),
 
     /**
      * Cryptographically secure opaque token generator.
      *
-     * Used by authentication to generate raw refresh tokens.
+     * Used for credentials such as raw refresh tokens.
+     *
+     * Raw tokens must never be persisted directly.
      */
     TOKEN_GENERATOR: Symbol('TokenGenerator'),
 
     /**
      * Refresh-token hashing abstraction.
      *
-     * Raw refresh tokens never enter the Session aggregate.
+     * The raw refresh token is returned to the client but its hash is what
+     * enters the Session aggregate/persistence boundary.
      */
     REFRESH_TOKEN_HASHER: Symbol('RefreshTokenHasher'),
 
     /**
-     * Access JWT abstraction.
+     * Access JWT service abstraction.
      *
-     * Responsible only for access-token signing, verification, and decoding.
+     * Responsible for access-token signing, verification, and decoding.
+     *
+     * This service does NOT own refresh-token persistence.
      */
     JWT_TOKEN_SERVICE: Symbol('JwtTokenService'),
 
     /**
-     * Recovery-token service.
+     * Recovery-token service abstraction.
      */
     RECOVERY_TOKEN: Symbol('RecoveryTokenService'),
 
     /**
-     * OTP service.
+     * OTP service abstraction.
      */
     OTP: Symbol('OtpService'),
   } as const,
@@ -146,95 +152,198 @@ export const AUTH_TOKENS = {
     // Authentication
     // =========================================================================
 
+    /**
+     * Creates an Authentication aggregate.
+     */
     CREATE_AUTHENTICATION: Symbol('CreateAuthenticationHandler'),
 
+    /**
+     * Activates an Authentication aggregate.
+     */
     ACTIVATE_AUTHENTICATION: Symbol('ActivateAuthenticationHandler'),
 
+    /**
+     * Locks an Authentication aggregate.
+     */
     LOCK_AUTHENTICATION: Symbol('LockAuthenticationHandler'),
 
+    /**
+     * Unlocks an Authentication aggregate.
+     */
     UNLOCK_AUTHENTICATION: Symbol('UnlockAuthenticationHandler'),
 
+    /**
+     * Disables an Authentication aggregate.
+     */
     DISABLE_AUTHENTICATION: Symbol('DisableAuthenticationHandler'),
 
     /**
-     * Credential authentication only.
+     * -----------------------------------------------------------------------
+     * Credential Authentication
+     * -----------------------------------------------------------------------
      *
-     * This handler resolves Identity + Authentication and verifies the
-     * supplied credentials.
+     * Low-level authentication use case.
      *
-     * It does NOT create Devices or Sessions.
+     * Responsibilities:
+     *
+     * - resolve Identity;
+     * - resolve Authentication;
+     * - verify supplied credentials;
+     * - return the credential-authentication result.
+     *
+     * This handler does NOT:
+     *
+     * - create Device;
+     * - create Session;
+     * - generate access tokens;
+     * - generate refresh tokens.
+     *
+     * It is an application capability used by the complete login workflow.
      */
     AUTHENTICATE: Symbol('AuthenticateHandler'),
 
     /**
-     * Complete login workflow.
+     * -----------------------------------------------------------------------
+     * Complete Login
+     * -----------------------------------------------------------------------
      *
-     * Coordinates:
+     * Higher-level authentication workflow.
      *
-     * Authentication
-     *      ↓
-     * Device
-     *      ↓
-     * Session
-     *      ↓
-     * access + refresh tokens
+     * Responsibilities:
+     *
+     *     credentials
+     *          │
+     *          ▼
+     *     AuthenticateHandler
+     *          │
+     *          ▼
+     *     authenticated identity
+     *          │
+     *          ├──────────────► Device
+     *          │
+     *          └──────────────► Session
+     *                              │
+     *                              ├── access token
+     *                              └── refresh token
+     *
+     * This is the handler consumed by the public login endpoint.
      */
     AUTHENTICATE_LOGIN: Symbol('AuthenticateLoginHandler'),
 
+    /**
+     * Records an authentication failure.
+     */
     RECORD_AUTHENTICATION_FAILURE: Symbol('RecordAuthenticationFailureHandler'),
 
+    /**
+     * Changes the authentication password.
+     */
     CHANGE_PASSWORD: Symbol('ChangePasswordHandler'),
 
     // =========================================================================
     // Session
     // =========================================================================
 
+    /**
+     * Creates a Session aggregate.
+     */
     CREATE_SESSION: Symbol('CreateSessionHandler'),
 
+    /**
+     * Refreshes an authenticated session.
+     */
     REFRESH_SESSION: Symbol('RefreshSessionHandler'),
 
+    /**
+     * Revokes a Session aggregate.
+     */
     REVOKE_SESSION: Symbol('RevokeSessionHandler'),
 
+    /**
+     * Expires a Session aggregate.
+     */
     EXPIRE_SESSION: Symbol('ExpireSessionHandler'),
 
+    /**
+     * Handles refresh-token reuse detection.
+     */
     DETECT_SESSION_TOKEN_REUSE: Symbol('DetectSessionTokenReuseHandler'),
 
     // =========================================================================
     // Device
     // =========================================================================
 
+    /**
+     * Creates a Device aggregate.
+     */
     CREATE_DEVICE: Symbol('CreateDeviceHandler'),
 
+    /**
+     * Marks a Device as trusted.
+     */
     TRUST_DEVICE: Symbol('TrustDeviceHandler'),
 
+    /**
+     * Records activity/observation of a Device.
+     */
     RECORD_DEVICE_SEEN: Symbol('RecordDeviceSeenHandler'),
 
+    /**
+     * Revokes a Device.
+     */
     REVOKE_DEVICE: Symbol('RevokeDeviceHandler'),
 
     // =========================================================================
     // Recovery
     // =========================================================================
 
+    /**
+     * Creates a Recovery aggregate.
+     */
     CREATE_RECOVERY: Symbol('CreateRecoveryHandler'),
 
+    /**
+     * Completes a Recovery workflow.
+     */
     COMPLETE_RECOVERY: Symbol('CompleteRecoveryHandler'),
 
+    /**
+     * Cancels a Recovery workflow.
+     */
     CANCEL_RECOVERY: Symbol('CancelRecoveryHandler'),
 
+    /**
+     * Expires a Recovery workflow.
+     */
     EXPIRE_RECOVERY: Symbol('ExpireRecoveryHandler'),
 
     // =========================================================================
     // OTP Challenge
     // =========================================================================
 
+    /**
+     * Creates an OTP Challenge aggregate.
+     */
     CREATE_OTP_CHALLENGE: Symbol('CreateOtpChallengeHandler'),
 
+    /**
+     * Verifies an OTP Challenge.
+     */
     VERIFY_OTP_CHALLENGE: Symbol('VerifyOtpChallengeHandler'),
 
+    /**
+     * Records an OTP Challenge failure.
+     */
     FAIL_OTP_CHALLENGE: Symbol('FailOtpChallengeHandler'),
 
+    /**
+     * Expires an OTP Challenge.
+     */
     EXPIRE_OTP_CHALLENGE: Symbol('ExpireOtpChallengeHandler'),
 
+    /**
+     * Cancels an OTP Challenge.
+     */
     CANCEL_OTP_CHALLENGE: Symbol('CancelOtpChallengeHandler'),
   } as const,
 
@@ -247,8 +356,14 @@ export const AUTH_TOKENS = {
     // Authentication
     // =========================================================================
 
+    /**
+     * Retrieves an Authentication aggregate by public ID.
+     */
     GET_AUTHENTICATION: Symbol('GetAuthenticationHandler'),
 
+    /**
+     * Retrieves an Authentication aggregate by Identity public ID.
+     */
     GET_AUTHENTICATION_BY_IDENTITY: Symbol(
       'GetAuthenticationByIdentityHandler',
     ),
@@ -257,38 +372,72 @@ export const AUTH_TOKENS = {
     // Session
     // =========================================================================
 
+    /**
+     * Retrieves a Session aggregate by public ID.
+     */
     GET_SESSION: Symbol('GetSessionHandler'),
 
+    /**
+     * Retrieves Sessions for an identity.
+     */
     GET_SESSIONS: Symbol('GetSessionsHandler'),
 
+    /**
+     * Retrieves active Sessions for an identity.
+     */
     GET_ACTIVE_SESSIONS: Symbol('GetActiveSessionsHandler'),
 
     // =========================================================================
     // Device
     // =========================================================================
 
+    /**
+     * Retrieves a Device aggregate by public ID.
+     */
     GET_DEVICE: Symbol('GetDeviceHandler'),
 
+    /**
+     * Retrieves Devices for an identity.
+     */
     GET_DEVICES: Symbol('GetDevicesHandler'),
 
+    /**
+     * Retrieves active Devices for an identity.
+     */
     GET_ACTIVE_DEVICES: Symbol('GetActiveDevicesHandler'),
 
     // =========================================================================
     // Recovery
     // =========================================================================
 
+    /**
+     * Retrieves a Recovery aggregate by public ID.
+     */
     GET_RECOVERY: Symbol('GetRecoveryHandler'),
 
+    /**
+     * Retrieves Recovery workflows for an identity.
+     */
     GET_RECOVERIES: Symbol('GetRecoveriesHandler'),
 
     // =========================================================================
     // OTP Challenge
     // =========================================================================
 
+    /**
+     * Retrieves an OTP Challenge by public ID.
+     */
     GET_OTP_CHALLENGE: Symbol('GetOtpChallengeHandler'),
 
+    /**
+     * Retrieves active OTP Challenges.
+     */
     GET_ACTIVE_OTP_CHALLENGES: Symbol('GetActiveOtpChallengesHandler'),
   } as const,
 } as const;
+
+// -----------------------------------------------------------------------------
+// Default Export
+// -----------------------------------------------------------------------------
 
 export default AUTH_TOKENS;

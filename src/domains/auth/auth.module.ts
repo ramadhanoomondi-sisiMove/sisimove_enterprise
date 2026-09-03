@@ -89,6 +89,44 @@
 //
 // -----------------------------------------------------------------------------
 //
+// Application login orchestration:
+//
+// AuthenticateLoginHandler owns the complete login workflow:
+//
+//     credentials
+//          │
+//          ▼
+//     AuthenticateHandler
+//          │
+//          ▼
+//     authenticated identity
+//          │
+//          ├──────────────► Device
+//          │
+//          └──────────────► Session
+//                              │
+//                              ├── refresh token
+//                              └── access token
+//
+// AuthenticateHandler is intentionally separate from AuthenticateLoginHandler.
+//
+// AuthenticateHandler:
+//     - resolves identity;
+//     - authenticates credentials;
+//     - returns authentication result.
+//
+// AuthenticateLoginHandler:
+//     - orchestrates the complete login use case;
+//     - invokes AuthenticateHandler;
+//     - creates/resolves Device;
+//     - creates Session;
+//     - generates access token;
+//     - generates raw refresh token;
+//     - hashes refresh token;
+//     - returns AuthenticateLoginResult.
+//
+// -----------------------------------------------------------------------------
+//
 // Dependency direction:
 //
 // Presentation
@@ -162,37 +200,6 @@
 //                         │
 //                         ▼
 //             CryptoOtpService
-//
-// -----------------------------------------------------------------------------
-//
-// Authentication login credential flow:
-//
-//     AuthenticateHandler
-//             │
-//             ▼
-//     AuthenticationAggregate
-//             │
-//             ▼
-//     successful authentication
-//             │
-//             ▼
-//     DeviceAggregate
-//             │
-//             ▼
-//     SessionAggregate
-//             │
-//             ├── RefreshTokenHasher
-//             │       │
-//             │       ▼
-//             │   SessionRefreshTokenHash
-//             │
-//             └── JwtTokenService
-//                     │
-//                     ▼
-//                 access token
-//
-// The higher-level login orchestration belongs in the application layer.
-// Individual aggregate handlers remain independently usable.
 //
 // -----------------------------------------------------------------------------
 //
@@ -280,26 +287,12 @@ import { PrismaModule } from '../../infrastructure/database/prisma/prisma.module
 // -----------------------------------------------------------------------------
 // Infrastructure — Security
 // -----------------------------------------------------------------------------
-//
-// SecurityModule exports the infrastructure security tokens consumed by the
-// Authentication infrastructure DI bridges.
-//
-// ---------------------------------------------------------------------------
 
 import { SecurityModule } from '../../infrastructure/security/security.module';
 
 // -----------------------------------------------------------------------------
 // Cross-Context — Identity
 // -----------------------------------------------------------------------------
-//
-// Authentication consumes the IdentityRepository abstraction when resolving
-// the identity associated with an email or phone number during authentication.
-//
-// IdentityModule owns the Identity repository implementation and exports:
-//
-//     IDENTITY_TOKENS.REPOSITORIES.IDENTITY
-//
-// ---------------------------------------------------------------------------
 
 import { IdentityModule } from '../identity/identity.module';
 
@@ -341,7 +334,12 @@ import {
   LockAuthenticationHandler,
   UnlockAuthenticationHandler,
   DisableAuthenticationHandler,
+
+  // Low-level credential authentication.
   AuthenticateHandler,
+
+  // Complete login orchestration.
+  AuthenticateLoginHandler,
   RecordAuthenticationFailureHandler,
   ChangePasswordHandler,
 
@@ -427,38 +425,6 @@ import {
   // ===========================================================================
   // Imports
   // ===========================================================================
-  //
-  // PrismaModule:
-  //
-  //     Provides Prisma infrastructure required by Authentication repositories.
-  //
-  // SecurityModule:
-  //
-  //     Provides infrastructure security tokens consumed by AUTH_PROVIDERS.
-  //
-  //     This includes:
-  //
-  //         SECURITY_PASSWORD_HASHER
-  //         SECURITY_TOKEN_GENERATOR
-  //         SECURITY_REFRESH_TOKEN_HASHER
-  //         SECURITY_JWT_TOKEN_SERVICE
-  //         SECURITY_RECOVERY_TOKEN_SERVICE
-  //         SECURITY_OTP_SERVICE
-  //
-  // IdentityModule:
-  //
-  //     Provides the authoritative IdentityRepository abstraction required by
-  //     AuthenticateHandler.
-  //
-  //     IdentityModule exports:
-  //
-  //         IDENTITY_TOKENS.REPOSITORIES.IDENTITY
-  //
-  //     This allows AuthenticateHandler to resolve an IdentityAggregate from
-  //     an email or phone number without Authentication owning Identity
-  //     persistence.
-  //
-  // ---------------------------------------------------------------------------
 
   imports: [PrismaModule, SecurityModule, IdentityModule],
 
@@ -467,34 +433,10 @@ import {
   // ===========================================================================
 
   controllers: [
-    // -------------------------------------------------------------------------
-    // Authentication
-    // -------------------------------------------------------------------------
-
     AuthenticationsController,
-
-    // -------------------------------------------------------------------------
-    // Session
-    // -------------------------------------------------------------------------
-
     SessionsController,
-
-    // -------------------------------------------------------------------------
-    // Device
-    // -------------------------------------------------------------------------
-
     DevicesController,
-
-    // -------------------------------------------------------------------------
-    // Recovery
-    // -------------------------------------------------------------------------
-
     RecoveriesController,
-
-    // -------------------------------------------------------------------------
-    // OTP Challenge
-    // -------------------------------------------------------------------------
-
     OtpChallengesController,
   ],
 
@@ -505,20 +447,6 @@ import {
   providers: [
     // =========================================================================
     // Infrastructure — Repository and Security Providers
-    // =========================================================================
-    //
-    // AUTH_PROVIDERS contains:
-    //
-    // - Prisma repository bindings;
-    // - application security abstraction bridges.
-    //
-    // In particular:
-    //
-    //     AUTH_TOKENS.APPLICATION_SERVICES.REFRESH_TOKEN_HASHER
-    //                         │
-    //                         ▼
-    //             SECURITY_REFRESH_TOKEN_HASHER
-    //
     // =========================================================================
 
     ...AUTH_PROVIDERS,
@@ -552,9 +480,29 @@ import {
       useClass: DisableAuthenticationHandler,
     },
 
+    // -------------------------------------------------------------------------
+    // Low-level credential authentication.
+    //
+    // This is intentionally separate from complete login orchestration.
+    // -------------------------------------------------------------------------
+
     {
       provide: AUTH_TOKENS.COMMAND_HANDLERS.AUTHENTICATE,
       useClass: AuthenticateHandler,
+    },
+
+    // -------------------------------------------------------------------------
+    // Complete login orchestration.
+    //
+    // This is the handler injected by:
+    //
+    //     AuthenticationsController.login()
+    //
+    // -------------------------------------------------------------------------
+
+    {
+      provide: AUTH_TOKENS.COMMAND_HANDLERS.AUTHENTICATE_LOGIN,
+      useClass: AuthenticateLoginHandler,
     },
 
     {
@@ -757,16 +705,6 @@ import {
   // ===========================================================================
   // Exports
   // ===========================================================================
-  //
-  // Export repository contracts and application handler tokens.
-  //
-  // Consumers interact with Authentication through tokens rather than concrete
-  // infrastructure implementations.
-  //
-  // Security providers are intentionally NOT re-exported from AuthModule.
-  // SecurityModule owns the security infrastructure boundary.
-  //
-  // ---------------------------------------------------------------------------
 
   exports: [
     // -------------------------------------------------------------------------
@@ -780,7 +718,7 @@ import {
     AUTH_TOKENS.REPOSITORIES.OTP_CHALLENGE,
 
     // -------------------------------------------------------------------------
-    // Command Handler Providers
+    // Authentication — Command Handlers
     // -------------------------------------------------------------------------
 
     AUTH_TOKENS.COMMAND_HANDLERS.CREATE_AUTHENTICATION,
@@ -788,9 +726,19 @@ import {
     AUTH_TOKENS.COMMAND_HANDLERS.LOCK_AUTHENTICATION,
     AUTH_TOKENS.COMMAND_HANDLERS.UNLOCK_AUTHENTICATION,
     AUTH_TOKENS.COMMAND_HANDLERS.DISABLE_AUTHENTICATION,
+
+    // Low-level credential authentication.
     AUTH_TOKENS.COMMAND_HANDLERS.AUTHENTICATE,
+
+    // Complete login orchestration.
+    AUTH_TOKENS.COMMAND_HANDLERS.AUTHENTICATE_LOGIN,
+
     AUTH_TOKENS.COMMAND_HANDLERS.RECORD_AUTHENTICATION_FAILURE,
     AUTH_TOKENS.COMMAND_HANDLERS.CHANGE_PASSWORD,
+
+    // -------------------------------------------------------------------------
+    // Session — Command Handlers
+    // -------------------------------------------------------------------------
 
     AUTH_TOKENS.COMMAND_HANDLERS.CREATE_SESSION,
     AUTH_TOKENS.COMMAND_HANDLERS.REFRESH_SESSION,
@@ -798,15 +746,27 @@ import {
     AUTH_TOKENS.COMMAND_HANDLERS.EXPIRE_SESSION,
     AUTH_TOKENS.COMMAND_HANDLERS.DETECT_SESSION_TOKEN_REUSE,
 
+    // -------------------------------------------------------------------------
+    // Device — Command Handlers
+    // -------------------------------------------------------------------------
+
     AUTH_TOKENS.COMMAND_HANDLERS.CREATE_DEVICE,
     AUTH_TOKENS.COMMAND_HANDLERS.TRUST_DEVICE,
     AUTH_TOKENS.COMMAND_HANDLERS.RECORD_DEVICE_SEEN,
     AUTH_TOKENS.COMMAND_HANDLERS.REVOKE_DEVICE,
 
+    // -------------------------------------------------------------------------
+    // Recovery — Command Handlers
+    // -------------------------------------------------------------------------
+
     AUTH_TOKENS.COMMAND_HANDLERS.CREATE_RECOVERY,
     AUTH_TOKENS.COMMAND_HANDLERS.COMPLETE_RECOVERY,
     AUTH_TOKENS.COMMAND_HANDLERS.CANCEL_RECOVERY,
     AUTH_TOKENS.COMMAND_HANDLERS.EXPIRE_RECOVERY,
+
+    // -------------------------------------------------------------------------
+    // OTP Challenge — Command Handlers
+    // -------------------------------------------------------------------------
 
     AUTH_TOKENS.COMMAND_HANDLERS.CREATE_OTP_CHALLENGE,
     AUTH_TOKENS.COMMAND_HANDLERS.VERIFY_OTP_CHALLENGE,
@@ -815,22 +775,38 @@ import {
     AUTH_TOKENS.COMMAND_HANDLERS.CANCEL_OTP_CHALLENGE,
 
     // -------------------------------------------------------------------------
-    // Query Handler Providers
+    // Authentication — Query Handlers
     // -------------------------------------------------------------------------
 
     AUTH_TOKENS.QUERY_HANDLERS.GET_AUTHENTICATION,
     AUTH_TOKENS.QUERY_HANDLERS.GET_AUTHENTICATION_BY_IDENTITY,
 
+    // -------------------------------------------------------------------------
+    // Session — Query Handlers
+    // -------------------------------------------------------------------------
+
     AUTH_TOKENS.QUERY_HANDLERS.GET_SESSION,
     AUTH_TOKENS.QUERY_HANDLERS.GET_SESSIONS,
     AUTH_TOKENS.QUERY_HANDLERS.GET_ACTIVE_SESSIONS,
+
+    // -------------------------------------------------------------------------
+    // Device — Query Handlers
+    // -------------------------------------------------------------------------
 
     AUTH_TOKENS.QUERY_HANDLERS.GET_DEVICE,
     AUTH_TOKENS.QUERY_HANDLERS.GET_DEVICES,
     AUTH_TOKENS.QUERY_HANDLERS.GET_ACTIVE_DEVICES,
 
+    // -------------------------------------------------------------------------
+    // Recovery — Query Handlers
+    // -------------------------------------------------------------------------
+
     AUTH_TOKENS.QUERY_HANDLERS.GET_RECOVERY,
     AUTH_TOKENS.QUERY_HANDLERS.GET_RECOVERIES,
+
+    // -------------------------------------------------------------------------
+    // OTP Challenge — Query Handlers
+    // -------------------------------------------------------------------------
 
     AUTH_TOKENS.QUERY_HANDLERS.GET_OTP_CHALLENGE,
     AUTH_TOKENS.QUERY_HANDLERS.GET_ACTIVE_OTP_CHALLENGES,

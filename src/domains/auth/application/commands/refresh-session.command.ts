@@ -8,153 +8,203 @@
 //
 //     Refresh Session
 //
-// -----------------------------------------------------------------------------
-//
-// SECURITY BOUNDARY
-//
-// The raw refresh token MUST be handled entirely by the surrounding
-// authentication/security workflow.
-//
-// Expected flow:
+// The RefreshSessionHandler owns the complete application workflow:
 //
 //     Client
 //        │
 //        │ raw refresh token
 //        ▼
-//     Authentication Workflow
-//        │
-//        ├── locate Session
-//        │
-//        ├── HashingService.verify(
-//        │      rawRefreshToken,
-//        │      persistedSession.refreshTokenHash,
-//        │   )
-//        │
-//        ├── TokenService.generateRefreshToken()
-//        │
-//        ├── HashingService.hash(newRawRefreshToken)
-//        │
-//        ▼
 //     RefreshSessionCommand
-//        │
-//        ├── sessionPublicId
-//        ├── refreshTokenHash
-//        ├── lastActivityAt
-//        ├── correlationId
-//        └── causationId
 //        │
 //        ▼
 //     RefreshSessionHandler
 //        │
-//        ▼
-//     SessionAggregate.refresh()
+//        ├── locate Session
 //        │
-//        ▼
-//     SessionRepository.save()
+//        ├── compare raw token against persisted hash
+//        │
+//        ├── generate replacement refresh token
+//        │
+//        ├── hash replacement refresh token
+//        │
+//        ├── create SessionRefreshTokenHash
+//        │
+//        ├── SessionAggregate.refresh()
+//        │
+//        ├── persist Session
+//        │
+//        └── return replacement credentials
 //
 // -----------------------------------------------------------------------------
 //
-// IMPORTANT
+// SECURITY BOUNDARY
 //
-// `refreshTokenHash` is the hash of the NEW refresh token.
+// This command contains the raw refresh token as transient application input.
 //
-// It is NOT the hash used to verify the incoming refresh token.
+// IMPORTANT:
 //
-// Incoming-token verification must occur before this command is dispatched:
+// The raw refresh token MUST NEVER be passed into:
 //
-//     HashingService.verify(
-//       rawRefreshToken,
-//       persistedSession.refreshTokenHash,
-//     )
-//
-// Only after successful verification should the authentication workflow:
-//
-// 1. generate a new raw refresh token;
-// 2. hash the new raw refresh token;
-// 3. create this command;
-// 4. dispatch the command.
-//
-// -----------------------------------------------------------------------------
-//
-// APPLICATION RESPONSIBILITIES
-//
-// The surrounding authentication workflow is responsible for:
-//
-// - receiving the raw refresh token;
-// - locating the Session;
-// - verifying the incoming refresh token;
-// - generating the replacement refresh token;
-// - hashing the replacement refresh token;
-// - creating this command;
-// - retaining the raw replacement token when it must be returned to the client.
-//
-// The command handler is responsible for:
-//
-// - validating command structure;
-// - locating the Session aggregate;
-// - passing the new refresh-token hash to the aggregate;
-// - passing the latest activity timestamp to the aggregate;
-// - invoking SessionAggregate.refresh();
-// - persisting the changed aggregate.
-//
-// -----------------------------------------------------------------------------
-//
-// DOMAIN RESPONSIBILITIES
-//
-// SessionAggregate / SessionEntity own:
-//
-// - Session lifecycle validation;
-// - refresh eligibility;
-// - refresh-token rotation;
-// - replacement of the persisted refresh-token hash;
-// - Session activity updates;
-// - token-family lineage;
-// - replacement/revocation invariants;
-// - Session domain-event construction.
-//
-// -----------------------------------------------------------------------------
-//
-// RAW REFRESH TOKEN PROHIBITION
-//
-// The raw refresh token MUST NEVER enter:
-//
-// - RefreshSessionCommand;
 // - SessionEntity;
 // - SessionAggregate;
 // - Session domain events;
 // - SessionRepository;
 // - persistence models;
-// - domain logs.
+// - SessionRefreshTokenHash.
 //
-// The Session domain receives only the domain-ready
-// SessionRefreshTokenHash.
+// The RefreshSessionHandler consumes the raw token only for verification.
+//
+// After successful verification, the handler generates a replacement raw
+// refresh token, hashes it, and passes ONLY the resulting
+// SessionRefreshTokenHash into SessionAggregate.refresh().
 //
 // -----------------------------------------------------------------------------
 //
-// THIS COMMAND DOES NOT
+// TOKEN ROTATION
 //
-// - contain the raw refresh token;
+// The refresh workflow is:
+//
+//     existing Session
+//          │
+//          ├── persisted refreshTokenHash
+//          │
+//          ▼
+//     compare(
+//       command.refreshToken,
+//       session.refreshTokenHash.value,
+//     )
+//          │
+//       ┌──┴──┐
+//       │     │
+//     false  true
+//       │     │
+//       ▼     ▼
+//     reject  generate new raw token
+//                 │
+//                 ├──────────────────────► client response
+//                 │
+//                 ▼
+//             hash(new token)
+//                 │
+//                 ▼
+//          SessionRefreshTokenHash
+//                 │
+//                 ▼
+//          SessionAggregate.refresh()
+//                 │
+//                 ▼
+//             persist Session
+//
+// -----------------------------------------------------------------------------
+//
+// COMMAND RESPONSIBILITIES
+//
+// The command carries only transient application input:
+//
+// - sessionPublicId;
+// - raw refreshToken;
+// - lastActivityAt;
+// - correlationId;
+// - causationId.
+//
+// The command does NOT:
+//
 // - verify refresh tokens;
 // - hash refresh tokens;
 // - generate refresh tokens;
-// - sign access tokens;
-// - sign refresh tokens;
-// - compare refresh-token values;
-// - validate Identity domain state;
-// - validate Device domain state;
-// - revoke an entire token family;
-// - send notifications;
-// - access Prisma;
 // - construct SessionEntity;
 // - construct SessionAggregate;
-// - construct domain events.
+// - mutate Session state;
+// - access Prisma;
+// - sign JWTs;
+// - perform authorization;
+// - send notifications.
+//
+// Those operations belong to the RefreshSessionHandler or its injected
+// application/security abstractions.
 //
 // -----------------------------------------------------------------------------
 //
-// Aggregate affected:
+// HANDLER RESPONSIBILITIES
 //
-// SessionAggregate
+// RefreshSessionHandler is responsible for:
+//
+// - validating command structure;
+// - locating the Session aggregate;
+// - comparing the incoming raw refresh token against the persisted hash;
+// - rejecting an invalid refresh credential;
+// - generating a replacement refresh token;
+// - hashing the replacement refresh token;
+// - creating SessionRefreshTokenHash from the replacement hash;
+// - invoking SessionAggregate.refresh();
+// - persisting the changed Session aggregate;
+// - issuing the access token when required by the application's token service;
+// - returning the replacement raw refresh token to the caller.
+//
+// -----------------------------------------------------------------------------
+//
+// DOMAIN RESPONSIBILITIES
+//
+// SessionAggregate / SessionEntity remain responsible for:
+//
+// - Session lifecycle validation;
+// - refresh eligibility;
+// - refresh-token hash replacement;
+// - Session activity updates;
+// - token-family lineage;
+// - replacement/revocation invariants;
+// - Session domain-event construction.
+//
+// The domain does NOT know:
+//
+// - the raw refresh token;
+// - the hashing algorithm;
+// - TokenGenerator;
+// - JWT;
+// - HTTP;
+// - Prisma.
+//
+// -----------------------------------------------------------------------------
+//
+// RAW REFRESH TOKEN
+//
+// `refreshToken` is transient application input.
+//
+// It MUST:
+//
+// - never be logged;
+// - never be persisted;
+// - never be included in domain events;
+// - never be included in SessionEntity;
+// - never be converted directly into SessionRefreshTokenHash;
+// - never be returned after it has been replaced unless it is the newly
+//   generated replacement token.
+//
+// The handler must compare the supplied raw token against the existing
+// persisted hash before performing token rotation.
+//
+// -----------------------------------------------------------------------------
+//
+// REFRESH TOKEN HASH
+//
+// `SessionRefreshTokenHash` is created ONLY from the hash of the newly
+// generated refresh token:
+//
+//     SessionRefreshTokenHash.create(
+//       refreshTokenHasher.hash(newRefreshToken),
+//     )
+//
+// It must never be created from `command.refreshToken`.
+//
+// -----------------------------------------------------------------------------
+//
+// AGGREGATE BOUNDARY
+//
+// Session
 // └── SessionEntity
+//
+// The handler coordinates infrastructure/security services around the
+// aggregate but does not bypass the aggregate boundary.
 //
 // -----------------------------------------------------------------------------
 //
@@ -169,7 +219,6 @@ import type { Command } from '../../../../foundation/kernel/application/command'
 
 import type {
   SessionPublicId,
-  SessionRefreshTokenHash,
   SessionLastActivityAt,
 } from '../../domain/value-objects';
 
@@ -180,10 +229,15 @@ import type {
 /**
  * Represents the application intent to refresh an existing Session.
  *
- * The command contains only domain-ready values.
+ * The command carries the incoming raw refresh token as transient application
+ * input because RefreshSessionHandler owns the complete refresh workflow.
  *
- * In particular, `refreshTokenHash` contains the hash of the newly generated
- * refresh token and never the raw refresh token itself.
+ * IMPORTANT:
+ *
+ * The raw refresh token MUST NOT enter the Session aggregate.
+ *
+ * RefreshSessionHandler uses this value only to compare it against the
+ * Session's persisted SessionRefreshTokenHash.
  */
 export class RefreshSessionCommand implements Command {
   // ===========================================================================
@@ -193,28 +247,32 @@ export class RefreshSessionCommand implements Command {
   public constructor(
     /**
      * Public identifier of the Session being refreshed.
-     *
-     * The surrounding authentication workflow must locate the Session and
-     * successfully verify the incoming raw refresh token before dispatching
-     * this command.
      */
     public readonly sessionPublicId: SessionPublicId,
 
     /**
-     * Hash of the NEW refresh token.
+     * Incoming raw refresh token supplied by the client.
      *
-     * This value replaces the Session's existing refresh-token hash when the
-     * aggregate performs refresh-token rotation.
+     * This is transient application input.
      *
-     * The raw refresh token MUST never enter this command.
+     * It MUST NOT:
+     *
+     * - be persisted;
+     * - enter SessionEntity;
+     * - enter SessionAggregate;
+     * - enter Session domain events;
+     * - enter SessionRefreshTokenHash;
+     * - be logged.
+     *
+     * RefreshSessionHandler uses it only for credential comparison.
      */
-    public readonly refreshTokenHash: SessionRefreshTokenHash,
+    public readonly refreshToken: string,
 
     /**
      * Timestamp representing the latest authenticated Session activity.
      *
-     * The aggregate remains responsible for determining whether this timestamp
-     * is valid according to its lifecycle invariants.
+     * SessionAggregate remains responsible for validating this timestamp
+     * against its lifecycle invariants.
      */
     public readonly lastActivityAt: SessionLastActivityAt,
 
@@ -230,3 +288,9 @@ export class RefreshSessionCommand implements Command {
     public readonly causationId?: string,
   ) {}
 }
+
+// -----------------------------------------------------------------------------
+// Default Export
+// -----------------------------------------------------------------------------
+
+export default RefreshSessionCommand;

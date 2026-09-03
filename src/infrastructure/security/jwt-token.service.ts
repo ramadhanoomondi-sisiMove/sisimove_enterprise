@@ -88,7 +88,7 @@ export class JwtTokenService implements JwtTokenServiceContract {
    *
    * The JwtModule configuration must use the same algorithm.
    */
-  private static readonly ALGORITHM = 'HS256';
+  private static readonly ALGORITHM = 'HS256' as const;
 
   // ===========================================================================
   // State
@@ -140,15 +140,47 @@ export class JwtTokenService implements JwtTokenServiceContract {
    *
    * - roles;
    * - permissions.
+   *
+   * IMPORTANT:
+   *
+   * `sub` is intentionally included directly in the JWT payload.
+   *
+   * Do NOT also provide `subject` in JwtSignOptions. The jsonwebtoken
+   * implementation rejects a payload containing `sub` when the signing
+   * options also contain `subject`.
    */
   public signAccessToken(claims: AccessTokenClaims): string {
     JwtTokenService.validateClaims(claims);
 
     const payload: TokenPayload = {
+      // -----------------------------------------------------------------------
+      // JWT Subject — Identity
+      // -----------------------------------------------------------------------
+
       sub: claims.identityPublicId,
+
+      // -----------------------------------------------------------------------
+      // Session Identifier
+      // -----------------------------------------------------------------------
+
       sid: claims.sessionPublicId,
+
+      // -----------------------------------------------------------------------
+      // JWT Identifier
+      // -----------------------------------------------------------------------
+
       jti: randomUUID(),
+
+      // -----------------------------------------------------------------------
+      // Token Type
+      // -----------------------------------------------------------------------
+
       typ: 'access',
+
+      // -----------------------------------------------------------------------
+      // Authentication Version Snapshot
+      // -----------------------------------------------------------------------
+
       ver: claims.authenticationVersion,
 
       // -----------------------------------------------------------------------
@@ -176,7 +208,6 @@ export class JwtTokenService implements JwtTokenServiceContract {
       issuer: this.issuer,
       audience: this.audience,
       expiresIn: this.expiresIn,
-      subject: claims.identityPublicId,
       algorithm: JwtTokenService.ALGORITHM,
     };
 

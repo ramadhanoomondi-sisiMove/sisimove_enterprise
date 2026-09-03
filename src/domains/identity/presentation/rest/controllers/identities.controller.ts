@@ -6,118 +6,393 @@
 //
 // Aggregate:
 //
-// IdentityAggregate
-// └── IdentityEntity
-//     └── IdentityRoleEntity[]
+//     IdentityAggregate
+//     └── IdentityEntity
+//         └── IdentityRoleEntity[]
 //
 // Responsibilities:
+//
 // - HTTP transport;
-// - DTO validation;
-// - conversion from transport primitives to domain value objects;
+// - DTO binding and validation;
+// - conversion of transport primitives into domain value objects;
+// - construction of application commands and queries;
 // - dispatching application commands and queries;
-// - mapping domain results to transport responses.
+// - mapping application/domain results into transport responses.
 //
-// The controller contains no domain behavior.
-//
-// Domain behavior remains inside IdentityAggregate.
-// Application orchestration remains inside command/query handlers.
-// Persistence remains behind IdentityRepository.
-//
-// IdentityRoleEntity is owned by IdentityAggregate and is therefore returned
-// through IdentityResponseMapper.
-//
-// Role remains a separate aggregate and is referenced only through its opaque
-// Role public identifier.
-//
-// Verification, Authentication, Session, Device, Recovery, OTP Challenge,
-// Permission, and RolePermission remain separate aggregate boundaries.
+// This controller contains NO Identity business rules.
 //
 // -----------------------------------------------------------------------------
 //
-// Physical-world identity lifecycle:
+// DOMAIN
+// -----------------------------------------------------------------------------
 //
-// 1. Create identity
-// 2. Identify / retrieve identity
-// 3. Maintain identity contact information
-// 4. Manage identity lifecycle
-// 5. Manage identity roles
+// IdentityAggregate owns:
 //
-// Identity lifecycle:
+//     IdentityEntity
+//     IdentityRoleEntity[]
 //
-// PENDING ───────► ACTIVE
-//     │               │
-//     │               ▼
-//     └──────────► SUSPENDED
-//                         │
-//                         ▼
-//                       ACTIVE
+// Role remains a separate aggregate and is referenced through its opaque
+// Role public identifier.
 //
-// PENDING / ACTIVE / SUSPENDED ───────► CLOSED
+// Related aggregates remain separate:
+//
+//     AuthenticationAggregate
+//     SessionAggregate
+//     DeviceAggregate
+//     RecoveryAggregate
+//     OtpChallengeAggregate
+//     RoleAggregate
+//     PermissionAggregate
+//     RolePermissionAggregate
+//
+// The controller never directly coordinates those aggregates.
+//
+// -----------------------------------------------------------------------------
+//
+// IDENTITY LIFECYCLE
+// -----------------------------------------------------------------------------
+//
+//     PENDING ───────► ACTIVE
+//         │               │
+//         │               ▼
+//         └──────────► SUSPENDED
+//                             │
+//                             ▼
+//                           ACTIVE
+//
+//     PENDING / ACTIVE / SUSPENDED ───────► CLOSED
 //
 // CLOSED is terminal.
 //
-// -----------------------------------------------------------------------------
+// Mutation timestamps such as:
 //
-// Security boundary:
-//
-// Identity creation is intentionally unauthenticated because registration
-// creates the identity that may later become an authenticated principal.
-//
-// Activation is also intentionally unauthenticated because activation enables
-// the identity's access and therefore cannot require an already-established
-// authenticated principal.
-//
-// Operations against an existing identity are authenticated and authorized
-// according to their specific capability.
-//
-// No controller-level guard is used so that public and protected operations
-// can coexist explicitly within the same resource.
-//
-// -----------------------------------------------------------------------------
-//
-// Temporal responsibility:
-//
-// Mutation timestamps are domain facts.
-//
-// The controller does NOT accept or construct:
 // - activatedAt;
 // - suspendedAt;
 // - closedAt;
-// - changedAt;
-// - assignedAt;
-// - revokedAt.
 //
-// Those timestamps are determined by IdentityAggregate at the moment the
-// corresponding successful mutation occurs.
-//
-// Business-effective timestamps such as role expiration remain valid inputs
-// because they represent requested business policy rather than the occurrence
-// time of the mutation.
+// are domain facts and are therefore determined by IdentityAggregate.
 //
 // -----------------------------------------------------------------------------
 //
-// Application message metadata:
+// SECURITY MODEL
+// -----------------------------------------------------------------------------
 //
-// correlationId and causationId are NOT public HTTP DTO fields.
+// Public:
 //
-// For a direct HTTP command:
+//     POST /identities
 //
-// - correlationId is generated at the HTTP/application boundary;
-// - causationId is omitted because there is no preceding command or event.
+// Authenticated:
 //
-// These values are propagated into the application command and subsequently
-// into domain events where applicable.
+//     GET   /identities/me
+//
+// Privileged:
+//
+//     GET   /identities/by-email/:email
+//     GET   /identities/by-phone-number/:phoneNumber
+//
+// Protected target-identity operations:
+//
+//     GET    /identities/:identityPublicId
+//     PATCH  /identities/:identityPublicId/activate
+//     PATCH  /identities/:identityPublicId/email
+//     PATCH  /identities/:identityPublicId/phone-number
+//     PATCH  /identities/:identityPublicId/suspend
+//     PATCH  /identities/:identityPublicId/close
+//     GET    /identities/:identityPublicId/roles
+//     POST   /identities/:identityPublicId/roles
+//     PATCH  /identities/:identityPublicId/roles/:rolePublicId/revoke
+//
+// Authentication:
+//
+//     JwtAuthGuard
+//
+// Authorization:
+//
+//     PermissionsGuard
+//     @RequirePermissions(...)
+//
+// Guards are deliberately applied per endpoint rather than at controller level.
 //
 // -----------------------------------------------------------------------------
 //
-// Identity classification:
+// IMPORTANT — ACTIVATION
+// -----------------------------------------------------------------------------
 //
-// IdentityType is intentionally absent.
+// Activation must never be authorized merely by possession of:
 //
-// Every Identity in the current SisiMove platform represents a user, so an
-// identity classification provides no additional business value.
+//     identityPublicId
+//
+// If activation is part of a public registration flow, the public activation
+// endpoint must instead require a dedicated activation proof such as:
+//
+//     activation token
+//     OTP challenge
+//     verified recovery/authentication workflow
+//
+// The current ActivateIdentityCommand accepts only IdentityPublicId.
+//
+// Therefore this controller treats activation as an authenticated operation:
+//
+//     PATCH /identities/:identityPublicId/activate
+//
+// with:
+//
+//     identity:activate
+//
+// Until a dedicated activation-proof workflow exists.
+//
+// The controller does not invent or manufacture activation credentials.
 //
 // -----------------------------------------------------------------------------
+//
+// IDENTITY CREATION
+// -----------------------------------------------------------------------------
+//
+// Registration remains public:
+//
+//     POST /identities
+//
+// because the Identity does not yet exist as an authenticated principal.
+//
+// The command creates the initial identity state:
+//
+//     HTTP
+//       │
+//       ▼
+//     CreateIdentityCommand
+//       │
+//       ▼
+//     IdentityAggregate
+//       │
+//       ▼
+//     PENDING
+//
+// -----------------------------------------------------------------------------
+//
+// NORMAL USER IDENTITY ACCESS
+// -----------------------------------------------------------------------------
+//
+// Normal authenticated clients should use:
+//
+//     GET /identities/me
+//
+// The identity is derived from:
+//
+//     request.user.identityPublicId
+//
+// The client does not provide an Identity public ID.
+//
+// This avoids turning the normal "my identity" operation into:
+//
+//     GET /identities/:identityPublicId
+//
+// where arbitrary public identifiers could otherwise become an enumeration
+// or authorization boundary.
+//
+// -----------------------------------------------------------------------------
+//
+// PRIVILEGED IDENTITY LOOKUPS
+// -----------------------------------------------------------------------------
+//
+// The following endpoints are deliberately treated as privileged:
+//
+//     GET /identities/by-email/:email
+//     GET /identities/by-phone-number/:phoneNumber
+//
+// These operations can become account-enumeration surfaces because they allow
+// callers to test whether a particular email address or phone number belongs
+// to an Identity.
+//
+// They therefore require:
+//
+//     identity:lookup
+//
+// They should normally be granted only to trusted application workflows,
+// support/admin capabilities, or other explicitly authorized services.
+//
+// They are NOT the normal user-facing Identity lookup mechanism.
+//
+// -----------------------------------------------------------------------------
+//
+// TARGET IDENTITY ACCESS
+// -----------------------------------------------------------------------------
+//
+// Endpoints containing:
+//
+//     :identityPublicId
+//
+// operate against a target Identity.
+//
+// Possession of that public identifier does not grant authorization.
+//
+// Permissions answer:
+//
+//     "May this principal perform this operation?"
+//
+// Scope answers:
+//
+//     "May this principal perform it against THIS identity?"
+//
+// The application layer MUST enforce ownership, administrative scope, or
+// delegated authority where required.
+//
+// The controller does not implement target-identity authorization.
+//
+// -----------------------------------------------------------------------------
+//
+// AUTHENTICATED IDENTITY
+// -----------------------------------------------------------------------------
+//
+// For authenticated operations, JwtAuthGuard has already validated the access
+// token and JwtStrategy has attached:
+//
+//     request.user.identityPublicId
+//
+// This controller may use that value as the authenticated actor/context.
+//
+// It does NOT:
+//
+// - decode JWTs;
+// - verify JWTs;
+// - inspect Authorization headers;
+// - resolve permissions;
+// - load Identity from Prisma.
+//
+// -----------------------------------------------------------------------------
+//
+// ACTOR VS TARGET
+// -----------------------------------------------------------------------------
+//
+// Operations such as:
+//
+//     assign role
+//     revoke role
+//
+// contain two identities:
+//
+//     target identity
+//     authenticated actor
+//
+// Target:
+//
+//     /identities/:identityPublicId
+//
+// Actor:
+//
+//     request.user.identityPublicId
+//
+// The actor MUST NOT be accepted from the request body.
+//
+// The following client-controlled fields must therefore NOT be used:
+//
+//     assignedByPublicId
+//     revokedByPublicId
+//
+// The authenticated security principal is authoritative.
+//
+// -----------------------------------------------------------------------------
+//
+// CONTACT INFORMATION
+// -----------------------------------------------------------------------------
+//
+// Email and phone-number changes are Identity lifecycle mutations.
+//
+// The controller converts transport primitives into:
+//
+//     IdentityEmail
+//     IdentityPhoneNumber
+//
+// The aggregate/application layer remains responsible for:
+//
+// - uniqueness;
+// - lifecycle restrictions;
+// - verification requirements;
+// - mutation policy.
+//
+// -----------------------------------------------------------------------------
+//
+// ROLE MANAGEMENT
+// -----------------------------------------------------------------------------
+//
+// IdentityRoleEntity is owned by IdentityAggregate.
+//
+// Therefore role assignment and revocation are application operations against
+// the Identity aggregate boundary.
+//
+// Role itself remains a separate aggregate.
+//
+// The controller transports:
+//
+//     rolePublicId
+//
+// as an opaque reference.
+//
+// Business-effective expiration:
+//
+//     expiresAt
+//
+// is valid input because it represents policy.
+//
+// Mutation timestamps such as:
+//
+//     assignedAt
+//     revokedAt
+//
+// remain domain facts and are not accepted from HTTP.
+//
+// -----------------------------------------------------------------------------
+//
+// APPLICATION MESSAGE METADATA
+// -----------------------------------------------------------------------------
+//
+// For direct HTTP commands:
+//
+//     correlationId = randomUUID()
+//
+// The HTTP request is the root application operation, so no client-supplied
+// correlation identifier is trusted.
+//
+// Causation:
+//
+//     omitted
+//
+// unless a trusted application workflow explicitly provides it through an
+// appropriate application boundary.
+//
+// -----------------------------------------------------------------------------
+//
+// IDENTITY CLASSIFICATION
+// -----------------------------------------------------------------------------
+//
+// IdentityType is intentionally absent from this controller.
+//
+// Every Identity currently represents a SisiMove user, so classification adds
+// no additional business value at this boundary.
+//
+// -----------------------------------------------------------------------------
+//
+// SECURITY BOUNDARY
+// -----------------------------------------------------------------------------
+//
+// This controller does NOT:
+//
+// - verify JWTs;
+// - decode JWTs;
+// - resolve permissions;
+// - determine identity ownership;
+// - access Prisma;
+// - access repositories;
+// - directly mutate IdentityAggregate;
+// - generate domain timestamps;
+// - create Authentication;
+// - create Sessions;
+// - create Devices;
+// - create Recovery records;
+// - create OTP Challenges;
+// - resolve Roles;
+// - resolve Permissions.
+//
+// =============================================================================
 
 // -----------------------------------------------------------------------------
 // Node
@@ -137,6 +412,8 @@ import {
   Param,
   Patch,
   Post,
+  Req,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 
@@ -144,10 +421,16 @@ import {
 // Swagger
 // -----------------------------------------------------------------------------
 
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 // -----------------------------------------------------------------------------
-// Identity — Authentication & Authorization
+// Express
+// -----------------------------------------------------------------------------
+
+import type { Request } from 'express';
+
+// -----------------------------------------------------------------------------
+// Security — Authentication & Authorization
 // -----------------------------------------------------------------------------
 
 import {
@@ -161,11 +444,10 @@ import {
 // -----------------------------------------------------------------------------
 
 import type { CommandHandler } from '../../../../../foundation/kernel/application/command-handler';
-
 import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
 
 // -----------------------------------------------------------------------------
-// Application — Tokens
+// Application — Dependency Injection Tokens
 // -----------------------------------------------------------------------------
 
 import { IDENTITY_TOKENS } from '../../../application/identity.tokens';
@@ -248,9 +530,9 @@ import {
 
 import { IdentityResponseMapper } from '../mappers/identity.response.mapper';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Controller
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 @ApiTags('Identities')
 @Controller('identities')
@@ -344,127 +626,178 @@ export class IdentitiesController {
   // ===========================================================================
   // Identity Creation
   // ===========================================================================
-  //
-  // Registration is the entry point into the identity lifecycle.
-  //
-  // No authentication guard is applied because the identity does not yet
-  // necessarily exist as an authenticated principal.
-  //
-  // Result:
-  //
-  //     NEW IDENTITY → PENDING
-  //
-  // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Create Identity
+  // ---------------------------------------------------------------------------
+  //
+  // POST /identities
+  //
+  // Public registration endpoint.
+  //
+  // The server creates correlation metadata because this is the root operation
+  // initiated through HTTP.
+  //
   // ---------------------------------------------------------------------------
 
   @Post()
   public async create(
     @Body() dto: CreateIdentityRequestDto,
   ): Promise<ReturnType<typeof IdentityResponseMapper.toResponse>> {
-    // -------------------------------------------------------------------------
-    // Application Message Metadata
-    // -------------------------------------------------------------------------
-    //
-    // A direct HTTP registration request starts a new application operation.
-    // Therefore it receives a new correlation identifier and has no causation
-    // identifier.
-    //
-
-    const correlationId = randomUUID();
-
-    // -------------------------------------------------------------------------
-    // Create Command
-    // -------------------------------------------------------------------------
-
     const command = new CreateIdentityCommand(
-      // -----------------------------------------------------------------------
-      // Identity Email
-      // -----------------------------------------------------------------------
-
       IdentityEmail.create(dto.email),
-
-      // -----------------------------------------------------------------------
-      // Identity Phone Number
-      // -----------------------------------------------------------------------
 
       IdentityPhoneNumber.create(dto.phoneNumber),
 
-      // -----------------------------------------------------------------------
-      // Correlation
-      // -----------------------------------------------------------------------
-
-      correlationId,
+      randomUUID(),
     );
-
-    // -------------------------------------------------------------------------
-    // Execute
-    // -------------------------------------------------------------------------
 
     const aggregate = await this.createIdentityHandler.execute(command);
 
-    // -------------------------------------------------------------------------
-    // Response
-    // -------------------------------------------------------------------------
+    return IdentityResponseMapper.toResponse(aggregate);
+  }
+
+  // ===========================================================================
+  // Authenticated Identity
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Get Current Identity
+  // ---------------------------------------------------------------------------
+  //
+  // GET /identities/me
+  //
+  // This is the normal user-facing Identity endpoint.
+  //
+  // The client does not provide identityPublicId.
+  //
+  // The authenticated Identity is obtained exclusively from:
+  //
+  //     request.user.identityPublicId
+  //
+  // ---------------------------------------------------------------------------
+
+  @Get('me')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('identity:read')
+  public async getMe(
+    @Req() request: Request,
+  ): Promise<ReturnType<typeof IdentityResponseMapper.toResponse> | null> {
+    const identityPublicId = this.getAuthenticatedIdentityPublicId(request);
+
+    const query = new GetIdentityQuery(identityPublicId);
+
+    const aggregate = await this.getIdentityHandler.execute(query);
+
+    if (aggregate === null) {
+      return null;
+    }
 
     return IdentityResponseMapper.toResponse(aggregate);
   }
 
   // ===========================================================================
-  // Identity Identification / Retrieval
-  // ===========================================================================
-  //
-  // Existing identity information is protected.
-  //
-  // Primary lookup:
-  //
-  //     identityPublicId
-  //
-  // Secondary lookup:
-  //
-  //     email
-  //     phone number
-  //
+  // Privileged Identity Lookups
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
-  // Activate Identity
+  // Get Identity By Email
   // ---------------------------------------------------------------------------
   //
-  // Activation is intentionally public.
+  // GET /identities/by-email/:email
   //
-  // The Identity is identified exclusively by the route parameter:
+  // Privileged identity lookup.
   //
-  //     PATCH /api/v1/identities/{identityPublicId}/activate
+  // This is intentionally NOT the normal user-facing lookup mechanism.
   //
-  // No request body is required.
+  // Email lookup can expose whether an account exists and can therefore become
+  // an account-enumeration surface.
   //
-  // The application command contains only the Identity public identifier.
+  // Required permission:
   //
-  // The aggregate determines activatedAt when activation succeeds.
+  //     identity:lookup
   //
   // ---------------------------------------------------------------------------
 
-  @Patch(':identityPublicId/activate')
-  public async activate(
-    @Param('identityPublicId') identityPublicId: string,
-  ): Promise<ReturnType<typeof IdentityResponseMapper.toResponse>> {
-    const command = new ActivateIdentityCommand(
-      new IdentityPublicId(identityPublicId),
+  @Get('by-email/:email')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('identity:lookup')
+  public async getByEmail(
+    @Param() dto: GetIdentityByEmailQueryDto,
+  ): Promise<ReturnType<typeof IdentityResponseMapper.toResponse> | null> {
+    const query = new GetIdentityByEmailQuery(IdentityEmail.create(dto.email));
+
+    const aggregate = await this.getIdentityByEmailHandler.execute(query);
+
+    if (aggregate === null) {
+      return null;
+    }
+
+    return IdentityResponseMapper.toResponse(aggregate);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Get Identity By Phone Number
+  // ---------------------------------------------------------------------------
+  //
+  // GET /identities/by-phone-number/:phoneNumber
+  //
+  // Privileged identity lookup.
+  //
+  // Phone-number lookup can also become an account-enumeration surface.
+  //
+  // Required permission:
+  //
+  //     identity:lookup
+  //
+  // ---------------------------------------------------------------------------
+
+  @Get('by-phone-number/:phoneNumber')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('identity:lookup')
+  public async getByPhoneNumber(
+    @Param() dto: GetIdentityByPhoneNumberQueryDto,
+  ): Promise<ReturnType<typeof IdentityResponseMapper.toResponse> | null> {
+    const query = new GetIdentityByPhoneNumberQuery(
+      IdentityPhoneNumber.create(dto.phoneNumber),
     );
 
-    const aggregate = await this.activateIdentityHandler.execute(command);
+    const aggregate = await this.getIdentityByPhoneNumberHandler.execute(query);
+
+    if (aggregate === null) {
+      return null;
+    }
 
     return IdentityResponseMapper.toResponse(aggregate);
   }
 
+  // ===========================================================================
+  // Identity Target Queries
+  // ===========================================================================
+
   // ---------------------------------------------------------------------------
-  // Get Identity
+  // Get Identity By Public ID
+  // ---------------------------------------------------------------------------
+  //
+  // GET /identities/:identityPublicId
+  //
+  // This endpoint is for target-identity access.
+  //
+  // IMPORTANT:
+  //
+  // identity:read is not sufficient by itself to establish that the caller is
+  // allowed to inspect THIS target identity.
+  //
+  // The application layer must enforce the appropriate ownership,
+  // administrative scope, or delegated authority.
+  //
   // ---------------------------------------------------------------------------
 
   @Get(':identityPublicId')
+  @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('identity:read')
   public async get(
@@ -483,46 +816,40 @@ export class IdentitiesController {
     return IdentityResponseMapper.toResponse(aggregate);
   }
 
+  // ===========================================================================
+  // Identity Activation
+  // ===========================================================================
+
   // ---------------------------------------------------------------------------
-  // Get Identity By Email
+  // Activate Identity
+  // ---------------------------------------------------------------------------
+  //
+  // PATCH /identities/:identityPublicId/activate
+  //
+  // Protected until a dedicated activation-proof workflow exists.
+  //
+  // The current ActivateIdentityCommand accepts only IdentityPublicId.
+  //
+  // Therefore this endpoint MUST NOT be public merely because the Identity is
+  // currently PENDING.
+  //
+  // A future public activation flow should use an activation token/OTP/recovery
+  // workflow rather than trusting identityPublicId alone.
+  //
   // ---------------------------------------------------------------------------
 
-  @Get('by-email/:email')
+  @Patch(':identityPublicId/activate')
+  @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('identity:read')
-  public async getByEmail(
-    @Param() dto: GetIdentityByEmailQueryDto,
-  ): Promise<ReturnType<typeof IdentityResponseMapper.toResponse> | null> {
-    const query = new GetIdentityByEmailQuery(IdentityEmail.create(dto.email));
-
-    const aggregate = await this.getIdentityByEmailHandler.execute(query);
-
-    if (aggregate === null) {
-      return null;
-    }
-
-    return IdentityResponseMapper.toResponse(aggregate);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Get Identity By Phone Number
-  // ---------------------------------------------------------------------------
-
-  @Get('by-phone-number/:phoneNumber')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('identity:read')
-  public async getByPhoneNumber(
-    @Param() dto: GetIdentityByPhoneNumberQueryDto,
-  ): Promise<ReturnType<typeof IdentityResponseMapper.toResponse> | null> {
-    const query = new GetIdentityByPhoneNumberQuery(
-      IdentityPhoneNumber.create(dto.phoneNumber),
+  @RequirePermissions('identity:activate')
+  public async activate(
+    @Param('identityPublicId') identityPublicId: string,
+  ): Promise<ReturnType<typeof IdentityResponseMapper.toResponse>> {
+    const command = new ActivateIdentityCommand(
+      new IdentityPublicId(identityPublicId),
     );
 
-    const aggregate = await this.getIdentityByPhoneNumberHandler.execute(query);
-
-    if (aggregate === null) {
-      return null;
-    }
+    const aggregate = await this.activateIdentityHandler.execute(command);
 
     return IdentityResponseMapper.toResponse(aggregate);
   }
@@ -530,17 +857,13 @@ export class IdentitiesController {
   // ===========================================================================
   // Identity Contact Information
   // ===========================================================================
-  //
-  // Contact information is part of the identity record and may be maintained
-  // throughout the identity lifecycle.
-  //
-  // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Change Identity Email
   // ---------------------------------------------------------------------------
 
   @Patch(':identityPublicId/email')
+  @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('identity:change-email')
   public async changeEmail(
@@ -548,21 +871,9 @@ export class IdentitiesController {
     @Body() dto: ChangeIdentityEmailRequestDto,
   ): Promise<ReturnType<typeof IdentityResponseMapper.toResponse>> {
     const command = new ChangeIdentityEmailCommand(
-      // -----------------------------------------------------------------------
-      // Identity Public ID
-      // -----------------------------------------------------------------------
-
       new IdentityPublicId(identityPublicId),
 
-      // -----------------------------------------------------------------------
-      // New Email
-      // -----------------------------------------------------------------------
-
       IdentityEmail.create(dto.email),
-
-      // -----------------------------------------------------------------------
-      // Correlation
-      // -----------------------------------------------------------------------
 
       randomUUID(),
     );
@@ -577,6 +888,7 @@ export class IdentitiesController {
   // ---------------------------------------------------------------------------
 
   @Patch(':identityPublicId/phone-number')
+  @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('identity:change-phone-number')
   public async changePhoneNumber(
@@ -584,21 +896,9 @@ export class IdentitiesController {
     @Body() dto: ChangeIdentityPhoneNumberRequestDto,
   ): Promise<ReturnType<typeof IdentityResponseMapper.toResponse>> {
     const command = new ChangeIdentityPhoneNumberCommand(
-      // -----------------------------------------------------------------------
-      // Identity Public ID
-      // -----------------------------------------------------------------------
-
       new IdentityPublicId(identityPublicId),
 
-      // -----------------------------------------------------------------------
-      // New Phone Number
-      // -----------------------------------------------------------------------
-
       IdentityPhoneNumber.create(dto.phoneNumber),
-
-      // -----------------------------------------------------------------------
-      // Correlation
-      // -----------------------------------------------------------------------
 
       randomUUID(),
     );
@@ -612,44 +912,20 @@ export class IdentitiesController {
   // ===========================================================================
   // Identity Lifecycle
   // ===========================================================================
-  //
-  // Lifecycle transitions are privileged operations against an existing
-  // identity.
-  //
-  // PENDING → ACTIVE
-  //
-  // ACTIVE → SUSPENDED
-  //
-  // SUSPENDED → ACTIVE
-  //
-  // PENDING / ACTIVE / SUSPENDED → CLOSED
-  //
-  // CLOSED is terminal.
-  //
-  // Mutation timestamps are determined by IdentityAggregate.
-  //
-  // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Suspend Identity
   // ---------------------------------------------------------------------------
 
   @Patch(':identityPublicId/suspend')
+  @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('identity:suspend')
   public async suspend(
     @Param('identityPublicId') identityPublicId: string,
   ): Promise<ReturnType<typeof IdentityResponseMapper.toResponse>> {
     const command = new SuspendIdentityCommand(
-      // -----------------------------------------------------------------------
-      // Identity Public ID
-      // -----------------------------------------------------------------------
-
       new IdentityPublicId(identityPublicId),
-
-      // -----------------------------------------------------------------------
-      // Correlation
-      // -----------------------------------------------------------------------
 
       randomUUID(),
     );
@@ -664,21 +940,14 @@ export class IdentitiesController {
   // ---------------------------------------------------------------------------
 
   @Patch(':identityPublicId/close')
+  @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('identity:close')
   public async close(
     @Param('identityPublicId') identityPublicId: string,
   ): Promise<ReturnType<typeof IdentityResponseMapper.toResponse>> {
     const command = new CloseIdentityCommand(
-      // -----------------------------------------------------------------------
-      // Identity Public ID
-      // -----------------------------------------------------------------------
-
       new IdentityPublicId(identityPublicId),
-
-      // -----------------------------------------------------------------------
-      // Correlation
-      // -----------------------------------------------------------------------
 
       randomUUID(),
     );
@@ -691,20 +960,22 @@ export class IdentitiesController {
   // ===========================================================================
   // Identity Roles
   // ===========================================================================
-  //
-  // Roles represent responsibilities/capabilities assigned to an identity.
-  //
-  // IdentityRoleEntity remains owned by IdentityAggregate.
-  //
-  // Role remains a separate aggregate.
-  //
-  // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Get Identity Roles
   // ---------------------------------------------------------------------------
+  //
+  // GET /identities/:identityPublicId/roles
+  //
+  // IdentityRoleEntity instances are owned by IdentityAggregate.
+  //
+  // The application layer remains responsible for determining whether the
+  // authenticated principal may inspect the target Identity's roles.
+  //
+  // ---------------------------------------------------------------------------
 
   @Get(':identityPublicId/roles')
+  @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('identity-role:read')
   public async getRoles(
@@ -723,49 +994,63 @@ export class IdentitiesController {
   // Assign Identity Role
   // ---------------------------------------------------------------------------
   //
-  // assignedByPublicId = actor/context
-  // expiresAt          = business policy input
-  // assignedAt         = domain fact, therefore not accepted here
+  // POST /identities/:identityPublicId/roles
+  //
+  // Target:
+  //
+  //     :identityPublicId
+  //
+  // Actor:
+  //
+  //     request.user.identityPublicId
+  //
+  // The actor is never accepted from the request body.
+  //
+  // expiresAt represents business-effective policy.
+  //
+  // assignedAt remains a domain-generated fact.
   //
   // ---------------------------------------------------------------------------
 
   @Post(':identityPublicId/roles')
+  @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('identity-role:assign')
   public async assignRole(
+    @Req() request: Request,
     @Param('identityPublicId') identityPublicId: string,
     @Body() dto: AssignIdentityRoleRequestDto,
   ): Promise<ReturnType<typeof IdentityResponseMapper.roleFromEntity>> {
+    const actorPublicId = this.getAuthenticatedIdentityPublicId(request);
+
     const command = new AssignIdentityRoleCommand(
-      // -----------------------------------------------------------------------
-      // Identity Public ID
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
+      // Target Identity
+      // ---------------------------------------------------------------------
 
       new IdentityPublicId(identityPublicId),
 
-      // -----------------------------------------------------------------------
-      // Role Public ID
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
+      // Role
+      // ---------------------------------------------------------------------
 
       new IdentityRoleRolePublicId(dto.rolePublicId),
 
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
       // Correlation
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
 
       randomUUID(),
 
-      // -----------------------------------------------------------------------
-      // Assigning Identity Public ID
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
+      // Authenticated Actor
+      // ---------------------------------------------------------------------
 
-      dto.assignedByPublicId !== undefined
-        ? new IdentityPublicId(dto.assignedByPublicId)
-        : undefined,
+      actorPublicId,
 
-      // -----------------------------------------------------------------------
-      // Expiration
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
+      // Business-effective Expiration
+      // ---------------------------------------------------------------------
 
       dto.expiresAt !== undefined ? new Date(dto.expiresAt) : undefined,
     );
@@ -779,50 +1064,66 @@ export class IdentitiesController {
   // Revoke Identity Role
   // ---------------------------------------------------------------------------
   //
-  // revokedByPublicId = actor/context
-  // reason             = business/contextual input
-  // revokedAt          = domain fact, therefore not accepted here
+  // PATCH /identities/:identityPublicId/roles/:rolePublicId/revoke
+  //
+  // Target identity:
+  //
+  //     :identityPublicId
+  //
+  // Target role:
+  //
+  //     :rolePublicId
+  //
+  // Actor:
+  //
+  //     request.user.identityPublicId
+  //
+  // revokedAt remains a domain-generated fact.
+  //
+  // reason remains contextual/business input.
   //
   // ---------------------------------------------------------------------------
 
   @Patch(':identityPublicId/roles/:rolePublicId/revoke')
+  @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('identity-role:revoke')
   public async revokeRole(
+    @Req() request: Request,
     @Param('identityPublicId') identityPublicId: string,
     @Param('rolePublicId') rolePublicId: string,
     @Body() dto: RevokeIdentityRoleRequestDto,
   ): Promise<ReturnType<typeof IdentityResponseMapper.toResponse>> {
+    const actorPublicId = this.getAuthenticatedIdentityPublicId(request);
+
     const command = new RevokeIdentityRoleCommand(
-      // -----------------------------------------------------------------------
-      // Identity Public ID
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
+      // Target Identity
+      // ---------------------------------------------------------------------
 
       new IdentityPublicId(identityPublicId),
 
-      // -----------------------------------------------------------------------
-      // Role Public ID
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
+      // Target Role
+      // ---------------------------------------------------------------------
 
       new IdentityRoleRolePublicId(rolePublicId),
 
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
       // Correlation
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
 
       randomUUID(),
 
-      // -----------------------------------------------------------------------
-      // Revoking Identity Public ID
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
+      // Authenticated Actor
+      // ---------------------------------------------------------------------
 
-      dto.revokedByPublicId !== undefined
-        ? new IdentityPublicId(dto.revokedByPublicId)
-        : undefined,
+      actorPublicId,
 
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
       // Reason
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
 
       dto.reason,
     );
@@ -830,6 +1131,46 @@ export class IdentitiesController {
     const aggregate = await this.revokeIdentityRoleHandler.execute(command);
 
     return IdentityResponseMapper.toResponse(aggregate);
+  }
+
+  // ===========================================================================
+  // Private Helpers
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Get Authenticated Identity Public ID
+  // ---------------------------------------------------------------------------
+  //
+  // JwtStrategy has already authenticated the request and attached:
+  //
+  //     request.user.identityPublicId
+  //
+  // This method merely validates the expected principal shape.
+  //
+  // It does NOT:
+  //
+  // - decode the JWT;
+  // - verify the JWT;
+  // - inspect Authorization headers;
+  // - load Identity from persistence.
+  //
+  // ---------------------------------------------------------------------------
+
+  private getAuthenticatedIdentityPublicId(request: Request): IdentityPublicId {
+    const user = request.user as {
+      identityPublicId?: unknown;
+    };
+
+    if (
+      typeof user.identityPublicId !== 'string' ||
+      user.identityPublicId.trim().length === 0
+    ) {
+      throw new UnauthorizedException(
+        'Authenticated principal does not contain identityPublicId.',
+      );
+    }
+
+    return new IdentityPublicId(user.identityPublicId.trim());
   }
 }
 

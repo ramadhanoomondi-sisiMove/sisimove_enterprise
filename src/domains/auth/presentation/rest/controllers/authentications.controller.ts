@@ -14,28 +14,30 @@
 // - HTTP transport;
 // - DTO binding and validation;
 // - conversion from transport primitives to domain value objects;
-// - delegation of password hashing for password provisioning/change;
+// - password hashing for password provisioning/change;
 // - dispatching application commands and queries;
-// - mapping application/domain results to transport responses.
+// - mapping application/domain results to transport responses;
+// - extracting technical request metadata required by login.
 //
-// The controller contains no business rules.
+// The controller contains NO business rules.
 //
 // Domain behavior remains inside:
+//
 // - AuthenticationAggregate;
 // - AuthenticationEntity.
 //
 // Application orchestration remains inside:
+//
 // - command handlers;
 // - query handlers.
 //
 // Persistence remains behind:
+//
 // - repositories.
 //
-// IMPORTANT:
+// -----------------------------------------------------------------------------
 //
-// Authentication is an aggregate root.
-//
-// Related authentication boundaries:
+// Aggregate boundaries:
 //
 // Authentication
 // └── AuthenticationEntity
@@ -52,7 +54,7 @@
 // OtpChallenge
 // └── OtpChallengeEntity
 //
-// These are separate aggregate boundaries.
+// These are independent aggregate boundaries.
 //
 // This controller does NOT:
 //
@@ -69,19 +71,20 @@
 // - access Prisma;
 // - perform persistence directly;
 // - mutate Authentication state directly;
+// - orchestrate the complete login workflow;
 // - perform external side effects.
 //
 // -----------------------------------------------------------------------------
 //
 // Authentication security boundary:
 //
-// Public onboarding / authentication operations:
+// Public authentication operations:
 //
 // - create authentication;
 // - activate authentication;
 // - login.
 //
-// Protected operations against an existing Authentication:
+// Protected Authentication operations:
 //
 // - retrieve authentication;
 // - retrieve authentication by identity;
@@ -91,22 +94,27 @@
 // - record authentication failure;
 // - change authentication password.
 //
-// Public and protected operations coexist explicitly within this controller.
+// Authentication and authorization remain separate concerns.
+//
+// JwtAuthGuard establishes:
+//
+//     "Who is authenticated?"
+//
+// PermissionsGuard establishes:
+//
+//     "Is the authenticated principal authorized?"
 //
 // -----------------------------------------------------------------------------
 //
 // Complete login:
 //
-// The public HTTP contract contains only:
+// The public HTTP request body contains only:
 //
 //     emailOrPhoneNumber
 //     password
 //
-// Technical device/session context is request metadata and is NOT part of the
-// user-facing request DTO.
-//
-// The controller obtains technical context from the HTTP request and passes it
-// to the application command.
+// Technical device/session information is HTTP request metadata and is NOT
+// exposed as user-facing DTO properties.
 //
 //     HTTP request
 //          │
@@ -116,9 +124,16 @@
 //          └── technical request context
 //                 ├── device fingerprint
 //                 ├── device type
+//                 ├── device name
+//                 ├── device platform
+//                 ├── operating system
+//                 ├── operating-system version
+//                 ├── browser
+//                 ├── browser version
 //                 ├── user agent
 //                 ├── IP address
-//                 └── other request metadata
+//                 ├── country
+//                 └── city
 //          │
 //          ▼
 // AuthenticateLoginCommand
@@ -126,28 +141,21 @@
 //          ▼
 // AuthenticateLoginHandler
 //          │
-//          ├── AuthenticateHandler
-//          │       │
-//          │       └── credential authentication
-//          │
+//          ├── Authentication
 //          ├── Device
-//          │
 //          ├── Session
-//          │
 //          ├── access token
-//          │
 //          └── refresh token
 //          │
 //          ▼
 // AuthenticateLoginResult
 //
-// The controller does not participate in the orchestration.
+// The controller does not participate in orchestration beyond constructing the
+// application command.
 //
 // -----------------------------------------------------------------------------
 //
-// IMPORTANT:
-//
-// The client does NOT provide through the login DTO:
+// The login client does NOT provide:
 //
 // - identityPublicId;
 // - authenticationPublicId;
@@ -160,8 +168,7 @@
 // - correlationId;
 // - causationId.
 //
-// Device/session metadata is technical request context and should not appear
-// as user-facing Swagger form fields.
+// These values are generated or derived by the application workflow.
 //
 // -----------------------------------------------------------------------------
 //
@@ -204,30 +211,30 @@
 // Therefore:
 //
 // - correlationId is generated at the HTTP/application boundary;
-// - causationId is omitted because there is no preceding command or event.
-//
-// The generated correlationId is propagated into application commands and
-// subsequently into domain events where applicable.
+// - causationId is undefined because there is no preceding application
+//   command/event in this HTTP request.
 //
 // -----------------------------------------------------------------------------
 //
 // Temporal responsibility:
 //
-// Mutation timestamps that represent the occurrence of a successful domain
-// mutation are determined by the aggregate.
+// Aggregate-owned mutation timestamps are determined by aggregate behavior.
 //
-// The controller therefore does NOT construct timestamps such as:
+// The controller therefore does NOT construct aggregate-owned timestamps such
+// as:
 //
 // - activatedAt.
 //
-// Security/business facts explicitly supplied by the API contract may remain
-// command inputs where appropriate, for example:
+// Where the command contract explicitly requires security/business timestamps
+// supplied by the transport contract, the controller converts them from
+// transport primitives to domain value objects.
+//
+// Examples:
 //
 // - lockedAt;
 // - lockedUntil;
-// - failure reason;
 // - failedAt;
-// - password changedAt.
+// - changedAt.
 //
 // -----------------------------------------------------------------------------
 //
@@ -235,17 +242,20 @@
 //
 // Failed credential authentication MUST terminate the login workflow.
 //
-// The controller simply returns the discriminated login result:
+// The controller simply returns the discriminated login result.
+//
+// Example:
 //
 //     { success: false, reason: 'INVALID_CREDENTIALS' }
 //
-// It does not:
+// The controller does NOT:
 //
 // - resolve/create a Device;
 // - create a Session;
 // - generate tokens;
-// - expose whether the email/phone exists;
-// - expose whether a Device was invalid.
+// - reveal whether the identity exists;
+// - reveal whether authentication exists;
+// - expose device-validation details.
 //
 // -----------------------------------------------------------------------------
 //
@@ -261,7 +271,7 @@
 // - refreshToken.
 //
 // The controller returns the application result without reimplementing the
-// login workflow.
+// authentication workflow.
 //
 // -----------------------------------------------------------------------------
 
@@ -276,6 +286,7 @@ import { randomUUID } from 'node:crypto';
 // -----------------------------------------------------------------------------
 
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -297,7 +308,7 @@ import type { Request } from 'express';
 // Swagger
 // -----------------------------------------------------------------------------
 
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiHeader, ApiTags } from '@nestjs/swagger';
 
 // -----------------------------------------------------------------------------
 // Foundation — Security
@@ -491,29 +502,16 @@ export class AuthenticationsController {
     // -------------------------------------------------------------------------
     // Complete Login Handler
     // -------------------------------------------------------------------------
-    //
-    // AuthenticateLoginHandler owns the complete login workflow:
-    //
-    // credentials
-    //     ↓
-    // AuthenticateHandler
-    //     ↓
-    // Authentication
-    //     ↓
-    // Device
-    //     ↓
-    // Session
-    //     ↓
-    // access + refresh tokens
-    //
-    // The controller only constructs the command and dispatches it.
-    // -------------------------------------------------------------------------
 
     @Inject(AUTH_TOKENS.COMMAND_HANDLERS.AUTHENTICATE_LOGIN)
     private readonly authenticateLoginHandler: CommandHandler<
       AuthenticateLoginCommand,
       AuthenticateLoginResult
     >,
+
+    // -------------------------------------------------------------------------
+    // Authentication Security Command Handlers
+    // -------------------------------------------------------------------------
 
     @Inject(AUTH_TOKENS.COMMAND_HANDLERS.RECORD_AUTHENTICATION_FAILURE)
     private readonly recordAuthenticationFailureHandler: CommandHandler<
@@ -552,18 +550,15 @@ export class AuthenticationsController {
   // Get Authentication By Identity
   // ---------------------------------------------------------------------------
   //
-  // GET /authentications/identity/:identityPublicId
+  // Returns the Authentication aggregate associated with an Identity.
   //
-  // Protected:
+  // Authorization:
   //
   //     authentication:read
   //
-  // The static "identity" route is declared before:
-  //
-  //     GET /authentications/:authenticationPublicId
-  //
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
   @Get('identity/:identityPublicId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('authentication:read')
@@ -587,15 +582,8 @@ export class AuthenticationsController {
   // ---------------------------------------------------------------------------
   // Get Authentication
   // ---------------------------------------------------------------------------
-  //
-  // GET /authentications/:authenticationPublicId
-  //
-  // Protected:
-  //
-  //     authentication:read
-  //
-  // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
   @Get(':authenticationPublicId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('authentication:read')
@@ -623,12 +611,12 @@ export class AuthenticationsController {
   // Create Authentication
   // ---------------------------------------------------------------------------
   //
-  // POST /authentications
+  // Public onboarding operation.
   //
-  // Public credential provisioning.
+  // Password hashing occurs before the application command is constructed.
   //
-  // Plaintext password is hashed at the HTTP/application boundary and never
-  // enters CreateAuthenticationCommand.
+  // The plaintext password therefore never crosses into the application
+  // command contract.
   //
   // ---------------------------------------------------------------------------
 
@@ -657,21 +645,18 @@ export class AuthenticationsController {
   // Activate Authentication
   // ---------------------------------------------------------------------------
   //
-  // PATCH /authentications/:authenticationPublicId/activate
+  // Activation is intentionally kept public according to the current
+  // authentication onboarding contract.
   //
-  // Public authentication activation.
-  //
-  // Lifecycle:
-  //
-  //     PENDING → ACTIVE
-  //
-  // activatedAt is determined by AuthenticationAggregate.
+  // If activation becomes an administrative operation, this endpoint should
+  // be protected with JwtAuthGuard + PermissionsGuard.
   //
   // ---------------------------------------------------------------------------
 
   @Patch(':authenticationPublicId/activate')
   public async activate(
-    @Param('authenticationPublicId') authenticationPublicId: string,
+    @Param('authenticationPublicId')
+    authenticationPublicId: string,
   ): Promise<AuthenticationResponse> {
     const command = new ActivateAuthenticationCommand(
       new AuthenticationPublicId(authenticationPublicId),
@@ -693,36 +678,100 @@ export class AuthenticationsController {
   //
   // POST /authentications/login
   //
-  // Public authentication operation.
-  //
-  // User-facing request:
+  // Request body:
   //
   //     {
   //       "emailOrPhoneNumber": "...",
   //       "password": "..."
   //     }
   //
-  // Technical device/session context is obtained from the HTTP request rather
-  // than exposed as user-facing DTO fields.
+  // Required technical headers:
+  //
+  //     x-device-fingerprint
+  //     x-device-type
+  //
+  // Optional technical headers:
+  //
+  //     x-device-name
+  //     x-device-platform
+  //     x-device-operating-system
+  //     x-device-operating-system-version
+  //     x-device-browser
+  //     x-device-browser-version
+  //     x-country-code
+  //     x-city
+  //
+  // Standard HTTP header:
+  //
+  //     user-agent
+  //
+  // Technical metadata intentionally remains outside the request DTO.
   //
   // ---------------------------------------------------------------------------
 
+  @ApiHeader({
+    name: 'x-device-fingerprint',
+    description: 'Stable fingerprint identifying the client device.',
+    required: true,
+  })
+  @ApiHeader({
+    name: 'x-device-type',
+    description: 'Client device type.',
+    required: true,
+  })
+  @ApiHeader({
+    name: 'x-device-name',
+    description: 'Human-readable device name.',
+    required: false,
+  })
+  @ApiHeader({
+    name: 'x-device-platform',
+    description: 'Client device platform.',
+    required: false,
+  })
+  @ApiHeader({
+    name: 'x-device-operating-system',
+    description: 'Client operating system.',
+    required: false,
+  })
+  @ApiHeader({
+    name: 'x-device-operating-system-version',
+    description: 'Client operating-system version.',
+    required: false,
+  })
+  @ApiHeader({
+    name: 'x-device-browser',
+    description: 'Client browser.',
+    required: false,
+  })
+  @ApiHeader({
+    name: 'x-device-browser-version',
+    description: 'Client browser version.',
+    required: false,
+  })
+  @ApiHeader({
+    name: 'x-country-code',
+    description: 'ISO 3166-1 alpha-2 country code.',
+    required: false,
+  })
+  @ApiHeader({
+    name: 'x-city',
+    description: 'Client city.',
+    required: false,
+  })
   @Post('login')
   public async login(
     @Body() dto: AuthenticateLoginRequestDto,
     @Req() request: Request,
   ): Promise<AuthenticateLoginResult> {
+    // -------------------------------------------------------------------------
+    // Application Message Metadata
+    // -------------------------------------------------------------------------
+
     const correlationId = randomUUID();
 
     // -------------------------------------------------------------------------
     // Technical Device Context
-    // -------------------------------------------------------------------------
-    //
-    // These values are request metadata, not user-facing login fields.
-    //
-    // They are intentionally absent from AuthenticateLoginRequestDto and
-    // therefore do not appear as manual Swagger form fields.
-    //
     // -------------------------------------------------------------------------
 
     const deviceFingerprint = this.getHeader(request, 'x-device-fingerprint');
@@ -765,13 +814,25 @@ export class AuthenticationsController {
     // -------------------------------------------------------------------------
     // Application Command
     // -------------------------------------------------------------------------
+    //
+    // The command contains domain value objects rather than raw HTTP metadata.
+    //
+    // The complete login workflow remains inside AuthenticateLoginHandler.
+    //
+    // -------------------------------------------------------------------------
 
     const command = new AuthenticateLoginCommand(
+      // ---------------------------------------------------------------------
       // Credentials
+      // ---------------------------------------------------------------------
+
       dto.emailOrPhoneNumber,
       dto.password,
 
+      // ---------------------------------------------------------------------
       // Device
+      // ---------------------------------------------------------------------
+
       DeviceFingerprint.create(deviceFingerprint),
 
       this.createDeviceType(deviceType),
@@ -794,7 +855,10 @@ export class AuthenticationsController {
         ? DeviceBrowserVersion.create(browserVersion)
         : undefined,
 
+      // ---------------------------------------------------------------------
       // Session
+      // ---------------------------------------------------------------------
+
       ipAddress !== undefined ? SessionIpAddress.create(ipAddress) : undefined,
 
       userAgent !== undefined ? SessionUserAgent.create(userAgent) : undefined,
@@ -805,12 +869,25 @@ export class AuthenticationsController {
 
       city !== undefined ? SessionCity.create(city) : undefined,
 
-      // Application message metadata
+      // ---------------------------------------------------------------------
+      // Application Message Metadata
+      // ---------------------------------------------------------------------
+
       correlationId,
 
       // Direct HTTP operation has no causation.
       undefined,
     );
+
+    // -------------------------------------------------------------------------
+    // Complete Login Workflow
+    // -------------------------------------------------------------------------
+    //
+    // The handler is solely responsible for deciding whether login succeeds
+    // and for orchestrating Authentication, Device, Session, and token
+    // creation.
+    //
+    // -------------------------------------------------------------------------
 
     return this.authenticateLoginHandler.execute(command);
   }
@@ -823,12 +900,15 @@ export class AuthenticationsController {
   // Lock Authentication
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
   @Patch(':authenticationPublicId/lock')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('authentication:lock')
   public async lock(
-    @Param('authenticationPublicId') authenticationPublicId: string,
-    @Body() dto: LockAuthenticationRequestDto,
+    @Param('authenticationPublicId')
+    authenticationPublicId: string,
+    @Body()
+    dto: LockAuthenticationRequestDto,
   ): Promise<AuthenticationResponse> {
     const command = new LockAuthenticationCommand(
       new AuthenticationPublicId(authenticationPublicId),
@@ -855,11 +935,13 @@ export class AuthenticationsController {
   // Unlock Authentication
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
   @Patch(':authenticationPublicId/unlock')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('authentication:unlock')
   public async unlock(
-    @Param('authenticationPublicId') authenticationPublicId: string,
+    @Param('authenticationPublicId')
+    authenticationPublicId: string,
   ): Promise<AuthenticationResponse> {
     const command = new UnlockAuthenticationCommand(
       new AuthenticationPublicId(authenticationPublicId),
@@ -875,12 +957,15 @@ export class AuthenticationsController {
   // Disable Authentication
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
   @Patch(':authenticationPublicId/disable')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('authentication:disable')
   public async disable(
-    @Param('authenticationPublicId') authenticationPublicId: string,
-    @Body() dto: DisableAuthenticationRequestDto,
+    @Param('authenticationPublicId')
+    authenticationPublicId: string,
+    @Body()
+    dto: DisableAuthenticationRequestDto,
   ): Promise<AuthenticationResponse> {
     const command = new DisableAuthenticationCommand(
       new AuthenticationPublicId(authenticationPublicId),
@@ -904,13 +989,23 @@ export class AuthenticationsController {
   // ---------------------------------------------------------------------------
   // Record Authentication Failure
   // ---------------------------------------------------------------------------
+  //
+  // This endpoint is an administrative/security operation.
+  //
+  // Login itself does NOT call this endpoint through HTTP. Failed credential
+  // authentication is handled internally by the authentication workflow.
+  //
+  // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
   @Post(':authenticationPublicId/failures')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('authentication:record-failure')
   public async recordFailure(
-    @Param('authenticationPublicId') authenticationPublicId: string,
-    @Body() dto: RecordAuthenticationFailureRequestDto,
+    @Param('authenticationPublicId')
+    authenticationPublicId: string,
+    @Body()
+    dto: RecordAuthenticationFailureRequestDto,
   ): Promise<AuthenticationResponse> {
     const command = new RecordAuthenticationFailureCommand(
       new AuthenticationPublicId(authenticationPublicId),
@@ -933,13 +1028,23 @@ export class AuthenticationsController {
   // ---------------------------------------------------------------------------
   // Change Password
   // ---------------------------------------------------------------------------
+  //
+  // The client provides a plaintext password only through the transport DTO.
+  //
+  // PasswordHasher converts it into a password hash before the application
+  // command is constructed.
+  //
+  // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
   @Patch(':authenticationPublicId/password')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('authentication:change-password')
   public async changePassword(
-    @Param('authenticationPublicId') authenticationPublicId: string,
-    @Body() dto: ChangePasswordRequestDto,
+    @Param('authenticationPublicId')
+    authenticationPublicId: string,
+    @Body()
+    dto: ChangePasswordRequestDto,
   ): Promise<AuthenticationResponse> {
     const hashedPassword = await this.passwordHasher.hash(dto.password);
 
@@ -968,18 +1073,16 @@ export class AuthenticationsController {
   // Get Required Header
   // ---------------------------------------------------------------------------
   //
-  // Required technical request metadata.
+  // Express represents request headers as:
   //
-  // HTTP headers may be represented by Express as:
+  // - string;
+  // - string[];
+  // - undefined.
   //
-  //     string
-  //     string[]
-  //     undefined
+  // Required headers are normalized into a single non-empty string.
   //
-  // This helper normalizes those transport representations into a required
-  // non-empty string.
-  //
-  // No domain logic is performed here.
+  // Missing or empty required headers are transport errors and therefore become
+  // HTTP 400 Bad Request.
   //
   // ---------------------------------------------------------------------------
 
@@ -987,33 +1090,46 @@ export class AuthenticationsController {
     const value = request.headers[name];
 
     // -------------------------------------------------------------------------
-    // Single header value
+    // Single Header Value
     // -------------------------------------------------------------------------
 
-    if (typeof value === 'string' && value.length > 0) {
-      return value;
+    if (typeof value === 'string') {
+      const normalized = value.trim();
+
+      if (normalized.length > 0) {
+        return normalized;
+      }
     }
 
     // -------------------------------------------------------------------------
-    // Multiple header values
+    // Multiple Header Values
     // -------------------------------------------------------------------------
 
     if (Array.isArray(value)) {
       const firstValue = value[0];
 
-      if (typeof firstValue === 'string' && firstValue.length > 0) {
-        return firstValue;
+      if (typeof firstValue === 'string') {
+        const normalized = firstValue.trim();
+
+        if (normalized.length > 0) {
+          return normalized;
+        }
       }
     }
 
     // -------------------------------------------------------------------------
-    // Required header missing or empty
+    // Missing / Empty Header
     // -------------------------------------------------------------------------
 
-    throw new Error(`Missing required request header: ${name}`);
+    throw new BadRequestException(`Missing required request header: ${name}`);
   }
+
   // ---------------------------------------------------------------------------
   // Get Optional Header
+  // ---------------------------------------------------------------------------
+  //
+  // Missing, empty, or unsupported header values are normalized to undefined.
+  //
   // ---------------------------------------------------------------------------
 
   private getOptionalHeader(
@@ -1023,27 +1139,31 @@ export class AuthenticationsController {
     const value = request.headers[name];
 
     // -------------------------------------------------------------------------
-    // Single header value
+    // Single Header Value
     // -------------------------------------------------------------------------
 
-    if (typeof value === 'string' && value.length > 0) {
-      return value;
+    if (typeof value === 'string') {
+      const normalized = value.trim();
+
+      return normalized.length > 0 ? normalized : undefined;
     }
 
     // -------------------------------------------------------------------------
-    // Multiple header values
+    // Multiple Header Values
     // -------------------------------------------------------------------------
 
     if (Array.isArray(value)) {
       const firstValue = value[0];
 
-      if (typeof firstValue === 'string' && firstValue.length > 0) {
-        return firstValue;
+      if (typeof firstValue === 'string') {
+        const normalized = firstValue.trim();
+
+        return normalized.length > 0 ? normalized : undefined;
       }
     }
 
     // -------------------------------------------------------------------------
-    // Header missing or empty
+    // Missing Header
     // -------------------------------------------------------------------------
 
     return undefined;
@@ -1053,19 +1173,21 @@ export class AuthenticationsController {
   // Get Client IP Address
   // ---------------------------------------------------------------------------
   //
-  // Prefer the framework's resolved IP address.
+  // Express resolves request.ip according to its proxy/trust configuration.
   //
-  // Proxy trust configuration belongs to infrastructure/application bootstrap
-  // and must be configured correctly before relying on forwarded addresses.
+  // Proxy trust configuration therefore belongs to infrastructure/bootstrap
+  // configuration rather than this controller.
   //
   // ---------------------------------------------------------------------------
 
   private getClientIpAddress(request: Request): string | undefined {
-    if (typeof request.ip === 'string' && request.ip.length > 0) {
-      return request.ip;
+    if (typeof request.ip !== 'string') {
+      return undefined;
     }
 
-    return undefined;
+    const normalized = request.ip.trim();
+
+    return normalized.length > 0 ? normalized : undefined;
   }
 
   // ---------------------------------------------------------------------------
@@ -1074,24 +1196,19 @@ export class AuthenticationsController {
   //
   // HTTP headers are untyped strings.
   //
-  // DeviceType.create(), however, intentionally accepts the domain's
-  // DeviceTypeValue rather than an arbitrary string.
+  // DeviceType remains the domain source of truth for:
   //
-  // We do NOT duplicate the domain's allowed device-type values here.
-  //
-  // The DeviceType value object remains the single source of truth for:
-  //
-  // - normalization;
-  // - validation;
   // - allowed values;
+  // - validation;
+  // - normalization;
   // - construction.
   //
-  // Parameters<typeof DeviceType.create>[0] extracts the exact argument type
-  // expected by the domain factory. This keeps this controller synchronized
-  // with the DeviceType.create() contract without inventing a second list of
-  // allowed values at the HTTP boundary.
+  // The controller deliberately does not duplicate the DeviceType value list.
   //
-  // Runtime validation remains the responsibility of DeviceType.create().
+  // Parameters<typeof DeviceType.create>[0] obtains the exact argument type
+  // expected by the domain factory.
+  //
+  // Runtime validation remains inside DeviceType.create().
   //
   // ---------------------------------------------------------------------------
 

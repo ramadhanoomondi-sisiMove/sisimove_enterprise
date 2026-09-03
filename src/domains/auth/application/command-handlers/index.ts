@@ -29,6 +29,8 @@ export { RecordAuthenticationFailureHandler } from './record-authentication-fail
 
 export { ChangePasswordHandler } from './change-password.handler';
 
+export { AuthenticateLoginHandler } from './authenticate-login.handler';
+
 // -----------------------------------------------------------------------------
 // Session
 // -----------------------------------------------------------------------------

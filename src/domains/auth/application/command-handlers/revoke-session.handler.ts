@@ -13,10 +13,11 @@
 //
 // APPLICATION RESPONSIBILITIES
 //
-// - validate command input;
+// - validate command structure;
 // - retrieve the Session aggregate;
 // - invoke SessionAggregate.revoke();
-// - persist the changed aggregate.
+// - persist the changed aggregate;
+// - return the resulting aggregate to the caller.
 //
 // -----------------------------------------------------------------------------
 //
@@ -52,6 +53,29 @@
 //                       │
 //                       ▼
 //              SessionRepository.save()
+//                       │
+//                       ▼
+//               SessionAggregate
+//
+// -----------------------------------------------------------------------------
+//
+// IMPORTANT — RETURN CONTRACT
+//
+// The handler returns the persisted SessionAggregate.
+//
+// This is intentional because the HTTP controller may need to map the
+// resulting aggregate into a SessionResponse:
+//
+//     const aggregate = await handler.execute(command);
+//
+//     return SessionResponseMapper.toResponse(aggregate);
+//
+// The handler therefore implements:
+//
+//     CommandHandler<
+//       RevokeSessionCommand,
+//       SessionAggregate
+//     >
 //
 // -----------------------------------------------------------------------------
 //
@@ -93,7 +117,7 @@
 //
 // EVENT RULE
 //
-// SessionRevokedEvent is created exclusively by the Session aggregate.
+// SessionRevokedEvent is created exclusively by SessionAggregate.revoke().
 //
 // The handler supplies the correlation and causation context but does not
 // construct the event itself.
@@ -106,31 +130,37 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
-// Foundation
+// Foundation — Application
 // -----------------------------------------------------------------------------
 
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 
 // -----------------------------------------------------------------------------
-// Authentication Tokens
+// Authentication — Application Tokens
 // -----------------------------------------------------------------------------
 
 import { AUTH_TOKENS } from '../auth.tokens';
 
 // -----------------------------------------------------------------------------
-// Command
+// Authentication — Application Command
 // -----------------------------------------------------------------------------
 
 import type { RevokeSessionCommand } from '../commands/revoke-session.command';
 
 // -----------------------------------------------------------------------------
-// Repository
+// Authentication — Domain Aggregate
+// -----------------------------------------------------------------------------
+
+import type { SessionAggregate } from '../../domain/aggregates/session.aggregate';
+
+// -----------------------------------------------------------------------------
+// Authentication — Domain Repository
 // -----------------------------------------------------------------------------
 
 import type { SessionRepository } from '../../domain/repositories/session.repository';
 
 // -----------------------------------------------------------------------------
-// Exceptions
+// Authentication — Domain Exception
 // -----------------------------------------------------------------------------
 
 import { SessionException } from '../../domain/exceptions/session.exception';
@@ -143,7 +173,7 @@ import { SessionException } from '../../domain/exceptions/session.exception';
  * Revokes an existing Session aggregate.
  *
  * The handler coordinates the application workflow while Session lifecycle
- * semantics remain owned by the Session aggregate/entity.
+ * semantics remain owned by SessionAggregate / SessionEntity.
  *
  * Application flow:
  *
@@ -163,9 +193,15 @@ import { SessionException } from '../../domain/exceptions/session.exception';
  *              │
  *              ▼
  *     SessionRepository.save()
+ *              │
+ *              ▼
+ *       SessionAggregate
  */
 @Injectable()
-export class RevokeSessionHandler implements CommandHandler<RevokeSessionCommand> {
+export class RevokeSessionHandler implements CommandHandler<
+  RevokeSessionCommand,
+  SessionAggregate
+> {
   // ===========================================================================
   // Constructor
   // ===========================================================================
@@ -182,10 +218,21 @@ export class RevokeSessionHandler implements CommandHandler<RevokeSessionCommand
   /**
    * Executes the RevokeSessionCommand.
    *
-   * The Session aggregate owns the revocation transition, lifecycle
-   * invariants, revoked state, and domain-event construction.
+   * The handler performs application orchestration only.
+   *
+   * SessionAggregate.revoke() owns:
+   *
+   * - Session lifecycle semantics;
+   * - revocation state transition;
+   * - revokedAt;
+   * - revokedReason;
+   * - SessionRevokedEvent construction.
+   *
+   * The persisted aggregate is returned to the caller.
    */
-  public async execute(command: RevokeSessionCommand): Promise<void> {
+  public async execute(
+    command: RevokeSessionCommand,
+  ): Promise<SessionAggregate> {
     // -------------------------------------------------------------------------
     // 1. Validate command
     // -------------------------------------------------------------------------
@@ -218,12 +265,12 @@ export class RevokeSessionHandler implements CommandHandler<RevokeSessionCommand
     // SessionAggregate.revoke() owns:
     //
     // - lifecycle validation;
-    // - ACTIVE → REVOKED transition;
+    // - Session state transition;
     // - revokedAt;
     // - revokedReason;
     // - SessionRevokedEvent construction.
     //
-    // The handler deliberately does not reproduce these rules.
+    // The handler deliberately does not reproduce those rules.
     // -------------------------------------------------------------------------
 
     aggregate.revoke(
@@ -246,14 +293,28 @@ export class RevokeSessionHandler implements CommandHandler<RevokeSessionCommand
     // -------------------------------------------------------------------------
 
     await this.sessionRepository.save(aggregate);
+
+    // -------------------------------------------------------------------------
+    // 5. Return aggregate
+    // -------------------------------------------------------------------------
+    //
+    // Returning the aggregate allows application consumers such as the HTTP
+    // controller to map the resulting state into their response model.
+    // -------------------------------------------------------------------------
+
+    return aggregate;
   }
 
   // ===========================================================================
   // Command Validation
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Command
+  // ---------------------------------------------------------------------------
+
   /**
-   * Ensures that the command exists.
+   * Ensures that a command instance was supplied.
    */
   private ensureCommand(command: RevokeSessionCommand): void {
     if (command === undefined || command === null) {
@@ -261,12 +322,16 @@ export class RevokeSessionHandler implements CommandHandler<RevokeSessionCommand
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Required Fields
+  // ---------------------------------------------------------------------------
+
   /**
-   * Validates required command properties.
+   * Validates the structural requirements of the command.
    *
-   * Validation here is structural only.
+   * This method intentionally does not reproduce Session lifecycle rules.
    *
-   * Session revocation semantics remain owned by the domain aggregate/entity.
+   * Domain semantics remain inside SessionAggregate / SessionEntity.
    */
   private ensureRequiredCommandFields(command: RevokeSessionCommand): void {
     // -------------------------------------------------------------------------
@@ -278,7 +343,7 @@ export class RevokeSessionHandler implements CommandHandler<RevokeSessionCommand
     }
 
     // -------------------------------------------------------------------------
-    // Revocation timestamp
+    // Revoked-at timestamp
     // -------------------------------------------------------------------------
 
     if (command.revokedAt === undefined) {

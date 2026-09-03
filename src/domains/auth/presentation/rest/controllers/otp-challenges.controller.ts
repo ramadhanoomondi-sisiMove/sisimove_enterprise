@@ -6,77 +6,302 @@
 //
 // Aggregate boundary:
 //
-// OtpChallengeAggregate
-// └── OtpChallengeEntity
+//     OtpChallengeAggregate
+//     └── OtpChallengeEntity
 //
 // Responsibilities:
 //
 // - HTTP transport;
 // - DTO binding and validation;
-// - conversion of transport primitives to domain value objects;
+// - conversion of transport primitives into domain value objects;
+// - construction of application commands and queries;
 // - dispatching application commands and queries;
-// - mapping domain results to HTTP response models.
+// - mapping application/domain results into HTTP response models.
 //
-// The controller contains no business rules.
+// This controller contains NO OTP business rules.
 //
-// Domain behavior:
-// - OtpChallengeAggregate;
-// - OtpChallengeEntity.
+// -----------------------------------------------------------------------------
 //
-// Application orchestration:
+// DOMAIN
+// -----------------------------------------------------------------------------
+//
+// OtpChallengeAggregate
+// └── OtpChallengeEntity
+//
+// The aggregate owns OTP Challenge lifecycle and invariants.
+//
+// -----------------------------------------------------------------------------
+//
+// APPLICATION
+// -----------------------------------------------------------------------------
+//
+// Application orchestration is performed by:
+//
 // - command handlers;
 // - query handlers.
 //
-// Persistence:
-// - OtpChallengeRepository.
+// -----------------------------------------------------------------------------
 //
-// IMPORTANT:
+// PERSISTENCE
+// -----------------------------------------------------------------------------
+//
+// Persistence is performed by:
+//
+//     OtpChallengeRepository
+//
+// The controller never accesses Prisma or repositories directly.
+//
+// -----------------------------------------------------------------------------
+//
+// IMPORTANT — AGGREGATE BOUNDARY
+// -----------------------------------------------------------------------------
 //
 // OtpChallenge is an independent aggregate.
 //
-// The Identity reference remains opaque:
+//     OtpChallengeAggregate
+//     └── OtpChallengeEntity
 //
-// OtpChallenge
-// └── identityPublicId
+// Identity remains an opaque external reference:
+//
+//     OtpChallenge
+//     └── identityPublicId
+//
+// This controller does not:
+//
+// - resolve Identity;
+// - load Identity aggregates;
+// - mutate Identity;
+// - modify Authentication;
+// - modify Recovery;
+// - manage Sessions;
+// - access Prisma;
+// - access repositories directly.
+//
+// -----------------------------------------------------------------------------
+//
+// OTP SECURITY BOUNDARY
+// -----------------------------------------------------------------------------
 //
 // This controller does NOT:
 //
 // - generate OTP codes;
 // - hash OTP codes;
-// - compare OTP codes;
+// - compare plaintext OTP codes;
 // - determine OTP policy;
-// - modify OtpChallenge state directly;
+// - determine attempt policy;
+// - bypass maximum-attempt rules;
+// - directly mutate OtpChallenge state;
+// - send OTP messages.
+//
+// OTP generation, hashing, comparison, throttling and delivery belong to the
+// appropriate application/security/infrastructure workflows.
+//
+// -----------------------------------------------------------------------------
+//
+// VERIFY IMPORTANT
+// -----------------------------------------------------------------------------
+//
+// The VerifyOtpChallengeCommand represented here records the successful
+// verification state of an OTP Challenge.
+//
+// It does NOT receive a plaintext OTP code.
+//
+// Therefore:
+//
+//     POST /otp-challenges/:publicId/verify
+//
+// MUST NOT be interpreted as the component that authenticates an OTP code.
+//
+// A higher-level application/security workflow must first:
+//
+//     1. receive the OTP;
+//     2. load the challenge;
+//     3. compare the supplied OTP against the protected representation;
+//     4. enforce attempt/rate-limit policy;
+//     5. determine that verification succeeded;
+//     6. dispatch VerifyOtpChallengeCommand.
+//
+// This controller only transports the resulting domain command.
+//
+// -----------------------------------------------------------------------------
+//
+// AUTHENTICATION VS AUTHORIZATION
+// -----------------------------------------------------------------------------
+//
+// Authentication:
+//
+//     JwtAuthGuard
+//
+// Authorization:
+//
+//     PermissionsGuard
+//     @RequirePermissions(...)
+//
+// They are intentionally applied at endpoint level.
+//
+// This prevents future public/internal endpoints from accidentally inheriting
+// an inappropriate controller-wide security policy.
+//
+// -----------------------------------------------------------------------------
+//
+// ENDPOINT SECURITY MODEL
+// -----------------------------------------------------------------------------
+//
+// Query:
+//
+//     GET /otp-challenges/active
+//         JwtAuthGuard + PermissionsGuard
+//         otp-challenge:read
+//
+//     GET /otp-challenges/:publicId
+//         JwtAuthGuard + PermissionsGuard
+//         otp-challenge:read
+//
+// Commands:
+//
+//     POST /otp-challenges
+//         JwtAuthGuard + PermissionsGuard
+//         otp-challenge:create
+//
+//     POST /otp-challenges/:publicId/verify
+//         JwtAuthGuard + PermissionsGuard
+//         otp-challenge:verify
+//
+//     POST /otp-challenges/:publicId/fail
+//         JwtAuthGuard + PermissionsGuard
+//         otp-challenge:fail
+//
+//     PATCH /otp-challenges/:publicId/cancel
+//         JwtAuthGuard + PermissionsGuard
+//         otp-challenge:cancel
+//
+//     PATCH /otp-challenges/:publicId/expire
+//         JwtAuthGuard + PermissionsGuard
+//         otp-challenge:expire
+//
+// -----------------------------------------------------------------------------
+//
+// OTP OWNERSHIP / SCOPE
+// -----------------------------------------------------------------------------
+//
+// An OtpChallenge public ID is not an authorization credential.
+//
+// For:
+//
+//     GET /otp-challenges/:publicId
+//     POST /otp-challenges/:publicId/verify
+//     POST /otp-challenges/:publicId/fail
+//     PATCH /otp-challenges/:publicId/cancel
+//     PATCH /otp-challenges/:publicId/expire
+//
+// the application layer MUST ensure that the authenticated principal is
+// permitted to operate on the referenced OtpChallenge.
+//
+// A permission answers:
+//
+//     "May this principal perform this operation?"
+//
+// Ownership/scope answers:
+//
+//     "May this principal perform this operation on THIS challenge?"
+//
+// The controller does not implement those policies.
+//
+// -----------------------------------------------------------------------------
+//
+// IDENTITY BINDING
+// -----------------------------------------------------------------------------
+//
+// When an authenticated user creates an OTP Challenge through this HTTP
+// management endpoint, the Identity reference is derived from:
+//
+//     JWT
+//       │
+//       ▼
+//     JwtStrategy
+//       │
+//       ▼
+//     request.user.identityPublicId
+//       │
+//       ▼
+//     OtpChallengeIdentityPublicId
+//
+// The client must NOT be allowed to create a challenge for another Identity
+// simply by submitting another identityPublicId.
+//
+// If an internal authentication/recovery workflow needs to create an OTP
+// Challenge for a specific Identity, it should invoke the application
+// capability directly rather than making an internal HTTP request.
+//
+// -----------------------------------------------------------------------------
+//
+// CORRELATION / CAUSATION
+// -----------------------------------------------------------------------------
+//
+// HTTP-originated commands receive a server-generated correlation ID:
+//
+//     correlationId = randomUUID()
+//
+// The client may provide a causation ID when the command is part of a larger
+// workflow.
+//
+// Correlation IDs are therefore controlled by the application boundary rather
+// than trusted as client-controlled tracing identifiers.
+//
+// With:
+//
+//     exactOptionalPropertyTypes: true
+//
+// command constructors should receive undefined only where their signatures
+// explicitly permit it. If commands are object-based, omit optional
+// properties instead of assigning undefined.
+//
+// -----------------------------------------------------------------------------
+//
+// ROUTE ORDER
+// -----------------------------------------------------------------------------
+//
+// The static route:
+//
+//     /active
+//
+// is declared before:
+//
+//     /:publicId
+//
+// so that "active" is always interpreted as the active-challenges route rather
+// than being considered a challenge public ID.
+//
+// -----------------------------------------------------------------------------
+//
+// SECURITY BOUNDARY
+// -----------------------------------------------------------------------------
+//
+// This controller does NOT:
+//
+// - verify JWTs;
+// - decode JWTs;
+// - inspect Authorization headers;
+// - resolve permissions;
+// - determine OTP ownership;
 // - access Prisma;
-// - perform persistence directly;
-// - send OTP messages;
-// - resolve Identity;
+// - access repositories;
+// - generate OTP secrets;
+// - hash OTP secrets;
+// - compare OTP secrets;
+// - send SMS/email OTP messages;
+// - modify Identity;
 // - modify Authentication;
 // - modify Recovery;
-// - manage Sessions.
+// - create Sessions.
 //
-// Those responsibilities belong to their respective application, domain,
-// security, and infrastructure boundaries.
-//
+// =============================================================================
+
 // -----------------------------------------------------------------------------
-//
-// Supported OTP Challenge operations:
-//
-// OTP Challenge definition:
-// - create OTP challenge.
-//
-// OTP Challenge verification:
-// - verify OTP challenge;
-// - record failed OTP verification.
-//
-// OTP Challenge lifecycle:
-// - expire OTP challenge;
-// - cancel OTP challenge.
-//
-// OTP Challenge queries:
-// - get OTP challenge;
-// - get active OTP challenges.
-//
+// Node
 // -----------------------------------------------------------------------------
+
+import { randomUUID } from 'node:crypto';
 
 // -----------------------------------------------------------------------------
 // NestJS
@@ -90,6 +315,8 @@ import {
   Param,
   Patch,
   Post,
+  Req,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 
@@ -97,10 +324,16 @@ import {
 // Swagger
 // -----------------------------------------------------------------------------
 
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 // -----------------------------------------------------------------------------
-// Identity — Authentication & Authorization
+// Express
+// -----------------------------------------------------------------------------
+
+import type { Request } from 'express';
+
+// -----------------------------------------------------------------------------
+// Security — Authentication & Authorization
 // -----------------------------------------------------------------------------
 
 import {
@@ -118,7 +351,7 @@ import type { CommandHandler } from '../../../../../foundation/kernel/applicatio
 import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
 
 // -----------------------------------------------------------------------------
-// Application — Tokens
+// Application — Dependency Injection Tokens
 // -----------------------------------------------------------------------------
 
 import { AUTH_TOKENS } from '../../../application/auth.tokens';
@@ -198,7 +431,6 @@ import { OtpChallengeResponseMapper } from '../mappers/otp-challenge.response.ma
 
 @ApiTags('OTP Challenges')
 @Controller('otp-challenges')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class OtpChallengesController {
   // ===========================================================================
   // Constructor
@@ -261,57 +493,24 @@ export class OtpChallengesController {
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
-  // Get OTP Challenge
-  // ---------------------------------------------------------------------------
-  //
-  // GET /otp-challenges/:publicId
-  //
-  // Query:
-  //
-  // GetOtpChallengeQuery
-  // └── publicId
-  //
-  // ---------------------------------------------------------------------------
-
-  @Get(':publicId')
-  @RequirePermissions('otp-challenge:read')
-  public async get(
-    @Param() dto: GetOtpChallengeQueryDto,
-  ): Promise<OtpChallengeResponse | null> {
-    const query = new GetOtpChallengeQuery(
-      new OtpChallengePublicId(dto.publicId),
-    );
-
-    const aggregate = await this.getOtpChallengeHandler.execute(query);
-
-    if (aggregate === null) {
-      return null;
-    }
-
-    return OtpChallengeResponseMapper.toResponse(aggregate);
-  }
-
-  // ---------------------------------------------------------------------------
   // Get Active OTP Challenges
   // ---------------------------------------------------------------------------
   //
   // GET /otp-challenges/active
   //
-  // GetActiveOtpChallengesQuery has no input.
-  //
-  // Therefore this endpoint intentionally has no DTO parameter.
-  //
   // IMPORTANT:
   //
-  // This route is declared before:
+  // This route is declared BEFORE:
   //
   //     /:publicId
   //
-  // so "active" is never interpreted as an OTP Challenge public ID.
+  // so "active" is treated as a static route.
   //
   // ---------------------------------------------------------------------------
 
   @Get('active')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('otp-challenge:read')
   public async getActive(): Promise<OtpChallengeResponse[]> {
     const query = new GetActiveOtpChallengesQuery();
@@ -321,6 +520,36 @@ export class OtpChallengesController {
     return aggregates.map((aggregate) =>
       OtpChallengeResponseMapper.toResponse(aggregate),
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Get OTP Challenge
+  // ---------------------------------------------------------------------------
+  //
+  // GET /otp-challenges/:publicId
+  //
+  // The application layer MUST enforce ownership/scope where applicable.
+  //
+  // ---------------------------------------------------------------------------
+
+  @Get(':publicId')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('otp-challenge:read')
+  public async get(
+    @Param() dto: GetOtpChallengeQueryDto,
+  ): Promise<OtpChallengeResponse | null> {
+    const otpChallengePublicId = new OtpChallengePublicId(dto.publicId);
+
+    const query = new GetOtpChallengeQuery(otpChallengePublicId);
+
+    const aggregate = await this.getOtpChallengeHandler.execute(query);
+
+    if (aggregate === null) {
+      return null;
+    }
+
+    return OtpChallengeResponseMapper.toResponse(aggregate);
   }
 
   // ===========================================================================
@@ -333,40 +562,25 @@ export class OtpChallengesController {
   //
   // POST /otp-challenges
   //
-  // CreateOtpChallengeCommand:
+  // Identity is derived from the authenticated security principal.
   //
-  //   identityPublicId
-  //   purpose
-  //   destination
-  //   maxAttempts
-  //   expiresAt
-  //   correlationId
-  //   causationId?
-  //
-  // IMPORTANT:
-  //
-  // The controller:
-  //
-  // - converts transport primitives into domain Value Objects;
-  // - does not generate OTP codes;
-  // - does not hash OTP codes;
-  // - does not receive OTP hashes;
-  // - does not construct attempts;
-  // - does not construct public IDs;
-  // - does not establish lifecycle state.
-  //
-  // Those responsibilities belong to the appropriate application/domain
-  // creation workflow.
+  // The request DTO MUST NOT provide identityPublicId as an authoritative
+  // identity binding.
   //
   // ---------------------------------------------------------------------------
 
   @Post()
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('otp-challenge:create')
   public async create(
+    @Req() request: Request,
     @Body() dto: CreateOtpChallengeRequestDto,
   ): Promise<OtpChallengeResponse> {
+    const identityPublicId = this.getAuthenticatedIdentityPublicId(request);
+
     const command = new CreateOtpChallengeCommand(
-      new OtpChallengeIdentityPublicId(dto.identityPublicId),
+      identityPublicId,
 
       OtpChallengePurpose.fromString(dto.purpose),
 
@@ -376,7 +590,8 @@ export class OtpChallengesController {
 
       OtpChallengeExpiresAt.create(new Date(dto.expiresAt)),
 
-      dto.correlationId,
+      randomUUID(),
+
       dto.causationId,
     );
 
@@ -391,41 +606,33 @@ export class OtpChallengesController {
   //
   // POST /otp-challenges/:publicId/verify
   //
-  // VerifyOtpChallengeCommand:
-  //
-  //   otpChallengePublicId
-  //   verifiedAt
-  //   correlationId
-  //   causationId?
-  //
   // IMPORTANT:
   //
-  // The plaintext OTP code is intentionally not part of the domain command.
+  // This endpoint does not compare the plaintext OTP.
   //
-  // The application/security workflow is responsible for:
-  //
-  // 1. receiving the OTP;
-  // 2. loading the challenge;
-  // 3. comparing the supplied OTP with the persisted hash;
-  // 4. determining successful verification;
-  // 5. dispatching VerifyOtpChallengeCommand.
+  // The supplied OTP must already have been validated by the appropriate
+  // application/security workflow before this command is dispatched.
   //
   // ---------------------------------------------------------------------------
 
   @Post(':publicId/verify')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('otp-challenge:verify')
   public async verify(
     @Param('publicId') publicId: string,
     @Body() dto: VerifyOtpChallengeRequestDto,
   ): Promise<OtpChallengeResponse> {
+    const otpChallengePublicId = new OtpChallengePublicId(publicId);
+
+    const verifiedAt = OtpChallengeVerifiedAt.create(
+      dto.verifiedAt !== undefined ? new Date(dto.verifiedAt) : new Date(),
+    );
+
     const command = new VerifyOtpChallengeCommand(
-      new OtpChallengePublicId(publicId),
-
-      OtpChallengeVerifiedAt.create(
-        dto.verifiedAt !== undefined ? new Date(dto.verifiedAt) : new Date(),
-      ),
-
-      dto.correlationId,
+      otpChallengePublicId,
+      verifiedAt,
+      randomUUID(),
       dto.causationId,
     );
 
@@ -440,23 +647,23 @@ export class OtpChallengesController {
   //
   // PATCH /otp-challenges/:publicId/cancel
   //
-  // CancelOtpChallengeCommand:
-  //
-  //   otpChallengePublicId
-  //   correlationId
-  //   causationId?
+  // Security-sensitive lifecycle transition.
   //
   // ---------------------------------------------------------------------------
 
   @Patch(':publicId/cancel')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('otp-challenge:cancel')
   public async cancel(
     @Param('publicId') publicId: string,
     @Body() dto: CancelOtpChallengeRequestDto,
   ): Promise<OtpChallengeResponse> {
+    const otpChallengePublicId = new OtpChallengePublicId(publicId);
+
     const command = new CancelOtpChallengeCommand(
-      new OtpChallengePublicId(publicId),
-      dto.correlationId,
+      otpChallengePublicId,
+      randomUUID(),
       dto.causationId,
     );
 
@@ -471,20 +678,15 @@ export class OtpChallengesController {
   //
   // POST /otp-challenges/:publicId/fail
   //
-  // FailOtpChallengeCommand:
-  //
-  //   otpChallengePublicId
-  //   correlationId
-  //   causationId?
-  //
   // The fail handler returns void.
   //
-  // Therefore the controller reloads the aggregate after the command
-  // completes.
+  // Therefore the controller reloads the aggregate after the command completes.
   //
   // ---------------------------------------------------------------------------
 
   @Post(':publicId/fail')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('otp-challenge:fail')
   public async fail(
     @Param('publicId') publicId: string,
@@ -494,7 +696,7 @@ export class OtpChallengesController {
 
     const command = new FailOtpChallengeCommand(
       otpChallengePublicId,
-      dto.correlationId,
+      randomUUID(),
       dto.causationId,
     );
 
@@ -517,21 +719,16 @@ export class OtpChallengesController {
   //
   // PATCH /otp-challenges/:publicId/expire
   //
-  // ExpireOtpChallengeCommand:
+  // Expiration is evaluated using the application-supplied reference time.
   //
-  //   otpChallengePublicId
-  //   referenceDate
-  //   correlationId
-  //   causationId?
-  //
-  // The reference timestamp is supplied by the HTTP/application boundary.
-  //
-  // The aggregate remains responsible for determining whether expiration
-  // is valid.
+  // The aggregate remains responsible for determining whether the lifecycle
+  // transition is valid.
   //
   // ---------------------------------------------------------------------------
 
   @Patch(':publicId/expire')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('otp-challenge:expire')
   public async expire(
     @Param('publicId') publicId: string,
@@ -542,7 +739,7 @@ export class OtpChallengesController {
     const command = new ExpireOtpChallengeCommand(
       otpChallengePublicId,
       new Date(),
-      dto.correlationId,
+      randomUUID(),
       dto.causationId,
     );
 
@@ -557,6 +754,50 @@ export class OtpChallengesController {
     }
 
     return OtpChallengeResponseMapper.toResponse(aggregate);
+  }
+
+  // ===========================================================================
+  // Private Helpers
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Get Authenticated Identity
+  // ---------------------------------------------------------------------------
+  //
+  // JwtStrategy transforms:
+  //
+  //     JWT.sub
+  //        ↓
+  //     request.user.identityPublicId
+  //
+  // This helper does NOT:
+  //
+  // - decode the JWT;
+  // - verify the JWT;
+  // - inspect the Authorization header;
+  // - resolve Identity from persistence.
+  //
+  // It only validates the already-authenticated security principal.
+  //
+  // ---------------------------------------------------------------------------
+
+  private getAuthenticatedIdentityPublicId(
+    request: Request,
+  ): OtpChallengeIdentityPublicId {
+    const user = request.user as {
+      identityPublicId?: unknown;
+    };
+
+    if (
+      typeof user.identityPublicId !== 'string' ||
+      user.identityPublicId.trim().length === 0
+    ) {
+      throw new UnauthorizedException(
+        'Authenticated principal does not contain identityPublicId.',
+      );
+    }
+
+    return new OtpChallengeIdentityPublicId(user.identityPublicId.trim());
   }
 }
 

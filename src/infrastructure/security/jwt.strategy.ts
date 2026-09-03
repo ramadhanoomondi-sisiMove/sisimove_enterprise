@@ -5,38 +5,31 @@
 // Passport strategy responsible for extracting and cryptographically
 // validating access tokens.
 //
-// This strategy intentionally does NOT:
+// Passport performs:
+//
+// - Bearer-token extraction;
+// - JWT signature verification;
+// - issuer validation;
+// - audience validation;
+// - algorithm validation;
+// - expiration validation.
+//
+// This strategy additionally validates the application-level structure of the
+// access-token payload and converts it into AuthenticatedIdentity.
+//
+// Passport attaches the result of validate() to:
+//
+//     request.user
+//
+// This strategy does NOT:
 //
 // - query Prisma;
 // - load Identity;
 // - load Session;
 // - decide whether a Session is revoked;
 // - decide whether an Identity is active;
-// - perform authorization.
-//
-// Those concerns belong to the authentication/application layer.
-//
-// The JWT contains:
-//
-//     sub -> identityPublicId
-//     sid -> sessionPublicId
-//     jti -> token identifier
-//     typ -> access
-//     ver -> authentication/password version snapshot
-//     roles -> optional authorization snapshot
-//
-// IMPORTANT:
-//
-// JwtStrategy performs cryptographic JWT validation through Passport/JWT.
-//
-// Application-level authentication checks such as:
-//
-// - Identity status;
-// - Session status;
-// - Authentication status;
-// - authentication version;
-//
-// remain outside this strategy.
+// - evaluate permissions;
+// - modify authentication state.
 //
 // -----------------------------------------------------------------------------
 
@@ -60,29 +53,11 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 
 import type { TokenPayload } from '../../foundation/security/jwt-token-service.interface';
 
-// =============================================================================
-// Authenticated Request User
-// =============================================================================
-//
-// Passport places the result of validate() on:
-//
-//     request.user
-//
-// This representation is intentionally transport-facing.
-//
-// It does NOT represent the Identity aggregate.
-//
-// It represents the authenticated credentials carried by the access token.
-//
-// =============================================================================
+// -----------------------------------------------------------------------------
+// Authentication
+// -----------------------------------------------------------------------------
 
-export interface AuthenticatedRequestUser {
-  readonly identityPublicId: string;
-  readonly sessionPublicId: string;
-  readonly tokenId: string;
-  readonly authenticationVersion: number;
-  readonly roles: readonly string[];
-}
+import type { AuthenticatedIdentity } from '../../foundation/security/auth/authenticated-identity.interface';
 
 // =============================================================================
 // JWT Strategy
@@ -132,20 +107,6 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     // -------------------------------------------------------------------------
     // Passport JWT Configuration
     // -------------------------------------------------------------------------
-    //
-    // Passport performs:
-    //
-    // - Bearer-token extraction;
-    // - signature verification;
-    // - issuer validation;
-    // - audience validation;
-    // - algorithm validation;
-    // - expiration validation.
-    //
-    // The application-specific payload validation is performed below in
-    // validate().
-    //
-    // -------------------------------------------------------------------------
 
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -166,24 +127,20 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   // Validate
   // ===========================================================================
   //
-  // Passport invokes this method only after the JWT has successfully passed
-  // the configured cryptographic and standard JWT checks.
+  // Passport invokes validate() only after the JWT has passed:
   //
-  // This method validates the application-specific access-token structure and
-  // converts the canonical TokenPayload into the request.user representation.
+  // - signature validation;
+  // - issuer validation;
+  // - audience validation;
+  // - algorithm validation;
+  // - expiration validation.
   //
-  // It does NOT:
-  //
-  // - query repositories;
-  // - load Identity;
-  // - load Session;
-  // - check SessionStatus;
-  // - check IdentityStatus;
-  // - perform authorization.
+  // This method validates the application-specific token structure and creates
+  // the authenticated request principal.
   //
   // ===========================================================================
 
-  public validate(payload: TokenPayload): AuthenticatedRequestUser {
+  public validate(payload: TokenPayload): AuthenticatedIdentity {
     // -------------------------------------------------------------------------
     // Payload
     // -------------------------------------------------------------------------
@@ -239,18 +196,17 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     // -------------------------------------------------------------------------
     // Roles
     // -------------------------------------------------------------------------
-    //
-    // Roles are an optional authorization snapshot.
-    //
-    // They are copied into a new frozen array so request.user cannot mutate
-    // the array owned by the decoded JWT payload.
-    //
-    // -------------------------------------------------------------------------
 
     const roles = Object.freeze([...(payload.roles ?? [])]);
 
     // -------------------------------------------------------------------------
-    // Authenticated Request User
+    // Permissions
+    // -------------------------------------------------------------------------
+
+    const permissions = Object.freeze([...(payload.permissions ?? [])]);
+
+    // -------------------------------------------------------------------------
+    // Authenticated Identity
     // -------------------------------------------------------------------------
 
     return {
@@ -259,6 +215,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       tokenId: payload.jti,
       authenticationVersion: payload.ver,
       roles,
+      permissions,
     };
   }
 }
