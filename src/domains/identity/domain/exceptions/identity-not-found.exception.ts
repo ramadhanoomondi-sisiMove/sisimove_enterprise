@@ -1,9 +1,27 @@
-// src/domains/identity/domain/exceptions/identity-not-found.exception.ts
+// -----------------------------------------------------------------------------
+// Identity Not Found
+// -----------------------------------------------------------------------------
 
-export class IdentityNotFoundException extends Error {
-  constructor(publicId: string) {
-    super(`Identity with public ID '${publicId}' was not found.`);
+// -----------------------------------------------------------------------------
+// Foundation
+// -----------------------------------------------------------------------------
 
-    this.name = 'IdentityNotFoundException';
+import { IdentityException } from './identity.exception';
+
+// -----------------------------------------------------------------------------
+// Exception
+// -----------------------------------------------------------------------------
+
+/**
+ * Indicates that the requested Identity could not be found within the
+ * Identity domain.
+ *
+ * This exception is intended for domain/application boundary scenarios
+ * where an Identity reference is required but no corresponding Identity
+ * exists.
+ */
+export class IdentityNotFoundException extends IdentityException {
+  public constructor(message: string = 'Identity was not found.') {
+    super(message);
   }
 }

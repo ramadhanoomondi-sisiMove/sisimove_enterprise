@@ -17,6 +17,8 @@
 // - Financial Account Withdrawals
 // - Financial Settlement
 // - Financial Settlement Items
+// - Financial Disbursements
+// - Financial Disbursement Attempts
 //
 // -----------------------------------------------------------------------------
 
@@ -138,3 +140,30 @@ export * from './get-financial-settlement.query';
 // -----------------------------------------------------------------------------
 
 export * from './get-financial-settlement-items.query';
+
+// -----------------------------------------------------------------------------
+// Financial Disbursement
+// -----------------------------------------------------------------------------
+//
+// Retrieves an existing Financial Disbursement by its public identity.
+//
+// The Financial Disbursement aggregate owns its execution-attempt collection
+// while the selected Financial Disbursement Destination remains an associated
+// independently persisted entity.
+//
+// -----------------------------------------------------------------------------
+
+export * from './get-financial-disbursement.query';
+
+// -----------------------------------------------------------------------------
+// Financial Disbursement Attempts
+// -----------------------------------------------------------------------------
+//
+// Retrieves the execution attempts belonging to a Financial Disbursement.
+//
+// FinancialDisbursementAttemptEntity instances remain child entities of the
+// FinancialDisbursementEntity and are not independent aggregate roots.
+//
+// -----------------------------------------------------------------------------
+
+export * from './get-financial-disbursement-attempts.query';

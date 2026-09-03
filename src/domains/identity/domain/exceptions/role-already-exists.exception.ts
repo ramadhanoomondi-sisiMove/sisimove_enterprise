@@ -1,11 +1,28 @@
-// src/domains/authorization/domain/exceptions/role-already-exists.exception.ts
+// -----------------------------------------------------------------------------
+// Role Already Exists
+// -----------------------------------------------------------------------------
 
-import { DomainException } from '../../../../foundation/kernel/domain/domain-exception';
+// -----------------------------------------------------------------------------
+// Foundation
+// -----------------------------------------------------------------------------
 
-export class RoleAlreadyExistsException extends DomainException {
-  constructor(name: string) {
-    super(`Role '${name}' already exists.`, 'ROLE_ALREADY_EXISTS');
+import { RoleException } from './role.exception';
 
-    Object.freeze(this);
+// -----------------------------------------------------------------------------
+// Exception
+// -----------------------------------------------------------------------------
+
+/**
+ * Indicates that a Role already exists for a unique Role attribute or
+ * business constraint.
+ *
+ * This exception is typically used when attempting to create a Role with
+ * a code or name that is already associated with another Role.
+ */
+export class RoleAlreadyExistsException extends RoleException {
+  public constructor(
+    message: string = 'A Role with the specified attributes already exists.',
+  ) {
+    super(message);
   }
 }

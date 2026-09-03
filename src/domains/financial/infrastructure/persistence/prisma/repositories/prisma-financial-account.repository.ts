@@ -82,7 +82,10 @@ import type { FinancialAccountBalancePublicId } from '../../../../domain/value-o
 
 import type { FinancialAccountType } from '../../../../domain/value-objects/financial-account-type.vo';
 
-import type { FinancialAccountStatus } from '../../../../domain/value-objects/financial-account-status.vo';
+import {
+  FinancialAccountStatus,
+  type FinancialAccountStatusValue,
+} from '../../../../domain/value-objects/financial-account-status.vo';
 
 import type { Currency } from '../../../../domain/value-objects/currency.vo';
 
@@ -138,11 +141,13 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
 
   /**
    * Converts a domain account status value into the Prisma enum.
+   *
+   * FinancialAccountStatus is validated before reaching this boundary.
    */
   private toPrismaFinancialAccountStatus(
-    value: string,
+    value: FinancialAccountStatusValue,
   ): $Enums.FinancialAccountStatus {
-    return value as $Enums.FinancialAccountStatus;
+    return value;
   }
 
   // ===========================================================================
@@ -171,7 +176,7 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
    * FinancialAccount
    * └── FinancialAccountBalance
    *
-   * The balance is replaced/upserted as part of the same database transaction.
+   * The balance is upserted as part of the same database transaction.
    */
   public async save(aggregate: FinancialAccountAggregate): Promise<void> {
     const persistence = FinancialAccountPrismaMapper.toPersistence(aggregate);
@@ -231,7 +236,7 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
       //
       // The balance therefore belongs to exactly one Financial Account.
       //
-      // Upsert guarantees that:
+      // Upsert guarantees:
       //
       // FinancialAccount
       //      │
@@ -332,11 +337,7 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
   /**
    * Deletes the complete Financial Account aggregate atomically.
    *
-   * The balance is explicitly deleted before the root even though the Prisma
-   * relation also has onDelete: Cascade.
-   *
-   * This makes the aggregate deletion boundary explicit at the repository
-   * level.
+   * The aggregate-owned balance is explicitly deleted before the root.
    */
   public async delete(id: FinancialAccountId): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
@@ -651,6 +652,7 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
       (await this.prisma.financialAccount.count({
         where: {
           id: accountId.value,
+
           currency: currency.value,
         },
       })) > 0
@@ -668,6 +670,7 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
       (await this.prisma.financialAccount.count({
         where: {
           publicId: accountPublicId.value,
+
           currency: currency.value,
         },
       })) > 0
@@ -682,7 +685,7 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
    * Finds active Financial Accounts.
    */
   public async findActiveAccounts(): Promise<FinancialAccountEntity[]> {
-    return this.findAccountsByStatus(this.toFinancialAccountStatus('ACTIVE'));
+    return this.findAccountsByStatus(FinancialAccountStatus.create('ACTIVE'));
   }
 
   /**
@@ -690,7 +693,7 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
    */
   public async findSuspendedAccounts(): Promise<FinancialAccountEntity[]> {
     return this.findAccountsByStatus(
-      this.toFinancialAccountStatus('SUSPENDED'),
+      FinancialAccountStatus.create('SUSPENDED'),
     );
   }
 
@@ -698,7 +701,7 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
    * Finds closed Financial Accounts.
    */
   public async findClosedAccounts(): Promise<FinancialAccountEntity[]> {
-    return this.findAccountsByStatus(this.toFinancialAccountStatus('CLOSED'));
+    return this.findAccountsByStatus(FinancialAccountStatus.create('CLOSED'));
   }
 
   /**
@@ -915,7 +918,9 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
         balance: {
           is: {
             availableAmount: 0,
+
             pendingAmount: 0,
+
             heldAmount: 0,
           },
         },
@@ -1055,7 +1060,9 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
         balance: {
           is: {
             availableAmount: 0,
+
             pendingAmount: 0,
+
             heldAmount: 0,
           },
         },
@@ -1074,29 +1081,5 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
     record: FinancialAccountWithBalance,
   ): FinancialAccountAggregate {
     return FinancialAccountPrismaMapper.toDomain(record);
-  }
-
-  // ===========================================================================
-  // Domain Value-Object Helpers
-  // ===========================================================================
-  //
-  // These helpers are intentionally limited to repository query methods that
-  // need to return domain VOs while starting from known persisted enum values.
-  //
-  // They avoid coupling the repository to the concrete constructor/factory
-  // implementation of the domain value objects.
-  //
-  // ---------------------------------------------------------------------------
-
-  private toFinancialAccountType(value: string): FinancialAccountType {
-    return {
-      value,
-    } as FinancialAccountType;
-  }
-
-  private toFinancialAccountStatus(value: string): FinancialAccountStatus {
-    return {
-      value,
-    } as FinancialAccountStatus;
   }
 }

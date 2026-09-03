@@ -13,6 +13,7 @@
 // - Financial Payment commands
 // - Financial Payment Method commands
 // - Financial Settlement commands
+// - Financial Disbursement commands
 //
 // -----------------------------------------------------------------------------
 
@@ -197,3 +198,47 @@ export { CompleteFinancialSettlementCommand } from './complete-financial-settlem
 export { FailFinancialSettlementCommand } from './fail-financial-settlement.command';
 
 export { CancelFinancialSettlementCommand } from './cancel-financial-settlement.command';
+
+// -----------------------------------------------------------------------------
+// Financial Disbursement Commands
+// -----------------------------------------------------------------------------
+//
+// Central export surface for Financial Disbursement application commands.
+//
+// Disbursement lifecycle:
+//
+//     PENDING
+//        │
+//        ├── PROCESSING
+//        │      │
+//        │      └── attempt execution
+//        │             │
+//        │             ├── successful attempt
+//        │             └── failed attempt
+//        │
+//        ├── FAILED
+//        └── CANCELLED
+//
+//     PROCESSING → COMPLETED
+//
+// FinancialDisbursementAggregate owns the disbursement lifecycle and its
+// execution-attempt collection.
+//
+// Disbursement commands do NOT:
+//
+// - execute external providers;
+// - create or post Financial Transactions;
+// - modify Financial Account balances;
+// - modify Financial Disbursement Destinations.
+//
+// -----------------------------------------------------------------------------
+
+export { CreateFinancialDisbursementCommand } from './create-financial-disbursement.command';
+
+export { ProcessFinancialDisbursementCommand } from './process-financial-disbursement.command';
+
+export { CompleteFinancialDisbursementCommand } from './complete-financial-disbursement.command';
+
+export { FailFinancialDisbursementCommand } from './fail-financial-disbursement.command';
+
+export { CancelFinancialDisbursementCommand } from './cancel-financial-disbursement.command';

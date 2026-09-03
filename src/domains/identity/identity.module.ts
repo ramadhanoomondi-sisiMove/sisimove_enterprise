@@ -1,570 +1,538 @@
-// src/domains/identity/identity.module.ts
+// -----------------------------------------------------------------------------
+// Identity — NestJS Module
+// -----------------------------------------------------------------------------
+//
+// Central NestJS module for the Identity bounded context.
+//
+// Registered capabilities:
+//
+// - Identity
+// - Verification
+// - Verification Request
+// - Role
+// - Permission
+// - Role Permission
+//
+// The module wires:
+//
+// - REST controllers;
+// - infrastructure repository providers;
+// - application command handlers;
+// - application query handlers.
+//
+// Domain behavior remains inside aggregate roots/entities.
+//
+// Application handlers coordinate application workflows and delegate business
+// behavior to the appropriate aggregate / relationship boundary.
+//
+// Persistence remains behind domain repository contracts.
+//
+// -----------------------------------------------------------------------------
+//
+// Aggregate / relationship boundaries:
+//
+// IdentityAggregate
+//
+// VerificationAggregate
+// └── VerificationRequestEntity
+//
+// RoleAggregate
+//
+// PermissionAggregate
+//
+// RolePermissionAggregate
+//
+// IMPORTANT:
+//
+// VerificationRequest is owned by VerificationAggregate and therefore does
+// not have a separate repository provider.
+//
+// IdentityRole is part of the Identity aggregate boundary and does not have
+// a separate repository provider.
+//
+// RolePermission is an independent relationship aggregate.
+//
+// Authorization evaluation remains outside these aggregates.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
 
 import { Module } from '@nestjs/common';
 
-import { EventsModule } from '../../infrastructure/events/events.module';
+// -----------------------------------------------------------------------------
+// Infrastructure — Database
+// -----------------------------------------------------------------------------
 
-// ============================================================================
-// Identity Tokens
-// ============================================================================
+import { PrismaModule } from '../../infrastructure/database/prisma/prisma.module';
 
-import {
-  IDENTITY_AUTHENTICATION_REPOSITORY,
-  IDENTITY_DEVICE_REPOSITORY,
-  IDENTITY_EVENT_PUBLISHER,
-  IDENTITY_PASSWORD_HASHER,
-  IDENTITY_RECOVERY_REPOSITORY,
-  IDENTITY_RECOVERY_TOKEN_GENERATOR,
-  IDENTITY_RECOVERY_TOKEN_HASHER,
-  IDENTITY_REPOSITORY,
-  IDENTITY_SESSION_REPOSITORY,
-  IDENTITY_TOKEN_GENERATOR,
-  IDENTITY_TOKEN_HASHER,
-  IDENTITY_VERIFICATION_QUERY_SERVICE,
-  IDENTITY_VERIFICATION_REPOSITORY,
-} from './application/identity.tokens';
-
-// ============================================================================
-// Authorization Tokens
-// ============================================================================
+// -----------------------------------------------------------------------------
+// Presentation — Controllers
+// -----------------------------------------------------------------------------
 
 import {
-  AUTHORIZATION_EVENT_PUBLISHER,
-  AUTHORIZATION_IDENTITY_ROLE_REPOSITORY,
-  AUTHORIZATION_PERMISSION_READ_REPOSITORY,
-  AUTHORIZATION_PERMISSION_REPOSITORY,
-  AUTHORIZATION_ROLE_PERMISSION_REPOSITORY,
-  AUTHORIZATION_ROLE_READ_REPOSITORY,
-  AUTHORIZATION_ROLE_REPOSITORY,
-} from './application/authorization.tokens';
+  IdentitiesController,
+  VerificationsController,
+  RolesController,
+  PermissionsController,
+  RolePermissionsController,
+} from './presentation/rest/controllers';
+
+// -----------------------------------------------------------------------------
+// Infrastructure — Dependency Injection
+// -----------------------------------------------------------------------------
+
+import { IDENTITY_PROVIDERS } from './infrastructure/dependency-injection/identity.providers';
+
+// -----------------------------------------------------------------------------
+// Application — Tokens
+// -----------------------------------------------------------------------------
+
+import { IDENTITY_TOKENS } from './application/identity.tokens';
+
+// -----------------------------------------------------------------------------
+// Application — Command Handlers
+// -----------------------------------------------------------------------------
 
 import {
-  IDENTITY_AUDIT_EVENT_PUBLISHER,
-  IDENTITY_AUDIT_REPOSITORY,
-} from './application/identity-audit.tokens';
+  // ===========================================================================
+  // Identity
+  // ===========================================================================
 
-// ============================================================================
-// Infrastructure
-// ============================================================================
+  CreateIdentityHandler,
+  ActivateIdentityHandler,
+  SuspendIdentityHandler,
+  CloseIdentityHandler,
+  ChangeIdentityEmailHandler,
+  ChangeIdentityPhoneNumberHandler,
+  AssignIdentityRoleHandler,
+  RevokeIdentityRoleHandler,
 
-import { PrismaService } from '../../infrastructure/database/prisma/prisma.service';
+  // ===========================================================================
+  // Verification
+  // ===========================================================================
+  CreateVerificationHandler,
+  GrantMemberVerificationHandler,
+  GrantDriverVerificationHandler,
+  RejectVerificationHandler,
+  ReopenVerificationHandler,
+  ExpireVerificationHandler,
+  RevokeVerificationHandler,
 
-import { JwtTokenService } from '../../infrastructure/security/jwt-token.service';
-import { BcryptPasswordService } from '../../infrastructure/security/bcrypt-password.service';
-import { Sha256TokenHasherService } from '../../infrastructure/security/sha256-token-hasher.service';
-import { RecoveryTokenGeneratorService } from '../../infrastructure/security/recovery-token-generator.service';
-import { RecoveryTokenHasherService } from '../../infrastructure/security/recovery-token-hasher.service';
+  // ===========================================================================
+  // Verification Request
+  // ===========================================================================
+  CreateVerificationRequestHandler,
+  ApproveVerificationRequestHandler,
+  RejectVerificationRequestHandler,
+  CancelVerificationRequestHandler,
 
-import { EventPublisher } from '../../infrastructure/events/event-publisher';
+  // ===========================================================================
+  // Role
+  // ===========================================================================
+  CreateRoleHandler,
+  ActivateRoleHandler,
+  DeactivateRoleHandler,
 
-// ============================================================================
-// Authorization Repository Implementations
-// ============================================================================
+  // ===========================================================================
+  // Permission
+  // ===========================================================================
+  CreatePermissionHandler,
+  ActivatePermissionHandler,
+  DeactivatePermissionHandler,
 
-import { RolePrismaRepository } from './infrastructure/persistence/role-prisma.repository';
-import { PermissionPrismaRepository } from './infrastructure/persistence/permission-prisma.repository';
-import { RolePermissionPrismaRepository } from './infrastructure/persistence/role-permission-prisma.repository';
-import { IdentityRolePrismaRepository } from './infrastructure/persistence/identity-role-prisma.repository';
+  // ===========================================================================
+  // Role Permission
+  // ===========================================================================
+  AssignRolePermissionHandler,
+  RevokeRolePermissionHandler,
+} from './application/command-handlers';
 
-// ============================================================================
-// Read Repository Implementations
-// ============================================================================
+// -----------------------------------------------------------------------------
+// Application — Query Handlers
+// -----------------------------------------------------------------------------
 
-import { RoleReadPrismaRepository } from './infrastructure/persistence/read-models/role-read-prisma.repository';
-import { PermissionReadPrismaRepository } from './infrastructure/persistence/read-models/permission-read-prisma.repository';
+import {
+  // ===========================================================================
+  // Identity
+  // ===========================================================================
 
-// ============================================================================
-// Query Services
-// ============================================================================
+  GetIdentityHandler,
+  GetIdentityByEmailHandler,
+  GetIdentityByPhoneNumberHandler,
+  GetIdentityRolesHandler,
 
-import { PrismaVerificationQueryService } from './infrastructure/query-services/prisma-verification-query.service';
+  // ===========================================================================
+  // Verification
+  // ===========================================================================
+  GetVerificationHandler,
+  GetVerificationRequestsHandler,
+  GetVerificationRequestHandler,
 
-// ============================================================================
-// Identity Repository Implementations
-// ============================================================================
+  // ===========================================================================
+  // Role
+  // ===========================================================================
+  GetRoleHandler,
+  GetRolesHandler,
 
-import { IdentityPrismaRepository } from './infrastructure/persistence/identity-prisma.repository';
-import { AuthenticationPrismaRepository } from './infrastructure/persistence/authentication-prisma.repository';
-import { SessionPrismaRepository } from './infrastructure/persistence/session-prisma.repository';
-import { DevicePrismaRepository } from './infrastructure/persistence/device-prisma.repository';
-import { VerificationPrismaRepository } from './infrastructure/persistence/verification-prisma.repository';
-import { RecoveryPrismaRepository } from './infrastructure/persistence/recovery-prisma.repository';
-import { IdentityAuditPrismaRepository } from './infrastructure/persistence/prisma-identity-audit.repository';
-// ============================================================================
-// REST Controllers
-// ============================================================================
+  // ===========================================================================
+  // Permission
+  // ===========================================================================
+  GetPermissionHandler,
+  GetPermissionsHandler,
 
-import { AuthenticationController } from './presentation/rest/controllers/authentication.controller';
-import { AuthorizationController } from './presentation/rest/controllers/authorization.controller';
-import { DeviceController } from './presentation/rest/controllers/device.controller';
-import { IdentityController } from './presentation/rest/controllers/identity.controller';
-import { RecoveryController } from './presentation/rest/controllers/recovery.controller';
-import { VerificationController } from './presentation/rest/controllers/verification.controller';
-import { IdentityAuditController } from './presentation/rest/controllers/identity-audit.controller';
+  // ===========================================================================
+  // Role Permission
+  // ===========================================================================
+  GetRolePermissionHandler,
+  GetRolePermissionsHandler,
+} from './application/query-handlers';
 
-// ============================================================================
-// Identity Command Handlers
-// ============================================================================
-
-import { ActivateIdentityHandler } from './application/handlers/activate-identity.handler';
-import { RegisterIdentityHandler } from './application/handlers/register-identity.handler';
-
-// ============================================================================
-// Authentication Command Handlers
-// ============================================================================
-
-import { ChangePasswordHandler } from './application/handlers/change-password.handler';
-import { DisableMfaHandler } from './application/handlers/disable-mfa.handler';
-import { EnableMfaHandler } from './application/handlers/enable-mfa.handler';
-import { ExpirePasswordHandler } from './application/handlers/expire-password.handler';
-import { ExtendAuthenticationLockHandler } from './application/handlers/extend-authentication-lock.handler';
-import { LockAuthenticationHandler } from './application/handlers/lock-authentication.handler';
-import { LoginHandler } from './application/handlers/login.handler';
-import { LogoutAllSessionsHandler } from './application/handlers/logout-all-sessions.handler';
-import { LogoutHandler } from './application/handlers/logout.handler';
-import { RecordFailedMfaVerificationHandler } from './application/handlers/record-failed-mfa-verification.handler';
-import { RecordSuccessfulMfaVerificationHandler } from './application/handlers/record-successful-mfa-verification.handler';
-import { RefreshTokenHandler } from './application/handlers/refresh-token.handler';
-import { RegisterAuthenticationHandler } from './application/handlers/register-authentication.handler';
-import { RequirePasswordChangeHandler } from './application/handlers/require-password-change.handler';
-import { ResetPasswordHandler } from './application/handlers/reset-password.handler';
-import { RotateMfaSecretHandler } from './application/handlers/rotate-mfa-secret.handler';
-import { UnlockAuthenticationHandler } from './application/handlers/unlock-authentication.handler';
-
-// ============================================================================
-// Authorization Command Handlers
-// ============================================================================
-
-import { ActivateRoleHandler } from './application/handlers/activate-role.handler';
-import { AssignPermissionToRoleHandler } from './application/handlers/assign-permission-to-role.handler';
-import { AssignRoleHandler } from './application/handlers/assign-role.handler';
-import { ChangeRoleDescriptionHandler } from './application/handlers/change-role-description.handler';
-import { ChangeRoleDisplayOrderHandler } from './application/handlers/change-role-display-order.handler';
-import { CreateRoleHandler } from './application/handlers/create-role.handler';
-import { DeactivateRoleHandler } from './application/handlers/deactivate-role.handler';
-import { RemovePermissionFromRoleHandler } from './application/handlers/remove-permission-from-role.handler';
-import { RenameRoleHandler } from './application/handlers/rename-role.handler';
-import { RevokeRoleHandler } from './application/handlers/revoke-role.handler';
-
-// ============================================================================
-// Device Command Handlers
-// ============================================================================
-
-import { RegisterDeviceHandler } from './application/handlers/register-device.handler';
-import { RevokeDeviceHandler } from './application/handlers/revoke-device.handler';
-import { TrustDeviceHandler } from './application/handlers/trust-device.handler';
-
-// ============================================================================
-// Recovery Command Handlers
-// ============================================================================
-
-import { CancelRecoveryHandler } from './application/handlers/cancel-recovery.handler';
-import { CompleteRecoveryHandler } from './application/handlers/complete-recovery.handler';
-import { ExpireRecoveryHandler } from './application/handlers/expire-recovery.handler';
-import { RequestRecoveryHandler } from './application/handlers/request-recovery.handler';
-
-// ============================================================================
-// Verification Command Handlers
-// ============================================================================
-
-import { ApproveVerificationRequestHandler } from './application/handlers/approve-verification-request.handler';
-import { ExpireVerificationHandler } from './application/handlers/expire-verification.handler';
-import { RejectVerificationRequestHandler } from './application/handlers/reject-verification-request.handler';
-import { RenewVerificationHandler } from './application/handlers/renew-verification.handler';
-import { RevokeVerificationHandler } from './application/handlers/revoke-verification.handler';
-import { StartVerificationHandler } from './application/handlers/start-verification.handler';
-import { SubmitVerificationRequestHandler } from './application/handlers/submit-verification-request.handler';
-
-// ============================================================================
-// Identity Query Handlers
-// ============================================================================
-
-import { GetIdentityHandler } from './application/handlers/query-handlers/get-identity.handler';
-
-// ============================================================================
-// Authentication Query Handlers
-// ============================================================================
-
-import { AuthenticationExistsByIdentityHandler } from './application/handlers/query-handlers/authentication-exists-by-identity.handler';
-import { AuthenticationExistsHandler } from './application/handlers/query-handlers/authentication-exists.handler';
-import { GetAuthenticationByIdentityHandler } from './application/handlers/query-handlers/get-authentication-by-identity.handler';
-import { GetAuthenticationHandler } from './application/handlers/query-handlers/get-authentication.handler';
-import { GetLatestPasswordHistoryHandler } from './application/handlers/query-handlers/get-latest-password-history.handler';
-import { GetPasswordHistoryHandler } from './application/handlers/query-handlers/get-password-history.handler';
-
-// ============================================================================
-// Authorization Query Handlers
-// ============================================================================
-
-import { GetIdentityPermissionsHandler } from './application/handlers/query-handlers/get-identity-permissions.handler';
-import { GetIdentityRolesHandler } from './application/handlers/query-handlers/get-identity-roles.handler';
-import { GetPermissionHandler } from './application/handlers/query-handlers/get-permission.handler';
-import { GetRoleHandler } from './application/handlers/query-handlers/get-role.handler';
-import { ListPermissionsHandler } from './application/handlers/query-handlers/list-permissions.handler';
-import { ListRolesHandler } from './application/handlers/query-handlers/list-roles.handler';
-
-// ============================================================================
-// Device Query Handlers
-// ============================================================================
-
-import { GetDeviceHandler } from './application/handlers/query-handlers/get-device.handler';
-import { ListIdentityDevicesHandler } from './application/handlers/query-handlers/list-identity-devices.handler';
-import { RecordIdentityAuditHandler } from './application/handlers/record-identity-audit.handler';
-import { GetIdentityAuditHandler } from './application/handlers/query-handlers/get-identity-audit.handler';
-import { ListIdentityAuditsHandler } from './application/handlers/query-handlers/list-identity-audits.handler';
-
-// ============================================================================
-// Verification Query Handlers
-// ============================================================================
-
-import { GetVerificationHandler } from './application/handlers/query-handlers/get-verification.handler';
-import { GetVerificationRequestHandler } from './application/handlers/query-handlers/get-verification-request.handler';
-import { GetVerificationReviewHandler } from './application/handlers/query-handlers/get-verification-review.handler';
-import { GetVerificationSummaryHandler } from './application/handlers/query-handlers/get-verification-summary.handler';
-import { ListExpiredVerificationsHandler } from './application/handlers/query-handlers/list-expired-verifications.handler';
-import { ListPendingVerificationsHandler } from './application/handlers/query-handlers/list-pending-verifications.handler';
-import { ListVerificationsHandler } from './application/handlers/query-handlers/list-verifications.handler';
-import { AuthenticationResponseMapper } from './infrastructure/mappers/authentication.response.mapper';
+// =============================================================================
+// Module
+// =============================================================================
 
 @Module({
-  imports: [EventsModule],
+  // ===========================================================================
+  // Imports
+  // ===========================================================================
+
+  imports: [PrismaModule],
+
+  // ===========================================================================
+  // Controllers
+  // ===========================================================================
 
   controllers: [
-    IdentityController,
-    AuthenticationController,
-    AuthorizationController,
-    DeviceController,
-    RecoveryController,
-    VerificationController,
-    IdentityAuditController,
+    // -------------------------------------------------------------------------
+    // Identity
+    // -------------------------------------------------------------------------
+
+    IdentitiesController,
+
+    // -------------------------------------------------------------------------
+    // Verification
+    // -------------------------------------------------------------------------
+
+    VerificationsController,
+
+    // -------------------------------------------------------------------------
+    // Role
+    // -------------------------------------------------------------------------
+
+    RolesController,
+
+    // -------------------------------------------------------------------------
+    // Permission
+    // -------------------------------------------------------------------------
+
+    PermissionsController,
+
+    // -------------------------------------------------------------------------
+    // Role Permission
+    // -------------------------------------------------------------------------
+
+    RolePermissionsController,
   ],
+
+  // ===========================================================================
+  // Providers
+  // ===========================================================================
 
   providers: [
-    // ==========================================================================
-    // Infrastructure
-    // ==========================================================================
+    // =========================================================================
+    // Infrastructure — Repository Providers
+    // =========================================================================
 
-    PrismaService,
-    AuthenticationResponseMapper,
+    ...IDENTITY_PROVIDERS,
 
-    IdentityPrismaRepository,
-    AuthenticationPrismaRepository,
-    SessionPrismaRepository,
-    DevicePrismaRepository,
-    VerificationPrismaRepository,
-    RecoveryPrismaRepository,
-
-    RolePrismaRepository,
-    PermissionPrismaRepository,
-    RolePermissionPrismaRepository,
-    IdentityRolePrismaRepository,
-
-    RoleReadPrismaRepository,
-    PermissionReadPrismaRepository,
-
-    PrismaVerificationQueryService,
-
-    JwtTokenService,
-    BcryptPasswordService,
-    Sha256TokenHasherService,
-    RecoveryTokenGeneratorService,
-    RecoveryTokenHasherService,
-
-    // ==========================================================================
-    // Identity Repository Tokens
-    // ==========================================================================
+    // =========================================================================
+    // Identity — Command Handlers
+    // =========================================================================
 
     {
-      provide: IDENTITY_REPOSITORY,
-      useExisting: IdentityPrismaRepository,
-    },
-    {
-      provide: IDENTITY_AUTHENTICATION_REPOSITORY,
-      useExisting: AuthenticationPrismaRepository,
-    },
-    {
-      provide: IDENTITY_SESSION_REPOSITORY,
-      useExisting: SessionPrismaRepository,
-    },
-    {
-      provide: IDENTITY_DEVICE_REPOSITORY,
-      useExisting: DevicePrismaRepository,
-    },
-    {
-      provide: IDENTITY_VERIFICATION_REPOSITORY,
-      useExisting: VerificationPrismaRepository,
-    },
-    {
-      provide: IDENTITY_RECOVERY_REPOSITORY,
-      useExisting: RecoveryPrismaRepository,
-    },
-
-    // ==========================================================================
-    // Authorization Repository Tokens
-    // ==========================================================================
-
-    {
-      provide: AUTHORIZATION_ROLE_REPOSITORY,
-      useExisting: RolePrismaRepository,
-    },
-    {
-      provide: AUTHORIZATION_PERMISSION_REPOSITORY,
-      useExisting: PermissionPrismaRepository,
-    },
-    {
-      provide: AUTHORIZATION_ROLE_PERMISSION_REPOSITORY,
-      useExisting: RolePermissionPrismaRepository,
-    },
-    {
-      provide: AUTHORIZATION_IDENTITY_ROLE_REPOSITORY,
-      useExisting: IdentityRolePrismaRepository,
-    },
-
-    // ==========================================================================
-    // Read Repository Tokens
-    // ==========================================================================
-
-    {
-      provide: AUTHORIZATION_ROLE_READ_REPOSITORY,
-      useExisting: RoleReadPrismaRepository,
-    },
-    {
-      provide: AUTHORIZATION_PERMISSION_READ_REPOSITORY,
-      useExisting: PermissionReadPrismaRepository,
-    },
-
-    // ==========================================================================
-    // Query Services
-    // ==========================================================================
-
-    {
-      provide: IDENTITY_VERIFICATION_QUERY_SERVICE,
-      useExisting: PrismaVerificationQueryService,
-    },
-
-    // ==========================================================================
-    // Security Services
-    // ==========================================================================
-
-    {
-      provide: IDENTITY_PASSWORD_HASHER,
-      useExisting: BcryptPasswordService,
-    },
-    {
-      provide: IDENTITY_TOKEN_GENERATOR,
-      useExisting: JwtTokenService,
-    },
-    {
-      provide: IDENTITY_TOKEN_HASHER,
-      useExisting: Sha256TokenHasherService,
-    },
-    {
-      provide: IDENTITY_RECOVERY_TOKEN_GENERATOR,
-      useExisting: RecoveryTokenGeneratorService,
-    },
-    {
-      provide: IDENTITY_RECOVERY_TOKEN_HASHER,
-      useExisting: RecoveryTokenHasherService,
-    },
-
-    // ==========================================================================
-    // Application Services
-    // ==========================================================================
-
-    {
-      provide: IDENTITY_EVENT_PUBLISHER,
-      useExisting: EventPublisher,
-    },
-    {
-      provide: AUTHORIZATION_EVENT_PUBLISHER,
-      useExisting: EventPublisher,
-    },
-    {
-      provide: IDENTITY_AUDIT_REPOSITORY,
-      useClass: IdentityAuditPrismaRepository,
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.CREATE_IDENTITY,
+      useClass: CreateIdentityHandler,
     },
 
     {
-      provide: IDENTITY_AUDIT_EVENT_PUBLISHER,
-      useExisting: EventPublisher,
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.ACTIVATE_IDENTITY,
+      useClass: ActivateIdentityHandler,
     },
-    // ==========================================================================
-    // Identity Command Handlers
-    // ==========================================================================
 
-    ActivateIdentityHandler,
-    RegisterIdentityHandler,
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.SUSPEND_IDENTITY,
+      useClass: SuspendIdentityHandler,
+    },
 
-    // ==========================================================================
-    // Authentication Command Handlers
-    // ==========================================================================
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.CLOSE_IDENTITY,
+      useClass: CloseIdentityHandler,
+    },
 
-    ChangePasswordHandler,
-    DisableMfaHandler,
-    EnableMfaHandler,
-    ExpirePasswordHandler,
-    ExtendAuthenticationLockHandler,
-    LockAuthenticationHandler,
-    LoginHandler,
-    LogoutAllSessionsHandler,
-    LogoutHandler,
-    RecordFailedMfaVerificationHandler,
-    RecordSuccessfulMfaVerificationHandler,
-    RefreshTokenHandler,
-    RegisterAuthenticationHandler,
-    RequirePasswordChangeHandler,
-    ResetPasswordHandler,
-    RotateMfaSecretHandler,
-    UnlockAuthenticationHandler,
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.CHANGE_IDENTITY_EMAIL,
+      useClass: ChangeIdentityEmailHandler,
+    },
 
-    // ==========================================================================
-    // Authorization Command Handlers
-    // ==========================================================================
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.CHANGE_IDENTITY_PHONE_NUMBER,
+      useClass: ChangeIdentityPhoneNumberHandler,
+    },
 
-    ActivateRoleHandler,
-    AssignPermissionToRoleHandler,
-    AssignRoleHandler,
-    ChangeRoleDescriptionHandler,
-    ChangeRoleDisplayOrderHandler,
-    CreateRoleHandler,
-    DeactivateRoleHandler,
-    RemovePermissionFromRoleHandler,
-    RenameRoleHandler,
-    RevokeRoleHandler,
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.ASSIGN_IDENTITY_ROLE,
+      useClass: AssignIdentityRoleHandler,
+    },
 
-    // ==========================================================================
-    // Device Command Handlers
-    // ==========================================================================
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.REVOKE_IDENTITY_ROLE,
+      useClass: RevokeIdentityRoleHandler,
+    },
 
-    RegisterDeviceHandler,
-    RevokeDeviceHandler,
-    TrustDeviceHandler,
+    // =========================================================================
+    // Identity — Query Handlers
+    // =========================================================================
 
-    // ==========================================================================
-    // Recovery Command Handlers
-    // ==========================================================================
+    {
+      provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_IDENTITY,
+      useClass: GetIdentityHandler,
+    },
 
-    CancelRecoveryHandler,
-    CompleteRecoveryHandler,
-    ExpireRecoveryHandler,
-    RequestRecoveryHandler,
+    {
+      provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_IDENTITY_BY_EMAIL,
+      useClass: GetIdentityByEmailHandler,
+    },
 
-    // ==========================================================================
-    // Verification Command Handlers
-    // ==========================================================================
+    {
+      provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_IDENTITY_BY_PHONE_NUMBER,
+      useClass: GetIdentityByPhoneNumberHandler,
+    },
 
-    ApproveVerificationRequestHandler,
-    ExpireVerificationHandler,
-    RejectVerificationRequestHandler,
-    RenewVerificationHandler,
-    RevokeVerificationHandler,
-    StartVerificationHandler,
-    SubmitVerificationRequestHandler,
+    {
+      provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_IDENTITY_ROLES,
+      useClass: GetIdentityRolesHandler,
+    },
 
-    // ==========================================================================
-    // Identity Query Handlers
-    // ==========================================================================
+    // =========================================================================
+    // Verification — Command Handlers
+    // =========================================================================
 
-    GetIdentityHandler,
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.CREATE_VERIFICATION,
+      useClass: CreateVerificationHandler,
+    },
 
-    // ==========================================================================
-    // Authentication Query Handlers
-    // ==========================================================================
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.GRANT_MEMBER_VERIFICATION,
+      useClass: GrantMemberVerificationHandler,
+    },
 
-    AuthenticationExistsByIdentityHandler,
-    AuthenticationExistsHandler,
-    GetAuthenticationByIdentityHandler,
-    GetAuthenticationHandler,
-    GetLatestPasswordHistoryHandler,
-    GetPasswordHistoryHandler,
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.GRANT_DRIVER_VERIFICATION,
+      useClass: GrantDriverVerificationHandler,
+    },
 
-    // ==========================================================================
-    // Authorization Query Handlers
-    // ==========================================================================
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.REJECT_VERIFICATION,
+      useClass: RejectVerificationHandler,
+    },
 
-    GetIdentityPermissionsHandler,
-    GetIdentityRolesHandler,
-    GetPermissionHandler,
-    GetRoleHandler,
-    ListPermissionsHandler,
-    ListRolesHandler,
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.REOPEN_VERIFICATION,
+      useClass: ReopenVerificationHandler,
+    },
 
-    // ==========================================================================
-    // Device Query Handlers
-    // ==========================================================================
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.EXPIRE_VERIFICATION,
+      useClass: ExpireVerificationHandler,
+    },
 
-    GetDeviceHandler,
-    ListIdentityDevicesHandler,
-    RecordIdentityAuditHandler,
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.REVOKE_VERIFICATION,
+      useClass: RevokeVerificationHandler,
+    },
 
-    GetIdentityAuditHandler,
-    ListIdentityAuditsHandler,
+    // =========================================================================
+    // Verification — Query Handlers
+    // =========================================================================
 
-    // ==========================================================================
-    // Verification Query Handlers
-    // ==========================================================================
+    {
+      provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_VERIFICATION,
+      useClass: GetVerificationHandler,
+    },
 
-    GetVerificationHandler,
-    GetVerificationRequestHandler,
-    GetVerificationReviewHandler,
-    GetVerificationSummaryHandler,
-    ListExpiredVerificationsHandler,
-    ListPendingVerificationsHandler,
-    ListVerificationsHandler,
+    {
+      provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_VERIFICATION_REQUESTS,
+      useClass: GetVerificationRequestsHandler,
+    },
+
+    {
+      provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_VERIFICATION_REQUEST,
+      useClass: GetVerificationRequestHandler,
+    },
+
+    // =========================================================================
+    // Verification Request — Command Handlers
+    // =========================================================================
+
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.CREATE_VERIFICATION_REQUEST,
+      useClass: CreateVerificationRequestHandler,
+    },
+
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.APPROVE_VERIFICATION_REQUEST,
+      useClass: ApproveVerificationRequestHandler,
+    },
+
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.REJECT_VERIFICATION_REQUEST,
+      useClass: RejectVerificationRequestHandler,
+    },
+
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.CANCEL_VERIFICATION_REQUEST,
+      useClass: CancelVerificationRequestHandler,
+    },
+
+    // =========================================================================
+    // Role — Command Handlers
+    // =========================================================================
+
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.CREATE_ROLE,
+      useClass: CreateRoleHandler,
+    },
+
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.ACTIVATE_ROLE,
+      useClass: ActivateRoleHandler,
+    },
+
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.DEACTIVATE_ROLE,
+      useClass: DeactivateRoleHandler,
+    },
+
+    // =========================================================================
+    // Role — Query Handlers
+    // =========================================================================
+
+    {
+      provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_ROLE,
+      useClass: GetRoleHandler,
+    },
+
+    {
+      provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_ROLES,
+      useClass: GetRolesHandler,
+    },
+
+    // =========================================================================
+    // Permission — Command Handlers
+    // =========================================================================
+
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.CREATE_PERMISSION,
+      useClass: CreatePermissionHandler,
+    },
+
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.ACTIVATE_PERMISSION,
+      useClass: ActivatePermissionHandler,
+    },
+
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.DEACTIVATE_PERMISSION,
+      useClass: DeactivatePermissionHandler,
+    },
+
+    // =========================================================================
+    // Permission — Query Handlers
+    // =========================================================================
+
+    {
+      provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_PERMISSION,
+      useClass: GetPermissionHandler,
+    },
+
+    {
+      provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_PERMISSIONS,
+      useClass: GetPermissionsHandler,
+    },
+
+    // =========================================================================
+    // Role Permission — Command Handlers
+    // =========================================================================
+
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.ASSIGN_ROLE_PERMISSION,
+      useClass: AssignRolePermissionHandler,
+    },
+
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.REVOKE_ROLE_PERMISSION,
+      useClass: RevokeRolePermissionHandler,
+    },
+
+    // =========================================================================
+    // Role Permission — Query Handlers
+    // =========================================================================
+
+    {
+      provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_ROLE_PERMISSION,
+      useClass: GetRolePermissionHandler,
+    },
+
+    {
+      provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_ROLE_PERMISSIONS,
+      useClass: GetRolePermissionsHandler,
+    },
   ],
 
+  // ===========================================================================
+  // Exports
+  // ===========================================================================
+
   exports: [
-    // ==========================================================================
-    // Identity Services
-    // ==========================================================================
+    // -------------------------------------------------------------------------
+    // Identity Repository
+    // -------------------------------------------------------------------------
 
-    IDENTITY_REPOSITORY,
-    IDENTITY_AUTHENTICATION_REPOSITORY,
-    IDENTITY_SESSION_REPOSITORY,
-    IDENTITY_DEVICE_REPOSITORY,
-    IDENTITY_VERIFICATION_REPOSITORY,
-    IDENTITY_RECOVERY_REPOSITORY,
+    IDENTITY_TOKENS.REPOSITORIES.IDENTITY,
 
-    // ==========================================================================
-    // Authorization Services
-    // ==========================================================================
+    // -------------------------------------------------------------------------
+    // Verification Repository
+    // -------------------------------------------------------------------------
 
-    AUTHORIZATION_ROLE_REPOSITORY,
-    AUTHORIZATION_PERMISSION_REPOSITORY,
-    AUTHORIZATION_ROLE_PERMISSION_REPOSITORY,
-    AUTHORIZATION_IDENTITY_ROLE_REPOSITORY,
+    IDENTITY_TOKENS.REPOSITORIES.VERIFICATION,
 
-    // ==========================================================================
-    // Read Repositories
-    // ==========================================================================
+    // -------------------------------------------------------------------------
+    // Role Repository
+    // -------------------------------------------------------------------------
 
-    AUTHORIZATION_ROLE_READ_REPOSITORY,
-    AUTHORIZATION_PERMISSION_READ_REPOSITORY,
+    IDENTITY_TOKENS.REPOSITORIES.ROLE,
 
-    // ==========================================================================
-    // Query Services
-    // ==========================================================================
+    // -------------------------------------------------------------------------
+    // Permission Repository
+    // -------------------------------------------------------------------------
 
-    IDENTITY_VERIFICATION_QUERY_SERVICE,
+    IDENTITY_TOKENS.REPOSITORIES.PERMISSION,
 
-    // ==========================================================================
-    // Security Services
-    // ==========================================================================
+    // -------------------------------------------------------------------------
+    // Role Permission Repository
+    // -------------------------------------------------------------------------
 
-    IDENTITY_PASSWORD_HASHER,
-    IDENTITY_TOKEN_GENERATOR,
-    IDENTITY_TOKEN_HASHER,
-    IDENTITY_RECOVERY_TOKEN_GENERATOR,
-    IDENTITY_RECOVERY_TOKEN_HASHER,
-
-    // ==========================================================================
-    // Event Publishers
-    // ==========================================================================
-
-    IDENTITY_EVENT_PUBLISHER,
-    AUTHORIZATION_EVENT_PUBLISHER,
-    GetIdentityPermissionsHandler,
-    GetIdentityRolesHandler,
+    IDENTITY_TOKENS.REPOSITORIES.ROLE_PERMISSION,
   ],
 })
 export class IdentityModule {}
+
+// -----------------------------------------------------------------------------
+// Default Export
+// -----------------------------------------------------------------------------
+
+export default IdentityModule;

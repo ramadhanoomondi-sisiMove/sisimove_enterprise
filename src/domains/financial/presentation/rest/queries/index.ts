@@ -21,6 +21,8 @@
 // - Financial Settlement
 // - Financial Settlement Items
 // - Financial Account Withdrawal
+// - Financial Disbursement
+// - Financial Disbursement Attempts
 //
 // -----------------------------------------------------------------------------
 
@@ -99,3 +101,29 @@ export { GetFinancialAccountWithdrawalQueryDto } from './get-financial-account-w
 export { GetFinancialAccountWithdrawalsQueryDto } from './get-financial-account-withdrawals.query.dto';
 
 export { GetFinancialAccountWithdrawalsByStatusQueryDto } from './get-financial-account-withdrawals-by-status.query.dto';
+
+// -----------------------------------------------------------------------------
+// Financial Disbursement
+// -----------------------------------------------------------------------------
+//
+// Retrieves a Financial Disbursement aggregate by its public identity.
+//
+// The aggregate is fully rehydrated by the repository, including its
+// aggregate-owned execution attempts and associated destination.
+//
+// -----------------------------------------------------------------------------
+
+export { GetFinancialDisbursementQueryDto } from './get-financial-disbursement.query.dto';
+
+// -----------------------------------------------------------------------------
+// Financial Disbursement Attempts
+// -----------------------------------------------------------------------------
+//
+// Retrieves execution attempts belonging to a Financial Disbursement.
+//
+// FinancialDisbursementAttemptEntity instances remain aggregate-owned entities
+// and are therefore queried through their owning Financial Disbursement.
+//
+// -----------------------------------------------------------------------------
+
+export { GetFinancialDisbursementAttemptsQueryDto } from './get-financial-disbursement-attempts.query.dto';

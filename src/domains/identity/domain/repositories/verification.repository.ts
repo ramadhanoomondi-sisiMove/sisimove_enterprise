@@ -1,44 +1,396 @@
-// src/domains/identity/domain/repositories/verification.repository.ts
+// -----------------------------------------------------------------------------
+// Verification Repository
+// -----------------------------------------------------------------------------
+//
+// Repository contract for the Verification aggregate.
+//
+// Aggregate ownership:
+//
+// VerificationAggregate
+// ├── VerificationEntity
+// └── VerificationRequestEntity[]
+//
+// Persistence boundary:
+//
+// - VerificationAggregate is the unit of persistence.
+// - VerificationRequestEntity is persisted only through VerificationAggregate.
+// - Cross-aggregate references remain opaque public identifiers.
+// - Repository implementations must preserve aggregate invariants.
+//
+// -----------------------------------------------------------------------------
+//
+// Responsibilities:
+//
+// - Create Verification aggregates.
+// - Persist existing Verification aggregates.
+// - Retrieve complete Verification aggregates.
+// - Support Identity-scoped verification queries.
+// - Support Verification lifecycle queries.
+// - Support Verification level queries.
+// - Support VerificationRequest processing queries.
+// - Support VerificationRequest type queries.
+// - Support VerificationRequest asset queries.
+// - Support existence checks.
+// - Delete complete Verification aggregates.
+//
+// -----------------------------------------------------------------------------
+//
+// Verification lifecycle:
+//
+// PENDING
+//   ├──> VERIFIED
+//   └──> REJECTED
+//
+// VERIFIED
+//   ├──> EXPIRED
+//   └──> REVOKED
+//
+// REJECTED
+//   └──> PENDING
+//
+// EXPIRED
+//   └──> PENDING
+//
+// REVOKED
+//   └── terminal
+//
+// -----------------------------------------------------------------------------
+//
+// VerificationRequest lifecycle:
+//
+// PENDING
+//   ├──> APPROVED
+//   ├──> REJECTED
+//   └──> CANCELLED
+//
+// APPROVED
+//   └── terminal
+//
+// REJECTED
+//   └── terminal
+//
+// CANCELLED
+//   └── terminal
+//
+// IMPORTANT:
+//
+// VerificationRequest does NOT have an EXPIRED status.
+//
+// Request expiration is intentionally not part of the domain model.
+//
+// Therefore this repository does NOT expose:
+//
+// - findExpiredRequests();
+// - findByRequestExpiredAt();
+// - expireRequest();
+// - any request-level expiration operation.
+//
+// If a pending VerificationRequest is no longer valid for processing, it is
+// cancelled through the VerificationAggregate:
+//
+//     cancelRequest()
+//
+// Request persistence remains part of the Verification aggregate persistence
+// boundary.
+//
+// -----------------------------------------------------------------------------
+//
+// This interface does NOT:
+//
+// - Depend on Prisma.
+// - Depend on ORM/database models.
+// - Persist VerificationRequestEntity independently.
+// - Expose VerificationRequestRepository.
+// - Execute external verification providers.
+// - Perform asset storage.
+// - Modify Identity state.
+// - Modify Identity roles.
+// - Determine platform-wide verification policy.
+// - Expire VerificationRequestEntity instances.
+//
+// -----------------------------------------------------------------------------
+//
+// IMPORTANT:
+//
+// VerificationRequestEntity is owned by VerificationAggregate.
+//
+// Therefore there is intentionally no:
+//
+// - createRequest();
+// - saveRequest();
+// - updateRequest();
+// - deleteRequest();
+// - expireRequest();
+//
+// Request-level queries may exist for processing workflows, but request
+// persistence remains inside the Verification aggregate boundary.
+//
+// -----------------------------------------------------------------------------
+//
+// Cross-aggregate references:
+//
+// - IdentityPublicId
+// - VerificationRequestAssetPublicId
+//
+// Persistence identifiers are deliberately excluded from this contract.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Aggregate
+// -----------------------------------------------------------------------------
 
 import type { VerificationAggregate } from '../aggregates/verification.aggregate';
-import type { VerificationRequestEntity } from '../entities/verification-request.entity';
 
-import type { IdentityId } from '../value-objects/identity-id.vo';
-import type { VerificationId } from '../value-objects/verification-id.vo';
-import type { VerificationRequestId } from '../value-objects/verification-request-id.vo';
+// -----------------------------------------------------------------------------
+// Value Objects
+// -----------------------------------------------------------------------------
 
-export abstract class VerificationRepository {
-  abstract save(verification: VerificationAggregate): Promise<void>;
+import type { VerificationPublicId } from '../value-objects/verification-public-id.vo';
 
-  abstract update(verification: VerificationAggregate): Promise<void>;
+import type { IdentityPublicId } from '../value-objects/identity-public-id.vo';
+
+import type { VerificationStatus } from '../value-objects/verification-status.vo';
+
+import type { VerificationLevel } from '../value-objects/verification-level.vo';
+
+import type { VerificationRequestType } from '../value-objects/verification-request-type.vo';
+
+import type { VerificationRequestStatus } from '../value-objects/verification-request-status.vo';
+
+import type { VerificationRequestAssetPublicId } from '../value-objects/verification-request-asset-public-id.vo';
+
+// =============================================================================
+// Repository
+// =============================================================================
+
+/**
+ * Repository contract for the Verification aggregate.
+ *
+ * VerificationAggregate is the persistence unit.
+ *
+ * VerificationRequestEntity instances are aggregate-owned children and are
+ * therefore persisted atomically with their owning VerificationAggregate.
+ */
+export interface VerificationRepository {
+  // ===========================================================================
+  // Persistence
+  // ===========================================================================
 
   /**
-   * Database UUID
+   * Persists a newly created Verification aggregate.
+   *
+   * The complete aggregate is persisted atomically:
+   *
+   * VerificationAggregate
+   * ├── VerificationEntity
+   * └── VerificationRequestEntity[]
+   *
+   * No VerificationRequestEntity is persisted independently.
    */
-  abstract findById(id: string): Promise<VerificationAggregate | null>;
+  create(aggregate: VerificationAggregate): Promise<void>;
 
   /**
-   * Public VerificationId
+   * Persists the current state of an existing Verification aggregate.
+   *
+   * The aggregate root and all aggregate-owned VerificationRequestEntity
+   * instances are synchronized within the same persistence transaction.
    */
-  abstract findByPublicId(
-    publicId: VerificationId,
+  save(aggregate: VerificationAggregate): Promise<void>;
+
+  /**
+   * Deletes the complete Verification aggregate atomically.
+   *
+   * All aggregate-owned VerificationRequestEntity persistence records are
+   * removed according to aggregate ownership rules.
+   */
+  delete(aggregate: VerificationAggregate): Promise<void>;
+
+  // ===========================================================================
+  // Aggregate Retrieval
+  // ===========================================================================
+
+  /**
+   * Finds a complete Verification aggregate by internal persistence identity.
+   *
+   * Rehydration must include:
+   *
+   * - VerificationEntity;
+   * - VerificationRequestEntity[].
+   *
+   * No domain events are emitted during rehydration.
+   */
+  findById(id: string): Promise<VerificationAggregate | null>;
+
+  /**
+   * Finds a complete Verification aggregate by public identity.
+   */
+  findByPublicId(
+    publicId: VerificationPublicId,
   ): Promise<VerificationAggregate | null>;
 
-  abstract findByIdentityId(
-    identityId: IdentityId,
+  // ===========================================================================
+  // Identity
+  // ===========================================================================
+
+  /**
+   * Finds the Verification aggregate belonging to an Identity.
+   *
+   * An Identity owns at most one Verification aggregate.
+   */
+  findByIdentityPublicId(
+    identityPublicId: IdentityPublicId,
   ): Promise<VerificationAggregate | null>;
 
   /**
-   * Database UUID
+   * Determines whether an Identity owns a Verification aggregate.
    */
-  abstract findRequestById(
-    id: string,
-  ): Promise<VerificationRequestEntity | null>;
+  existsByIdentityPublicId(
+    identityPublicId: IdentityPublicId,
+  ): Promise<boolean>;
 
   /**
-   * Public VerificationRequestId
+   * Semantic alias for existsByIdentityPublicId().
    */
-  abstract findRequestByPublicId(
-    publicId: VerificationRequestId,
-  ): Promise<VerificationRequestEntity | null>;
+  existsByIdentity(identityPublicId: IdentityPublicId): Promise<boolean>;
+
+  // ===========================================================================
+  // Verification Lifecycle
+  // ===========================================================================
+
+  /**
+   * Finds complete Verification aggregates by lifecycle status.
+   *
+   * Valid Verification statuses:
+   *
+   * - PENDING;
+   * - VERIFIED;
+   * - REJECTED;
+   * - EXPIRED;
+   * - REVOKED.
+   *
+   * EXPIRED applies to the Verification aggregate only.
+   *
+   * VerificationRequest does not have an EXPIRED status.
+   */
+  findByStatus(status: VerificationStatus): Promise<VerificationAggregate[]>;
+
+  /**
+   * Finds all PENDING Verification aggregates.
+   */
+  findPending(): Promise<VerificationAggregate[]>;
+
+  /**
+   * Finds all VERIFIED Verification aggregates.
+   */
+  findVerified(): Promise<VerificationAggregate[]>;
+
+  /**
+   * Finds all REJECTED Verification aggregates.
+   */
+  findRejected(): Promise<VerificationAggregate[]>;
+
+  /**
+   * Finds all EXPIRED Verification aggregates.
+   *
+   * This refers exclusively to Verification lifecycle expiration.
+   */
+  findExpired(): Promise<VerificationAggregate[]>;
+
+  /**
+   * Finds all REVOKED Verification aggregates.
+   */
+  findRevoked(): Promise<VerificationAggregate[]>;
+
+  // ===========================================================================
+  // Verification Level
+  // ===========================================================================
+
+  /**
+   * Finds Verification aggregates by verification level.
+   *
+   * Valid levels:
+   *
+   * - NONE;
+   * - MEMBER;
+   * - DRIVER.
+   */
+  findByLevel(level: VerificationLevel): Promise<VerificationAggregate[]>;
+
+  // ===========================================================================
+  // Verification Request Processing
+  // ===========================================================================
+
+  /**
+   * Finds complete Verification aggregates containing at least one
+   * VerificationRequest with the supplied lifecycle status.
+   *
+   * Valid VerificationRequest statuses are determined by
+   * VerificationRequestStatus.
+   *
+   * The request lifecycle is:
+   *
+   * PENDING
+   *   ├──> APPROVED
+   *   ├──> REJECTED
+   *   └──> CANCELLED
+   *
+   * There is intentionally no EXPIRED request status.
+   */
+  findByRequestStatus(
+    status: VerificationRequestStatus,
+  ): Promise<VerificationAggregate[]>;
+
+  /**
+   * Finds complete Verification aggregates containing at least one pending
+   * VerificationRequest.
+   *
+   * Pending requests are requests currently awaiting review or processing.
+   */
+  findWithPendingRequests(): Promise<VerificationAggregate[]>;
+
+  /**
+   * Finds complete Verification aggregates containing requests of the supplied
+   * verification request type.
+   */
+  findByRequestType(
+    type: VerificationRequestType,
+  ): Promise<VerificationAggregate[]>;
+
+  // ===========================================================================
+  // Verification Request Asset
+  // ===========================================================================
+
+  /**
+   * Finds the Verification aggregate containing a VerificationRequest that
+   * references the supplied Asset public identity.
+   *
+   * Asset identity remains an opaque cross-aggregate reference.
+   */
+  findByRequestAssetPublicId(
+    assetPublicId: VerificationRequestAssetPublicId,
+  ): Promise<VerificationAggregate | null>;
+
+  /**
+   * Determines whether a VerificationRequest references the supplied Asset
+   * public identity.
+   */
+  existsByRequestAssetPublicId(
+    assetPublicId: VerificationRequestAssetPublicId,
+  ): Promise<boolean>;
+
+  // ===========================================================================
+  // Existence
+  // ===========================================================================
+
+  /**
+   * Determines whether a Verification aggregate exists by public identity.
+   */
+  existsByPublicId(publicId: VerificationPublicId): Promise<boolean>;
 }
+
+// -----------------------------------------------------------------------------
+// Default Export
+// -----------------------------------------------------------------------------
+
+export default VerificationRepository;

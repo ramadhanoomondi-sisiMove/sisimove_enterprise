@@ -146,13 +146,13 @@ export * from './request-financial-account-withdrawal.handler';
 //
 // Valid lifecycle transitions:
 //
-//     PENDING    -> PROCESSING
+//     PENDING     -> PROCESSING
 //
-//     PROCESSING -> COMPLETED
-//     PROCESSING -> FAILED
-//     PROCESSING -> CANCELLED
+//     PROCESSING  -> COMPLETED
+//     PROCESSING  -> FAILED
+//     PROCESSING  -> CANCELLED
 //
-//     PENDING    -> CANCELLED
+//     PENDING     -> CANCELLED
 //
 // COMPLETED, FAILED, and CANCELLED are terminal states.
 //
@@ -226,3 +226,63 @@ export * from './cancel-financial-settlement.handler';
 // -----------------------------------------------------------------------------
 
 export * from './allocate-financial-settlement-item.handler';
+
+// -----------------------------------------------------------------------------
+// Financial Disbursement Creation
+// -----------------------------------------------------------------------------
+//
+// Financial Disbursement represents the external payout execution lifecycle.
+//
+// Creation establishes the Financial Disbursement aggregate in its initial
+// PENDING state.
+//
+// The destination is independently persisted and associated with the
+// Financial Disbursement aggregate.
+//
+// -----------------------------------------------------------------------------
+
+export * from './create-financial-disbursement.handler';
+
+// -----------------------------------------------------------------------------
+// Financial Disbursement Lifecycle
+// -----------------------------------------------------------------------------
+//
+// Financial Disbursement lifecycle:
+//
+//     PENDING
+//        │
+//        ├── PROCESSING
+//        │      │
+//        │      ├── COMPLETED
+//        │      ├── FAILED
+//        │      └── CANCELLED
+//        │
+//        ├── FAILED
+//        └── CANCELLED
+//
+// COMPLETED, FAILED, and CANCELLED are terminal states.
+//
+// FinancialDisbursementAggregate remains responsible for:
+//
+// - lifecycle validation;
+// - destination consistency;
+// - execution-attempt consistency;
+// - transaction-reference consistency;
+// - domain event emission.
+//
+// Disbursement handlers do not:
+//
+// - execute external providers;
+// - create or post Financial Transactions;
+// - modify Financial Account balances;
+// - perform accounting.
+//
+// -----------------------------------------------------------------------------
+
+export * from './process-financial-disbursement.handler';
+
+export * from './complete-financial-disbursement.handler';
+
+export * from './fail-financial-disbursement.handler';
+
+export * from './cancel-financial-disbursement.handler';

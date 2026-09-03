@@ -1,11 +1,23 @@
-// src/domains/authorization/domain/exceptions/role-not-found.exception.ts
+// -----------------------------------------------------------------------------
+// Role Not Found
+// -----------------------------------------------------------------------------
 
-import { DomainException } from '../../../../foundation/kernel/domain/domain-exception';
+// -----------------------------------------------------------------------------
+// Foundation
+// -----------------------------------------------------------------------------
 
-export class RoleNotFoundException extends DomainException {
-  constructor(roleId: string) {
-    super(`Role '${roleId}' was not found.`, 'ROLE_NOT_FOUND');
+import { RoleException } from './role.exception';
 
-    Object.freeze(this);
+// -----------------------------------------------------------------------------
+// Exception
+// -----------------------------------------------------------------------------
+
+/**
+ * Indicates that the requested Role could not be found within the
+ * Identity domain.
+ */
+export class RoleNotFoundException extends RoleException {
+  public constructor(message: string = 'Role was not found.') {
+    super(message);
   }
 }

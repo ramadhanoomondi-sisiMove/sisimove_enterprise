@@ -31,7 +31,7 @@ import {
   JwtAuthGuard,
   PermissionsGuard,
   RequirePermissions,
-} from '../../../../identity/presentation/auth';
+} from '../../../../../foundation/security/auth';
 
 // -----------------------------------------------------------------------------
 // Foundation — Application

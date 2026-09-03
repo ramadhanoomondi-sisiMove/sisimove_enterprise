@@ -1,11 +1,26 @@
-// src/domains/authorization/domain/exceptions/role-inactive.exception.ts
+// -----------------------------------------------------------------------------
+// Role Inactive
+// -----------------------------------------------------------------------------
 
-import { DomainException } from '../../../../foundation/kernel/domain/domain-exception';
+// -----------------------------------------------------------------------------
+// Foundation
+// -----------------------------------------------------------------------------
 
-export class RoleInactiveException extends DomainException {
-  constructor() {
-    super('Role is inactive.', 'ROLE_INACTIVE');
+import { RoleException } from './role.exception';
 
-    Object.freeze(this);
+// -----------------------------------------------------------------------------
+// Exception
+// -----------------------------------------------------------------------------
+
+/**
+ * Indicates that an operation cannot be performed because the Role is
+ * currently inactive.
+ *
+ * An inactive Role must not be assigned to an Identity or otherwise used
+ * for active authorization decisions.
+ */
+export class RoleInactiveException extends RoleException {
+  public constructor(message: string = 'Role is inactive.') {
+    super(message);
   }
 }

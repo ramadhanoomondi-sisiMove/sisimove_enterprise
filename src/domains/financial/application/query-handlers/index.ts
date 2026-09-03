@@ -1,8 +1,8 @@
 // -----------------------------------------------------------------------------
-// Financial Account — Query Handlers
+// Financial — Query Handlers
 // -----------------------------------------------------------------------------
 //
-// Public barrel export for all Financial Account query handlers.
+// Public barrel export for all Financial query handlers.
 //
 // Query handlers:
 //
@@ -69,8 +69,9 @@ export * from './get-default-financial-payment-method.handler';
 //
 // Multiple ACTIVE holds are valid.
 //
-// RELEASED, CAPTURED and CANCELLED holds remain historical lifecycle states
+// RELEASED, CAPTURED, and CANCELLED holds remain historical lifecycle states
 // and are returned according to the corresponding application query.
+//
 // -----------------------------------------------------------------------------
 
 export * from './get-financial-account-holds.handler';
@@ -89,6 +90,7 @@ export * from './get-financial-account-holds.handler';
 //         └── FinancialSettlementAllocationEntity[]
 //
 // The Settlement aggregate remains the persistence and domain boundary.
+//
 // -----------------------------------------------------------------------------
 
 export * from './get-financial-settlement.handler';
@@ -104,6 +106,7 @@ export * from './get-financial-settlement.handler';
 //
 // They are not independent aggregate roots and do not have a separate
 // repository boundary.
+//
 // -----------------------------------------------------------------------------
 
 export * from './get-financial-settlement-items.handler';
@@ -139,3 +142,38 @@ export * from './get-financial-account-withdrawals.handler';
 // -----------------------------------------------------------------------------
 
 export * from './get-financial-account-withdrawals-by-status.handler';
+
+// -----------------------------------------------------------------------------
+// Financial Disbursement
+// -----------------------------------------------------------------------------
+//
+// Retrieves a Financial Disbursement aggregate by its public identity.
+//
+// Aggregate:
+//
+// FinancialDisbursementAggregate
+// ├── FinancialDisbursementEntity
+// │   └── FinancialDisbursementAttemptEntity[]
+// └── FinancialDisbursementDestinationEntity
+//
+// The Financial Disbursement aggregate remains the domain boundary.
+//
+// -----------------------------------------------------------------------------
+
+export * from './get-financial-disbursement.handler';
+
+// -----------------------------------------------------------------------------
+// Financial Disbursement Attempts
+// -----------------------------------------------------------------------------
+//
+// Retrieves execution attempts belonging to a Financial Disbursement.
+//
+// FinancialDisbursementAttemptEntity instances are aggregate-owned entities
+// and are therefore retrieved through the FinancialDisbursementAggregate.
+//
+// They are not independent aggregate roots and do not have a separate
+// repository/query boundary.
+//
+// -----------------------------------------------------------------------------
+
+export * from './get-financial-disbursement-attempts.handler';

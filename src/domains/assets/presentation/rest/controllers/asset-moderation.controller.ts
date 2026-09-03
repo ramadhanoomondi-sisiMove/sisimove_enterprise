@@ -18,7 +18,7 @@ import {
 
 import { CorrelationId } from '../../../../../foundation/logging/correlation-id';
 
-import { RequirePermissions } from '../../../../identity/presentation/auth';
+import { RequirePermissions } from '../../../../../foundation/security/auth';
 
 import {
   ApproveAssetCommand,

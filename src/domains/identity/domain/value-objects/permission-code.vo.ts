@@ -1,38 +1,124 @@
-// src/domains/authorization/domain/value-objects/permission-code.vo.ts
+// -----------------------------------------------------------------------------
+// Permission Code
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Foundation
+// -----------------------------------------------------------------------------
 
 import { ValueObject } from '../../../../foundation/kernel/domain/value-object';
 
-import { InvalidPermissionCodeException } from '../exceptions/invalid-permission-code.exception';
+// -----------------------------------------------------------------------------
+// Props
+// -----------------------------------------------------------------------------
 
 interface PermissionCodeProps {
   value: string;
 }
 
+// -----------------------------------------------------------------------------
+// Value Object
+// -----------------------------------------------------------------------------
+
+/**
+ * Stable machine-readable code identifying a Permission.
+ *
+ * Permission codes are used by the authorization layer to identify
+ * capabilities independently of display names or database identifiers.
+ *
+ * Examples:
+ *
+ *   JOURNEY_CREATE
+ *   JOURNEY_READ
+ *   BOOKING_CREATE
+ *   ADMIN_MANAGE_USERS
+ */
 export class PermissionCode extends ValueObject<PermissionCodeProps> {
-  private static readonly PATTERN =
-    /^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+\.[a-z][a-z0-9_]*$/;
+  // ---------------------------------------------------------------------------
+  // Constants
+  // ---------------------------------------------------------------------------
 
-  constructor(code: string) {
-    PermissionCode.validate(code);
+  private static readonly MAX_LENGTH = 150;
 
-    super({
-      value: code,
-    });
+  // ---------------------------------------------------------------------------
+  // Constructor
+  // ---------------------------------------------------------------------------
+
+  private constructor(value: string) {
+    super({ value });
   }
 
-  get value(): string {
+  // ---------------------------------------------------------------------------
+  // Factory
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Creates a Permission Code.
+   *
+   * The supplied value is trimmed, normalized to uppercase, and validated
+   * before entering the domain.
+   */
+  public static create(value: string): PermissionCode {
+    const normalized = value.trim().toUpperCase();
+
+    PermissionCode.validate(normalized);
+
+    return new PermissionCode(normalized);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Validation
+  // ---------------------------------------------------------------------------
+
+  private static validate(value: string): void {
+    if (!value) {
+      throw new Error('Permission code is required.');
+    }
+
+    if (value.length > PermissionCode.MAX_LENGTH) {
+      throw new Error(
+        `Permission code must not exceed ${PermissionCode.MAX_LENGTH} characters.`,
+      );
+    }
+
+    if (!PermissionCode.isValid(value)) {
+      throw new Error(`Invalid Permission code: ${value}`);
+    }
+  }
+
+  /**
+   * Validates the structural format of a Permission Code.
+   *
+   * Allowed:
+   * - uppercase letters;
+   * - numbers;
+   * - underscores.
+   *
+   * The code must begin and end with an alphanumeric character.
+   */
+  public static isValid(value: string): boolean {
+    return /^[A-Z0-9](?:[A-Z0-9_]*[A-Z0-9])?$/.test(value);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Accessor
+  // ---------------------------------------------------------------------------
+
+  public get value(): string {
     return this.props.value;
   }
 
-  private static validate(code: string): void {
-    if (!code.trim()) {
-      throw new InvalidPermissionCodeException('Permission code is required.');
-    }
+  // ---------------------------------------------------------------------------
+  // Serialization
+  // ---------------------------------------------------------------------------
 
-    if (!PermissionCode.PATTERN.test(code)) {
-      throw new InvalidPermissionCodeException(
-        'Permission code must follow the format resource.subresource.action.',
-      );
-    }
+  public override toString(): string {
+    return this.props.value;
   }
 }
+
+// -----------------------------------------------------------------------------
+// Exported Types
+// -----------------------------------------------------------------------------
+
+export type { PermissionCodeProps };

@@ -20,3 +20,5 @@ export { FINANCIAL_PAYMENT_TOKENS } from './financial-payment.tokens';
 export { FINANCIAL_PAYMENT_METHOD_TOKENS } from './financial-payment-method.tokens';
 
 export { FINANCIAL_SETTLEMENT_TOKENS } from './financial-settlement.tokens';
+
+export { FINANCIAL_DISBURSEMENT_TOKENS } from './financial-disbursement.tokens';

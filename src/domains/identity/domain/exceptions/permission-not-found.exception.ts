@@ -1,14 +1,23 @@
-// src/domains/authorization/domain/exceptions/permission-not-found.exception.ts
+// -----------------------------------------------------------------------------
+// Permission Not Found
+// -----------------------------------------------------------------------------
 
-import { DomainException } from '../../../../foundation/kernel/domain/domain-exception';
+// -----------------------------------------------------------------------------
+// Foundation
+// -----------------------------------------------------------------------------
 
-export class PermissionNotFoundException extends DomainException {
-  constructor(permissionId: string) {
-    super(
-      `Permission '${permissionId}' was not found.`,
-      'PERMISSION_NOT_FOUND',
-    );
+import { PermissionException } from './permission.exception';
 
-    Object.freeze(this);
+// -----------------------------------------------------------------------------
+// Exception
+// -----------------------------------------------------------------------------
+
+/**
+ * Indicates that the requested Permission could not be found within the
+ * Identity domain.
+ */
+export class PermissionNotFoundException extends PermissionException {
+  public constructor(message: string = 'Permission was not found.') {
+    super(message);
   }
 }

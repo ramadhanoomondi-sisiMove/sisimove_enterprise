@@ -1,12 +1,26 @@
-import { DomainException } from '../../../../foundation/kernel/domain/domain-exception';
+// -----------------------------------------------------------------------------
+// Verification Request Not Found
+// -----------------------------------------------------------------------------
 
-export class VerificationRequestNotFoundException extends DomainException {
-  constructor(publicId: string) {
-    super(
-      'VERIFICATION_REQUEST_NOT_FOUND',
-      `Verification request '${publicId}' was not found.`,
-    );
+// -----------------------------------------------------------------------------
+// Foundation
+// -----------------------------------------------------------------------------
 
-    Object.setPrototypeOf(this, VerificationRequestNotFoundException.prototype);
+import { VerificationRequestException } from './verification-request.exception';
+
+// -----------------------------------------------------------------------------
+// Exception
+// -----------------------------------------------------------------------------
+
+/**
+ * Indicates that the requested Verification Request could not be found
+ * within the Identity domain.
+ *
+ * This exception is used when a Verification Request is required but no
+ * corresponding request exists for the supplied public identity reference.
+ */
+export class VerificationRequestNotFoundException extends VerificationRequestException {
+  public constructor(message: string = 'Verification Request was not found.') {
+    super(message);
   }
 }

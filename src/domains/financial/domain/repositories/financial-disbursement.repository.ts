@@ -9,12 +9,13 @@
 // FinancialDisbursementAggregate
 // ├── FinancialDisbursementEntity
 // │   └── FinancialDisbursementAttemptEntity[]
-// └── FinancialDisbursementDestinationEntity
+// └── FinancialDisbursementDestinationEntity (associated entity)
 //
 // Repository responsibilities:
 //
 // - Persist Financial Disbursement aggregates.
 // - Rehydrate Financial Disbursement aggregates.
+// - Resolve the associated Financial Disbursement Destination.
 // - Retrieve disbursements by internal/public identity.
 // - Retrieve disbursements by source Financial Account.
 // - Retrieve disbursements by originating business reference.
@@ -41,11 +42,17 @@
 //
 // IMPORTANT
 //
-// FinancialDisbursementDestinationEntity is not owned by the
-// FinancialDisbursementAggregate's persistence graph.
+// FinancialDisbursementDestinationEntity is NOT an owned child entity of the
+// FinancialDisbursementAggregate.
 //
-// The repository must load the destination referenced by destinationId and
-// supply it when rehydrating the aggregate.
+// It is an independently persisted Financial-domain entity associated with the
+// source Financial Account.
+//
+// The repository must:
+//
+// - resolve the destination referenced by destinationId;
+// - supply the destination when rehydrating the disbursement aggregate;
+// - support destination resolution during disbursement creation.
 //
 // FinancialDisbursementEntity.attempts is the authoritative attempt
 // collection and must be fully rehydrated as part of the aggregate.
@@ -58,11 +65,15 @@
 
 import type { FinancialDisbursementAggregate } from '../aggregates/financial-disbursement.aggregate';
 
+import type { FinancialDisbursementDestinationEntity } from '../entities/financial-disbursement-destination.entity';
+
 // -----------------------------------------------------------------------------
 // Value Objects
 // -----------------------------------------------------------------------------
 
 import type { FinancialAccountPublicId } from '../value-objects/financial-account-public-id.vo';
+
+import type { FinancialDisbursementDestinationPublicId } from '../value-objects/financial-disbursement-destination-public-id.vo';
 
 import type { FinancialDisbursementPublicId } from '../value-objects/financial-disbursement-public-id.vo';
 
@@ -91,8 +102,8 @@ export interface FinancialDisbursementRepository {
    * - FinancialDisbursementEntity;
    * - all currently attached FinancialDisbursementAttemptEntity children.
    *
-   * The selected FinancialDisbursementDestinationEntity is an independently
-   * persisted entity and is not created by this operation.
+   * The selected FinancialDisbursementDestinationEntity is independently
+   * persisted and must not be created by this operation.
    */
   create(aggregate: FinancialDisbursementAggregate): Promise<void>;
 
@@ -106,10 +117,29 @@ export interface FinancialDisbursementRepository {
    * Persistence must include the complete attempt collection owned by the
    * FinancialDisbursementEntity.
    *
-   * The repository must preserve aggregate consistency and must not treat
-   * FinancialDisbursementAttemptEntity as an independent aggregate root.
+   * FinancialDisbursementAttemptEntity remains a child entity and must not be
+   * treated as an independent aggregate root.
    */
   save(aggregate: FinancialDisbursementAggregate): Promise<void>;
+
+  // ===========================================================================
+  // Find Destination by Public Identity
+  // ===========================================================================
+
+  /**
+   * Finds a Financial Disbursement Destination by public identity.
+   *
+   * The destination is independently persisted and associated with a
+   * Financial Account.
+   *
+   * This lookup does not transfer ownership of the destination to the
+   * FinancialDisbursementAggregate.
+   *
+   * Returns null when the destination does not exist.
+   */
+  findDestinationByPublicId(
+    publicId: FinancialDisbursementDestinationPublicId,
+  ): Promise<FinancialDisbursementDestinationEntity | null>;
 
   // ===========================================================================
   // Find by Public Identity
@@ -124,11 +154,11 @@ export interface FinancialDisbursementRepository {
    * - all FinancialDisbursementAttemptEntity children;
    * - referenced FinancialDisbursementDestinationEntity.
    *
-   * Returns undefined when the disbursement does not exist.
+   * Returns null when the disbursement does not exist.
    */
   findByPublicId(
     publicId: FinancialDisbursementPublicId,
-  ): Promise<FinancialDisbursementAggregate | undefined>;
+  ): Promise<FinancialDisbursementAggregate | null>;
 
   // ===========================================================================
   // Find by Internal Identity
@@ -140,9 +170,9 @@ export interface FinancialDisbursementRepository {
    * This method is intended for internal Financial-domain/infrastructure
    * operations.
    *
-   * Returns undefined when the disbursement does not exist.
+   * Returns null when the disbursement does not exist.
    */
-  findById(id: string): Promise<FinancialDisbursementAggregate | undefined>;
+  findById(id: string): Promise<FinancialDisbursementAggregate | null>;
 
   // ===========================================================================
   // Find by Source Financial Account
@@ -186,11 +216,11 @@ export interface FinancialDisbursementRepository {
    *
    * A Financial Disbursement may reference at most one Financial Transaction.
    *
-   * Returns undefined when no disbursement references the transaction.
+   * Returns null when no disbursement references the transaction.
    */
   findByTransactionPublicId(
     transactionPublicId: FinancialReferencePublicId,
-  ): Promise<FinancialDisbursementAggregate | undefined>;
+  ): Promise<FinancialDisbursementAggregate | null>;
 
   // ===========================================================================
   // Find by Status
@@ -216,19 +246,4 @@ export interface FinancialDisbursementRepository {
    * rehydrate the aggregate unnecessarily.
    */
   existsByPublicId(publicId: FinancialDisbursementPublicId): Promise<boolean>;
-
-  // ===========================================================================
-  // Delete
-  // ===========================================================================
-
-  /**
-   * Physical deletion of Financial Disbursements is intentionally unsupported.
-   *
-   * Financial Disbursements are financial lifecycle records and must remain
-   * auditable.
-   *
-   * Lifecycle removal is represented through domain state transitions such as
-   * cancellation or failure.
-   */
-  delete(aggregate: FinancialDisbursementAggregate): Promise<void>;
 }

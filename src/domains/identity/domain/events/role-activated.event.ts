@@ -1,32 +1,108 @@
-// src/domains/authorization/domain/events/role-activated.event.ts
+// -----------------------------------------------------------------------------
+// Identity — Role Activated Domain Event
+// -----------------------------------------------------------------------------
+//
+// Emitted when a Role becomes active.
+//
+// Aggregate:
+// - RoleAggregate
+//
+// Aggregate Root:
+// - RoleEntity
+//
+// -----------------------------------------------------------------------------
 
-import { DomainEvent } from '../../../../foundation/kernel/domain/domain-event';
+// -----------------------------------------------------------------------------
+// Foundation
+// -----------------------------------------------------------------------------
 
-export class RoleActivatedEvent extends DomainEvent {
-  constructor(
-    public readonly roleId: string,
-    public readonly publicId: string,
-    public readonly activatedAt: Date,
+import type { PublicEntityId } from '../../../../foundation/kernel/domain/public-entity-id';
+
+// -----------------------------------------------------------------------------
+// Identity
+// -----------------------------------------------------------------------------
+
+import { IdentityDomainEvent } from './identity-domain.event';
+
+// -----------------------------------------------------------------------------
+// Value Objects
+// -----------------------------------------------------------------------------
+
+import type { RoleCode } from '../value-objects/role-code.vo';
+
+// =============================================================================
+// Event
+// =============================================================================
+
+/**
+ * Emitted when a Role becomes active.
+ *
+ * The RoleCode remains a domain value object within the event and is
+ * serialized to a string in the event payload.
+ */
+export class RoleActivatedEvent extends IdentityDomainEvent {
+  // ===========================================================================
+  // Constructor
+  // ===========================================================================
+
+  public constructor(
+    aggregateId: string,
+    publicId: PublicEntityId,
+    code: RoleCode,
+    activatedAt: Date,
     correlationId: string,
     causationId?: string,
+    eventVersion = 1,
+    eventSchemaVersion = '1.0.0',
   ) {
     super(
-      roleId,
+      aggregateId,
       'Role',
       'RoleActivated',
       correlationId,
       causationId,
-      1,
-      '1.0.0',
+      eventVersion,
+      eventSchemaVersion,
     );
 
-    Object.freeze(this);
+    this.publicId = publicId;
+    this.code = code;
+    this.activatedAt = activatedAt;
   }
 
-  protected getPayload(): Record<string, unknown> {
+  // ===========================================================================
+  // Properties
+  // ===========================================================================
+
+  /**
+   * Public identity of the Role.
+   */
+  public readonly publicId: PublicEntityId;
+
+  /**
+   * Stable machine-readable Role code.
+   */
+  public readonly code: RoleCode;
+
+  /**
+   * Timestamp at which the Role was activated.
+   */
+  public readonly activatedAt: Date;
+
+  // ===========================================================================
+  // Payload
+  // ===========================================================================
+
+  protected override getPayload(): Record<string, unknown> {
     return {
-      roleId: this.roleId,
-      publicId: this.publicId,
+      ...this.getBasePayload(),
+
+      publicId: this.publicId.toString(),
+
+      code: this.code.toString(),
+
+      isActive: true,
+
       activatedAt: this.activatedAt,
     };
   }

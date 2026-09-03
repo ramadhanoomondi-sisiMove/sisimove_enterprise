@@ -17,6 +17,7 @@
 // - Financial Payment Method
 // - Financial Settlement
 // - Financial Account Withdrawal
+// - Financial Disbursement
 //
 // -----------------------------------------------------------------------------
 
@@ -115,3 +116,35 @@ export { CompleteFinancialAccountWithdrawalRequestDto } from './complete-financi
 export { FailFinancialAccountWithdrawalRequestDto } from './fail-financial-account-withdrawal.request.dto';
 
 export { CancelFinancialAccountWithdrawalRequestDto } from './cancel-financial-account-withdrawal.request.dto';
+
+// -----------------------------------------------------------------------------
+// Financial Disbursement
+// -----------------------------------------------------------------------------
+//
+// Financial Disbursement lifecycle:
+//
+//     PENDING
+//        │
+//        ├── PROCESSING
+//        │      │
+//        │      ├── COMPLETED
+//        │      ├── FAILED
+//        │      └── CANCELLED
+//        │
+//        ├── FAILED
+//        └── CANCELLED
+//
+// These DTOs expose only transport-level request data. Lifecycle invariants
+// remain inside FinancialDisbursementAggregate.
+//
+// -----------------------------------------------------------------------------
+
+export { CreateFinancialDisbursementRequestDto } from './create-financial-disbursement.request.dto';
+
+export { ProcessFinancialDisbursementRequestDto } from './process-financial-disbursement.request.dto';
+
+export { CompleteFinancialDisbursementRequestDto } from './complete-financial-disbursement.request.dto';
+
+export { FailFinancialDisbursementRequestDto } from './fail-financial-disbursement.request.dto';
+
+export { CancelFinancialDisbursementRequestDto } from './cancel-financial-disbursement.request.dto';

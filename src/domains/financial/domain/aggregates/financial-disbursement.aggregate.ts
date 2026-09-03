@@ -1171,9 +1171,9 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
   public setTransactionPublicId(
     transactionPublicId: FinancialReferencePublicId,
   ): void {
-    if (this.isTerminal()) {
+    if (!this.isProcessing()) {
       throw new FinancialInvariantException(
-        'Cannot assign a Financial Transaction reference to a terminal Financial Disbursement.',
+        'A Financial Transaction reference may only be assigned to a PROCESSING Financial Disbursement.',
       );
     }
 
