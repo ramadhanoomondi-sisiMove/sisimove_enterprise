@@ -15,6 +15,9 @@
 // - correlationId;
 // - causationId.
 //
+// Correlation and causation identifiers are application/infrastructure context
+// and are expected to be established before this command reaches the handler.
+//
 // The application workflow resolves:
 //
 //     emailOrPhoneNumber
@@ -44,15 +47,94 @@
 //  failure success
 //     │     │
 //     ▼     ▼
-// record  record
-// failure success
-//     │     │
-//     └──┬──┘
-//        ▼
+// record   inspect
+// failure  lifecycle
+//             │
+//             ▼
+//        PENDING?
+//             │
+//             ▼
+// ActivateAuthenticationCommand
+//             │
+//             ▼
+// ActivateAuthenticationHandler
+//             │
+//             ▼
+// AuthenticationAggregate.activate()
+//             │
+//             │ PENDING → ACTIVE
+//             ▼
+// record successful authentication
+//             │
+//             ▼
 // persist Authentication
-//        │
-//        ▼
+//             │
+//             ▼
 // AuthenticationAttemptResult
+//
+// -----------------------------------------------------------------------------
+//
+// AUTHENTICATION LIFECYCLE
+//
+// Authentication is a separate bounded context from Identity.
+//
+// Identity lifecycle:
+//
+//     PENDING → ACTIVE
+//
+// Authentication lifecycle:
+//
+//     PENDING → ACTIVE
+//             │
+//             ├──→ LOCKED
+//             │
+//             └──→ DISABLED
+//
+// Authentication does NOT inherit Identity lifecycle state.
+//
+// A PENDING Authentication may therefore exist while its Identity is ACTIVE.
+//
+// PENDING has special significance during the first successful credential
+// authentication:
+//
+//     PENDING
+//        │
+//        │ valid established password
+//        ▼
+//     ACTIVE
+//
+// The transition is delegated to ActivateAuthenticationHandler.
+//
+// -----------------------------------------------------------------------------
+//
+// ACTIVATION RULE
+//
+// A PENDING Authentication is NOT activated merely because:
+//
+// - an identifier was supplied;
+// - an Identity was found;
+// - an Authentication aggregate was found;
+// - a login request was received.
+//
+// Activation occurs only after:
+//
+//     PasswordHasher.compare()
+//             │
+//             ▼
+//        credentialsValid
+//             │
+//             ▼
+//            true
+//
+// Therefore:
+//
+//     identifier
+//          ≠
+//     authentication
+//          ≠
+//     activation
+//
+// Valid password possession is required before activation.
 //
 // -----------------------------------------------------------------------------
 //
@@ -60,12 +142,14 @@
 //
 // This handler answers one application-level question:
 //
-//     "Are these credentials valid for an Identity that is permitted to
-//      authenticate?"
+//     "Are these credentials valid for an Identity whose Authentication
+//      account is eligible for credential authentication?"
 //
-// It owns the application orchestration required to answer that question.
+// It owns application orchestration.
 //
 // Domain state transitions remain inside AuthenticationAggregate.
+//
+// Authentication activation is delegated to ActivateAuthenticationHandler.
 //
 // -----------------------------------------------------------------------------
 //
@@ -87,25 +171,27 @@
 //
 // A failed authentication attempt NEVER returns an AuthenticationAggregate.
 //
-// This is important because AuthenticateLoginHandler must never interpret a
-// failed credential attempt as successful authentication and continue with:
+// This prevents AuthenticateLoginHandler from continuing into:
 //
 //     Device → Session → Tokens
+//
+// after failed credential verification.
 //
 // -----------------------------------------------------------------------------
 //
 // SECURITY / ACCOUNT ENUMERATION
 //
-// The following conditions intentionally produce the same generic result:
+// The following expected conditions intentionally produce the same generic
+// result:
 //
 // - unknown email;
 // - unknown phone number;
 // - missing Authentication;
-// - authentication not currently permitted;
+// - Authentication not permitted;
 // - invalid password.
 //
-// The authentication endpoint therefore does not reveal whether a supplied
-// identifier corresponds to an existing account.
+// The endpoint therefore does not reveal whether a supplied identifier
+// corresponds to an existing account.
 //
 // -----------------------------------------------------------------------------
 //
@@ -145,6 +231,7 @@
 // - resolves Authentication from Identity public ID;
 // - verifies Authentication eligibility;
 // - delegates password comparison to PasswordHasher;
+// - activates PENDING Authentication after successful credential verification;
 // - records authentication failure through AuthenticationAggregate;
 // - records successful authentication through AuthenticationAggregate;
 // - persists AuthenticationAggregate;
@@ -167,8 +254,7 @@
 // - hash refresh tokens;
 // - revoke Sessions;
 // - send notifications;
-// - perform authorization;
-// - perform unrelated external side effects.
+// - perform authorization.
 //
 // -----------------------------------------------------------------------------
 //
@@ -185,10 +271,6 @@
 //     PasswordHasher.compare()
 //
 // The concrete hashing implementation belongs to infrastructure.
-//
-// The handler depends only on:
-//
-//     SECURITY_PASSWORD_HASHER
 //
 // -----------------------------------------------------------------------------
 //
@@ -217,26 +299,43 @@
 //
 // This handler does not introduce a combined repository method.
 //
-// It first determines whether the identifier is a valid email or phone number,
-// then delegates to the corresponding repository method.
-//
-// Repository failures are NOT swallowed while attempting identifier
-// classification.
-//
 // -----------------------------------------------------------------------------
 //
 // AUTHENTICATION POLICY
 //
-// AuthenticationAggregate owns authentication lifecycle policy.
+// AuthenticationAggregate owns authentication state policy.
 //
 // This handler does NOT implement:
 //
 // - failure thresholds;
 // - lock thresholds;
 // - lock duration;
-// - authentication state transitions.
+// - Authentication state mutation.
 //
-// It delegates state transitions to AuthenticationAggregate.
+// It delegates:
+//
+// - activation to ActivateAuthenticationHandler;
+// - successful-authentication state mutation to AuthenticationAggregate;
+// - failed-authentication state mutation to AuthenticationAggregate.
+//
+// -----------------------------------------------------------------------------
+//
+// PENDING AUTHENTICATION
+//
+// PENDING is treated as a bootstrap authentication state.
+//
+// Therefore:
+//
+//     PENDING  → password verification permitted
+//     ACTIVE   → password verification permitted
+//     LOCKED   → rejected
+//     DISABLED → rejected
+//
+// The distinction is important.
+//
+// `canAuthenticate()` may intentionally represent the normal ACTIVE-state
+// authentication policy. Consequently, it MUST NOT be used to reject PENDING
+// before password verification in this workflow.
 //
 // -----------------------------------------------------------------------------
 //
@@ -259,18 +358,42 @@
 // Credential failures are normal authentication outcomes and therefore return
 // AuthenticationFailureResult.
 //
-// Unexpected infrastructure/domain failures are exceptions and are allowed to
-// propagate.
+// Unexpected application, domain, repository, or infrastructure failures
+// propagate as exceptions.
 //
-// This distinction is important:
+// -----------------------------------------------------------------------------
 //
-//     expected authentication failure
-//             ↓
-//     AuthenticationFailureResult
+// PERSISTENCE NOTE
 //
-//     unexpected system failure
-//             ↓
-//     exception
+// For an already ACTIVE Authentication:
+//
+//     authenticate
+//          ↓
+//     record success
+//          ↓
+//     save
+//
+// For a PENDING Authentication:
+//
+//     authenticate
+//          ↓
+//     ActivateAuthenticationHandler
+//          ↓
+//     save ACTIVE
+//          ↓
+//     record success
+//          ↓
+//     save successful-authentication state
+//
+// The two saves are intentionally visible at the current application-handler
+// boundary.
+//
+// This handler does NOT claim that activation and successful-authentication
+// recording are one database transaction unless the repository/application
+// infrastructure explicitly provides such transactional behavior.
+//
+// A Unit of Work / transaction boundary can be introduced later if atomic
+// first-login activation is required.
 //
 // -----------------------------------------------------------------------------
 
@@ -305,10 +428,17 @@ import { SECURITY_PASSWORD_HASHER } from '../../../../infrastructure/security';
 import { AUTH_TOKENS } from '../auth.tokens';
 
 // -----------------------------------------------------------------------------
-// Authentication — Command
+// Authentication — Commands
 // -----------------------------------------------------------------------------
 
 import type { AuthenticateCommand } from '../commands/authenticate.command';
+import { ActivateAuthenticationCommand } from '../commands/activate-authentication.command';
+
+// -----------------------------------------------------------------------------
+// Authentication — Application Handlers
+// -----------------------------------------------------------------------------
+
+import { ActivateAuthenticationHandler } from './activate-authentication.handler';
 
 // -----------------------------------------------------------------------------
 // Authentication — Aggregate
@@ -343,7 +473,7 @@ import {
 // Identity — Application Tokens
 // -----------------------------------------------------------------------------
 //
-// Identity is a separate bounded context.
+// Identity remains a separate bounded context.
 //
 // Authentication consumes Identity through Identity's existing application
 // repository token.
@@ -442,15 +572,37 @@ export type AuthenticationAttemptResult =
  *             ↓
  *       PasswordHasher
  *             ↓
- *    domain state transition
- *             ↓
- *   AuthenticationRepository.save()
- *             ↓
- * AuthenticationAttemptResult
+ *      password valid?
+ *        ┌────┴────┐
+ *        │         │
+ *       no        yes
+ *        │         │
+ *        ▼         ▼
+ *     failure   PENDING?
+ *                   │
+ *             ┌─────┴─────┐
+ *             │           │
+ *            yes          no
+ *             │           │
+ *             ▼           │
+ *    ActivateAuthentication│
+ *             │           │
+ *             ▼           │
+ *           ACTIVE ◄───────┘
+ *             │
+ *             ▼
+ *    record successful authentication
+ *             │
+ *             ▼
+ *       persist aggregate
+ *             │
+ *             ▼
+ *   AuthenticationAttemptResult
  *
  * Domain behavior remains inside AuthenticationAggregate.
  *
- * Cross-aggregate coordination occurs only at the application boundary.
+ * Cross-aggregate coordination and Authentication activation orchestration
+ * occur at the application boundary.
  */
 @Injectable()
 export class AuthenticateHandler implements CommandHandler<
@@ -458,7 +610,9 @@ export class AuthenticateHandler implements CommandHandler<
   AuthenticationAttemptResult
 > {
   // ===========================================================================
+
   // Constructor
+
   // ===========================================================================
 
   public constructor(
@@ -469,6 +623,7 @@ export class AuthenticateHandler implements CommandHandler<
     // Identity is the authoritative source for email and phone identity
     // attributes.
     //
+    // -------------------------------------------------------------------------
 
     @Inject(IDENTITY_TOKENS.REPOSITORIES.IDENTITY)
     private readonly identityRepository: IdentityRepository,
@@ -488,19 +643,49 @@ export class AuthenticateHandler implements CommandHandler<
     //
     // The concrete implementation is infrastructure-owned.
     //
+    // -------------------------------------------------------------------------
 
     @Inject(SECURITY_PASSWORD_HASHER)
     private readonly passwordHasher: PasswordHasher,
+
+    // -------------------------------------------------------------------------
+    // Activate Authentication Handler
+    // -------------------------------------------------------------------------
+    //
+    // PENDING Authentication activation is delegated to the dedicated
+    // application handler.
+    //
+    // Direct handler orchestration is intentional:
+    //
+    //     AuthenticateHandler
+    //             │
+    //             ▼
+    //     ActivateAuthenticationHandler
+    //             │
+    //             ▼
+    //     AuthenticationAggregate.activate()
+    //
+    // No CommandBus is required.
+    //
+    // -------------------------------------------------------------------------
+
+    @Inject(AUTH_TOKENS.COMMAND_HANDLERS.ACTIVATE_AUTHENTICATION)
+    private readonly activateAuthenticationHandler: ActivateAuthenticationHandler,
   ) {}
 
   // ===========================================================================
+
   // Execute
+
   // ===========================================================================
 
   /**
    * Executes credential authentication.
    *
-   * Expected authentication failures return a discriminated failure result.
+   * Expected credential failures return a discriminated failure result.
+   *
+   * A PENDING Authentication is activated only after successful password
+   * verification.
    *
    * Unexpected application, domain, repository, or infrastructure failures
    * propagate as exceptions.
@@ -519,13 +704,6 @@ export class AuthenticateHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     // 2. Normalize login identifier
     // -------------------------------------------------------------------------
-    //
-    // The command carries the transport-level login identifier.
-    //
-    // Email and phone value objects remain responsible for their own domain
-    // validation.
-    //
-    // -------------------------------------------------------------------------
 
     const identifier = command.emailOrPhoneNumber.trim();
 
@@ -536,16 +714,6 @@ export class AuthenticateHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     // 3. Resolve Identity
     // -------------------------------------------------------------------------
-    //
-    // IdentityRepository intentionally exposes separate methods:
-    //
-    //     findByEmail()
-    //     findByPhoneNumber()
-    //
-    // resolveIdentity() determines the identifier type and delegates to the
-    // appropriate repository method.
-    //
-    // -------------------------------------------------------------------------
 
     const identity = await this.resolveIdentity(identifier);
 
@@ -555,12 +723,6 @@ export class AuthenticateHandler implements CommandHandler<
 
     // -------------------------------------------------------------------------
     // 4. Resolve Authentication
-    // -------------------------------------------------------------------------
-    //
-    // Identity and Authentication remain separate aggregates.
-    //
-    // Authentication is located using Identity's opaque public identifier.
-    //
     // -------------------------------------------------------------------------
 
     const authentication =
@@ -576,17 +738,25 @@ export class AuthenticateHandler implements CommandHandler<
     // 5. Verify Authentication eligibility
     // -------------------------------------------------------------------------
     //
-    // AuthenticationAggregate owns the lifecycle predicate determining whether
-    // authentication is currently permitted.
+    // PENDING is intentionally excluded from the normal canAuthenticate()
+    // rejection path.
     //
-    // A prohibited Authentication is intentionally represented using the same
-    // generic result as invalid credentials.
+    // PENDING must reach password verification because successful possession
+    // of the established password is what permits activation.
     //
-    // This prevents account-state enumeration through the login endpoint.
+    // Normal authentication eligibility therefore becomes:
+    //
+    //     PENDING  → verify credentials
+    //     ACTIVE   → verify credentials
+    //     LOCKED   → reject
+    //     DISABLED → reject
+    //
+    // AuthenticationAggregate remains responsible for the actual lifecycle
+    // predicates.
     //
     // -------------------------------------------------------------------------
 
-    if (!authentication.canAuthenticate()) {
+    if (!authentication.isPending() && !authentication.canAuthenticate()) {
       return this.invalidCredentials();
     }
 
@@ -594,9 +764,9 @@ export class AuthenticateHandler implements CommandHandler<
     // 6. Obtain stored password hash
     // -------------------------------------------------------------------------
     //
-    // The stored password credential belongs to Authentication.
+    // A password hash is required for credential authentication.
     //
-    // The plaintext password remains transient command input.
+    // The plaintext password never enters the aggregate.
     //
     // -------------------------------------------------------------------------
 
@@ -612,9 +782,14 @@ export class AuthenticateHandler implements CommandHandler<
     // 7. Compare password
     // -------------------------------------------------------------------------
     //
-    // Password comparison is delegated entirely to the shared PasswordHasher.
+    // Password comparison is delegated entirely to PasswordHasher.
     //
-    // No password hashing algorithm is implemented here.
+    // The plaintext password is never:
+    //
+    // - persisted;
+    // - logged;
+    // - published;
+    // - stored on the aggregate.
     //
     // -------------------------------------------------------------------------
 
@@ -626,12 +801,6 @@ export class AuthenticateHandler implements CommandHandler<
     // =========================================================================
     // 8A. Authentication failure
     // =========================================================================
-    //
-    // Record the failed authentication through the aggregate.
-    //
-    // AuthenticationEntity is never mutated directly.
-    //
-    // =========================================================================
 
     if (!credentialsValid) {
       // -----------------------------------------------------------------------
@@ -642,9 +811,6 @@ export class AuthenticateHandler implements CommandHandler<
 
       // -----------------------------------------------------------------------
       // Calculate the next failure count.
-      //
-      // AuthenticationAggregate remains responsible for applying its domain
-      // transition and enforcing any applicable lifecycle policy.
       // -----------------------------------------------------------------------
 
       const failureCount = AuthenticationFailureCount.create(
@@ -659,6 +825,16 @@ export class AuthenticateHandler implements CommandHandler<
 
       // -----------------------------------------------------------------------
       // Record domain transition.
+      // -----------------------------------------------------------------------
+      //
+      // AuthenticationAggregate owns the failure-state policy.
+      //
+      // This handler does not decide:
+      //
+      // - whether the account becomes LOCKED;
+      // - how many failures are allowed;
+      // - how long a lock lasts.
+      //
       // -----------------------------------------------------------------------
 
       authentication.recordAuthenticationFailure(
@@ -676,75 +852,146 @@ export class AuthenticateHandler implements CommandHandler<
       await this.authenticationRepository.save(authentication);
 
       // -----------------------------------------------------------------------
-      // IMPORTANT:
-      //
-      // Never return the AuthenticationAggregate on credential failure.
-      //
-      // The higher-level login workflow must terminate here.
+      // Failed authentication never continues into activation, Device,
+      // Session, or token creation.
       // -----------------------------------------------------------------------
 
       return this.invalidCredentials();
     }
 
     // =========================================================================
-    // 8B. Authentication success
+    // 8B. Successful password verification
     // =========================================================================
     //
-    // Credentials have been successfully verified.
+    // At this point:
     //
-    // Record successful authentication through the aggregate.
+    //     credentialsValid === true
+    //
+    // This is the first point at which a PENDING Authentication is permitted
+    // to enter the activation workflow.
     //
     // =========================================================================
+
+    let authenticatedAuthentication = authentication;
+
+    // -------------------------------------------------------------------------
+    // 9. Activate PENDING Authentication
+    // -------------------------------------------------------------------------
+    //
+    // PENDING → ACTIVE
+    //
+    // AuthenticateHandler does NOT call:
+    //
+    //     authentication.activate()
+    //
+    // directly.
+    //
+    // Instead it creates the application command and delegates the lifecycle
+    // transition to ActivateAuthenticationHandler.
+    //
+    // This preserves the same orchestration pattern used by Identity:
+    //
+    //     AuthenticateHandler
+    //             │
+    //             ▼
+    //     ActivateAuthenticationCommand
+    //             │
+    //             ▼
+    //     ActivateAuthenticationHandler
+    //             │
+    //             ▼
+    //     AuthenticationAggregate.activate()
+    //
+    // -------------------------------------------------------------------------
+
+    if (authentication.isPending()) {
+      const activateCommand = new ActivateAuthenticationCommand(
+        authentication.publicId,
+        command.correlationId,
+        command.causationId,
+      );
+
+      authenticatedAuthentication =
+        await this.activateAuthenticationHandler.execute(activateCommand);
+    }
+
+    // -------------------------------------------------------------------------
+    // 10. Record successful authentication
+    // -------------------------------------------------------------------------
+    //
+    // For a PENDING Authentication, use the aggregate returned by the
+    // activation handler.
+    //
+    // That aggregate represents the state after:
+    //
+    //     PENDING → ACTIVE
+    //
+    // For an already ACTIVE Authentication, the original aggregate is used.
+    //
+    // -------------------------------------------------------------------------
 
     const authenticatedAt = AuthenticationLastAuthenticatedAt.create(
       new Date(),
     );
 
-    authentication.recordSuccessfulAuthentication(
+    authenticatedAuthentication.recordSuccessfulAuthentication(
       authenticatedAt,
       command.correlationId,
       command.causationId,
     );
 
     // -------------------------------------------------------------------------
-    // 9. Persist successful Authentication
-    // -------------------------------------------------------------------------
-
-    await this.authenticationRepository.save(authentication);
-
-    // -------------------------------------------------------------------------
-    // 10. Return explicit authentication success
+    // 11. Persist successful Authentication
     // -------------------------------------------------------------------------
     //
-    // The success discriminator allows AuthenticateLoginHandler to safely
-    // continue into Device, Session, and token creation.
+    // Already ACTIVE:
+    //
+    //     record success → save
+    //
+    // PENDING:
+    //
+    //     activation handler → save ACTIVE
+    //                    ↓
+    //             record success
+    //                    ↓
+    //                  save
+    //
+    // The second save persists the successful-authentication state.
+    //
+    // Atomicity across these operations is NOT assumed here.
+    //
+    // -------------------------------------------------------------------------
+
+    await this.authenticationRepository.save(authenticatedAuthentication);
+
+    // -------------------------------------------------------------------------
+    // 12. Return explicit authentication success
+    // -------------------------------------------------------------------------
+    //
+    // AuthenticateLoginHandler may now safely continue into:
+    //
+    //     Device → Session → Tokens
+    //
+    // because this result can only be successful after password verification.
     //
     // -------------------------------------------------------------------------
 
     return {
       success: true,
-      authentication,
+      authentication: authenticatedAuthentication,
     };
   }
 
   // ===========================================================================
+
   // Invalid Credentials
+
   // ===========================================================================
 
   /**
    * Creates the generic invalid-credentials result.
    *
    * This method intentionally contains no identity-specific information.
-   *
-   * It is used for:
-   *
-   * - unknown email;
-   * - unknown phone number;
-   * - missing Authentication;
-   * - authentication not permitted;
-   * - invalid password.
-   *
-   * This prevents account enumeration through the authentication endpoint.
    */
   private invalidCredentials(): AuthenticationFailureResult {
     return {
@@ -754,7 +1001,9 @@ export class AuthenticateHandler implements CommandHandler<
   }
 
   // ===========================================================================
+
   // Identity Resolution
+
   // ===========================================================================
 
   /**
@@ -763,22 +1012,15 @@ export class AuthenticateHandler implements CommandHandler<
    * The method intentionally keeps email and phone repository operations
    * separate because IdentityRepository owns separate lookup contracts.
    *
-   * Important:
+   * Only value-object classification failures are caught.
    *
-   * Value-object construction errors are used only to determine the identifier
-   * type.
-   *
-   * Repository errors are NOT caught here.
-   *
-   * This prevents infrastructure failures such as database connectivity
-   * errors from being incorrectly interpreted as "not an email" and then
-   * silently retried as a phone lookup.
+   * Repository failures are NOT caught and therefore propagate normally.
    */
   private async resolveIdentity(
     identifier: string,
   ): Promise<Awaited<ReturnType<IdentityRepository['findByEmail']>>> {
     // -------------------------------------------------------------------------
-    // 1. Attempt to construct an email value object.
+    // 1. Attempt email classification
     // -------------------------------------------------------------------------
 
     let email: IdentityEmail | null = null;
@@ -786,11 +1028,7 @@ export class AuthenticateHandler implements CommandHandler<
     try {
       email = IdentityEmail.create(identifier);
     } catch {
-      // -----------------------------------------------------------------------
-      // The identifier is not a valid email.
-      //
-      // Continue with phone-number classification.
-      // -----------------------------------------------------------------------
+      // Not an email. Continue with phone-number classification.
     }
 
     // -------------------------------------------------------------------------
@@ -802,7 +1040,7 @@ export class AuthenticateHandler implements CommandHandler<
     }
 
     // -------------------------------------------------------------------------
-    // 3. Attempt to construct a phone-number value object.
+    // 3. Attempt phone-number classification
     // -------------------------------------------------------------------------
 
     let phoneNumber: IdentityPhoneNumber;
@@ -810,10 +1048,6 @@ export class AuthenticateHandler implements CommandHandler<
     try {
       phoneNumber = IdentityPhoneNumber.create(identifier);
     } catch {
-      // -----------------------------------------------------------------------
-      // The identifier is neither a valid email nor a valid phone number.
-      // -----------------------------------------------------------------------
-
       return null;
     }
 
