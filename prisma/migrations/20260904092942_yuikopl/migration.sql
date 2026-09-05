@@ -35,55 +35,19 @@ CREATE TYPE "JourneyDemandParticipantStatus" AS ENUM ('ACTIVE', 'WITHDRAWN', 'RE
 CREATE TYPE "JourneyDemandStatus" AS ENUM ('DRAFT', 'OPEN', 'MATCHED', 'CONVERTED', 'FULFILLED', 'CANCELLED', 'EXPIRED');
 
 -- CreateEnum
-CREATE TYPE "AssetVariantType" AS ENUM ('ORIGINAL', 'ICON', 'THUMBNAIL', 'TINY', 'SMALL', 'MEDIUM', 'LARGE', 'XLARGE', 'WEB', 'WEBP', 'AVIF', 'PREVIEW', 'COMPRESSED', 'HD', 'FULL_HD', 'QHD', 'UHD_4K');
+CREATE TYPE "AssetType" AS ENUM ('IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT', 'OTHER');
 
 -- CreateEnum
-CREATE TYPE "AssetProcessingOperation" AS ENUM ('THUMBNAIL', 'PREVIEW', 'COMPRESS', 'RESIZE', 'ROTATE', 'WEBP', 'AVIF', 'TRANSCODE', 'OCR', 'BLUR_HASH', 'WATERMARK', 'STRIP_METADATA', 'FACE_DETECTION', 'AI_TAGGING', 'AI_CAPTION');
+CREATE TYPE "AssetCategory" AS ENUM ('PROFILE_PHOTO', 'COVER_PHOTO', 'AVATAR', 'GOVERNMENT_ID', 'DRIVER_LICENSE', 'PASSPORT', 'SELFIE', 'VEHICLE_PHOTO', 'CHAT_ATTACHMENT', 'OTHER');
 
 -- CreateEnum
-CREATE TYPE "AssetType" AS ENUM ('IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT', 'ARCHIVE', 'OTHER');
+CREATE TYPE "AssetStatus" AS ENUM ('UPLOADING', 'UPLOADED', 'READY', 'ARCHIVED', 'DELETED');
 
 -- CreateEnum
-CREATE TYPE "AssetCategory" AS ENUM ('PROFILE_PHOTO', 'COVER_PHOTO', 'AVATAR', 'GOVERNMENT_ID', 'DRIVER_LICENSE', 'PASSPORT', 'SELFIE', 'POST_MEDIA', 'COMMENT_MEDIA', 'STORY_MEDIA', 'REEL_MEDIA', 'CHAT_ATTACHMENT', 'TRIP_MEDIA', 'DESTINATION_MEDIA', 'VEHICLE_PHOTO', 'ORGANIZATION_LOGO', 'ORGANIZATION_BANNER', 'PRODUCT_MEDIA', 'EVENT_BANNER', 'OTHER');
-
--- CreateEnum
-CREATE TYPE "AssetStatus" AS ENUM ('UPLOADING', 'UPLOADED', 'SCANNING', 'SCAN_FAILED', 'PROCESSING', 'PROCESSING_FAILED', 'READY', 'ARCHIVING', 'ARCHIVED', 'DELETING', 'DELETED');
-
--- CreateEnum
-CREATE TYPE "AssetVisibility" AS ENUM ('PUBLIC', 'COMMUNITY', 'CONNECTIONS', 'PRIVATE');
+CREATE TYPE "AssetVisibility" AS ENUM ('PUBLIC', 'PRIVATE');
 
 -- CreateEnum
 CREATE TYPE "StorageProvider" AS ENUM ('LOCAL', 'AWS_S3', 'GOOGLE_CLOUD_STORAGE', 'AZURE_BLOB', 'CLOUDINARY', 'OTHER');
-
--- CreateEnum
-CREATE TYPE "AssetVariantStatus" AS ENUM ('PENDING', 'PROCESSING', 'READY', 'FAILED');
-
--- CreateEnum
-CREATE TYPE "ChecksumAlgorithm" AS ENUM ('MD5', 'SHA1', 'SHA256', 'SHA512');
-
--- CreateEnum
-CREATE TYPE "AssetProcessingStatus" AS ENUM ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED');
-
--- CreateEnum
-CREATE TYPE "AssetProcessor" AS ENUM ('LIBVIPS', 'IMAGEMAGICK', 'FFMPEG', 'CLOUDINARY', 'CUSTOM', 'GDAL');
-
--- CreateEnum
-CREATE TYPE "AssetScanEngine" AS ENUM ('CLAMAV', 'VIRUS_TOTAL', 'MICROSOFT_DEFENDER', 'CUSTOM');
-
--- CreateEnum
-CREATE TYPE "AssetScanStatus" AS ENUM ('PENDING', 'CLEAN', 'INFECTED', 'FAILED');
-
--- CreateEnum
-CREATE TYPE "AssetModerationType" AS ENUM ('AI', 'MANUAL', 'COMMUNITY', 'COPYRIGHT');
-
--- CreateEnum
-CREATE TYPE "AssetModerationStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
-
--- CreateEnum
-CREATE TYPE "AssetReferenceField" AS ENUM ('PRIMARY', 'SECONDARY', 'AVATAR', 'COVER', 'BANNER', 'THUMBNAIL', 'PREVIEW', 'GALLERY', 'ATTACHMENT', 'DOCUMENT', 'OTHER');
-
--- CreateEnum
-CREATE TYPE "AssetResourceType" AS ENUM ('IDENTITY', 'MEMBER', 'ORGANIZATION', 'POST', 'COMMENT', 'MESSAGE', 'STORY', 'REEL', 'TRIP', 'DESTINATION', 'EVENT', 'PRODUCT', 'VEHICLE', 'VERIFICATION', 'OTHER');
 
 -- CreateEnum
 CREATE TYPE "TravellerProfileStatus" AS ENUM ('ACTIVE', 'RESTRICTED', 'SUSPENDED', 'CLOSED');
@@ -563,20 +527,8 @@ CREATE TABLE "assets" (
     "bucket" TEXT NOT NULL,
     "objectKey" TEXT NOT NULL,
     "originalFilename" TEXT,
-    "storedFilename" TEXT,
     "mimeType" TEXT NOT NULL,
-    "extension" TEXT,
     "sizeBytes" BIGINT NOT NULL,
-    "checksumAlgorithm" "ChecksumAlgorithm",
-    "checksum" TEXT,
-    "width" INTEGER,
-    "height" INTEGER,
-    "colorDepth" INTEGER,
-    "durationSeconds" INTEGER,
-    "bitrate" INTEGER,
-    "frameRate" DOUBLE PRECISION,
-    "blurHash" TEXT,
-    "metadata" JSONB,
     "uploadedAt" TIMESTAMP(3),
     "archivedAt" TIMESTAMP(3),
     "deletedAt" TIMESTAMP(3),
@@ -584,95 +536,6 @@ CREATE TABLE "assets" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "assets_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "asset_variants" (
-    "id" TEXT NOT NULL,
-    "publicId" TEXT NOT NULL,
-    "assetId" TEXT NOT NULL,
-    "variant" "AssetVariantType" NOT NULL,
-    "status" "AssetVariantStatus" NOT NULL DEFAULT 'PENDING',
-    "isGenerated" BOOLEAN NOT NULL DEFAULT true,
-    "storageProvider" "StorageProvider" NOT NULL,
-    "bucket" TEXT NOT NULL,
-    "objectKey" TEXT NOT NULL,
-    "mimeType" TEXT NOT NULL,
-    "extension" TEXT,
-    "sizeBytes" BIGINT NOT NULL,
-    "width" INTEGER,
-    "height" INTEGER,
-    "durationSeconds" INTEGER,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "asset_variants_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "asset_references" (
-    "id" TEXT NOT NULL,
-    "publicId" TEXT NOT NULL,
-    "assetId" TEXT NOT NULL,
-    "resourceType" "AssetResourceType" NOT NULL,
-    "resourcePublicId" TEXT NOT NULL,
-    "referenceField" "AssetReferenceField" NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "asset_references_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "asset_processings" (
-    "id" TEXT NOT NULL,
-    "publicId" TEXT NOT NULL,
-    "assetId" TEXT NOT NULL,
-    "operation" "AssetProcessingOperation" NOT NULL,
-    "status" "AssetProcessingStatus" NOT NULL DEFAULT 'PENDING',
-    "processor" "AssetProcessor",
-    "startedAt" TIMESTAMP(3),
-    "completedAt" TIMESTAMP(3),
-    "failedAt" TIMESTAMP(3),
-    "failureReason" TEXT,
-    "metadata" JSONB,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "asset_processings_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "asset_scans" (
-    "id" TEXT NOT NULL,
-    "publicId" TEXT NOT NULL,
-    "assetId" TEXT NOT NULL,
-    "engine" "AssetScanEngine" NOT NULL,
-    "status" "AssetScanStatus" NOT NULL DEFAULT 'PENDING',
-    "scannedAt" TIMESTAMP(3),
-    "threatName" TEXT,
-    "metadata" JSONB,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "asset_scans_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "asset_moderations" (
-    "id" TEXT NOT NULL,
-    "publicId" TEXT NOT NULL,
-    "assetId" TEXT NOT NULL,
-    "type" "AssetModerationType" NOT NULL,
-    "status" "AssetModerationStatus" NOT NULL DEFAULT 'PENDING',
-    "moderatorIdentityId" TEXT,
-    "confidence" DOUBLE PRECISION,
-    "reason" TEXT,
-    "metadata" JSONB,
-    "moderatedAt" TIMESTAMP(3),
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "asset_moderations_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -2200,22 +2063,10 @@ CREATE INDEX "assets_visibility_idx" ON "assets"("visibility");
 CREATE INDEX "assets_storageProvider_idx" ON "assets"("storageProvider");
 
 -- CreateIndex
-CREATE INDEX "assets_uploadedAt_idx" ON "assets"("uploadedAt");
-
--- CreateIndex
-CREATE INDEX "assets_archivedAt_idx" ON "assets"("archivedAt");
-
--- CreateIndex
-CREATE INDEX "assets_deletedAt_idx" ON "assets"("deletedAt");
-
--- CreateIndex
 CREATE INDEX "assets_ownerIdentityId_status_idx" ON "assets"("ownerIdentityId", "status");
 
 -- CreateIndex
 CREATE INDEX "assets_ownerIdentityId_category_idx" ON "assets"("ownerIdentityId", "category");
-
--- CreateIndex
-CREATE INDEX "assets_storageProvider_status_idx" ON "assets"("storageProvider", "status");
 
 -- CreateIndex
 CREATE INDEX "assets_type_status_idx" ON "assets"("type", "status");
@@ -2225,147 +2076,6 @@ CREATE INDEX "assets_category_status_idx" ON "assets"("category", "status");
 
 -- CreateIndex
 CREATE INDEX "assets_visibility_status_idx" ON "assets"("visibility", "status");
-
--- CreateIndex
-CREATE INDEX "assets_createdAt_idx" ON "assets"("createdAt");
-
--- CreateIndex
-CREATE INDEX "assets_updatedAt_idx" ON "assets"("updatedAt");
-
--- CreateIndex
-CREATE INDEX "assets_ownerIdentityId_createdAt_idx" ON "assets"("ownerIdentityId", "createdAt");
-
--- CreateIndex
-CREATE INDEX "assets_ownerIdentityId_visibility_idx" ON "assets"("ownerIdentityId", "visibility");
-
--- CreateIndex
-CREATE UNIQUE INDEX "asset_variants_publicId_key" ON "asset_variants"("publicId");
-
--- CreateIndex
-CREATE UNIQUE INDEX "asset_variants_objectKey_key" ON "asset_variants"("objectKey");
-
--- CreateIndex
-CREATE INDEX "asset_variants_assetId_idx" ON "asset_variants"("assetId");
-
--- CreateIndex
-CREATE INDEX "asset_variants_status_idx" ON "asset_variants"("status");
-
--- CreateIndex
-CREATE INDEX "asset_variants_variant_idx" ON "asset_variants"("variant");
-
--- CreateIndex
-CREATE INDEX "asset_variants_assetId_status_idx" ON "asset_variants"("assetId", "status");
-
--- CreateIndex
-CREATE INDEX "asset_variants_storageProvider_idx" ON "asset_variants"("storageProvider");
-
--- CreateIndex
-CREATE INDEX "asset_variants_createdAt_idx" ON "asset_variants"("createdAt");
-
--- CreateIndex
-CREATE UNIQUE INDEX "asset_variants_assetId_variant_key" ON "asset_variants"("assetId", "variant");
-
--- CreateIndex
-CREATE UNIQUE INDEX "asset_references_publicId_key" ON "asset_references"("publicId");
-
--- CreateIndex
-CREATE INDEX "asset_references_assetId_idx" ON "asset_references"("assetId");
-
--- CreateIndex
-CREATE INDEX "asset_references_resourceType_idx" ON "asset_references"("resourceType");
-
--- CreateIndex
-CREATE INDEX "asset_references_resourcePublicId_idx" ON "asset_references"("resourcePublicId");
-
--- CreateIndex
-CREATE INDEX "asset_references_resourceType_resourcePublicId_idx" ON "asset_references"("resourceType", "resourcePublicId");
-
--- CreateIndex
-CREATE UNIQUE INDEX "asset_references_assetId_resourceType_resourcePublicId_refe_key" ON "asset_references"("assetId", "resourceType", "resourcePublicId", "referenceField");
-
--- CreateIndex
-CREATE UNIQUE INDEX "asset_processings_publicId_key" ON "asset_processings"("publicId");
-
--- CreateIndex
-CREATE INDEX "asset_processings_assetId_idx" ON "asset_processings"("assetId");
-
--- CreateIndex
-CREATE INDEX "asset_processings_status_idx" ON "asset_processings"("status");
-
--- CreateIndex
-CREATE INDEX "asset_processings_operation_idx" ON "asset_processings"("operation");
-
--- CreateIndex
-CREATE INDEX "asset_processings_createdAt_idx" ON "asset_processings"("createdAt");
-
--- CreateIndex
-CREATE INDEX "asset_processings_assetId_operation_idx" ON "asset_processings"("assetId", "operation");
-
--- CreateIndex
-CREATE INDEX "asset_processings_assetId_status_idx" ON "asset_processings"("assetId", "status");
-
--- CreateIndex
-CREATE INDEX "asset_processings_processor_idx" ON "asset_processings"("processor");
-
--- CreateIndex
-CREATE INDEX "asset_processings_startedAt_idx" ON "asset_processings"("startedAt");
-
--- CreateIndex
-CREATE INDEX "asset_processings_completedAt_idx" ON "asset_processings"("completedAt");
-
--- CreateIndex
-CREATE INDEX "asset_processings_failedAt_idx" ON "asset_processings"("failedAt");
-
--- CreateIndex
-CREATE UNIQUE INDEX "asset_scans_publicId_key" ON "asset_scans"("publicId");
-
--- CreateIndex
-CREATE INDEX "asset_scans_assetId_idx" ON "asset_scans"("assetId");
-
--- CreateIndex
-CREATE INDEX "asset_scans_status_idx" ON "asset_scans"("status");
-
--- CreateIndex
-CREATE INDEX "asset_scans_engine_idx" ON "asset_scans"("engine");
-
--- CreateIndex
-CREATE INDEX "asset_scans_scannedAt_idx" ON "asset_scans"("scannedAt");
-
--- CreateIndex
-CREATE INDEX "asset_scans_assetId_engine_idx" ON "asset_scans"("assetId", "engine");
-
--- CreateIndex
-CREATE INDEX "asset_scans_assetId_status_idx" ON "asset_scans"("assetId", "status");
-
--- CreateIndex
-CREATE INDEX "asset_scans_createdAt_idx" ON "asset_scans"("createdAt");
-
--- CreateIndex
-CREATE UNIQUE INDEX "asset_moderations_publicId_key" ON "asset_moderations"("publicId");
-
--- CreateIndex
-CREATE INDEX "asset_moderations_assetId_idx" ON "asset_moderations"("assetId");
-
--- CreateIndex
-CREATE INDEX "asset_moderations_status_idx" ON "asset_moderations"("status");
-
--- CreateIndex
-CREATE INDEX "asset_moderations_type_idx" ON "asset_moderations"("type");
-
--- CreateIndex
-CREATE INDEX "asset_moderations_moderatorIdentityId_idx" ON "asset_moderations"("moderatorIdentityId");
-
--- CreateIndex
-CREATE INDEX "asset_moderations_assetId_type_idx" ON "asset_moderations"("assetId", "type");
-
--- CreateIndex
-CREATE INDEX "asset_moderations_assetId_status_idx" ON "asset_moderations"("assetId", "status");
-
--- CreateIndex
-CREATE INDEX "asset_moderations_moderatedAt_idx" ON "asset_moderations"("moderatedAt");
-
--- CreateIndex
-CREATE INDEX "asset_moderations_createdAt_idx" ON "asset_moderations"("createdAt");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "traveller_profiles_publicId_key" ON "traveller_profiles"("publicId");
@@ -3608,24 +3318,6 @@ ALTER TABLE "role_permissions" ADD CONSTRAINT "role_permissions_permissionId_fke
 
 -- AddForeignKey
 ALTER TABLE "assets" ADD CONSTRAINT "assets_ownerIdentityId_fkey" FOREIGN KEY ("ownerIdentityId") REFERENCES "identities"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "asset_variants" ADD CONSTRAINT "asset_variants_assetId_fkey" FOREIGN KEY ("assetId") REFERENCES "assets"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "asset_references" ADD CONSTRAINT "asset_references_assetId_fkey" FOREIGN KEY ("assetId") REFERENCES "assets"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "asset_processings" ADD CONSTRAINT "asset_processings_assetId_fkey" FOREIGN KEY ("assetId") REFERENCES "assets"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "asset_scans" ADD CONSTRAINT "asset_scans_assetId_fkey" FOREIGN KEY ("assetId") REFERENCES "assets"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "asset_moderations" ADD CONSTRAINT "asset_moderations_assetId_fkey" FOREIGN KEY ("assetId") REFERENCES "assets"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "asset_moderations" ADD CONSTRAINT "asset_moderations_moderatorIdentityId_fkey" FOREIGN KEY ("moderatorIdentityId") REFERENCES "identities"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "traveller_profile_preferences" ADD CONSTRAINT "traveller_profile_preferences_profileId_fkey" FOREIGN KEY ("profileId") REFERENCES "traveller_profiles"("id") ON DELETE CASCADE ON UPDATE CASCADE;

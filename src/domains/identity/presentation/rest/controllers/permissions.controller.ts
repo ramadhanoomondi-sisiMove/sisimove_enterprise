@@ -56,33 +56,118 @@
 //
 // -----------------------------------------------------------------------------
 //
-// Supported Permission operations:
+// SUPPORTED PERMISSION OPERATIONS
+// -----------------------------------------------------------------------------
 //
 // Permission definition:
-// - create permission.
 //
-// Permission lifecycle:
-// - activate permission;
-// - deactivate permission.
+//     POST /permissions
 //
 // Permission queries:
-// - get permission;
-// - get permissions.
+//
+//     GET /permissions
+//     GET /permissions/:permissionPublicId
+//
+// Permission lifecycle:
+//
+//     PATCH /permissions/:permissionPublicId/activate
+//     PATCH /permissions/:permissionPublicId/deactivate
 //
 // -----------------------------------------------------------------------------
 //
-// Authentication & Authorization:
+// AUTHENTICATION & AUTHORIZATION
+// -----------------------------------------------------------------------------
 //
-// - JwtAuthGuard authenticates the request using the access-token JWT;
-// - PermissionsGuard evaluates the permission declared by
-//   @RequirePermissions(...);
-// - Swagger exposes the protected API through the Bearer authentication
-//   scheme.
+// Permission definitions are authorization infrastructure.
 //
-// Swagger documentation does not perform authorization. The guards remain
-// the runtime security boundary.
+// All Permission endpoints therefore require:
+//
+// Authentication:
+//
+//     JwtAuthGuard
+//
+// Authorization:
+//
+//     PermissionsGuard
+//     @RequirePermissions(...)
+//
+// Required permissions:
+//
+//     permission:read
+//     permission:create
+//     permission:activate
+//     permission:deactivate
+//
+// Guards are intentionally applied per endpoint.
+//
+// There is NO class-level @UseGuards declaration.
+//
+// Swagger documentation does not perform authorization. Runtime guards remain
+// the actual security boundary.
 //
 // -----------------------------------------------------------------------------
+//
+// APPLICATION MESSAGE METADATA
+// -----------------------------------------------------------------------------
+//
+// This controller preserves the existing Permission command contracts.
+//
+// Therefore:
+//
+// - correlationId remains supplied according to the existing DTO/command
+//   contract;
+// - causationId remains supplied according to the existing DTO/command
+//   contract;
+// - activatedAt remains supplied according to the existing DTO/command
+//   contract;
+// - deactivatedAt remains supplied according to the existing DTO/command
+//   contract.
+//
+// No application command contract is changed by this controller.
+//
+// -----------------------------------------------------------------------------
+//
+// DOMAIN VALUE OBJECTS
+// -----------------------------------------------------------------------------
+//
+// Transport primitives are converted before entering the application layer:
+//
+//     code
+//         └── PermissionCode
+//
+//     resource
+//         └── PermissionResource
+//
+//     action
+//         └── PermissionAction
+//
+//     permissionPublicId
+//         └── PermissionPublicId
+//
+// This keeps transport DTOs independent from domain behavior while ensuring
+// commands receive validated domain representations.
+//
+// -----------------------------------------------------------------------------
+//
+// SECURITY BOUNDARY
+// -----------------------------------------------------------------------------
+//
+// This controller does NOT:
+//
+// - verify JWTs;
+// - decode JWTs;
+// - inspect Authorization headers;
+// - resolve permissions;
+// - evaluate authorization;
+// - access Prisma;
+// - access repositories;
+// - directly mutate PermissionAggregate;
+// - assign Permissions to Roles;
+// - revoke Permissions from Roles;
+// - assign Roles to Identities;
+// - revoke Roles from Identities.
+//
+// =============================================================================
 
 // -----------------------------------------------------------------------------
 // NestJS
@@ -208,8 +293,6 @@ import { PermissionResponseMapper } from '../mappers/permission.response.mapper'
 // =============================================================================
 
 @ApiTags('Permissions')
-@ApiBearerAuth()
-@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('permissions')
 export class PermissionsController {
   // ===========================================================================
@@ -264,25 +347,30 @@ export class PermissionsController {
   // Get Permission
   // ---------------------------------------------------------------------------
   //
+  // GET /permissions/:permissionPublicId
+  //
   // Authentication:
-  // - JWT access token required.
+  //
+  //     JwtAuthGuard
   //
   // Authorization:
-  // - permission:read
+  //
+  //     permission:read
   //
   // ---------------------------------------------------------------------------
 
   @Get(':permissionPublicId')
-  @RequirePermissions('permission:read')
+  @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Get a Permission',
+    summary: 'Get Permission',
     description:
       'Returns a Permission identified by its aggregate public identifier.',
   })
   @ApiParam({
     name: 'permissionPublicId',
-    description: 'Public identifier of the Permission.',
     type: String,
+    required: true,
+    description: 'Public identifier of the Permission.',
     example: 'PERM-5GH3MK',
   })
   @ApiOkResponse({
@@ -295,6 +383,8 @@ export class PermissionsController {
     description:
       'The authenticated identity does not have the required permission.',
   })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('permission:read')
   public async get(
     @Param() dto: GetPermissionQueryDto,
   ): Promise<PermissionResponse | null> {
@@ -315,11 +405,15 @@ export class PermissionsController {
   // Get Permissions
   // ---------------------------------------------------------------------------
   //
+  // GET /permissions
+  //
   // Authentication:
-  // - JWT access token required.
+  //
+  //     JwtAuthGuard
   //
   // Authorization:
-  // - permission:read
+  //
+  //     permission:read
   //
   // This query intentionally retrieves the complete Permission collection.
   //
@@ -329,9 +423,9 @@ export class PermissionsController {
   // ---------------------------------------------------------------------------
 
   @Get()
-  @RequirePermissions('permission:read')
+  @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Get all Permissions',
+    summary: 'List Permissions',
     description: 'Returns the complete collection of Permission aggregates.',
   })
   @ApiOkResponse({
@@ -344,6 +438,8 @@ export class PermissionsController {
     description:
       'The authenticated identity does not have the required permission.',
   })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('permission:read')
   public async getMany(): Promise<PermissionResponse[]> {
     const query = new GetPermissionsQuery();
 
@@ -362,32 +458,18 @@ export class PermissionsController {
   // Create Permission
   // ---------------------------------------------------------------------------
   //
-  // Authentication:
-  // - JWT access token required.
+  // POST /permissions
   //
-  // Authorization:
-  // - permission:create
-  //
-  // CreatePermissionCommand:
-  //
-  //   name
-  //   code
-  //   resource
-  //   action
-  //   description?
-  //   isSystem
-  //   isActive
-  //   correlationId
-  //   causationId?
+  // Business inputs remain defined by CreatePermissionRequestDto.
   //
   // PermissionPublicId is generated by PermissionEntity.
   //
   // ---------------------------------------------------------------------------
 
   @Post()
-  @RequirePermissions('permission:create')
+  @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Create a Permission',
+    summary: 'Create Permission',
     description: 'Creates a new Permission aggregate definition.',
   })
   @ApiBody({
@@ -403,6 +485,8 @@ export class PermissionsController {
     description:
       'The authenticated identity does not have the required permission.',
   })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('permission:create')
   public async create(
     @Body() dto: CreatePermissionRequestDto,
   ): Promise<PermissionResponse> {
@@ -427,25 +511,24 @@ export class PermissionsController {
   // Activate Permission
   // ---------------------------------------------------------------------------
   //
-  // Authentication:
-  // - JWT access token required.
+  // PATCH /permissions/:permissionPublicId/activate
   //
-  // Authorization:
-  // - permission:activate
+  // The existing command contract is preserved.
   //
   // ---------------------------------------------------------------------------
 
   @Patch(':permissionPublicId/activate')
-  @RequirePermissions('permission:activate')
+  @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Activate a Permission',
+    summary: 'Activate Permission',
     description:
-      'Activates an existing Permission identified by its public identifier.',
+      'Activates an existing Permission identified by its public identifier. Permission lifecycle rules remain inside the application/domain boundary.',
   })
   @ApiParam({
     name: 'permissionPublicId',
-    description: 'Public identifier of the Permission.',
     type: String,
+    required: true,
+    description: 'Public identifier of the Permission.',
     example: 'PERM-5GH3MK',
   })
   @ApiBody({
@@ -461,6 +544,8 @@ export class PermissionsController {
     description:
       'The authenticated identity does not have the required permission.',
   })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('permission:activate')
   public async activate(
     @Param('permissionPublicId') permissionPublicId: string,
     @Body() dto: ActivatePermissionRequestDto,
@@ -481,27 +566,24 @@ export class PermissionsController {
   // Deactivate Permission
   // ---------------------------------------------------------------------------
   //
-  // Authentication:
-  // - JWT access token required.
-  //
-  // Authorization:
-  // - permission:deactivate
+  // PATCH /permissions/:permissionPublicId/deactivate
   //
   // System-Permission protection remains inside PermissionEntity.
   //
   // ---------------------------------------------------------------------------
 
   @Patch(':permissionPublicId/deactivate')
-  @RequirePermissions('permission:deactivate')
+  @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Deactivate a Permission',
+    summary: 'Deactivate Permission',
     description:
-      'Deactivates an existing Permission identified by its public identifier.',
+      'Deactivates an existing Permission identified by its public identifier. System-permission protection and lifecycle rules remain inside the application/domain boundary.',
   })
   @ApiParam({
     name: 'permissionPublicId',
-    description: 'Public identifier of the Permission.',
     type: String,
+    required: true,
+    description: 'Public identifier of the Permission.',
     example: 'PERM-5GH3MK',
   })
   @ApiBody({
@@ -517,6 +599,8 @@ export class PermissionsController {
     description:
       'The authenticated identity does not have the required permission.',
   })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('permission:deactivate')
   public async deactivate(
     @Param('permissionPublicId') permissionPublicId: string,
     @Body() dto: DeactivatePermissionRequestDto,

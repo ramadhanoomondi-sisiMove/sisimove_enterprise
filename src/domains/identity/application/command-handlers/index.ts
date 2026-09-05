@@ -60,6 +60,8 @@ export { default as ExpireVerificationHandler } from './expire-verification.hand
 
 export { default as RevokeVerificationHandler } from './revoke-verification.handler';
 
+export { default as SubmitVerificationRequestHandler } from './submit-verification-request.handler';
+
 // =============================================================================
 // VERIFICATION REQUEST HANDLERS
 // =============================================================================

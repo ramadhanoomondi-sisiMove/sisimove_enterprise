@@ -81,14 +81,14 @@
 //
 //     POST /identities
 //
-// Authenticated:
+// Authenticated self-service:
 //
-//     GET   /identities/me
+//     GET /identities/me
 //
 // Privileged:
 //
-//     GET   /identities/by-email/:email
-//     GET   /identities/by-phone-number/:phoneNumber
+//     GET /identities/by-email/:email
+//     GET /identities/by-phone-number/:phoneNumber
 //
 // Protected target-identity operations:
 //
@@ -106,12 +106,21 @@
 //
 //     JwtAuthGuard
 //
-// Authorization:
+// Authorization for privileged/target operations:
 //
 //     PermissionsGuard
 //     @RequirePermissions(...)
 //
 // Guards are deliberately applied per endpoint rather than at controller level.
+//
+// IMPORTANT:
+//
+//     GET /identities/me
+//
+// is authenticated but NOT permission-gated.
+//
+// The authenticated identity is allowed to retrieve its own Identity through
+// the principal established by JwtAuthGuard/JwtStrategy.
 //
 // -----------------------------------------------------------------------------
 //
@@ -182,12 +191,17 @@
 //
 // The client does not provide an Identity public ID.
 //
-// This avoids turning the normal "my identity" operation into:
+// This endpoint requires authentication only:
 //
-//     GET /identities/:identityPublicId
+//     JwtAuthGuard
 //
-// where arbitrary public identifiers could otherwise become an enumeration
-// or authorization boundary.
+// It deliberately does NOT require:
+//
+//     PermissionsGuard
+//     identity:read
+//
+// because self-access is established by the authenticated principal rather
+// than by a general target-identity permission.
 //
 // -----------------------------------------------------------------------------
 //
@@ -199,18 +213,11 @@
 //     GET /identities/by-email/:email
 //     GET /identities/by-phone-number/:phoneNumber
 //
-// These operations can become account-enumeration surfaces because they allow
-// callers to test whether a particular email address or phone number belongs
-// to an Identity.
+// These operations can become account-enumeration surfaces.
 //
 // They therefore require:
 //
 //     identity:lookup
-//
-// They should normally be granted only to trusted application workflows,
-// support/admin capabilities, or other explicitly authorized services.
-//
-// They are NOT the normal user-facing Identity lookup mechanism.
 //
 // -----------------------------------------------------------------------------
 //
@@ -283,13 +290,6 @@
 //
 // The actor MUST NOT be accepted from the request body.
 //
-// The following client-controlled fields must therefore NOT be used:
-//
-//     assignedByPublicId
-//     revokedByPublicId
-//
-// The authenticated security principal is authoritative.
-//
 // -----------------------------------------------------------------------------
 //
 // CONTACT INFORMATION
@@ -349,15 +349,9 @@
 //
 //     correlationId = randomUUID()
 //
-// The HTTP request is the root application operation, so no client-supplied
-// correlation identifier is trusted.
+// The HTTP request is the root application operation.
 //
-// Causation:
-//
-//     omitted
-//
-// unless a trusted application workflow explicitly provides it through an
-// appropriate application boundary.
+// Causation is omitted.
 //
 // -----------------------------------------------------------------------------
 //
@@ -421,7 +415,17 @@ import {
 // Swagger
 // -----------------------------------------------------------------------------
 
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiCreatedResponse,
+  ApiForbiddenResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 
 // -----------------------------------------------------------------------------
 // Express
@@ -444,6 +448,7 @@ import {
 // -----------------------------------------------------------------------------
 
 import type { CommandHandler } from '../../../../../foundation/kernel/application/command-handler';
+
 import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
 
 // -----------------------------------------------------------------------------
@@ -635,20 +640,26 @@ export class IdentitiesController {
   //
   // Public registration endpoint.
   //
-  // The server creates correlation metadata because this is the root operation
-  // initiated through HTTP.
-  //
   // ---------------------------------------------------------------------------
 
   @Post()
+  @ApiOperation({
+    summary: 'Create identity',
+    description:
+      'Creates a new Identity for registration. The initial Identity lifecycle state is established by the domain/application workflow.',
+  })
+  @ApiBody({
+    type: CreateIdentityRequestDto,
+  })
+  @ApiCreatedResponse({
+    description: 'Identity created successfully.',
+  })
   public async create(
     @Body() dto: CreateIdentityRequestDto,
   ): Promise<ReturnType<typeof IdentityResponseMapper.toResponse>> {
     const command = new CreateIdentityCommand(
       IdentityEmail.create(dto.email),
-
       IdentityPhoneNumber.create(dto.phoneNumber),
-
       randomUUID(),
     );
 
@@ -667,20 +678,27 @@ export class IdentitiesController {
   //
   // GET /identities/me
   //
-  // This is the normal user-facing Identity endpoint.
+  // Self-service endpoint.
   //
-  // The client does not provide identityPublicId.
-  //
-  // The authenticated Identity is obtained exclusively from:
-  //
-  //     request.user.identityPublicId
+  // Authentication is sufficient because the target Identity is derived from
+  // the authenticated principal.
   //
   // ---------------------------------------------------------------------------
 
   @Get('me')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('identity:read')
+  @ApiOperation({
+    summary: 'Get current identity',
+    description:
+      'Returns the Identity associated with the authenticated access token. The client does not provide an Identity public identifier. Self-access requires authentication only and does not require the identity:read permission.',
+  })
+  @ApiOkResponse({
+    description: 'Current Identity retrieved successfully.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication is required or the access token is invalid.',
+  })
+  @UseGuards(JwtAuthGuard)
   public async getMe(
     @Req() request: Request,
   ): Promise<ReturnType<typeof IdentityResponseMapper.toResponse> | null> {
@@ -707,21 +725,32 @@ export class IdentitiesController {
   //
   // GET /identities/by-email/:email
   //
-  // Privileged identity lookup.
-  //
-  // This is intentionally NOT the normal user-facing lookup mechanism.
-  //
-  // Email lookup can expose whether an account exists and can therefore become
-  // an account-enumeration surface.
-  //
-  // Required permission:
-  //
-  //     identity:lookup
-  //
   // ---------------------------------------------------------------------------
 
   @Get('by-email/:email')
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get identity by email',
+    description:
+      'Performs a privileged Identity lookup by email address. This endpoint requires identity:lookup because it can expose account-existence information.',
+  })
+  @ApiParam({
+    name: 'email',
+    type: String,
+    required: true,
+    description: 'Email address associated with the Identity.',
+    example: 'user@example.com',
+  })
+  @ApiOkResponse({
+    description: 'Identity lookup completed successfully.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication is required or the access token is invalid.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'The authenticated identity does not have the identity:lookup permission.',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('identity:lookup')
   public async getByEmail(
@@ -744,18 +773,32 @@ export class IdentitiesController {
   //
   // GET /identities/by-phone-number/:phoneNumber
   //
-  // Privileged identity lookup.
-  //
-  // Phone-number lookup can also become an account-enumeration surface.
-  //
-  // Required permission:
-  //
-  //     identity:lookup
-  //
   // ---------------------------------------------------------------------------
 
   @Get('by-phone-number/:phoneNumber')
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get identity by phone number',
+    description:
+      'Performs a privileged Identity lookup by phone number. This endpoint requires identity:lookup because it can expose account-existence information.',
+  })
+  @ApiParam({
+    name: 'phoneNumber',
+    type: String,
+    required: true,
+    description: 'Phone number associated with the Identity.',
+    example: '+254700000000',
+  })
+  @ApiOkResponse({
+    description: 'Identity lookup completed successfully.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication is required or the access token is invalid.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'The authenticated identity does not have the identity:lookup permission.',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('identity:lookup')
   public async getByPhoneNumber(
@@ -784,20 +827,34 @@ export class IdentitiesController {
   //
   // GET /identities/:identityPublicId
   //
-  // This endpoint is for target-identity access.
-  //
-  // IMPORTANT:
-  //
-  // identity:read is not sufficient by itself to establish that the caller is
-  // allowed to inspect THIS target identity.
-  //
-  // The application layer must enforce the appropriate ownership,
-  // administrative scope, or delegated authority.
+  // Target-identity authorization remains an application-layer concern.
   //
   // ---------------------------------------------------------------------------
 
   @Get(':identityPublicId')
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get identity',
+    description:
+      'Returns a target Identity identified by its public identifier. Possession of the identifier does not itself grant access; target-identity scope is enforced by the application layer.',
+  })
+  @ApiParam({
+    name: 'identityPublicId',
+    type: String,
+    required: true,
+    description: 'Public identifier of the target Identity.',
+    example: 'ID-5GH3MK',
+  })
+  @ApiOkResponse({
+    description: 'Identity retrieved successfully.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication is required or the access token is invalid.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'The authenticated identity does not have the required permission or target-identity authority.',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('identity:read')
   public async get(
@@ -828,18 +885,32 @@ export class IdentitiesController {
   //
   // Protected until a dedicated activation-proof workflow exists.
   //
-  // The current ActivateIdentityCommand accepts only IdentityPublicId.
-  //
-  // Therefore this endpoint MUST NOT be public merely because the Identity is
-  // currently PENDING.
-  //
-  // A future public activation flow should use an activation token/OTP/recovery
-  // workflow rather than trusting identityPublicId alone.
-  //
   // ---------------------------------------------------------------------------
 
   @Patch(':identityPublicId/activate')
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Activate identity',
+    description:
+      'Activates a target Identity. Until a dedicated activation-proof workflow exists, activation requires the identity:activate permission.',
+  })
+  @ApiParam({
+    name: 'identityPublicId',
+    type: String,
+    required: true,
+    description: 'Public identifier of the Identity to activate.',
+    example: 'ID-5GH3MK',
+  })
+  @ApiOkResponse({
+    description: 'Identity activated successfully.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication is required or the access token is invalid.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'The authenticated identity does not have the required permission.',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('identity:activate')
   public async activate(
@@ -861,9 +932,38 @@ export class IdentitiesController {
   // ---------------------------------------------------------------------------
   // Change Identity Email
   // ---------------------------------------------------------------------------
+  //
+  // PATCH /identities/:identityPublicId/email
+  //
+  // ---------------------------------------------------------------------------
 
   @Patch(':identityPublicId/email')
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Change identity email',
+    description:
+      'Changes the email address of a target Identity. Identity lifecycle, uniqueness, verification, and mutation policies remain in the application/domain layer.',
+  })
+  @ApiParam({
+    name: 'identityPublicId',
+    type: String,
+    required: true,
+    description: 'Public identifier of the Identity.',
+    example: 'ID-5GH3MK',
+  })
+  @ApiBody({
+    type: ChangeIdentityEmailRequestDto,
+  })
+  @ApiOkResponse({
+    description: 'Identity email changed successfully.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication is required or the access token is invalid.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'The authenticated identity does not have the required permission or target-identity authority.',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('identity:change-email')
   public async changeEmail(
@@ -872,9 +972,7 @@ export class IdentitiesController {
   ): Promise<ReturnType<typeof IdentityResponseMapper.toResponse>> {
     const command = new ChangeIdentityEmailCommand(
       new IdentityPublicId(identityPublicId),
-
       IdentityEmail.create(dto.email),
-
       randomUUID(),
     );
 
@@ -886,9 +984,38 @@ export class IdentitiesController {
   // ---------------------------------------------------------------------------
   // Change Identity Phone Number
   // ---------------------------------------------------------------------------
+  //
+  // PATCH /identities/:identityPublicId/phone-number
+  //
+  // ---------------------------------------------------------------------------
 
   @Patch(':identityPublicId/phone-number')
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Change identity phone number',
+    description:
+      'Changes the phone number of a target Identity. Identity lifecycle, uniqueness, verification, and mutation policies remain in the application/domain layer.',
+  })
+  @ApiParam({
+    name: 'identityPublicId',
+    type: String,
+    required: true,
+    description: 'Public identifier of the Identity.',
+    example: 'ID-5GH3MK',
+  })
+  @ApiBody({
+    type: ChangeIdentityPhoneNumberRequestDto,
+  })
+  @ApiOkResponse({
+    description: 'Identity phone number changed successfully.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication is required or the access token is invalid.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'The authenticated identity does not have the required permission or target-identity authority.',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('identity:change-phone-number')
   public async changePhoneNumber(
@@ -897,9 +1024,7 @@ export class IdentitiesController {
   ): Promise<ReturnType<typeof IdentityResponseMapper.toResponse>> {
     const command = new ChangeIdentityPhoneNumberCommand(
       new IdentityPublicId(identityPublicId),
-
       IdentityPhoneNumber.create(dto.phoneNumber),
-
       randomUUID(),
     );
 
@@ -916,9 +1041,35 @@ export class IdentitiesController {
   // ---------------------------------------------------------------------------
   // Suspend Identity
   // ---------------------------------------------------------------------------
+  //
+  // PATCH /identities/:identityPublicId/suspend
+  //
+  // ---------------------------------------------------------------------------
 
   @Patch(':identityPublicId/suspend')
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Suspend identity',
+    description:
+      'Suspends a target Identity. Lifecycle invariants and suspension rules remain inside the application/domain boundary.',
+  })
+  @ApiParam({
+    name: 'identityPublicId',
+    type: String,
+    required: true,
+    description: 'Public identifier of the Identity to suspend.',
+    example: 'ID-5GH3MK',
+  })
+  @ApiOkResponse({
+    description: 'Identity suspended successfully.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication is required or the access token is invalid.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'The authenticated identity does not have the required permission or target-identity authority.',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('identity:suspend')
   public async suspend(
@@ -926,7 +1077,6 @@ export class IdentitiesController {
   ): Promise<ReturnType<typeof IdentityResponseMapper.toResponse>> {
     const command = new SuspendIdentityCommand(
       new IdentityPublicId(identityPublicId),
-
       randomUUID(),
     );
 
@@ -938,9 +1088,35 @@ export class IdentitiesController {
   // ---------------------------------------------------------------------------
   // Close Identity
   // ---------------------------------------------------------------------------
+  //
+  // PATCH /identities/:identityPublicId/close
+  //
+  // ---------------------------------------------------------------------------
 
   @Patch(':identityPublicId/close')
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Close identity',
+    description:
+      'Closes a target Identity. CLOSED is terminal and lifecycle invariants remain inside the application/domain boundary.',
+  })
+  @ApiParam({
+    name: 'identityPublicId',
+    type: String,
+    required: true,
+    description: 'Public identifier of the Identity to close.',
+    example: 'ID-5GH3MK',
+  })
+  @ApiOkResponse({
+    description: 'Identity closed successfully.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication is required or the access token is invalid.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'The authenticated identity does not have the required permission or target-identity authority.',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('identity:close')
   public async close(
@@ -948,7 +1124,6 @@ export class IdentitiesController {
   ): Promise<ReturnType<typeof IdentityResponseMapper.toResponse>> {
     const command = new CloseIdentityCommand(
       new IdentityPublicId(identityPublicId),
-
       randomUUID(),
     );
 
@@ -967,15 +1142,32 @@ export class IdentitiesController {
   //
   // GET /identities/:identityPublicId/roles
   //
-  // IdentityRoleEntity instances are owned by IdentityAggregate.
-  //
-  // The application layer remains responsible for determining whether the
-  // authenticated principal may inspect the target Identity's roles.
-  //
   // ---------------------------------------------------------------------------
 
   @Get(':identityPublicId/roles')
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get identity roles',
+    description:
+      'Returns the roles owned by the target Identity aggregate. Target-identity authorization remains an application-layer responsibility.',
+  })
+  @ApiParam({
+    name: 'identityPublicId',
+    type: String,
+    required: true,
+    description: 'Public identifier of the target Identity.',
+    example: 'ID-5GH3MK',
+  })
+  @ApiOkResponse({
+    description: 'Identity roles retrieved successfully.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication is required or the access token is invalid.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'The authenticated identity does not have the required permission or target-identity authority.',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('identity-role:read')
   public async getRoles(
@@ -1004,16 +1196,35 @@ export class IdentitiesController {
   //
   //     request.user.identityPublicId
   //
-  // The actor is never accepted from the request body.
-  //
-  // expiresAt represents business-effective policy.
-  //
-  // assignedAt remains a domain-generated fact.
-  //
   // ---------------------------------------------------------------------------
 
   @Post(':identityPublicId/roles')
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Assign role to identity',
+    description:
+      'Assigns an existing Role to the target Identity. The authenticated principal is used as the actor; actor identity cannot be supplied by the client.',
+  })
+  @ApiParam({
+    name: 'identityPublicId',
+    type: String,
+    required: true,
+    description: 'Public identifier of the target Identity.',
+    example: 'ID-5GH3MK',
+  })
+  @ApiBody({
+    type: AssignIdentityRoleRequestDto,
+  })
+  @ApiOkResponse({
+    description: 'Role assigned to Identity successfully.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication is required or the access token is invalid.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'The authenticated identity does not have the required permission or target-identity authority.',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('identity-role:assign')
   public async assignRole(
@@ -1024,34 +1235,19 @@ export class IdentitiesController {
     const actorPublicId = this.getAuthenticatedIdentityPublicId(request);
 
     const command = new AssignIdentityRoleCommand(
-      // ---------------------------------------------------------------------
       // Target Identity
-      // ---------------------------------------------------------------------
-
       new IdentityPublicId(identityPublicId),
 
-      // ---------------------------------------------------------------------
       // Role
-      // ---------------------------------------------------------------------
-
       new IdentityRoleRolePublicId(dto.rolePublicId),
 
-      // ---------------------------------------------------------------------
       // Correlation
-      // ---------------------------------------------------------------------
-
       randomUUID(),
 
-      // ---------------------------------------------------------------------
       // Authenticated Actor
-      // ---------------------------------------------------------------------
-
       actorPublicId,
 
-      // ---------------------------------------------------------------------
       // Business-effective Expiration
-      // ---------------------------------------------------------------------
-
       dto.expiresAt !== undefined ? new Date(dto.expiresAt) : undefined,
     );
 
@@ -1066,11 +1262,11 @@ export class IdentitiesController {
   //
   // PATCH /identities/:identityPublicId/roles/:rolePublicId/revoke
   //
-  // Target identity:
+  // Target Identity:
   //
   //     :identityPublicId
   //
-  // Target role:
+  // Target Role:
   //
   //     :rolePublicId
   //
@@ -1078,14 +1274,42 @@ export class IdentitiesController {
   //
   //     request.user.identityPublicId
   //
-  // revokedAt remains a domain-generated fact.
-  //
-  // reason remains contextual/business input.
-  //
   // ---------------------------------------------------------------------------
 
   @Patch(':identityPublicId/roles/:rolePublicId/revoke')
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Revoke role from identity',
+    description:
+      'Revokes a Role assignment from the target Identity. The authenticated principal is used as the actor; actor identity cannot be supplied by the client.',
+  })
+  @ApiParam({
+    name: 'identityPublicId',
+    type: String,
+    required: true,
+    description: 'Public identifier of the target Identity.',
+    example: 'ID-5GH3MK',
+  })
+  @ApiParam({
+    name: 'rolePublicId',
+    type: String,
+    required: true,
+    description: 'Public identifier of the Role being revoked.',
+    example: 'ROL-5GH3MK',
+  })
+  @ApiBody({
+    type: RevokeIdentityRoleRequestDto,
+  })
+  @ApiOkResponse({
+    description: 'Role revoked from Identity successfully.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication is required or the access token is invalid.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'The authenticated identity does not have the required permission or target-identity authority.',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('identity-role:revoke')
   public async revokeRole(
@@ -1097,34 +1321,19 @@ export class IdentitiesController {
     const actorPublicId = this.getAuthenticatedIdentityPublicId(request);
 
     const command = new RevokeIdentityRoleCommand(
-      // ---------------------------------------------------------------------
       // Target Identity
-      // ---------------------------------------------------------------------
-
       new IdentityPublicId(identityPublicId),
 
-      // ---------------------------------------------------------------------
       // Target Role
-      // ---------------------------------------------------------------------
-
       new IdentityRoleRolePublicId(rolePublicId),
 
-      // ---------------------------------------------------------------------
       // Correlation
-      // ---------------------------------------------------------------------
-
       randomUUID(),
 
-      // ---------------------------------------------------------------------
       // Authenticated Actor
-      // ---------------------------------------------------------------------
-
       actorPublicId,
 
-      // ---------------------------------------------------------------------
       // Reason
-      // ---------------------------------------------------------------------
-
       dto.reason,
     );
 
@@ -1146,13 +1355,6 @@ export class IdentitiesController {
   //     request.user.identityPublicId
   //
   // This method merely validates the expected principal shape.
-  //
-  // It does NOT:
-  //
-  // - decode the JWT;
-  // - verify the JWT;
-  // - inspect Authorization headers;
-  // - load Identity from persistence.
   //
   // ---------------------------------------------------------------------------
 

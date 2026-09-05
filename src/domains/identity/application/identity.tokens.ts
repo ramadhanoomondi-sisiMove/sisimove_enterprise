@@ -1,4 +1,3 @@
-//domains/identity/application/identity.tokens.ts
 // -----------------------------------------------------------------------------
 // Identity Application Tokens
 // -----------------------------------------------------------------------------
@@ -36,10 +35,16 @@
 //
 // Verification Request commands operate on an individual child request:
 //
+// - submit verification request;
 // - create request;
 // - approve request;
 // - reject request;
 // - cancel request.
+//
+// `SUBMIT_VERIFICATION_REQUEST` is the user-facing orchestration operation.
+//
+// `CREATE_VERIFICATION_REQUEST` remains the lower-level application operation
+// that creates the child request inside an existing Verification aggregate.
 //
 // There is intentionally no generic `APPROVE_VERIFICATION` command because
 // approving a VerificationRequest and granting Verification are different
@@ -114,6 +119,29 @@ export const IDENTITY_TOKENS = {
     // Verification Request
     // -------------------------------------------------------------------------
 
+    /**
+     * User-facing verification evidence submission orchestrator.
+     *
+     * Coordinates:
+     *
+     * - Asset upload;
+     * - Asset creation;
+     * - Verification creation when required;
+     * - VerificationRequest creation.
+     *
+     * This is the entry point for the complete verification evidence
+     * submission workflow.
+     */
+    SUBMIT_VERIFICATION_REQUEST: Symbol('SubmitVerificationRequestHandler'),
+
+    /**
+     * Creates a VerificationRequest inside an existing Verification aggregate.
+     *
+     * This is the lower-level request creation operation.
+     *
+     * It receives an already-created Asset public ID and does not perform
+     * physical asset storage operations.
+     */
     CREATE_VERIFICATION_REQUEST: Symbol('CreateVerificationRequestHandler'),
 
     APPROVE_VERIFICATION_REQUEST: Symbol('ApproveVerificationRequestHandler'),

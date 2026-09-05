@@ -57,32 +57,97 @@
 //
 // -----------------------------------------------------------------------------
 //
-// Supported RolePermission operations:
+// SUPPORTED OPERATIONS
+// -----------------------------------------------------------------------------
 //
 // Assignment:
-// - assign Permission to Role.
+//
+//     POST /role-permissions
 //
 // Revocation:
-// - revoke Permission from Role.
+//
+//     PATCH /role-permissions/:rolePermissionPublicId/revoke
 //
 // Queries:
-// - get RolePermission;
-// - get RolePermissions.
+//
+//     GET /role-permissions
+//     GET /role-permissions/:rolePermissionPublicId
 //
 // -----------------------------------------------------------------------------
 //
-// Authentication & Authorization:
+// AUTHENTICATION & AUTHORIZATION
+// -----------------------------------------------------------------------------
 //
-// - JwtAuthGuard authenticates the request using the access-token JWT;
-// - PermissionsGuard evaluates the permission declared by
-//   @RequirePermissions(...);
-// - Swagger exposes the protected API through the Bearer authentication
-//   scheme.
+// RolePermission is authorization infrastructure.
 //
-// Swagger documentation does not perform authorization. The guards remain
-// the runtime security boundary.
+// All endpoints therefore require:
+//
+// Authentication:
+//
+//     JwtAuthGuard
+//
+// Authorization:
+//
+//     PermissionsGuard
+//     @RequirePermissions(...)
+//
+// Required permissions:
+//
+//     role-permission:read
+//     role-permission:assign
+//     role-permission:revoke
+//
+// Guards are intentionally applied per endpoint.
+//
+// There is NO class-level @UseGuards declaration.
+//
+// Swagger documentation does not perform authorization. Runtime guards remain
+// the actual security boundary.
 //
 // -----------------------------------------------------------------------------
+//
+// APPLICATION MESSAGE METADATA
+// -----------------------------------------------------------------------------
+//
+// This controller preserves the existing RolePermission command contracts.
+//
+// Therefore:
+//
+// - DTO-provided correlationId remains DTO-controlled;
+// - DTO-provided causationId remains DTO-controlled;
+// - DTO-provided assignedAt/revokedAt remains DTO-controlled.
+//
+// No command contract is changed here.
+//
+// If those fields are intended to become server-generated domain facts, that
+// should be changed at the command/application boundary rather than silently
+// changing the controller contract.
+//
+// -----------------------------------------------------------------------------
+//
+// DOMAIN VALUE OBJECTS
+// -----------------------------------------------------------------------------
+//
+// Transport primitives are converted before entering the application layer:
+//
+//     roleId
+//         └── RolePermissionRolePublicId
+//
+//     permissionId
+//         └── RolePermissionPermissionPublicId
+//
+//     rolePermissionPublicId
+//         └── RolePermissionPublicId
+//
+// The controller does not interpret the meaning of these identifiers.
+//
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Node
+// -----------------------------------------------------------------------------
+
+// No Node-specific imports required.
 
 // -----------------------------------------------------------------------------
 // NestJS
@@ -205,8 +270,6 @@ import { RolePermissionResponseMapper } from '../mappers/role-permission.respons
 // =============================================================================
 
 @ApiTags('Role Permissions')
-@ApiBearerAuth()
-@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('role-permissions')
 export class RolePermissionsController {
   // ===========================================================================
@@ -255,25 +318,30 @@ export class RolePermissionsController {
   // Get RolePermission
   // ---------------------------------------------------------------------------
   //
+  // GET /role-permissions/:rolePermissionPublicId
+  //
   // Authentication:
-  // - JWT access token required.
+  //
+  //     JwtAuthGuard
   //
   // Authorization:
-  // - role-permission:read
+  //
+  //     role-permission:read
   //
   // ---------------------------------------------------------------------------
 
   @Get(':rolePermissionPublicId')
-  @RequirePermissions('role-permission:read')
+  @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Get a RolePermission',
+    summary: 'Get RolePermission',
     description:
       'Returns a RolePermission assignment identified by its public identifier.',
   })
   @ApiParam({
     name: 'rolePermissionPublicId',
-    description: 'Public identifier of the RolePermission assignment.',
     type: String,
+    required: true,
+    description: 'Public identifier of the RolePermission assignment.',
     example: 'RP-5GH3MK',
   })
   @ApiOkResponse({
@@ -286,6 +354,8 @@ export class RolePermissionsController {
     description:
       'The authenticated identity does not have the required permission.',
   })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('role-permission:read')
   public async get(
     @Param() dto: GetRolePermissionQueryDto,
   ): Promise<RolePermissionResponse | null> {
@@ -306,20 +376,22 @@ export class RolePermissionsController {
   // Get RolePermissions
   // ---------------------------------------------------------------------------
   //
+  // GET /role-permissions
+  //
   // Authentication:
-  // - JWT access token required.
+  //
+  //     JwtAuthGuard
   //
   // Authorization:
-  // - role-permission:read
   //
-  // This query intentionally retrieves the complete RolePermission collection.
+  //     role-permission:read
   //
   // ---------------------------------------------------------------------------
 
   @Get()
-  @RequirePermissions('role-permission:read')
+  @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Get all RolePermissions',
+    summary: 'List RolePermissions',
     description:
       'Returns the complete collection of RolePermission assignments.',
   })
@@ -333,6 +405,8 @@ export class RolePermissionsController {
     description:
       'The authenticated identity does not have the required permission.',
   })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('role-permission:read')
   public async getMany(): Promise<RolePermissionResponse[]> {
     const query = new GetRolePermissionsQuery();
 
@@ -344,27 +418,31 @@ export class RolePermissionsController {
   }
 
   // ===========================================================================
-  // RolePermission Commands
+  // Commands
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Assign RolePermission
   // ---------------------------------------------------------------------------
   //
+  // POST /role-permissions
+  //
   // Authentication:
-  // - JWT access token required.
+  //
+  //     JwtAuthGuard
   //
   // Authorization:
-  // - role-permission:assign
   //
-  // Domain/application behavior remains unchanged.
+  //     role-permission:assign
+  //
+  // The controller only translates transport data into the existing command.
   //
   // ---------------------------------------------------------------------------
 
   @Post()
-  @RequirePermissions('role-permission:assign')
+  @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Assign a Permission to a Role',
+    summary: 'Assign Permission to Role',
     description:
       'Creates a RolePermission relationship between an existing Role and Permission.',
   })
@@ -381,6 +459,8 @@ export class RolePermissionsController {
     description:
       'The authenticated identity does not have the required permission.',
   })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('role-permission:assign')
   public async assign(
     @Body() dto: AssignRolePermissionRequestDto,
   ): Promise<RolePermissionResponse> {
@@ -401,29 +481,34 @@ export class RolePermissionsController {
   // Revoke RolePermission
   // ---------------------------------------------------------------------------
   //
+  // PATCH /role-permissions/:rolePermissionPublicId/revoke
+  //
   // Authentication:
-  // - JWT access token required.
+  //
+  //     JwtAuthGuard
   //
   // Authorization:
-  // - role-permission:revoke
+  //
+  //     role-permission:revoke
   //
   // The relationship itself is targeted by RolePermissionPublicId.
   //
-  // Revocation does NOT modify the Role or Permission aggregates.
+  // Revocation does not modify the Role or Permission aggregates.
   //
   // ---------------------------------------------------------------------------
 
   @Patch(':rolePermissionPublicId/revoke')
-  @RequirePermissions('role-permission:revoke')
+  @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Revoke a RolePermission',
+    summary: 'Revoke RolePermission',
     description:
       'Revokes an existing RolePermission relationship identified by its public identifier.',
   })
   @ApiParam({
     name: 'rolePermissionPublicId',
-    description: 'Public identifier of the RolePermission assignment.',
     type: String,
+    required: true,
+    description: 'Public identifier of the RolePermission assignment.',
     example: 'RP-5GH3MK',
   })
   @ApiBody({
@@ -439,6 +524,8 @@ export class RolePermissionsController {
     description:
       'The authenticated identity does not have the required permission.',
   })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('role-permission:revoke')
   public async revoke(
     @Param('rolePermissionPublicId') rolePermissionPublicId: string,
     @Body() dto: RevokeRolePermissionRequestDto,

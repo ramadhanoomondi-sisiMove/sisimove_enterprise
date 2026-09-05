@@ -9,52 +9,76 @@
 //     OtpChallengeAggregate
 //     └── OtpChallengeEntity
 //
-// Responsibilities:
+// -----------------------------------------------------------------------------
+//
+// SERVICE / APPLICATION OPERATIONS
+//
+// OTP challenges are primarily infrastructure for authentication and recovery
+// workflows.
+//
+// Operations performed as part of an authenticated application/security
+// workflow do NOT require domain-management permissions.
+//
+// Authentication:
+//
+//     JwtAuthGuard
+//
+// Authorization for service operations:
+//
+//     No PermissionsGuard
+//     No @RequirePermissions(...)
+//
+// The authenticated Identity is derived from:
+//
+//     JWT
+//       │
+//       ▼
+//     JwtStrategy
+//       │
+//       ▼
+//     request.user.identityPublicId
+//
+// -----------------------------------------------------------------------------
+//
+// MANAGEMENT / REVIEWER OPERATIONS
+//
+// Administrative inspection of OTP challenges remains protected by:
+//
+//     JwtAuthGuard
+//     PermissionsGuard
+//     @RequirePermissions(...)
+//
+// -----------------------------------------------------------------------------
+//
+// RESPONSIBILITIES
 //
 // - HTTP transport;
 // - DTO binding and validation;
+// - extraction of authenticated identity from JWT security context;
 // - conversion of transport primitives into domain value objects;
-// - construction of application commands and queries;
+// - generation of application correlation metadata;
 // - dispatching application commands and queries;
 // - mapping application/domain results into HTTP response models.
 //
 // This controller contains NO OTP business rules.
 //
-// -----------------------------------------------------------------------------
+// Domain behavior remains inside:
 //
-// DOMAIN
-// -----------------------------------------------------------------------------
+// - OtpChallengeAggregate;
+// - OtpChallengeEntity.
 //
-// OtpChallengeAggregate
-// └── OtpChallengeEntity
-//
-// The aggregate owns OTP Challenge lifecycle and invariants.
-//
-// -----------------------------------------------------------------------------
-//
-// APPLICATION
-// -----------------------------------------------------------------------------
-//
-// Application orchestration is performed by:
+// Application orchestration remains inside:
 //
 // - command handlers;
 // - query handlers.
 //
-// -----------------------------------------------------------------------------
+// Persistence remains behind:
 //
-// PERSISTENCE
-// -----------------------------------------------------------------------------
-//
-// Persistence is performed by:
-//
-//     OtpChallengeRepository
-//
-// The controller never accesses Prisma or repositories directly.
+// - OtpChallengeRepository.
 //
 // -----------------------------------------------------------------------------
 //
 // IMPORTANT — AGGREGATE BOUNDARY
-// -----------------------------------------------------------------------------
 //
 // OtpChallenge is an independent aggregate.
 //
@@ -80,7 +104,6 @@
 // -----------------------------------------------------------------------------
 //
 // OTP SECURITY BOUNDARY
-// -----------------------------------------------------------------------------
 //
 // This controller does NOT:
 //
@@ -99,7 +122,6 @@
 // -----------------------------------------------------------------------------
 //
 // VERIFY IMPORTANT
-// -----------------------------------------------------------------------------
 //
 // The VerifyOtpChallengeCommand represented here records the successful
 // verification state of an OTP Challenge.
@@ -126,28 +148,46 @@
 // -----------------------------------------------------------------------------
 //
 // AUTHENTICATION VS AUTHORIZATION
-// -----------------------------------------------------------------------------
 //
 // Authentication:
 //
 //     JwtAuthGuard
 //
-// Authorization:
+// Service/application operations:
 //
+//     JwtAuthGuard
+//
+// Management/reviewer operations:
+//
+//     JwtAuthGuard
 //     PermissionsGuard
 //     @RequirePermissions(...)
 //
-// They are intentionally applied at endpoint level.
-//
-// This prevents future public/internal endpoints from accidentally inheriting
-// an inappropriate controller-wide security policy.
+// Permissions are therefore NOT used as a generic requirement for every
+// OtpChallenge operation.
 //
 // -----------------------------------------------------------------------------
 //
 // ENDPOINT SECURITY MODEL
-// -----------------------------------------------------------------------------
 //
-// Query:
+// Service / application operations:
+//
+//     POST /otp-challenges
+//         JwtAuthGuard
+//
+//     POST /otp-challenges/:publicId/verify
+//         JwtAuthGuard
+//
+//     POST /otp-challenges/:publicId/fail
+//         JwtAuthGuard
+//
+//     PATCH /otp-challenges/:publicId/cancel
+//         JwtAuthGuard
+//
+//     PATCH /otp-challenges/:publicId/expire
+//         JwtAuthGuard
+//
+// Management / reviewer queries:
 //
 //     GET /otp-challenges/active
 //         JwtAuthGuard + PermissionsGuard
@@ -157,38 +197,14 @@
 //         JwtAuthGuard + PermissionsGuard
 //         otp-challenge:read
 //
-// Commands:
-//
-//     POST /otp-challenges
-//         JwtAuthGuard + PermissionsGuard
-//         otp-challenge:create
-//
-//     POST /otp-challenges/:publicId/verify
-//         JwtAuthGuard + PermissionsGuard
-//         otp-challenge:verify
-//
-//     POST /otp-challenges/:publicId/fail
-//         JwtAuthGuard + PermissionsGuard
-//         otp-challenge:fail
-//
-//     PATCH /otp-challenges/:publicId/cancel
-//         JwtAuthGuard + PermissionsGuard
-//         otp-challenge:cancel
-//
-//     PATCH /otp-challenges/:publicId/expire
-//         JwtAuthGuard + PermissionsGuard
-//         otp-challenge:expire
-//
 // -----------------------------------------------------------------------------
 //
 // OTP OWNERSHIP / SCOPE
-// -----------------------------------------------------------------------------
 //
 // An OtpChallenge public ID is not an authorization credential.
 //
-// For:
+// For service/application operations:
 //
-//     GET /otp-challenges/:publicId
 //     POST /otp-challenges/:publicId/verify
 //     POST /otp-challenges/:publicId/fail
 //     PATCH /otp-challenges/:publicId/cancel
@@ -197,23 +213,14 @@
 // the application layer MUST ensure that the authenticated principal is
 // permitted to operate on the referenced OtpChallenge.
 //
-// A permission answers:
-//
-//     "May this principal perform this operation?"
-//
-// Ownership/scope answers:
-//
-//     "May this principal perform this operation on THIS challenge?"
-//
-// The controller does not implement those policies.
+// The controller does not implement ownership or scope policies.
 //
 // -----------------------------------------------------------------------------
 //
 // IDENTITY BINDING
-// -----------------------------------------------------------------------------
 //
 // When an authenticated user creates an OTP Challenge through this HTTP
-// management endpoint, the Identity reference is derived from:
+// service endpoint, the Identity reference is derived from:
 //
 //     JWT
 //       │
@@ -236,7 +243,6 @@
 // -----------------------------------------------------------------------------
 //
 // CORRELATION / CAUSATION
-// -----------------------------------------------------------------------------
 //
 // HTTP-originated commands receive a server-generated correlation ID:
 //
@@ -253,13 +259,11 @@
 //     exactOptionalPropertyTypes: true
 //
 // command constructors should receive undefined only where their signatures
-// explicitly permit it. If commands are object-based, omit optional
-// properties instead of assigning undefined.
+// explicitly permit it.
 //
 // -----------------------------------------------------------------------------
 //
 // ROUTE ORDER
-// -----------------------------------------------------------------------------
 //
 // The static route:
 //
@@ -275,7 +279,6 @@
 // -----------------------------------------------------------------------------
 //
 // SECURITY BOUNDARY
-// -----------------------------------------------------------------------------
 //
 // This controller does NOT:
 //
@@ -298,7 +301,7 @@
 // =============================================================================
 
 // -----------------------------------------------------------------------------
-// Node
+// Node.js
 // -----------------------------------------------------------------------------
 
 import { randomUUID } from 'node:crypto';
@@ -324,7 +327,12 @@ import {
 // Swagger
 // -----------------------------------------------------------------------------
 
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
 
 // -----------------------------------------------------------------------------
 // Express
@@ -341,6 +349,8 @@ import {
   PermissionsGuard,
   RequirePermissions,
 } from '../../../../../foundation/security/auth';
+
+import type { AuthenticatedIdentity } from '../../../../../foundation/security/auth/authenticated-identity.interface';
 
 // -----------------------------------------------------------------------------
 // Foundation — Application
@@ -426,6 +436,28 @@ import type { OtpChallengeResponse } from '../mappers/otp-challenge.response.map
 import { OtpChallengeResponseMapper } from '../mappers/otp-challenge.response.mapper';
 
 // =============================================================================
+// Authenticated Request
+// =============================================================================
+//
+// JwtAuthGuard populates req.user from JwtStrategy.
+//
+// JWT:
+//
+//     sub = IdentityPublicId
+//
+// JwtStrategy:
+//
+//     payload.sub
+//          ↓
+//     request.user.identityPublicId
+//
+// =============================================================================
+
+interface AuthenticatedRequest extends Request {
+  user: AuthenticatedIdentity;
+}
+
+// =============================================================================
 // Controller
 // =============================================================================
 
@@ -489,7 +521,7 @@ export class OtpChallengesController {
   ) {}
 
   // ===========================================================================
-  // Queries
+  // Management / Reviewer Queries
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
@@ -498,18 +530,29 @@ export class OtpChallengesController {
   //
   // GET /otp-challenges/active
   //
+  // Management/reviewer query.
+  //
+  // Requires:
+  //
+  //     JwtAuthGuard
+  //     PermissionsGuard
+  //     otp-challenge:read
+  //
   // IMPORTANT:
   //
   // This route is declared BEFORE:
   //
   //     /:publicId
   //
-  // so "active" is treated as a static route.
-  //
   // ---------------------------------------------------------------------------
 
   @Get('active')
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'List active OTP challenges',
+    description:
+      'Returns active OTP challenges for authorized management or reviewer access.',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('otp-challenge:read')
   public async getActive(): Promise<OtpChallengeResponse[]> {
@@ -528,12 +571,32 @@ export class OtpChallengesController {
   //
   // GET /otp-challenges/:publicId
   //
-  // The application layer MUST enforce ownership/scope where applicable.
+  // Management/reviewer query.
+  //
+  // Requires:
+  //
+  //     JwtAuthGuard
+  //     PermissionsGuard
+  //     otp-challenge:read
+  //
+  // The application layer remains responsible for any additional scope rules.
   //
   // ---------------------------------------------------------------------------
 
   @Get(':publicId')
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get an OTP challenge',
+    description:
+      'Returns an OTP challenge by public ID for authorized management or reviewer access.',
+  })
+  @ApiParam({
+    name: 'publicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the OTP Challenge.',
+    example: 'OTP-8VBLAO',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('otp-challenge:read')
   public async get(
@@ -553,7 +616,7 @@ export class OtpChallengesController {
   }
 
   // ===========================================================================
-  // Commands
+  // Service / Application Commands
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
@@ -562,19 +625,25 @@ export class OtpChallengesController {
   //
   // POST /otp-challenges
   //
-  // Identity is derived from the authenticated security principal.
+  // Service/application operation.
   //
-  // The request DTO MUST NOT provide identityPublicId as an authoritative
-  // identity binding.
+  // Authentication only.
+  //
+  // No permission is required because the Identity is derived from the
+  // authenticated security principal.
   //
   // ---------------------------------------------------------------------------
 
   @Post()
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('otp-challenge:create')
+  @ApiOperation({
+    summary: 'Create an OTP challenge',
+    description:
+      'Creates an OTP challenge for the authenticated identity. The identity is derived from the authenticated JWT and cannot be supplied by the client.',
+  })
+  @UseGuards(JwtAuthGuard)
   public async create(
-    @Req() request: Request,
+    @Req() request: AuthenticatedRequest,
     @Body() dto: CreateOtpChallengeRequestDto,
   ): Promise<OtpChallengeResponse> {
     const identityPublicId = this.getAuthenticatedIdentityPublicId(request);
@@ -606,19 +675,36 @@ export class OtpChallengesController {
   //
   // POST /otp-challenges/:publicId/verify
   //
+  // Service/application operation.
+  //
+  // Authentication only.
+  //
+  // No permission is required.
+  //
   // IMPORTANT:
   //
-  // This endpoint does not compare the plaintext OTP.
+  // This endpoint does not receive or compare a plaintext OTP.
   //
-  // The supplied OTP must already have been validated by the appropriate
-  // application/security workflow before this command is dispatched.
+  // The higher-level authentication/security workflow is responsible for
+  // validating the OTP before dispatching VerifyOtpChallengeCommand.
   //
   // ---------------------------------------------------------------------------
 
   @Post(':publicId/verify')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('otp-challenge:verify')
+  @ApiOperation({
+    summary: 'Verify an OTP challenge',
+    description:
+      'Records successful OTP challenge verification after the OTP has already been validated by the appropriate application or security workflow.',
+  })
+  @ApiParam({
+    name: 'publicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the OTP Challenge.',
+    example: 'OTP-8VBLAO',
+  })
+  @UseGuards(JwtAuthGuard)
   public async verify(
     @Param('publicId') publicId: string,
     @Body() dto: VerifyOtpChallengeRequestDto,
@@ -647,14 +733,31 @@ export class OtpChallengesController {
   //
   // PATCH /otp-challenges/:publicId/cancel
   //
-  // Security-sensitive lifecycle transition.
+  // Service/application operation.
+  //
+  // Authentication only.
+  //
+  // No permission is required.
+  //
+  // The application layer MUST enforce ownership/scope.
   //
   // ---------------------------------------------------------------------------
 
   @Patch(':publicId/cancel')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('otp-challenge:cancel')
+  @ApiOperation({
+    summary: 'Cancel an OTP challenge',
+    description:
+      'Cancels an OTP challenge within the authenticated application or security workflow. The application layer enforces ownership and scope.',
+  })
+  @ApiParam({
+    name: 'publicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the OTP Challenge.',
+    example: 'OTP-8VBLAO',
+  })
+  @UseGuards(JwtAuthGuard)
   public async cancel(
     @Param('publicId') publicId: string,
     @Body() dto: CancelOtpChallengeRequestDto,
@@ -678,16 +781,31 @@ export class OtpChallengesController {
   //
   // POST /otp-challenges/:publicId/fail
   //
-  // The fail handler returns void.
+  // Service/application operation.
   //
-  // Therefore the controller reloads the aggregate after the command completes.
+  // Authentication only.
+  //
+  // No permission is required.
+  //
+  // The fail handler returns void, so the controller reloads the aggregate.
   //
   // ---------------------------------------------------------------------------
 
   @Post(':publicId/fail')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('otp-challenge:fail')
+  @ApiOperation({
+    summary: 'Fail an OTP challenge',
+    description:
+      'Records an OTP challenge failure within the authenticated application or security workflow.',
+  })
+  @ApiParam({
+    name: 'publicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the OTP Challenge.',
+    example: 'OTP-8VBLAO',
+  })
+  @UseGuards(JwtAuthGuard)
   public async fail(
     @Param('publicId') publicId: string,
     @Body() dto: CancelOtpChallengeRequestDto,
@@ -719,17 +837,31 @@ export class OtpChallengesController {
   //
   // PATCH /otp-challenges/:publicId/expire
   //
-  // Expiration is evaluated using the application-supplied reference time.
+  // Service/application operation.
   //
-  // The aggregate remains responsible for determining whether the lifecycle
-  // transition is valid.
+  // Authentication only.
+  //
+  // No permission is required.
+  //
+  // The aggregate remains responsible for lifecycle transition rules.
   //
   // ---------------------------------------------------------------------------
 
   @Patch(':publicId/expire')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('otp-challenge:expire')
+  @ApiOperation({
+    summary: 'Expire an OTP challenge',
+    description:
+      'Expires an OTP challenge within the authenticated application or security workflow.',
+  })
+  @ApiParam({
+    name: 'publicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the OTP Challenge.',
+    example: 'OTP-8VBLAO',
+  })
+  @UseGuards(JwtAuthGuard)
   public async expire(
     @Param('publicId') publicId: string,
     @Body() dto: CancelOtpChallengeRequestDto,
@@ -782,22 +914,20 @@ export class OtpChallengesController {
   // ---------------------------------------------------------------------------
 
   private getAuthenticatedIdentityPublicId(
-    request: Request,
+    request: AuthenticatedRequest,
   ): OtpChallengeIdentityPublicId {
-    const user = request.user as {
-      identityPublicId?: unknown;
-    };
+    const identityPublicId = request.user.identityPublicId;
 
     if (
-      typeof user.identityPublicId !== 'string' ||
-      user.identityPublicId.trim().length === 0
+      typeof identityPublicId !== 'string' ||
+      identityPublicId.trim().length === 0
     ) {
       throw new UnauthorizedException(
         'Authenticated principal does not contain identityPublicId.',
       );
     }
 
-    return new OtpChallengeIdentityPublicId(user.identityPublicId.trim());
+    return new OtpChallengeIdentityPublicId(identityPublicId.trim());
   }
 }
 

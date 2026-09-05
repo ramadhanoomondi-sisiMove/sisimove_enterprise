@@ -17,7 +17,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 // -----------------------------------------------------------------------------
 // Authentication / Authorization
@@ -156,11 +156,59 @@ import {
   GetMyJourneyDemandsQueryDto,
 } from '../dto/queries';
 
-// -----------------------------------------------------------------------------
-// Controller
-// -----------------------------------------------------------------------------
+// =============================================================================
+// Journey Demand — Administrative HTTP Controller
+// =============================================================================
+//
+// This controller is NOT a public/self-service Journey Demand API.
+//
+// It exposes Journey Demand management capabilities to authenticated
+// administrators and authorized operators.
+//
+// Security model:
+//
+//   Access Token
+//        ↓
+//   JwtAuthGuard
+//        ↓
+//   PermissionsGuard
+//        ↓
+//   Required journey-demand permission
+//        ↓
+//   Application Command / Query Handler
+//        ↓
+//   JourneyDemandAggregate
+//
+// Responsibilities:
+//
+// - HTTP transport;
+// - DTO binding;
+// - query parameter and path parameter binding;
+// - command/query construction;
+// - dispatching application handlers;
+// - mapping application/domain results to HTTP responses;
+// - declaring authorization requirements.
+//
+// The controller contains no business rules.
+//
+// Domain behavior remains in:
+//
+// - JourneyDemandAggregate;
+// - JourneyDemandEntity;
+// - JourneyDemandCorridorEntity;
+// - JourneyDemandWaypointEntity;
+// - JourneyDemandScheduleEntity;
+// - JourneyDemandCapacityEntity;
+// - JourneyDemandPricingEntity;
+// - JourneyDemandParticipantEntity.
+//
+// Authorization is enforced through the authentication and permission
+// infrastructure.
+//
+// =============================================================================
 
 @ApiTags('Journey Demands')
+@ApiBearerAuth('access-token')
 @Controller('journey-demands')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class JourneyDemandController {

@@ -18,7 +18,8 @@
 // - REST controllers;
 // - infrastructure repository providers;
 // - application command handlers;
-// - application query handlers.
+// - application query handlers;
+// - Asset upload orchestration required by verification evidence submission.
 //
 // Domain behavior remains inside aggregate roots/entities.
 //
@@ -55,6 +56,20 @@
 // Authorization evaluation remains outside these aggregates.
 //
 // -----------------------------------------------------------------------------
+//
+// Verification evidence submission:
+//
+// SubmitVerificationRequestHandler
+// ├── Asset Upload Handler
+// │   └── AssetStoragePort
+// ├── Create Verification when required
+// └── Create Verification Request
+//
+// The Identity module therefore imports AssetsModule so the verification
+// application layer can consume the exported Asset upload capability through
+// its application token.
+//
+// -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
 // NestJS
@@ -67,6 +82,17 @@ import { Module } from '@nestjs/common';
 // -----------------------------------------------------------------------------
 
 import { PrismaModule } from '../../infrastructure/database/prisma/prisma.module';
+
+// -----------------------------------------------------------------------------
+// Assets — Module
+// -----------------------------------------------------------------------------
+//
+// Verification evidence submission uploads the evidence through the Assets
+// bounded context. AssetsModule exports the UploadAsset application handler
+// token consumed by SubmitVerificationRequestHandler.
+//
+
+import { AssetsModule } from '../assets/assets.module';
 
 // -----------------------------------------------------------------------------
 // Presentation — Controllers
@@ -124,6 +150,7 @@ import {
   // ===========================================================================
   // Verification Request
   // ===========================================================================
+  SubmitVerificationRequestHandler,
   CreateVerificationRequestHandler,
   ApproveVerificationRequestHandler,
   RejectVerificationRequestHandler,
@@ -198,8 +225,14 @@ import {
   // ===========================================================================
   // Imports
   // ===========================================================================
+  //
+  // AssetsModule is required because SubmitVerificationRequestHandler injects
+  // the exported Asset upload application handler token.
+  //
+  // PrismaModule remains required by the Identity infrastructure repositories.
+  //
 
-  imports: [PrismaModule],
+  imports: [PrismaModule, AssetsModule],
 
   // ===========================================================================
   // Controllers
@@ -377,6 +410,22 @@ import {
     // =========================================================================
     // Verification Request — Command Handlers
     // =========================================================================
+    //
+    // SubmitVerificationRequestHandler is the user-facing orchestration:
+    //
+    //   upload asset
+    //        ↓
+    //   create verification if required
+    //        ↓
+    //   create verification request
+    //
+    // It depends on the Asset upload handler exported by AssetsModule.
+    //
+
+    {
+      provide: IDENTITY_TOKENS.COMMAND_HANDLERS.SUBMIT_VERIFICATION_REQUEST,
+      useClass: SubmitVerificationRequestHandler,
+    },
 
     {
       provide: IDENTITY_TOKENS.COMMAND_HANDLERS.CREATE_VERIFICATION_REQUEST,

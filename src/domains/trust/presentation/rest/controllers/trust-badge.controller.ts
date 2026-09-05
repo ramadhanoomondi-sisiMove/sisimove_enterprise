@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 
 import {
+  ApiBearerAuth,
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -106,11 +107,53 @@ import {
   type TrustBadgeResponse,
 } from '../mappers/trust-badge-response.mapper';
 
-// -----------------------------------------------------------------------------
-// Controller
-// -----------------------------------------------------------------------------
+// =============================================================================
+// Trust Badge — Administrative HTTP Controller
+// =============================================================================
+//
+// This controller is NOT a public/self-service Trust Badge API.
+//
+// It exposes Trust Badge management capabilities to authenticated
+// administrators and authorized operators.
+//
+// Security model:
+//
+//   Access Token
+//        ↓
+//   JwtAuthGuard
+//        ↓
+//   PermissionsGuard
+//        ↓
+//   Required trust-badge permission
+//        ↓
+//   Application Command / Query Handler
+//        ↓
+//   TrustBadgeAggregate
+//
+// Responsibilities:
+//
+// - HTTP transport;
+// - DTO binding;
+// - command/query construction;
+// - dispatching application handlers;
+// - mapping application/domain results to HTTP responses;
+// - declaring authorization requirements.
+//
+// The controller contains no business rules.
+//
+// Domain behavior remains in:
+// - TrustBadgeAggregate;
+// - Trust Badge domain value objects;
+// - application command/query handlers.
+//
+// Authorization is enforced through the authentication and permission
+// infrastructure. An administrator must possess the specific permission
+// required by each operation.
+//
+// =============================================================================
 
 @ApiTags('Trust Badges')
+@ApiBearerAuth('access-token')
 @Controller('trust-badges')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class TrustBadgeController {

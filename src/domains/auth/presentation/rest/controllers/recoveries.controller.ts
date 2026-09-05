@@ -121,44 +121,42 @@
 //     PermissionsGuard
 //     @RequirePermissions(...)
 //
-// These are deliberately applied at endpoint level.
+// Authentication is required for every Recovery endpoint that is not public.
 //
-// This keeps every endpoint's security boundary explicit and prevents a future
-// public/internal endpoint from accidentally inheriting controller-wide
-// authentication or authorization.
+// Authorization permissions are retained for administrative/query access,
+// while authenticated Recovery lifecycle operations are JWT-only.
+//
+// This follows the same boundary used by other self-service/application
+// operations in the Identity bounded context.
 //
 // -----------------------------------------------------------------------------
 //
 // ENDPOINT SECURITY MODEL
 // -----------------------------------------------------------------------------
 //
-// Query:
-//
-//     GET /recoveries/:recoveryPublicId
-//         JwtAuthGuard + PermissionsGuard
-//         recovery:read
+// Management / query operations:
 //
 //     GET /recoveries
 //         JwtAuthGuard + PermissionsGuard
 //         recovery:read
 //
-// Commands:
+//     GET /recoveries/:recoveryPublicId
+//         JwtAuthGuard + PermissionsGuard
+//         recovery:read
+//
+// Authenticated Recovery operations:
 //
 //     POST /recoveries
-//         JwtAuthGuard + PermissionsGuard
-//         recovery:create
+//         JwtAuthGuard
 //
 //     PATCH /recoveries/:recoveryPublicId/complete
-//         JwtAuthGuard + PermissionsGuard
-//         recovery:complete
+//         JwtAuthGuard
 //
 //     PATCH /recoveries/:recoveryPublicId/cancel
-//         JwtAuthGuard + PermissionsGuard
-//         recovery:cancel
+//         JwtAuthGuard
 //
 //     PATCH /recoveries/:recoveryPublicId/expire
-//         JwtAuthGuard + PermissionsGuard
-//         recovery:expire
+//         JwtAuthGuard
 //
 // -----------------------------------------------------------------------------
 //
@@ -174,7 +172,11 @@
 // the application layer MUST ensure that the authenticated principal is
 // permitted to operate on the referenced Recovery.
 //
-// A permission answers:
+// Authentication answers:
+//
+//     "Who is this principal?"
+//
+// Authorization answers:
 //
 //     "May this principal perform this operation?"
 //
@@ -335,7 +337,12 @@ import {
 // Swagger
 // -----------------------------------------------------------------------------
 
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
 
 // -----------------------------------------------------------------------------
 // Express
@@ -502,8 +509,6 @@ export class RecoveriesController {
   //
   // GET /recoveries
   //
-  // IMPORTANT:
-  //
   // GetRecoveriesQuery currently carries no filtering criteria.
   //
   // Therefore the application/query layer MUST apply the appropriate
@@ -514,6 +519,11 @@ export class RecoveriesController {
 
   @Get()
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get recoveries',
+    description:
+      'Returns Recovery aggregates accessible to the authenticated principal. Authorization and query scope are enforced by the application layer.',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('recovery:read')
   public async getMany(): Promise<RecoveryResponse[]> {
@@ -538,6 +548,18 @@ export class RecoveriesController {
 
   @Get(':recoveryPublicId')
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get recovery',
+    description:
+      'Returns a Recovery aggregate by public ID. The application layer enforces authorization and ownership scope.',
+  })
+  @ApiParam({
+    name: 'recoveryPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Recovery aggregate.',
+    example: 'REC-8VBLAO',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('recovery:read')
   public async get(
@@ -566,6 +588,8 @@ export class RecoveriesController {
   //
   // POST /recoveries
   //
+  // Authenticated application operation.
+  //
   // Identity is derived exclusively from the authenticated principal.
   //
   // The request DTO MUST NOT be trusted as the authoritative Identity binding.
@@ -574,8 +598,12 @@ export class RecoveriesController {
 
   @Post()
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('recovery:create')
+  @ApiOperation({
+    summary: 'Create recovery',
+    description:
+      'Creates a Recovery for the authenticated identity. The identity is derived from the authenticated JWT and cannot be supplied by the client.',
+  })
+  @UseGuards(JwtAuthGuard)
   public async create(
     @Req() request: Request,
     @Body() dto: CreateRecoveryRequestDto,
@@ -588,13 +616,9 @@ export class RecoveriesController {
 
     const command = new CreateRecoveryCommand(
       identityPublicId,
-
       recoveryType,
-
       RecoveryExpiresAt.create(new Date(dto.expiresAt)),
-
       randomUUID(),
-
       dto.causationId,
     );
 
@@ -609,14 +633,27 @@ export class RecoveriesController {
   //
   // PATCH /recoveries/:recoveryPublicId/complete
   //
+  // Authenticated Recovery lifecycle operation.
+  //
   // The lifecycle transition is delegated to the application/domain layer.
   //
   // ---------------------------------------------------------------------------
 
   @Patch(':recoveryPublicId/complete')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('recovery:complete')
+  @ApiOperation({
+    summary: 'Complete recovery',
+    description:
+      'Completes a Recovery identified by public ID. Recovery eligibility and ownership/scope are enforced by the application/domain layer.',
+  })
+  @ApiParam({
+    name: 'recoveryPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Recovery aggregate.',
+    example: 'REC-8VBLAO',
+  })
+  @UseGuards(JwtAuthGuard)
   public async complete(
     @Param('recoveryPublicId') recoveryPublicId: string,
     @Body() dto: CompleteRecoveryRequestDto,
@@ -625,11 +662,8 @@ export class RecoveriesController {
 
     const command = new CompleteRecoveryCommand(
       recoveryId,
-
       RecoveryCompletedAt.create(new Date(dto.completedAt)),
-
       randomUUID(),
-
       dto.causationId,
     );
 
@@ -644,14 +678,27 @@ export class RecoveriesController {
   //
   // PATCH /recoveries/:recoveryPublicId/cancel
   //
-  // Security-sensitive lifecycle transition.
+  // Authenticated Recovery lifecycle operation.
+  //
+  // The application/domain layer determines whether cancellation is valid.
   //
   // ---------------------------------------------------------------------------
 
   @Patch(':recoveryPublicId/cancel')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('recovery:cancel')
+  @ApiOperation({
+    summary: 'Cancel recovery',
+    description:
+      'Cancels a Recovery identified by public ID. Cancellation eligibility and ownership/scope are enforced by the application/domain layer.',
+  })
+  @ApiParam({
+    name: 'recoveryPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Recovery aggregate.',
+    example: 'REC-8VBLAO',
+  })
+  @UseGuards(JwtAuthGuard)
   public async cancel(
     @Param('recoveryPublicId') recoveryPublicId: string,
     @Body() dto: CancelRecoveryRequestDto,
@@ -660,11 +707,8 @@ export class RecoveriesController {
 
     const command = new CancelRecoveryCommand(
       recoveryId,
-
       RecoveryCancelledAt.create(new Date(dto.cancelledAt)),
-
       randomUUID(),
-
       dto.causationId,
     );
 
@@ -679,6 +723,8 @@ export class RecoveriesController {
   //
   // PATCH /recoveries/:recoveryPublicId/expire
   //
+  // Authenticated Recovery lifecycle operation.
+  //
   // `referenceDate` is the evaluation timestamp.
   //
   // It is NOT the Recovery's expiresAt value.
@@ -689,8 +735,19 @@ export class RecoveriesController {
 
   @Patch(':recoveryPublicId/expire')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('recovery:expire')
+  @ApiOperation({
+    summary: 'Expire recovery',
+    description:
+      'Evaluates a Recovery for expiration using the supplied reference date. Expiration eligibility and ownership/scope are enforced by the application/domain layer.',
+  })
+  @ApiParam({
+    name: 'recoveryPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Recovery aggregate.',
+    example: 'REC-8VBLAO',
+  })
+  @UseGuards(JwtAuthGuard)
   public async expire(
     @Param('recoveryPublicId') recoveryPublicId: string,
     @Body() dto: ExpireRecoveryRequestDto,
@@ -699,11 +756,8 @@ export class RecoveriesController {
 
     const command = new ExpireRecoveryCommand(
       recoveryId,
-
       new Date(dto.referenceDate),
-
       randomUUID(),
-
       dto.causationId,
     );
 

@@ -4,21 +4,26 @@
 //
 // Central composition root for the application.
 //
-// The AppModule is responsible for composing:
+// AppModule is responsible only for composing:
 //
-// - infrastructure;
-// - bounded contexts / domains.
+// - cross-cutting infrastructure modules;
+// - bounded-context / domain modules.
 //
-// Domain modules own their application workflows, domain behavior,
-// persistence contracts, and presentation adapters.
+// AppModule does not implement application behavior.
 //
-// Infrastructure modules provide cross-cutting technical capabilities such as:
+// Each domain module owns its own:
 //
-// - database access;
-// - domain event infrastructure;
-// - logging;
-// - security;
-// - HTTP exception handling and transport infrastructure.
+// - domain model;
+// - aggregates and entities;
+// - value objects;
+// - application commands and queries;
+// - handlers;
+// - repository abstractions;
+// - infrastructure adapters;
+// - presentation adapters.
+//
+// Cross-cutting infrastructure modules provide technical capabilities shared
+// across the application.
 //
 // -----------------------------------------------------------------------------
 //
@@ -36,7 +41,7 @@
 // └── Winston logging infrastructure
 //
 // SecurityModule
-// └── Authentication/security infrastructure
+// └── Authentication / authorization security infrastructure
 //
 // HttpModule
 // ├── GlobalExceptionFilter
@@ -47,20 +52,26 @@
 // Bounded contexts:
 //
 // IdentityModule
-// └── Identity, Verification, Role, Permission, RolePermission
+// └── Identity
+//     ├── Identity
+//     ├── Verification
+//     ├── Role
+//     ├── Permission
+//     └── RolePermission
 //
 // AuthModule
-// ├── Authentication
-// ├── Session
-// ├── Device
-// ├── Recovery
-// └── OTP Challenge
+// └── Authentication
+//     ├── Authentication
+//     ├── Session
+//     ├── Device
+//     ├── Recovery
+//     └── OTP Challenge
 //
 // AssetsModule
 // └── Asset management
 //
 // SocialModule
-// └── Social/community capabilities
+// └── Social / community capabilities
 //
 // TrustModule
 // └── Trust and reputation capabilities
@@ -86,35 +97,72 @@
 // FinancialModule
 // └── Financial capabilities
 //
+// AccountingModule
+// └── Accounting capabilities
+//     ├── Accounting Account
+//     ├── Accounting Period
+//     └── Accounting Journal
+//
 // -----------------------------------------------------------------------------
 //
 // Composition:
 //
 //                              AppModule
 //                                  │
-//                   ┌──────────────┴──────────────┐
-//                   │                             │
-//             Infrastructure                  Domains
-//                   │                             │
-//        ┌──────────┼──────────┐          ┌───────┼────────┐
-//        │          │          │          │       │        │
-//     Prisma     Events     Logging     Identity  Auth    Assets
-//        │          │          │
-//     Security      │       HttpModule
-//                             │
-//                  GlobalExceptionFilter
-//                             │
-//             DomainExceptionHttpStatusMapper
-//                                  │
-//                                  ├── Social
-//                                  ├── Trust
-//                                  ├── Journey
-//                                  ├── JourneyDemand
-//                                  ├── JourneyBooking
-//                                  ├── JourneyBoarding
-//                                  ├── JourneyCompletion
-//                                  ├── Commercial
-//                                  └── Financial
+//              ┌───────────────────┴───────────────────┐
+//              │                                       │
+//        Infrastructure                            Domains
+//              │                                       │
+//      ┌───────┼────────┐                    ┌─────────┼──────────────┐
+//      │       │        │                    │         │              │
+//   Prisma   Events   Logging             Identity    Auth          Assets
+//      │       │        │
+//   Security  │      HttpModule
+//                         │
+//                 GlobalExceptionFilter
+//                         │
+//              DomainExceptionHttpStatusMapper
+//                         │
+//                         ├── Social
+//                         ├── Trust
+//                         ├── Journey
+//                         ├── JourneyDemand
+//                         ├── JourneyBooking
+//                         ├── JourneyBoarding
+//                         ├── JourneyCompletion
+//                         ├── Commercial
+//                         ├── Financial
+//                         └── Accounting
+//
+// -----------------------------------------------------------------------------
+//
+// Dependency composition:
+//
+// AppModule
+//     │
+//     ├── Infrastructure modules
+//     │      │
+//     │      ├── PrismaModule
+//     │      ├── EventsModule
+//     │      ├── LoggingModule
+//     │      ├── SecurityModule
+//     │      └── HttpModule
+//     │
+//     └── Domain modules
+//            │
+//            ├── IdentityModule
+//            ├── AuthModule
+//            ├── AssetsModule
+//            ├── SocialModule
+//            ├── TrustModule
+//            ├── JourneyModule
+//            ├── JourneyDemandModule
+//            ├── JourneyBookingModule
+//            ├── JourneyBoardingModule
+//            ├── JourneyCompletionModule
+//            ├── CommercialModule
+//            ├── FinancialModule
+//            └── AccountingModule
 //
 // -----------------------------------------------------------------------------
 //
@@ -122,18 +170,19 @@
 //
 // AppModule contains composition only.
 //
-// It does not contain:
+// It does NOT contain:
 //
 // - domain business rules;
 // - application use-case logic;
+// - command handlers;
+// - query handlers;
 // - repository implementations;
 // - controller logic;
+// - persistence logic;
+// - storage logic;
 // - HTTP exception mapping logic.
 //
 // Those responsibilities remain inside their respective modules.
-//
-// HTTP exception translation belongs to infrastructure because it translates
-// domain/application failures into transport-specific HTTP responses.
 //
 // -----------------------------------------------------------------------------
 //
@@ -150,61 +199,169 @@
 //       ▼
 // HTTP response
 //
+// The HTTP translation mechanism belongs to HttpModule, not AppModule.
+//
+// AppModule merely composes HttpModule into the application.
+//
+// -----------------------------------------------------------------------------
+//
+// Infrastructure dependency direction:
+//
+// Domain/Application
+//       │
+//       ▼
+// Infrastructure abstractions / tokens
+//       │
+//       ▼
+// Infrastructure implementations
+//
+// AppModule does not manually wire individual repositories or services.
+// Each bounded context owns its internal dependency-injection composition.
+//
+// -----------------------------------------------------------------------------
+//
+// Module boundary:
+//
+// AppModule should remain intentionally thin.
+//
+// It should contain:
+//
+// - imports;
+//
+// and should normally contain no:
+//
+// - controllers;
+// - providers;
+// - exports.
+//
+// Individual modules are responsible for exposing only the capabilities that
+// other modules legitimately need.
+//
 // -----------------------------------------------------------------------------
 
 import { Module } from '@nestjs/common';
 
-// -----------------------------------------------------------------------------
-// Domains
-// -----------------------------------------------------------------------------
-
-import { IdentityModule } from './domains/identity/identity.module';
-
-import { AuthModule } from './domains/auth/auth.module';
-
-import { AssetsModule } from './domains/assets/assets.module';
-
-import { SocialModule } from './domains/social/social.module';
-
-import { TrustModule } from './domains/trust/trust.module';
-
-import { JourneyModule } from './domains/journey/journey.module';
-
-import { JourneyDemandModule } from './domains/journey-demand/journey-demand.module';
-
-import { JourneyBookingModule } from './domains/journey-booking/journey-booking.module';
-
-import { JourneyBoardingModule } from './domains/journey-boarding/journey-boarding.module';
-
-import { JourneyCompletionModule } from './domains/journey-completion/journey-completion.module';
-
-import { CommercialModule } from './domains/commercial/commercial.module';
-
-import { FinancialModule } from './domains/financial/financial.module';
-
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Infrastructure
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Database
 // -----------------------------------------------------------------------------
 
 import { PrismaModule } from './infrastructure/database/prisma/prisma.module';
 
+// -----------------------------------------------------------------------------
+// Domain Events
+// -----------------------------------------------------------------------------
+
 import { EventsModule } from './infrastructure/events/events.module';
+
+// -----------------------------------------------------------------------------
+// Logging
+// -----------------------------------------------------------------------------
 
 import { LoggingModule } from './infrastructure/logging/winston/logging.module';
 
+// -----------------------------------------------------------------------------
+// Security
+// -----------------------------------------------------------------------------
+
 import { SecurityModule } from './infrastructure/security/security.module';
+
+// -----------------------------------------------------------------------------
+// HTTP
+// -----------------------------------------------------------------------------
 
 import { HttpModule } from './infrastructure/http/http.module';
 
 // =============================================================================
-// Module
+// Domains
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Identity
+// -----------------------------------------------------------------------------
+
+import { IdentityModule } from './domains/identity/identity.module';
+
+// -----------------------------------------------------------------------------
+// Authentication
+// -----------------------------------------------------------------------------
+
+import { AuthModule } from './domains/auth/auth.module';
+
+// -----------------------------------------------------------------------------
+// Assets
+// -----------------------------------------------------------------------------
+
+import { AssetsModule } from './domains/assets/assets.module';
+
+// -----------------------------------------------------------------------------
+// Social
+// -----------------------------------------------------------------------------
+
+import { SocialModule } from './domains/social/social.module';
+
+// -----------------------------------------------------------------------------
+// Trust
+// -----------------------------------------------------------------------------
+
+import { TrustModule } from './domains/trust/trust.module';
+
+// -----------------------------------------------------------------------------
+// Journey
+// -----------------------------------------------------------------------------
+
+import { JourneyModule } from './domains/journey/journey.module';
+
+// -----------------------------------------------------------------------------
+// Journey Demand
+// -----------------------------------------------------------------------------
+
+import { JourneyDemandModule } from './domains/journey-demand/journey-demand.module';
+
+// -----------------------------------------------------------------------------
+// Journey Booking
+// -----------------------------------------------------------------------------
+
+import { JourneyBookingModule } from './domains/journey-booking/journey-booking.module';
+
+// -----------------------------------------------------------------------------
+// Journey Boarding
+// -----------------------------------------------------------------------------
+
+import { JourneyBoardingModule } from './domains/journey-boarding/journey-boarding.module';
+
+// -----------------------------------------------------------------------------
+// Journey Completion
+// -----------------------------------------------------------------------------
+
+import { JourneyCompletionModule } from './domains/journey-completion/journey-completion.module';
+
+// -----------------------------------------------------------------------------
+// Commercial
+// -----------------------------------------------------------------------------
+
+import { CommercialModule } from './domains/commercial/commercial.module';
+
+// -----------------------------------------------------------------------------
+// Financial
+// -----------------------------------------------------------------------------
+
+import { FinancialModule } from './domains/financial/financial.module';
+
+// -----------------------------------------------------------------------------
+// Accounting
+// -----------------------------------------------------------------------------
+
+import { AccountingModule } from './domains/accounting/accounting.module';
+
+// =============================================================================
+// App Module
 // =============================================================================
 
 @Module({
-  // ===========================================================================
-  // Imports
-  // ===========================================================================
-
   imports: [
     // =========================================================================
     // Infrastructure
@@ -213,11 +370,28 @@ import { HttpModule } from './infrastructure/http/http.module';
     // -------------------------------------------------------------------------
     // Database
     // -------------------------------------------------------------------------
+    //
+    // Provides the application's Prisma infrastructure.
+    //
+    // Domain modules consume Prisma through their own infrastructure adapters.
+    //
+    // -------------------------------------------------------------------------
 
     PrismaModule,
 
     // -------------------------------------------------------------------------
-    // Domain events
+    // Domain Events
+    // -------------------------------------------------------------------------
+    //
+    // Provides shared domain-event infrastructure:
+    //
+    // - EventBus;
+    // - EventStore;
+    // - EventPublisher.
+    //
+    // Individual domains publish their own domain events through the
+    // infrastructure abstraction.
+    //
     // -------------------------------------------------------------------------
 
     EventsModule,
@@ -231,6 +405,10 @@ import { HttpModule } from './infrastructure/http/http.module';
     // -------------------------------------------------------------------------
     // Security
     // -------------------------------------------------------------------------
+    //
+    // Provides cross-cutting authentication and authorization infrastructure.
+    //
+    // -------------------------------------------------------------------------
 
     SecurityModule,
 
@@ -238,17 +416,20 @@ import { HttpModule } from './infrastructure/http/http.module';
     // HTTP
     // -------------------------------------------------------------------------
     //
-    // Provides cross-cutting HTTP infrastructure:
+    // Provides transport-level HTTP infrastructure:
     //
-    // - global exception handling;
-    // - domain exception → HTTP status translation.
+    // - global exception filtering;
+    // - domain/application exception translation;
+    // - HTTP-specific error handling.
+    //
+    // AppModule composes this infrastructure but does not implement it.
     //
     // -------------------------------------------------------------------------
 
     HttpModule,
 
     // =========================================================================
-    // Domains
+    // Bounded Contexts / Domains
     // =========================================================================
 
     // -------------------------------------------------------------------------
@@ -322,12 +503,29 @@ import { HttpModule } from './infrastructure/http/http.module';
     // -------------------------------------------------------------------------
 
     FinancialModule,
+
+    // -------------------------------------------------------------------------
+    // Accounting
+    // -------------------------------------------------------------------------
+    //
+    // Provides the Accounting bounded context:
+    //
+    // - Accounting Account;
+    // - Accounting Period;
+    // - Accounting Journal.
+    //
+    // Accounting owns its own application handlers, repositories,
+    // persistence adapters, and REST controllers.
+    //
+    // -------------------------------------------------------------------------
+
+    AccountingModule,
   ],
 })
 export class AppModule {}
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Default Export
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export default AppModule;

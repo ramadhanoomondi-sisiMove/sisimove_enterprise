@@ -11,6 +11,29 @@
 //
 // -----------------------------------------------------------------------------
 //
+// CONTROLLER ROLE
+// -----------------------------------------------------------------------------
+//
+// Session is security infrastructure rather than a normal SisiMove business
+// resource.
+//
+// Physical-world users do not directly manage Session records through the
+// normal SisiMove application surface.
+//
+// Session administration is therefore an authorized security-management
+// capability.
+//
+// Authentication workflows may create, refresh, revoke, or otherwise manage
+// Sessions through application capabilities directly.
+//
+// This HTTP controller exposes:
+//
+//     1. authorized Session administration;
+//     2. authenticated logout;
+//     3. refresh-token session continuation.
+//
+// -----------------------------------------------------------------------------
+//
 // RESPONSIBILITIES
 // -----------------------------------------------------------------------------
 //
@@ -104,19 +127,30 @@
 //
 // These are deliberately separate concerns.
 //
-// Session lifecycle:
+// Session administration:
 //
-//     logout  → access-token authentication
-//     refresh → refresh-token authentication
+//     JwtAuthGuard
+//     PermissionsGuard
+//     @RequirePermissions(...)
 //
-// Administrative/session-management operations require explicit permissions.
+// Logout:
+//
+//     JwtAuthGuard
+//
+// Refresh:
+//
+//     Refresh Token
+//
+// Logout and refresh do not require Session management permissions because
+// they are part of the authentication/security lifecycle rather than
+// administrative Session management.
 //
 // -----------------------------------------------------------------------------
 //
 // ENDPOINT SECURITY MODEL
 // -----------------------------------------------------------------------------
 //
-// Authorized session-management operations:
+// ADMINISTRATIVE / SECURITY-MANAGEMENT OPERATIONS
 //
 //     GET /sessions/active
 //         JwtAuthGuard + PermissionsGuard
@@ -142,7 +176,7 @@
 //         JwtAuthGuard + PermissionsGuard
 //         session:expire
 //
-// Authentication/session lifecycle operations:
+// AUTHENTICATED SESSION LIFECYCLE
 //
 //     POST /sessions/logout
 //         JwtAuthGuard only
@@ -159,48 +193,12 @@
 //
 // -----------------------------------------------------------------------------
 //
-// TOKEN REUSE DETECTION
-// -----------------------------------------------------------------------------
-//
-// Token reuse detection is NOT exposed as a public Session operation.
-//
-// There must not be an endpoint such as:
-//
-//     POST /sessions/:sessionPublicId/token-reuse
-//
-// Token reuse is a security event produced by the refresh workflow:
-//
-//     refresh request
-//          │
-//          ▼
-//     RefreshSessionHandler
-//          │
-//          ├── validate Session
-//          ├── validate presented refresh token
-//          ├── detect reuse
-//          │
-//          └── rotate token
-//
-// The client must never be able to declare:
-//
-//     "token reuse occurred"
-//
-// through an HTTP endpoint.
-//
-// If a dedicated application command is required internally, it remains an
-// internal security/application capability invoked by the refresh workflow.
-//
-// -----------------------------------------------------------------------------
-//
 // SESSION CREATION
 // -----------------------------------------------------------------------------
 //
-// Normal Session creation occurs as part of successful authentication:
+// Normal Session creation occurs inside successful authentication:
 //
-//     POST /authentications/login
-//                 │
-//                 ▼
-//        AuthenticateLoginHandler
+//     AuthenticateLoginHandler
 //                 │
 //                 ├── resolve Identity
 //                 ├── resolve Authentication
@@ -211,26 +209,28 @@
 //                 ├── establish token family
 //                 └── create Session
 //
+// The authentication workflow should invoke the Session application
+// capability directly rather than making an internal HTTP request to this
+// controller.
+//
 // Therefore:
 //
 //     POST /sessions
 //
-// is NOT the normal login/session-creation path.
-//
-// If retained, it is an explicitly authorized session-provisioning operation.
+// is an explicitly authorized Session-provisioning/management operation.
 //
 // CreateSessionCommand accepts a SessionRefreshTokenHash, not a raw refresh
 // token.
 //
-// Therefore this controller must receive/provide the hashed representation
-// required by the command contract.
+// Therefore this controller must provide the hashed representation required
+// by the command contract.
 //
 // -----------------------------------------------------------------------------
 //
 // LOGOUT
 // -----------------------------------------------------------------------------
 //
-// Logout belongs to the Session boundary.
+// Logout belongs to the Session security lifecycle.
 //
 //     POST /sessions/logout
 //             │
@@ -318,7 +318,8 @@
 //         ↓
 //     refresh is required
 //
-// Therefore an access token cannot be the credential required to refresh itself.
+// Therefore an access token cannot be the credential required to refresh
+// itself.
 //
 // The refresh token is the credential for the refresh workflow.
 //
@@ -357,6 +358,36 @@
 //     sessionPublicId + presented refresh token
 //
 // together.
+//
+// -----------------------------------------------------------------------------
+//
+// TOKEN REUSE DETECTION
+// -----------------------------------------------------------------------------
+//
+// Token reuse detection is NOT exposed as a public Session operation.
+//
+// There must not be an endpoint such as:
+//
+//     POST /sessions/:sessionPublicId/token-reuse
+//
+// Token reuse is a security event produced by the refresh workflow.
+//
+//     refresh request
+//          │
+//          ▼
+//     RefreshSessionHandler
+//          │
+//          ├── validate Session
+//          ├── validate presented refresh token
+//          ├── detect reuse
+//          │
+//          └── rotate token
+//
+// The client must never be able to declare:
+//
+//     "token reuse occurred"
+//
+// through an HTTP endpoint.
 //
 // -----------------------------------------------------------------------------
 //
@@ -430,7 +461,16 @@
 // AUTHORIZATION BOUNDARY
 // -----------------------------------------------------------------------------
 //
-// The controller does not define authorization policy.
+// Administrative Session operations are protected through the authorization
+// layer:
+//
+//     JwtAuthGuard
+//          │
+//          ▼
+//     PermissionsGuard
+//          │
+//          ▼
+//     @RequirePermissions(...)
 //
 // Authorization remains outside the Session domain.
 //
@@ -497,7 +537,7 @@ import {
 // Swagger
 // -----------------------------------------------------------------------------
 
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 // -----------------------------------------------------------------------------
 // Express
@@ -613,12 +653,6 @@ import { SessionResponseMapper } from '../mappers/session.response.mapper';
 // Types
 // =============================================================================
 
-/**
- * Request-scoped authenticated principal supplied by JwtStrategy.
- *
- * This is intentionally limited to the claims required by Session HTTP
- * operations.
- */
 interface AuthenticatedSessionPrincipal {
   readonly identityPublicId?: unknown;
   readonly sessionPublicId?: unknown;
@@ -632,6 +666,7 @@ interface AuthenticatedSessionPrincipal {
 @Controller('sessions')
 export class SessionsController {
   // ===========================================================================
+
   // Constructor
   // ===========================================================================
 
@@ -649,12 +684,6 @@ export class SessionsController {
     // -------------------------------------------------------------------------
     // Refresh Session
     // -------------------------------------------------------------------------
-    //
-    // IMPORTANT:
-    //
-    // RefreshSessionHandler returns RefreshSessionResult rather than
-    // SessionAggregate because refresh issues new credentials.
-    //
 
     @Inject(AUTH_TOKENS.COMMAND_HANDLERS.REFRESH_SESSION)
     private readonly refreshSessionHandler: CommandHandler<
@@ -714,6 +743,7 @@ export class SessionsController {
   ) {}
 
   // ===========================================================================
+
   // Queries
   // ===========================================================================
 
@@ -723,6 +753,11 @@ export class SessionsController {
 
   @Get('active')
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'List active sessions',
+    description:
+      'Returns active sessions for the authenticated identity. This is an authorized Session security-management operation.',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('session:read')
   public async getActive(@Req() request: Request): Promise<SessionResponse[]> {
@@ -743,6 +778,11 @@ export class SessionsController {
 
   @Get(':sessionPublicId')
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get session',
+    description:
+      'Retrieves a Session by public ID. This is an authorized Session security-management operation.',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('session:read')
   public async get(
@@ -765,6 +805,11 @@ export class SessionsController {
 
   @Get()
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'List sessions',
+    description:
+      'Returns sessions according to the authorized Session-management query. Access requires the session:read permission.',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('session:read')
   public async getMany(
@@ -785,76 +830,39 @@ export class SessionsController {
   }
 
   // ===========================================================================
-  // Session Commands
+
+  // Administrative / Security Management Commands
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Create Session
   // ---------------------------------------------------------------------------
-  //
-  // POST /sessions
-  //
-  // This endpoint is explicitly authorized session provisioning.
-  //
-  // CreateSessionCommand requires:
-  //
-  //     refreshTokenHash: SessionRefreshTokenHash
-  //
-  // Therefore the DTO provides the already-hashed representation.
-  //
-  // A raw refresh token MUST NOT be passed to this command.
-  //
-  // ---------------------------------------------------------------------------
 
   @Post()
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Create session',
+    description:
+      'Creates a Session through an explicitly authorized Session-management operation. Normal Session creation should occur inside the authentication application workflow.',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('session:create')
   public async create(
     @Body() dto: CreateSessionRequestDto,
   ): Promise<SessionResponse> {
     const command = new CreateSessionCommand({
-      // -----------------------------------------------------------------------
-      // Identity
-      // -----------------------------------------------------------------------
-
       identityPublicId: new SessionIdentityPublicId(dto.identityPublicId),
-
-      // -----------------------------------------------------------------------
-      // Device
-      // -----------------------------------------------------------------------
-      //
-      // With exactOptionalPropertyTypes enabled, the optional property is
-      // explicitly represented in the command props contract.
-      //
 
       devicePublicId:
         dto.devicePublicId !== undefined
           ? new SessionDevicePublicId(dto.devicePublicId)
           : undefined,
 
-      // -----------------------------------------------------------------------
-      // Refresh Token Hash
-      // -----------------------------------------------------------------------
-      //
-      // This is already the persisted security representation.
-      //
-      // The controller does NOT hash anything here.
-      //
-
       refreshTokenHash: SessionRefreshTokenHash.create(dto.refreshTokenHash),
-
-      // -----------------------------------------------------------------------
-      // Token Family
-      // -----------------------------------------------------------------------
 
       tokenFamilyPublicId: new SessionTokenFamilyPublicId(
         dto.tokenFamilyPublicId,
       ),
-
-      // -----------------------------------------------------------------------
-      // Request Context
-      // -----------------------------------------------------------------------
 
       ipAddress:
         dto.ipAddress !== undefined
@@ -873,10 +881,6 @@ export class SessionsController {
 
       city: dto.city !== undefined ? SessionCity.create(dto.city) : undefined,
 
-      // -----------------------------------------------------------------------
-      // Session Timestamps
-      // -----------------------------------------------------------------------
-
       authenticatedAt: SessionAuthenticatedAt.create(
         new Date(dto.authenticatedAt),
       ),
@@ -887,15 +891,7 @@ export class SessionsController {
 
       expiresAt: SessionExpiresAt.create(new Date(dto.expiresAt)),
 
-      // -----------------------------------------------------------------------
-      // Correlation
-      // -----------------------------------------------------------------------
-
       correlationId: randomUUID(),
-
-      // -----------------------------------------------------------------------
-      // Causation
-      // -----------------------------------------------------------------------
 
       ...(dto.causationId !== undefined
         ? {
@@ -910,7 +906,8 @@ export class SessionsController {
   }
 
   // ===========================================================================
-  // Authentication / Session Lifecycle
+
+  // Authenticated Session Lifecycle
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
@@ -919,6 +916,11 @@ export class SessionsController {
 
   @Post('logout')
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Log out',
+    description:
+      'Revokes the Session associated with the authenticated access token. The client does not provide a Session public ID or revocation reason.',
+  })
   @UseGuards(JwtAuthGuard)
   public async logout(@Req() request: Request): Promise<{ success: true }> {
     const sessionPublicId = this.getAuthenticatedSessionPublicId(request);
@@ -940,27 +942,13 @@ export class SessionsController {
   // ---------------------------------------------------------------------------
   // Refresh Session
   // ---------------------------------------------------------------------------
-  //
-  // POST /sessions/:sessionPublicId/refresh
-  //
-  // Refresh uses the refresh credential rather than the access JWT.
-  //
-  // The raw refresh token is forwarded exactly as received.
-  //
-  // The handler:
-  //
-  // - validates the Session;
-  // - compares the presented token;
-  // - resolves Authentication;
-  // - generates the replacement token;
-  // - hashes the replacement;
-  // - rotates the Session hash;
-  // - issues the replacement access token;
-  // - persists the Session.
-  //
-  // ---------------------------------------------------------------------------
 
   @Post(':sessionPublicId/refresh')
+  @ApiOperation({
+    summary: 'Refresh session',
+    description:
+      'Refreshes an authenticated Session using its refresh-token credential. This endpoint does not use the access-token JWT or Session-management permissions.',
+  })
   public async refresh(
     @Param('sessionPublicId') sessionPublicId: string,
     @Body() dto: RefreshSessionRequestDto,
@@ -968,33 +956,30 @@ export class SessionsController {
     const command = new RefreshSessionCommand(
       new SessionPublicId(sessionPublicId),
 
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
       // RAW REFRESH TOKEN
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
       //
-      // Preserve the credential exactly as supplied.
-      //
-      // Do NOT trim, normalize, hash, decode, or wrap it in
-      // SessionRefreshTokenHash.
+      // Preserve exactly as supplied.
       //
 
       dto.refreshToken,
 
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
       // Last Activity
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
 
       SessionLastActivityAt.create(new Date(dto.lastActivityAt)),
 
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
       // Correlation
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
 
       randomUUID(),
 
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
       // Causation
-      // -----------------------------------------------------------------------
+      // ---------------------------------------------------------------------
 
       ...(dto.causationId !== undefined ? [dto.causationId] : []),
     );
@@ -1003,6 +988,7 @@ export class SessionsController {
   }
 
   // ===========================================================================
+
   // Authorized Session Management
   // ===========================================================================
 
@@ -1012,6 +998,11 @@ export class SessionsController {
 
   @Patch(':sessionPublicId/revoke')
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Revoke session',
+    description:
+      'Revokes a Session through an authorized security-management operation.',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('session:revoke')
   public async revoke(
@@ -1043,6 +1034,11 @@ export class SessionsController {
 
   @Patch(':sessionPublicId/expire')
   @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Expire session',
+    description:
+      'Expires a Session through an authorized security-management operation.',
+  })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('session:expire')
   public async expire(
@@ -1065,6 +1061,7 @@ export class SessionsController {
   }
 
   // ===========================================================================
+
   // Private Security Context Helpers
   // ===========================================================================
 

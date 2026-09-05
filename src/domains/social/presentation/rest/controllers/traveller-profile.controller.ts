@@ -14,7 +14,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 import {
   JwtAuthGuard,
@@ -109,11 +109,54 @@ import {
   type TravellerProfileCorridorResponse,
 } from '../mappers';
 
-// -----------------------------------------------------------------------------
-// Controller
-// -----------------------------------------------------------------------------
+// =============================================================================
+// Traveller Profile — Administrative HTTP Controller
+// =============================================================================
+//
+// This controller is NOT a public/self-service Traveller Profile API.
+//
+// It exposes Traveller Profile management capabilities to authenticated
+// administrators and authorized operators.
+//
+// Security model:
+//
+//   Access Token
+//        ↓
+//   JwtAuthGuard
+//        ↓
+//   PermissionsGuard
+//        ↓
+//   Required traveller-profile permission
+//        ↓
+//   Application Command / Query Handler
+//        ↓
+//   TravellerProfileAggregate
+//
+// Responsibilities:
+//
+// - HTTP transport;
+// - DTO binding;
+// - command/query construction;
+// - dispatching application handlers;
+// - mapping application/domain results to HTTP responses;
+// - declaring authorization requirements.
+//
+// The controller contains no business rules.
+//
+// Domain behavior remains in:
+//
+// - TravellerProfileAggregate;
+// - TravellerProfilePreferencesEntity;
+// - TravellerProfileCorridorEntity;
+// - application command/query handlers.
+//
+// Authorization is enforced through the authentication and permission
+// infrastructure.
+//
+// =============================================================================
 
 @ApiTags('Traveller Profiles')
+@ApiBearerAuth('access-token')
 @Controller('traveller-profiles')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class TravellerProfileController {

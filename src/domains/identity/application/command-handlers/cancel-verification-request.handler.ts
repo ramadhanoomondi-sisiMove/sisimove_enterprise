@@ -31,7 +31,9 @@
 // - validates the command;
 // - resolves the Verification aggregate through its owning Identity;
 // - invokes VerificationAggregate.cancelRequest();
-// - persists the complete Verification aggregate.
+// - resolves the updated aggregate-owned VerificationRequest;
+// - persists the complete Verification aggregate;
+// - returns the cancelled VerificationRequest for application response mapping.
 //
 // The handler does NOT:
 //
@@ -86,10 +88,13 @@
 //              └── VerificationRequest -> CANCELLED
 //              │
 //              ▼
+//      resolve cancelled request
+//              │
+//              ▼
 // verificationRepository.save()
 //              │
 //              ▼
-//      VerificationAggregate
+// VerificationRequestEntity
 //
 // -----------------------------------------------------------------------------
 //
@@ -140,6 +145,12 @@ import { IDENTITY_TOKENS } from '../identity.tokens';
 import type { CancelVerificationRequestCommand } from '../commands/cancel-verification-request.command';
 
 // -----------------------------------------------------------------------------
+// Domain
+// -----------------------------------------------------------------------------
+
+import type { VerificationRequestEntity } from '../../domain/entities/verification-request.entity';
+
+// -----------------------------------------------------------------------------
 // Repository
 // -----------------------------------------------------------------------------
 
@@ -166,13 +177,20 @@ import { VerificationInvariantException } from '../../domain/exceptions/verifica
  *       ↓
  *     aggregate.cancelRequest()
  *       ↓
+ *     resolve cancelled request
+ *       ↓
  *     aggregate persistence
+ *       ↓
+ *     cancelled VerificationRequestEntity
  *
  * All request lifecycle rules remain inside VerificationAggregate and
  * VerificationRequestEntity.
  */
 @Injectable()
-export class CancelVerificationRequestHandler implements CommandHandler<CancelVerificationRequestCommand> {
+export class CancelVerificationRequestHandler implements CommandHandler<
+  CancelVerificationRequestCommand,
+  VerificationRequestEntity
+> {
   // ===========================================================================
   // Constructor
   // ===========================================================================
@@ -193,14 +211,15 @@ export class CancelVerificationRequestHandler implements CommandHandler<CancelVe
    *
    * - transitions the requested VerificationRequest to CANCELLED;
    * - records VerificationRequestCancelledEvent;
-   * - persists the updated Verification aggregate.
+   * - persists the updated Verification aggregate;
+   * - returns the cancelled aggregate-owned VerificationRequest.
    *
    * No reviewer or rejection reason is recorded because cancellation is not
    * a review outcome.
    */
   public async execute(
     command: CancelVerificationRequestCommand,
-  ): Promise<void> {
+  ): Promise<VerificationRequestEntity> {
     // -------------------------------------------------------------------------
     // 1. Command guard
     // -------------------------------------------------------------------------
@@ -275,7 +294,25 @@ export class CancelVerificationRequestHandler implements CommandHandler<CancelVe
     );
 
     // -------------------------------------------------------------------------
-    // 6. Persist aggregate
+    // 6. Resolve the cancelled aggregate-owned request
+    // -------------------------------------------------------------------------
+    //
+    // The request must be obtained from the aggregate after cancellation so the
+    // returned entity reflects the authoritative post-transition state.
+    // -------------------------------------------------------------------------
+
+    const cancelledRequest = aggregate.verification.requests.find((request) =>
+      request.publicId.equals(command.requestPublicId),
+    );
+
+    if (cancelledRequest === undefined) {
+      throw new VerificationInvariantException(
+        `Verification request ${command.requestPublicId.value} was not found after cancellation.`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // 7. Persist aggregate
     // -------------------------------------------------------------------------
     //
     // VerificationAggregate remains the unit of persistence.
@@ -285,6 +322,16 @@ export class CancelVerificationRequestHandler implements CommandHandler<CancelVe
     // -------------------------------------------------------------------------
 
     await this.verificationRepository.save(aggregate);
+
+    // -------------------------------------------------------------------------
+    // 8. Return cancelled request
+    // -------------------------------------------------------------------------
+    //
+    // Returning the aggregate-owned entity allows the presentation layer to map
+    // the request response without attempting to map undefined.
+    // -------------------------------------------------------------------------
+
+    return cancelledRequest;
   }
 }
 

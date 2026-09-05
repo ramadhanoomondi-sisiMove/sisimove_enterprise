@@ -35,7 +35,7 @@ export * from './revoke-verification.request.dto';
 // -----------------------------------------------------------------------------
 // Verification Request
 // -----------------------------------------------------------------------------
-
+export * from './submit-verification-request.dto';
 export * from './create-verification-request.request.dto';
 export * from './approve-verification-request.request.dto';
 export * from './reject-verification-request.request.dto';

@@ -13,7 +13,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 import {
   JwtAuthGuard,
@@ -134,11 +134,50 @@ import {
   type TrustEventResponse,
 } from '../mappers/trust-profile-response.mapper';
 
-// -----------------------------------------------------------------------------
-// Controller
-// -----------------------------------------------------------------------------
+// =============================================================================
+// Trust Profile — Administrative HTTP Controller
+// =============================================================================
+//
+// This controller is NOT a public/self-service Trust Profile API.
+//
+// It exposes Trust Profile management capabilities for authenticated
+// administrators and authorized operators.
+//
+// Security model:
+//
+//   JWT authentication
+//        ↓
+//   PermissionsGuard
+//        ↓
+//   Required trust-* permission
+//        ↓
+//   Application command/query handler
+//
+// Responsibilities:
+//
+// - HTTP transport;
+// - DTO binding;
+// - command/query construction;
+// - dispatching application handlers;
+// - mapping domain results to HTTP responses;
+// - declaring authorization requirements.
+//
+// The controller contains no business rules.
+//
+// Domain behavior remains in:
+// - TrustProfileAggregate;
+// - TrustRatingEntity;
+// - TrustReviewEntity;
+// - TrustProfileBadgeEntity;
+// - TrustEventEntity.
+//
+// Authorization is expressed through permissions and enforced by the
+// authentication/authorization infrastructure.
+//
+// =============================================================================
 
 @ApiTags('Trust Profiles')
+@ApiBearerAuth('access-token')
 @Controller('trust-profiles')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class TrustProfileController {

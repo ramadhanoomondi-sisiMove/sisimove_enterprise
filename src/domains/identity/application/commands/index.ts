@@ -68,6 +68,8 @@ export { RejectVerificationRequestCommand } from './reject-verification-request.
 
 export { CancelVerificationRequestCommand } from './cancel-verification-request.command';
 
+export { SubmitVerificationRequestCommand } from './submit-verification-request.command';
+
 // =============================================================================
 // ROLE COMMANDS
 // =============================================================================

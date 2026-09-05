@@ -2,7 +2,7 @@
 // Device — HTTP Controller
 // -----------------------------------------------------------------------------
 //
-// REST controller for Device aggregate operations.
+// REST controller for Device aggregate administration and security management.
 //
 // Aggregate:
 //
@@ -48,14 +48,15 @@
 // Security:
 //
 //     JWT authentication;
-//     authorization;
+//     permission authorization;
 //     device ownership;
 //     device lifecycle policy;
 //     trusted-device policy;
 //     device-revocation policy.
 //
-// Security and ownership rules are implemented by the appropriate
-// application/domain services and handlers rather than by this controller.
+// Security, ownership, and Device lifecycle rules are implemented by the
+// appropriate application/domain services and handlers rather than by this
+// controller.
 //
 // -----------------------------------------------------------------------------
 //
@@ -96,6 +97,34 @@
 //
 // -----------------------------------------------------------------------------
 //
+// CONTROLLER ROLE
+// -----------------------------------------------------------------------------
+//
+// Device is security infrastructure rather than a normal SisiMove business
+// resource.
+//
+// Physical-world users do not need direct access to Device management through
+// the normal SisiMove application surface.
+//
+// Device creation and runtime Device activity may occur as part of internal
+// authentication/security application workflows:
+//
+//     Authentication
+//          │
+//          ├── Identity
+//          ├── Device
+//          └── Session
+//
+// This HTTP controller exists for authorized Device administration and security
+// management.
+//
+// Therefore every endpoint requires:
+//
+//     1. JWT authentication;
+//     2. explicit Device permission authorization.
+//
+// -----------------------------------------------------------------------------
+//
 // AUTHENTICATION VS AUTHORIZATION
 // -----------------------------------------------------------------------------
 //
@@ -124,6 +153,8 @@
 //
 // ENDPOINT SECURITY MODEL
 // -----------------------------------------------------------------------------
+//
+// All Device HTTP endpoints are administrative/security-management operations.
 //
 // Query operations:
 //
@@ -160,9 +191,7 @@
 // Authentication and authorization are intentionally declared at the
 // endpoint level rather than at controller level.
 //
-// This prevents a future public endpoint from accidentally inheriting an
-// inappropriate security policy and makes each endpoint's security boundary
-// explicit.
+// This keeps each Device endpoint's security boundary explicit.
 //
 // -----------------------------------------------------------------------------
 //
@@ -178,30 +207,34 @@
 //     PATCH /devices/:devicePublicId/seen
 //     PATCH /devices/:devicePublicId/revoke
 //
-// the application layer MUST ensure that the authenticated principal is
-// permitted to operate on the referenced Device.
+// the application layer MUST enforce the applicable authorization and Device
+// ownership/security policy.
+//
+// For administrative operations, permission authorization determines whether
+// the authenticated principal may invoke the Device capability.
 //
 // Conceptually:
 //
-//     request.user.identityPublicId
-//                 │
-//                 ▼
-//        authenticated Identity
-//                 │
-//                 ▼
-//             Device
-//                 │
-//                 └── identityPublicId
+//     JWT
+//       │
+//       ▼
+// authenticated principal
+//       │
+//       ├── permission authorization
+//       │
+//       └── Device application policy
+//                    │
+//                    ▼
+//                 Device
 //
-// The controller does not implement this ownership rule.
+// The controller does not implement ownership or authorization rules.
 //
 // -----------------------------------------------------------------------------
 //
 // IMPORTANT — IDENTITY BINDING
 // -----------------------------------------------------------------------------
 //
-// Device creation is always performed in the security context of the
-// authenticated Identity.
+// Device creation is bound to the authenticated Identity.
 //
 // Therefore:
 //
@@ -211,7 +244,7 @@
 //
 //     identityPublicId
 //
-// from the client request body.
+// from the request body.
 //
 // Instead:
 //
@@ -226,81 +259,91 @@
 //       ▼
 //     DeviceIdentityPublicId
 //
-// This prevents a caller from attempting to create a Device belonging to
-// another Identity simply by supplying another Identity public ID.
+// This prevents a caller from attempting to create a Device for another
+// Identity by supplying another Identity public ID.
 //
 // -----------------------------------------------------------------------------
 //
 // DEVICE CREATION
 // -----------------------------------------------------------------------------
 //
-// Normal Device creation may occur during authentication:
+// Normal Device creation may occur inside authentication/security workflows:
 //
-//     POST /authentications/login
-//                 │
-//                 ▼
-//        AuthenticateLoginHandler
+//     AuthenticateLoginHandler
 //                 │
 //                 ├── resolve Identity
 //                 ├── resolve Authentication
-//                 ├── verify password
+//                 ├── verify credentials
 //                 ├── establish Device
 //                 └── establish Session
 //
-// Therefore:
-//
-//     POST /devices
-//
-// is an explicit Device-management operation.
-//
-// If Device creation is required as part of authentication, the authentication
-// application workflow should invoke the Device application capability
+// The authentication workflow should invoke the Device application capability
 // directly rather than making an internal HTTP request to this controller.
+//
+// The HTTP POST /devices endpoint exists for authorized Device administration
+// and operational management.
 //
 // -----------------------------------------------------------------------------
 //
 // TRUST DEVICE
 // -----------------------------------------------------------------------------
 //
-// Trusting a Device is a security-sensitive state transition.
+// Trusting a Device is a security-sensitive state transition:
 //
 //     UNTRUSTED
 //         │
 //         ▼
-//     TRUSTED
+//      TRUSTED
 //
-// The client may request the operation, but authorization and Device ownership
-// must be enforced by the application layer.
+// The endpoint requires:
+//
+//     JwtAuthGuard
+//     PermissionsGuard
+//     device:trust
 //
 // The controller only converts:
 //
 //     trustedAt → DeviceTrustedAt
+//
+// The application/domain layer performs the actual state transition and policy
+// validation.
 //
 // -----------------------------------------------------------------------------
 //
 // RECORD DEVICE SEEN
 // -----------------------------------------------------------------------------
 //
-// Recording a Device observation updates the Device's last-seen information.
+// Recording a Device observation updates the Device's last-seen information:
 //
 //     lastSeenAt
 //
+// The endpoint requires:
+//
+//     JwtAuthGuard
+//     PermissionsGuard
+//     device:write
+//
 // This operation does not establish authentication by itself.
 //
-// The authenticated principal and authorization policy remain responsible for
-// determining whether the caller may update the referenced Device.
+// Authentication and authorization remain separate security concerns.
 //
 // -----------------------------------------------------------------------------
 //
 // REVOKE DEVICE
 // -----------------------------------------------------------------------------
 //
-// Revoking a Device is a security-sensitive lifecycle operation.
+// Revoking a Device is a security-sensitive lifecycle operation:
 //
 //     ACTIVE / TRUSTED
 //             │
 //             ▼
 //          REVOKED
+//
+// The endpoint requires:
+//
+//     JwtAuthGuard
+//     PermissionsGuard
+//     device:revoke
 //
 // The controller does not directly mutate the Device aggregate.
 //
@@ -490,6 +533,7 @@ import { DeviceResponseMapper } from '../mappers/device.response.mapper';
 @Controller('devices')
 export class DevicesController {
   // ===========================================================================
+
   // Constructor
   // ===========================================================================
 
@@ -566,6 +610,7 @@ export class DevicesController {
   ) {}
 
   // ===========================================================================
+
   // Queries
   // ===========================================================================
 
@@ -575,12 +620,9 @@ export class DevicesController {
   //
   // GET /devices/active
   //
-  // Returns active Devices belonging to the authenticated Identity.
+  // Returns active Devices for the authenticated Identity.
   //
-  // The Identity is derived exclusively from the authenticated security
-  // principal.
-  //
-  // No identityPublicId is accepted from the request.
+  // This is an authorized Device-management operation.
   //
   // ---------------------------------------------------------------------------
 
@@ -608,8 +650,8 @@ export class DevicesController {
   //
   // The Device public ID identifies the resource.
   //
-  // The application layer MUST verify that the authenticated principal is
-  // authorized to access the referenced Device.
+  // The application layer MUST enforce the applicable authorization and
+  // ownership/security policy.
   //
   // ---------------------------------------------------------------------------
 
@@ -621,19 +663,6 @@ export class DevicesController {
     @Req() request: Request,
     @Param() dto: GetDeviceQueryDto,
   ): Promise<DeviceResponse | null> {
-    // -------------------------------------------------------------------------
-    // Authentication context
-    // -------------------------------------------------------------------------
-    //
-    // Reading the authenticated Identity here intentionally makes the security
-    // context available to the application layer if the query contract supports
-    // ownership-aware lookup.
-    //
-    // If GetDeviceQuery currently accepts only DevicePublicId, ownership must
-    // still be enforced by the handler/application authorization policy.
-    //
-    // -------------------------------------------------------------------------
-
     this.getAuthenticatedIdentityPublicId(request);
 
     const devicePublicId = new DevicePublicId(dto.devicePublicId);
@@ -655,10 +684,10 @@ export class DevicesController {
   //
   // GET /devices
   //
-  // Devices are scoped to the authenticated Identity.
+  // Returns Devices associated with the authenticated Identity.
   //
-  // There is intentionally no query DTO because this endpoint does not expose
-  // client-controlled filtering.
+  // The endpoint remains permission-protected because this controller is an
+  // administrative/security-management surface.
   //
   // ---------------------------------------------------------------------------
 
@@ -679,6 +708,7 @@ export class DevicesController {
   }
 
   // ===========================================================================
+
   // Commands
   // ===========================================================================
 
@@ -688,21 +718,10 @@ export class DevicesController {
   //
   // POST /devices
   //
+  // Device creation is authorized through device:create.
+  //
   // The Identity public identifier is ALWAYS obtained from the authenticated
-  // principal.
-  //
-  // It is NEVER accepted from the request body.
-  //
-  // DTO → Domain mapping:
-  //
-  //     string → DeviceFingerprint
-  //     string → DeviceName
-  //     string → DevicePlatform
-  //     string → DeviceOperatingSystem
-  //     string → DeviceOperatingSystemVersion
-  //     string → DeviceBrowser
-  //     string → DeviceBrowserVersion
-  //     string → DeviceType
+  // security principal and is NEVER accepted from the request body.
   //
   // ---------------------------------------------------------------------------
 
@@ -717,90 +736,38 @@ export class DevicesController {
     const identityPublicId = this.getAuthenticatedIdentityPublicId(request);
 
     const command = new CreateDeviceCommand(
-      // -----------------------------------------------------------------------
-      // Identity
-      // -----------------------------------------------------------------------
-
       identityPublicId,
-
-      // -----------------------------------------------------------------------
-      // Fingerprint
-      // -----------------------------------------------------------------------
 
       DeviceFingerprint.create(dto.fingerprint),
 
-      // -----------------------------------------------------------------------
-      // Name
-      // -----------------------------------------------------------------------
-
       dto.name !== undefined ? DeviceName.create(dto.name) : undefined,
-
-      // -----------------------------------------------------------------------
-      // Platform
-      // -----------------------------------------------------------------------
 
       dto.platform !== undefined
         ? DevicePlatform.create(dto.platform)
         : undefined,
 
-      // -----------------------------------------------------------------------
-      // Operating System
-      // -----------------------------------------------------------------------
-
       dto.operatingSystem !== undefined
         ? DeviceOperatingSystem.create(dto.operatingSystem)
         : undefined,
-
-      // -----------------------------------------------------------------------
-      // Operating System Version
-      // -----------------------------------------------------------------------
 
       dto.operatingSystemVersion !== undefined
         ? DeviceOperatingSystemVersion.create(dto.operatingSystemVersion)
         : undefined,
 
-      // -----------------------------------------------------------------------
-      // Browser
-      // -----------------------------------------------------------------------
-
       dto.browser !== undefined ? DeviceBrowser.create(dto.browser) : undefined,
-
-      // -----------------------------------------------------------------------
-      // Browser Version
-      // -----------------------------------------------------------------------
 
       dto.browserVersion !== undefined
         ? DeviceBrowserVersion.create(dto.browserVersion)
         : undefined,
 
-      // -----------------------------------------------------------------------
-      // Device Type
-      // -----------------------------------------------------------------------
-
       DeviceType.create(dto.deviceType as DeviceTypeValue),
 
-      // -----------------------------------------------------------------------
-      // Correlation
-      // -----------------------------------------------------------------------
-
       randomUUID(),
-
-      // -----------------------------------------------------------------------
-      // Causation
-      // -----------------------------------------------------------------------
 
       dto.causationId,
     );
 
-    // -------------------------------------------------------------------------
-    // Execute
-    // -------------------------------------------------------------------------
-
     const aggregate = await this.createDeviceHandler.execute(command);
-
-    // -------------------------------------------------------------------------
-    // Response
-    // -------------------------------------------------------------------------
 
     return DeviceResponseMapper.toResponse(aggregate);
   }
@@ -813,6 +780,10 @@ export class DevicesController {
   //
   // Security-sensitive Device lifecycle operation.
   //
+  // Authorization:
+  //
+  //     device:trust
+  //
   // ---------------------------------------------------------------------------
 
   @Patch(':devicePublicId/trust')
@@ -824,27 +795,11 @@ export class DevicesController {
     @Body() dto: TrustDeviceRequestDto,
   ): Promise<DeviceResponse> {
     const command = new TrustDeviceCommand(
-      // -----------------------------------------------------------------------
-      // Device public ID
-      // -----------------------------------------------------------------------
-
       new DevicePublicId(devicePublicId),
-
-      // -----------------------------------------------------------------------
-      // Trusted at
-      // -----------------------------------------------------------------------
 
       DeviceTrustedAt.create(new Date(dto.trustedAt)),
 
-      // -----------------------------------------------------------------------
-      // Correlation
-      // -----------------------------------------------------------------------
-
       randomUUID(),
-
-      // -----------------------------------------------------------------------
-      // Causation
-      // -----------------------------------------------------------------------
 
       dto.causationId,
     );
@@ -862,7 +817,11 @@ export class DevicesController {
   //
   // Records the latest observation of the Device.
   //
-  // This endpoint does not authenticate the Device itself. The caller is
+  // Authorization:
+  //
+  //     device:write
+  //
+  // This endpoint does not authenticate the Device itself. The request is
   // authenticated through the access-token security boundary.
   //
   // ---------------------------------------------------------------------------
@@ -876,27 +835,11 @@ export class DevicesController {
     @Body() dto: RecordDeviceSeenRequestDto,
   ): Promise<DeviceResponse> {
     const command = new RecordDeviceSeenCommand(
-      // -----------------------------------------------------------------------
-      // Device public ID
-      // -----------------------------------------------------------------------
-
       new DevicePublicId(devicePublicId),
-
-      // -----------------------------------------------------------------------
-      // Last seen at
-      // -----------------------------------------------------------------------
 
       DeviceLastSeenAt.create(new Date(dto.lastSeenAt)),
 
-      // -----------------------------------------------------------------------
-      // Correlation
-      // -----------------------------------------------------------------------
-
       randomUUID(),
-
-      // -----------------------------------------------------------------------
-      // Causation
-      // -----------------------------------------------------------------------
 
       dto.causationId,
     );
@@ -914,6 +857,10 @@ export class DevicesController {
   //
   // Security-sensitive Device lifecycle operation.
   //
+  // Authorization:
+  //
+  //     device:revoke
+  //
   // ---------------------------------------------------------------------------
 
   @Patch(':devicePublicId/revoke')
@@ -925,27 +872,11 @@ export class DevicesController {
     @Body() dto: RevokeDeviceRequestDto,
   ): Promise<DeviceResponse> {
     const command = new RevokeDeviceCommand(
-      // -----------------------------------------------------------------------
-      // Device public ID
-      // -----------------------------------------------------------------------
-
       new DevicePublicId(devicePublicId),
-
-      // -----------------------------------------------------------------------
-      // Revoked at
-      // -----------------------------------------------------------------------
 
       DeviceRevokedAt.create(new Date(dto.revokedAt)),
 
-      // -----------------------------------------------------------------------
-      // Correlation
-      // -----------------------------------------------------------------------
-
       randomUUID(),
-
-      // -----------------------------------------------------------------------
-      // Causation
-      // -----------------------------------------------------------------------
 
       dto.causationId,
     );
@@ -956,6 +887,7 @@ export class DevicesController {
   }
 
   // ===========================================================================
+
   // Private Helpers
   // ===========================================================================
 
@@ -969,7 +901,7 @@ export class DevicesController {
   //        ↓
   //     identityPublicId
   //
-  // Therefore request.user is already an authenticated security principal.
+  // request.user is therefore already an authenticated security principal.
   //
   // This helper does NOT:
   //
@@ -978,8 +910,8 @@ export class DevicesController {
   // - verify the JWT;
   // - resolve Identity from persistence.
   //
-  // It only validates the shape of the security context supplied by
-  // JwtStrategy and converts it into the Device bounded-context reference.
+  // It only validates the security context supplied by JwtStrategy and converts
+  // the Identity public ID into the Device bounded-context reference.
   //
   // ---------------------------------------------------------------------------
 

@@ -11,35 +11,51 @@
 // └── VerificationEntity
 //     └── VerificationRequestEntity
 //
-// Applicant flow:
+// -----------------------------------------------------------------------------
+//
+// Applicant / service operations:
 //
 // 1. POST   /verifications
 //    Start verification for the authenticated identity.
 //
-// 2. POST   /verifications/:verificationPublicId/requests
-//    Submit a verification request for the authenticated identity's
-//    verification aggregate.
+// 2. POST   /verifications/requests
+//    Submit verification evidence for the authenticated identity.
 //
-// Reviewer flow:
+// 3. PATCH  /verifications/:verificationPublicId/requests/:requestId/cancel
+//    Cancel a pending verification request belonging to the authenticated
+//    identity.
 //
-// 3. PATCH  /verifications/:verificationPublicId/requests/:requestId/approve
-// 4. PATCH  /verifications/:verificationPublicId/requests/:requestId/reject
-// 5. PATCH  /verifications/:verificationPublicId/grant-member
-// 6. PATCH  /verifications/:verificationPublicId/grant-driver
-// 7. PATCH  /verifications/:verificationPublicId/reject
-// 8. PATCH  /verifications/:verificationPublicId/reopen
-// 9. PATCH  /verifications/:verificationPublicId/expire
-// 10. PATCH /verifications/:verificationPublicId/revoke
+// Applicant/service operations require authentication only:
+//
+//     JwtAuthGuard
+//
+// They do NOT require:
+//
+//     PermissionsGuard
+//     @RequirePermissions(...)
+//
+// -----------------------------------------------------------------------------
+//
+// Reviewer operations:
+//
+// Reviewer/query operations remain protected by:
+//
+//     JwtAuthGuard
+//     PermissionsGuard
+//     @RequirePermissions(...)
+//
+// -----------------------------------------------------------------------------
 //
 // Responsibilities:
 //
 // - HTTP transport;
 // - DTO binding and validation;
+// - multipart file binding;
 // - extraction of authenticated identity from JWT security context;
 // - conversion of transport primitives to domain value objects;
 // - generation of application correlation metadata;
 // - dispatching application commands and queries;
-// - mapping domain results to HTTP response models.
+// - mapping application/domain results to HTTP response models.
 //
 // The controller contains NO business rules.
 //
@@ -64,12 +80,14 @@
 // -----------------------------------------------------------------------------
 
 import { randomUUID } from 'node:crypto';
+import { Readable } from 'node:stream';
 
 // -----------------------------------------------------------------------------
 // NestJS
 // -----------------------------------------------------------------------------
 
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -78,16 +96,29 @@ import {
   Patch,
   Post,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 
 import type { Request } from 'express';
+
+import { FileInterceptor } from '@nestjs/platform-express';
+
+import { memoryStorage } from 'multer';
 
 // -----------------------------------------------------------------------------
 // Swagger
 // -----------------------------------------------------------------------------
 
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
 
 // -----------------------------------------------------------------------------
 // Foundation — Security
@@ -123,7 +154,6 @@ import {
   ApproveVerificationRequestCommand,
   CancelVerificationRequestCommand,
   CreateVerificationCommand,
-  CreateVerificationRequestCommand,
   ExpireVerificationCommand,
   GrantDriverVerificationCommand,
   GrantMemberVerificationCommand,
@@ -131,7 +161,14 @@ import {
   RejectVerificationRequestCommand,
   ReopenVerificationCommand,
   RevokeVerificationCommand,
+  SubmitVerificationRequestCommand,
 } from '../../../application/commands';
+
+// -----------------------------------------------------------------------------
+// Application — Command Handler
+// -----------------------------------------------------------------------------
+
+import type { SubmitVerificationRequestHandler } from '../../../application/command-handlers/submit-verification-request.handler';
 
 // -----------------------------------------------------------------------------
 // Application — Queries
@@ -162,7 +199,6 @@ import type { VerificationRequestEntity } from '../../../domain/entities';
 import {
   IdentityPublicId,
   VerificationPublicId,
-  VerificationRequestAssetPublicId,
   VerificationRequestPublicId,
   VerificationRequestType,
 } from '../../../domain/value-objects';
@@ -172,12 +208,12 @@ import {
 // -----------------------------------------------------------------------------
 
 import {
-  CreateVerificationRequestRequestDto,
   GrantDriverVerificationRequestDto,
   GrantMemberVerificationRequestDto,
   RejectVerificationRequestDto,
   RejectVerificationRequestRequestDto,
   RevokeVerificationRequestDto,
+  SubmitVerificationRequestRequestDto,
 } from '../dto/request';
 
 // -----------------------------------------------------------------------------
@@ -209,34 +245,43 @@ import { VerificationResponseMapper } from '../mappers/verification.response.map
 // Authenticated Request
 // =============================================================================
 //
-// JwtAuthGuard populates req.user from the value returned by JwtStrategy.
+// JwtAuthGuard populates req.user from JwtStrategy.
 //
-// The JWT itself contains:
+// JWT:
 //
 //     sub = IdentityPublicId
 //
-// JwtStrategy validates that token and maps:
+// JwtStrategy:
 //
 //     payload.sub
 //          ↓
 //     request.user.identityPublicId
 //
-// Therefore the controller must read:
+// Applicant identity is therefore always derived from the authenticated
+// security context.
 //
-//     req.user.identityPublicId
-//
-// and must NOT read:
-//
-//     req.user.sub
-//
-// The controller trusts only the authenticated security context for the actor
-// identity. Identity must never be accepted from a caller-controlled DTO when
-// it can be obtained from the JWT.
-//
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 interface AuthenticatedRequest extends Request {
   user: AuthenticatedIdentity;
+}
+
+// =============================================================================
+// Uploaded Verification Evidence
+// =============================================================================
+//
+// The HTTP transport layer receives Express/Multer file data.
+//
+// The application layer receives only the primitives required by
+// SubmitVerificationRequestCommand.
+//
+// =============================================================================
+
+interface UploadedVerificationEvidence {
+  readonly buffer: Buffer;
+  readonly mimetype: string;
+  readonly size: number;
+  readonly originalname: string;
 }
 
 // =============================================================================
@@ -298,14 +343,15 @@ export class VerificationsController {
     >,
 
     // -------------------------------------------------------------------------
-    // Verification Request Command Handlers
+    // Verification Request — Submit Orchestrator
     // -------------------------------------------------------------------------
 
-    @Inject(IDENTITY_TOKENS.COMMAND_HANDLERS.CREATE_VERIFICATION_REQUEST)
-    private readonly createVerificationRequestHandler: CommandHandler<
-      CreateVerificationRequestCommand,
-      VerificationRequestEntity
-    >,
+    @Inject(IDENTITY_TOKENS.COMMAND_HANDLERS.SUBMIT_VERIFICATION_REQUEST)
+    private readonly submitVerificationRequestHandler: SubmitVerificationRequestHandler,
+
+    // -------------------------------------------------------------------------
+    // Verification Request — Reviewer / Service Handlers
+    // -------------------------------------------------------------------------
 
     @Inject(IDENTITY_TOKENS.COMMAND_HANDLERS.APPROVE_VERIFICATION_REQUEST)
     private readonly approveVerificationRequestHandler: CommandHandler<
@@ -349,7 +395,7 @@ export class VerificationsController {
   ) {}
 
   // ===========================================================================
-  // Verification Queries
+  // Verification Queries — Reviewer
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
@@ -360,6 +406,13 @@ export class VerificationsController {
   @ApiOperation({
     summary: 'Get a verification',
     description: 'Returns a verification aggregate by its public ID.',
+  })
+  @ApiParam({
+    name: 'verificationPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Verification aggregate.',
+    example: 'VER-8VBLAO',
   })
   @Get(':verificationPublicId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -390,6 +443,13 @@ export class VerificationsController {
     description:
       'Returns all verification requests belonging to the specified verification.',
   })
+  @ApiParam({
+    name: 'verificationPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Verification aggregate.',
+    example: 'VER-8VBLAO',
+  })
   @Get(':verificationPublicId/requests')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('verification-request:read')
@@ -414,6 +474,20 @@ export class VerificationsController {
     summary: 'Get a verification request',
     description:
       'Returns a single verification request belonging to the specified verification.',
+  })
+  @ApiParam({
+    name: 'verificationPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Verification aggregate.',
+    example: 'VER-8VBLAO',
+  })
+  @ApiParam({
+    name: 'verificationRequestPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Verification Request.',
+    example: 'VRQ-XBBJ1OQ',
   })
   @Get(':verificationPublicId/requests/:verificationRequestPublicId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -442,12 +516,19 @@ export class VerificationsController {
   // ---------------------------------------------------------------------------
   // Start Verification
   // ---------------------------------------------------------------------------
+  //
+  // Authentication only.
+  //
+  // No permission is required because this is an applicant/service operation
+  // performed for the authenticated identity.
+  //
+  // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Start verification',
     description:
-      'Creates the verification aggregate for the authenticated identity. This is the first step in the verification flow.',
+      'Creates the verification aggregate for the authenticated identity.',
   })
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -465,6 +546,108 @@ export class VerificationsController {
   }
 
   // ===========================================================================
+  // Applicant — Verification Request
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Submit Verification Evidence
+  // ---------------------------------------------------------------------------
+  //
+  // Primary applicant/service operation.
+  //
+  // Authentication only.
+  //
+  // No verification permission is required.
+  //
+  // Route:
+  //
+  //     POST /verifications/requests
+  //
+  // Request:
+  //
+  //     multipart/form-data
+  //
+  // Fields:
+  //
+  //     type
+  //     file
+  //
+  // The authenticated JWT determines the Identity.
+  //
+  // SubmitVerificationRequestHandler then:
+  //
+  //     Upload Asset
+  //          ↓
+  //     Resolve/Create Verification
+  //          ↓
+  //     Create Verification Request
+  //
+  // ---------------------------------------------------------------------------
+
+  @ApiBearerAuth('access-token')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Submit verification evidence',
+    description:
+      'Uploads verification evidence, creates the Asset, creates the Verification when required, and creates a pending Verification Request for the authenticated identity.',
+  })
+  @ApiBody({
+    description: 'Verification evidence submission.',
+    schema: {
+      type: 'object',
+      required: ['type', 'file'],
+      properties: {
+        type: {
+          type: 'string',
+          enum: ['PROFILE_PHOTO', 'GOVERNMENT_ID', 'DRIVER_LICENSE'],
+          description: 'Type of verification evidence being submitted.',
+        },
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Verification evidence file.',
+        },
+      },
+    },
+  })
+  @Post('requests')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+    }),
+  )
+  public async submitRequest(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: SubmitVerificationRequestRequestDto,
+    @UploadedFile() file: UploadedVerificationEvidence | undefined,
+  ): Promise<VerificationResponse> {
+    if (file === undefined || file === null) {
+      throw new BadRequestException('Verification evidence file is required.');
+    }
+
+    const identityPublicId = new IdentityPublicId(req.user.identityPublicId);
+
+    const type = VerificationRequestType.create(dto.type);
+
+    const content = Readable.from(file.buffer);
+
+    const command = new SubmitVerificationRequestCommand(
+      identityPublicId,
+      type,
+      content,
+      file.mimetype,
+      file.size,
+      file.originalname?.trim() || undefined,
+      randomUUID(),
+    );
+
+    const result = await this.submitVerificationRequestHandler.execute(command);
+
+    return VerificationResponseMapper.toResponse(result.verification);
+  }
+
+  // ===========================================================================
   // Reviewer — Verification
   // ===========================================================================
 
@@ -477,6 +660,13 @@ export class VerificationsController {
     summary: 'Grant member verification',
     description:
       'Grants member verification after a verification request has been reviewed and approved.',
+  })
+  @ApiParam({
+    name: 'verificationPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Verification aggregate.',
+    example: 'VER-8VBLAO',
   })
   @Patch(':verificationPublicId/grant-member')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -512,6 +702,13 @@ export class VerificationsController {
     description:
       'Grants driver verification after a verification request has been reviewed and approved.',
   })
+  @ApiParam({
+    name: 'verificationPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Verification aggregate.',
+    example: 'VER-8VBLAO',
+  })
   @Patch(':verificationPublicId/grant-driver')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('verification:grant-driver')
@@ -545,6 +742,13 @@ export class VerificationsController {
     summary: 'Reject verification',
     description: 'Rejects the verification aggregate after review.',
   })
+  @ApiParam({
+    name: 'verificationPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Verification aggregate.',
+    example: 'VER-8VBLAO',
+  })
   @Patch(':verificationPublicId/reject')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('verification:reject')
@@ -577,6 +781,13 @@ export class VerificationsController {
     description:
       'Reopens a verification that was previously rejected or expired according to domain rules.',
   })
+  @ApiParam({
+    name: 'verificationPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Verification aggregate.',
+    example: 'VER-8VBLAO',
+  })
   @Patch(':verificationPublicId/reopen')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('verification:reopen')
@@ -603,6 +814,13 @@ export class VerificationsController {
     description:
       'Expires a verification according to the application workflow.',
   })
+  @ApiParam({
+    name: 'verificationPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Verification aggregate.',
+    example: 'VER-8VBLAO',
+  })
   @Patch(':verificationPublicId/expire')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('verification:expire')
@@ -628,6 +846,13 @@ export class VerificationsController {
     summary: 'Revoke verification',
     description: 'Revokes an existing verification.',
   })
+  @ApiParam({
+    name: 'verificationPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Verification aggregate.',
+    example: 'VER-8VBLAO',
+  })
   @Patch(':verificationPublicId/revoke')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('verification:revoke')
@@ -650,39 +875,6 @@ export class VerificationsController {
   }
 
   // ===========================================================================
-  // Applicant — Verification Requests
-  // ===========================================================================
-
-  // ---------------------------------------------------------------------------
-  // Create Verification Request
-  // ---------------------------------------------------------------------------
-
-  @ApiBearerAuth('access-token')
-  @ApiOperation({
-    summary: 'Submit verification request',
-    description:
-      'Creates a verification request for the authenticated identity. Start verification first with POST /verifications.',
-  })
-  @Post(':verificationPublicId/requests')
-  @UseGuards(JwtAuthGuard)
-  public async createRequest(
-    @Req() req: AuthenticatedRequest,
-    @Body() dto: CreateVerificationRequestRequestDto,
-  ): Promise<VerificationRequestResponse> {
-    const command = new CreateVerificationRequestCommand(
-      new IdentityPublicId(req.user.identityPublicId),
-      VerificationRequestType.create(dto.type),
-      new VerificationRequestAssetPublicId(dto.assetPublicId),
-      randomUUID(),
-    );
-
-    const request =
-      await this.createVerificationRequestHandler.execute(command);
-
-    return VerificationResponseMapper.requestFromEntity(request);
-  }
-
-  // ===========================================================================
   // Reviewer — Verification Requests
   // ===========================================================================
 
@@ -694,6 +886,20 @@ export class VerificationsController {
   @ApiOperation({
     summary: 'Approve verification request',
     description: 'Approves a verification request after reviewer validation.',
+  })
+  @ApiParam({
+    name: 'verificationPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Verification aggregate.',
+    example: 'VER-8VBLAO',
+  })
+  @ApiParam({
+    name: 'verificationRequestPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Verification Request.',
+    example: 'VRQ-XBBJ1OQ',
   })
   @Patch(':verificationPublicId/requests/:verificationRequestPublicId/approve')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -727,6 +933,20 @@ export class VerificationsController {
     summary: 'Reject verification request',
     description: 'Rejects a verification request after reviewer validation.',
   })
+  @ApiParam({
+    name: 'verificationPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Verification aggregate.',
+    example: 'VER-8VBLAO',
+  })
+  @ApiParam({
+    name: 'verificationRequestPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Verification Request.',
+    example: 'VRQ-XBBJ1OQ',
+  })
   @Patch(':verificationPublicId/requests/:verificationRequestPublicId/reject')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('verification-request:reject')
@@ -755,6 +975,21 @@ export class VerificationsController {
   // ---------------------------------------------------------------------------
   // Cancel Verification Request
   // ---------------------------------------------------------------------------
+  //
+  // Applicant/service operation.
+  //
+  // Authentication only.
+  //
+  // No permission is required.
+  //
+  // The authenticated identity is supplied to the command. The request public
+  // ID is supplied by the route.
+  //
+  // The verificationPublicId remains part of the REST resource hierarchy.
+  // It is intentionally not added to CancelVerificationRequestCommand because
+  // that would change the existing application command contract.
+  //
+  // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -762,10 +997,26 @@ export class VerificationsController {
     description:
       'Cancels a pending verification request belonging to the authenticated identity.',
   })
+  @ApiParam({
+    name: 'verificationPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Verification aggregate.',
+    example: 'VER-8VBLAO',
+  })
+  @ApiParam({
+    name: 'verificationRequestPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Verification Request to cancel.',
+    example: 'VRQ-XBBJ1OQ',
+  })
   @Patch(':verificationPublicId/requests/:verificationRequestPublicId/cancel')
   @UseGuards(JwtAuthGuard)
   public async cancelRequest(
-    @Param('verificationRequestPublicId') verificationRequestPublicId: string,
+    @Param('verificationPublicId') _verificationPublicId: string,
+    @Param('verificationRequestPublicId')
+    verificationRequestPublicId: string,
     @Req() req: AuthenticatedRequest,
   ): Promise<VerificationRequestResponse> {
     const command = new CancelVerificationRequestCommand(
