@@ -103,6 +103,12 @@
 //     ├── Accounting Period
 //     └── Accounting Journal
 //
+// MessagingModule
+// └── Messaging capabilities
+//     ├── Messaging Conversation
+//     ├── Messaging Conversation Participant
+//     └── Messaging Message
+//
 // -----------------------------------------------------------------------------
 //
 // Composition:
@@ -132,7 +138,8 @@
 //                         ├── JourneyCompletion
 //                         ├── Commercial
 //                         ├── Financial
-//                         └── Accounting
+//                         ├── Accounting
+//                         └── Messaging
 //
 // -----------------------------------------------------------------------------
 //
@@ -162,7 +169,8 @@
 //            ├── JourneyCompletionModule
 //            ├── CommercialModule
 //            ├── FinancialModule
-//            └── AccountingModule
+//            ├── AccountingModule
+//            └── MessagingModule
 //
 // -----------------------------------------------------------------------------
 //
@@ -357,6 +365,12 @@ import { FinancialModule } from './domains/financial/financial.module';
 
 import { AccountingModule } from './domains/accounting/accounting.module';
 
+// -----------------------------------------------------------------------------
+// Messaging
+// -----------------------------------------------------------------------------
+
+import { MessagingModule } from './domains/messaging/messaging.module';
+
 // =============================================================================
 // App Module
 // =============================================================================
@@ -520,6 +534,23 @@ import { AccountingModule } from './domains/accounting/accounting.module';
     // -------------------------------------------------------------------------
 
     AccountingModule,
+
+    // -------------------------------------------------------------------------
+    // Messaging
+    // -------------------------------------------------------------------------
+    //
+    // Provides the Messaging bounded context:
+    //
+    // - Messaging Conversation;
+    // - Messaging Conversation Participant;
+    // - Messaging Message.
+    //
+    // Messaging owns its own application handlers, repositories,
+    // persistence adapters, and REST controllers.
+    //
+    // -------------------------------------------------------------------------
+
+    MessagingModule,
   ],
 })
 export class AppModule {}
