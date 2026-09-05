@@ -32,7 +32,7 @@
 // NestJS
 // -----------------------------------------------------------------------------
 
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
@@ -45,6 +45,8 @@ import type { CommandHandler } from '../../../../foundation/kernel/application/c
 // -----------------------------------------------------------------------------
 
 import type { CreateAccountingJournalCommand } from '../commands/create-accounting-journal.command';
+
+import { ACCOUNTING_TOKENS } from '../accounting.tokens';
 
 // -----------------------------------------------------------------------------
 // Accounting — Domain
@@ -66,6 +68,7 @@ export class CreateAccountingJournalHandler implements CommandHandler<
   AccountingJournalAggregate
 > {
   public constructor(
+    @Inject(ACCOUNTING_TOKENS.REPOSITORIES.ACCOUNTING_JOURNAL)
     private readonly accountingJournalRepository: AccountingJournalRepository,
   ) {}
 
