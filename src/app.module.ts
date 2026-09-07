@@ -11,7 +11,7 @@
 //
 // AppModule does not implement application behavior.
 //
-// Each domain module owns its own:
+// Each bounded-context module owns its own:
 //
 // - domain model;
 // - aggregates and entities;
@@ -20,14 +20,16 @@
 // - handlers;
 // - repository abstractions;
 // - infrastructure adapters;
-// - presentation adapters.
+// - presentation adapters;
 //
 // Cross-cutting infrastructure modules provide technical capabilities shared
 // across the application.
 //
 // -----------------------------------------------------------------------------
-//
-// Infrastructure:
+
+// =============================================================================
+// Infrastructure
+// =============================================================================
 //
 // PrismaModule
 // └── Database / Prisma infrastructure
@@ -47,9 +49,10 @@
 // ├── GlobalExceptionFilter
 // └── DomainExceptionHttpStatusMapper
 //
-// -----------------------------------------------------------------------------
+// =============================================================================
 //
-// Bounded contexts:
+// Bounded Contexts
+// =============================================================================
 //
 // IdentityModule
 // └── Identity
@@ -115,9 +118,35 @@
 //     ├── Notification Delivery
 //     └── Notification Preference
 //
+// SupportModule
+// └── Support capabilities
+//     ├── Support Case
+//     ├── Support Case Participant
+//     ├── Support Case Message
+//     ├── Support Case Note
+//     ├── Support Case Evidence
+//     └── Support Case Resolution
+//
 // -----------------------------------------------------------------------------
 //
-// Composition:
+// Support aggregate boundary:
+//
+// SupportCaseAggregate
+// ├── SupportCaseEntity
+// ├── SupportCaseParticipantEntity[]
+// ├── SupportCaseMessageEntity[]
+// ├── SupportCaseNoteEntity[]
+// ├── SupportCaseEvidenceEntity[]
+// └── SupportCaseResolutionEntity?
+//
+// Child entities remain owned by SupportCaseAggregate and are not independently
+// composed by AppModule.
+//
+// -----------------------------------------------------------------------------
+
+// =============================================================================
+// Composition
+// =============================================================================
 //
 //                              AppModule
 //                                  │
@@ -125,9 +154,9 @@
 //              │                                       │
 //        Infrastructure                            Domains
 //              │                                       │
-//      ┌───────┼───────────────┐             ┌─────────┼──────────────┐
-//      │       │       │       │             │         │              │
-//   Prisma  Events  Logging  Security      Identity   Auth          Assets
+//      ┌───────┼───────────────┐             ┌─────────┼───────────────┐
+//      │       │       │       │             │         │               │
+//   Prisma  Events  Logging  Security     Identity   Auth           Assets
 //                              │
 //                         HttpModule
 //                              │
@@ -146,11 +175,14 @@
 //                              ├── Financial
 //                              ├── Accounting
 //                              ├── Messaging
-//                              └── Notification
+//                              ├── Notification
+//                              └── Support
 //
 // -----------------------------------------------------------------------------
-//
-// Dependency composition:
+
+// =============================================================================
+// Dependency Composition
+// =============================================================================
 //
 // AppModule
 //     │
@@ -162,7 +194,7 @@
 //     │      ├── SecurityModule
 //     │      └── HttpModule
 //     │
-//     └── Domain modules
+//     └── Bounded-context modules
 //            │
 //            ├── IdentityModule
 //            ├── AuthModule
@@ -178,11 +210,14 @@
 //            ├── FinancialModule
 //            ├── AccountingModule
 //            ├── MessagingModule
-//            └── NotificationModule
+//            ├── NotificationModule
+//            └── SupportModule
 //
 // -----------------------------------------------------------------------------
-//
-// Dependency direction:
+
+// =============================================================================
+// Dependency Direction
+// =============================================================================
 //
 // AppModule
 //     │
@@ -201,8 +236,10 @@
 // composition.
 //
 // -----------------------------------------------------------------------------
-//
-// IMPORTANT:
+
+// =============================================================================
+// IMPORTANT
+// =============================================================================
 //
 // AppModule contains composition only.
 //
@@ -221,8 +258,10 @@
 // Those responsibilities remain inside their respective modules.
 //
 // -----------------------------------------------------------------------------
-//
-// Exception flow:
+
+// =============================================================================
+// Exception Flow
+// =============================================================================
 //
 // DomainException
 //       │
@@ -240,8 +279,10 @@
 // AppModule merely composes HttpModule into the application.
 //
 // -----------------------------------------------------------------------------
-//
-// Infrastructure dependency direction:
+
+// =============================================================================
+// Infrastructure Dependency Direction
+// =============================================================================
 //
 // Domain/Application
 //       │
@@ -252,11 +293,14 @@
 // Infrastructure implementations
 //
 // AppModule does not manually wire individual repositories or services.
+//
 // Each bounded context owns its internal dependency-injection composition.
 //
 // -----------------------------------------------------------------------------
-//
-// Module boundary:
+
+// =============================================================================
+// Module Boundary
+// =============================================================================
 //
 // AppModule should remain intentionally thin.
 //
@@ -264,7 +308,7 @@
 //
 // - imports;
 //
-// and should normally contain no:
+// and normally contain no:
 //
 // - controllers;
 // - providers;
@@ -316,7 +360,7 @@ import { SecurityModule } from './infrastructure/security/security.module';
 import { HttpModule } from './infrastructure/http/http.module';
 
 // =============================================================================
-// Domains
+// Bounded Contexts / Domains
 // =============================================================================
 
 // -----------------------------------------------------------------------------
@@ -409,6 +453,12 @@ import { MessagingModule } from './domains/messaging/messaging.module';
 
 import { NotificationModule } from './domains/notification/notification.module';
 
+// -----------------------------------------------------------------------------
+// Support
+// -----------------------------------------------------------------------------
+
+import { SupportModule } from './domains/support/support.module';
+
 // =============================================================================
 // App Module
 // =============================================================================
@@ -452,8 +502,8 @@ import { NotificationModule } from './domains/notification/notification.module';
     // - EventStore;
     // - EventPublisher.
     //
-    // Individual domains publish their own domain events through the shared
-    // event infrastructure.
+    // Individual bounded contexts publish their own domain events through the
+    // shared event infrastructure.
     //
     // -------------------------------------------------------------------------
 
@@ -597,8 +647,13 @@ import { NotificationModule } from './domains/notification/notification.module';
     // - Accounting Period;
     // - Accounting Journal.
     //
-    // Accounting owns its own application handlers, repositories,
-    // persistence adapters, and REST controllers.
+    // Accounting owns its own:
+    //
+    // - aggregates;
+    // - application handlers;
+    // - repository abstractions;
+    // - persistence adapters;
+    // - REST controllers.
     //
     // -------------------------------------------------------------------------
 
@@ -614,8 +669,13 @@ import { NotificationModule } from './domains/notification/notification.module';
     // - Messaging Conversation Participant;
     // - Messaging Message.
     //
-    // Messaging owns its own application handlers, repositories,
-    // persistence adapters, and REST controllers.
+    // Messaging owns its own:
+    //
+    // - aggregates;
+    // - application handlers;
+    // - repository abstractions;
+    // - persistence adapters;
+    // - REST controllers.
     //
     // -------------------------------------------------------------------------
 
@@ -650,6 +710,43 @@ import { NotificationModule } from './domains/notification/notification.module';
     // -------------------------------------------------------------------------
 
     NotificationModule,
+
+    // -------------------------------------------------------------------------
+    // Support
+    // -------------------------------------------------------------------------
+    //
+    // Provides the Support bounded context:
+    //
+    // - Support Case;
+    // - Support Case Participant;
+    // - Support Case Message;
+    // - Support Case Note;
+    // - Support Case Evidence;
+    // - Support Case Resolution.
+    //
+    // Support owns its own:
+    //
+    // - aggregate;
+    // - entities;
+    // - value objects;
+    // - commands;
+    // - queries;
+    // - command handlers;
+    // - query handlers;
+    // - repository abstractions;
+    // - Prisma repositories;
+    // - REST controllers.
+    //
+    // SupportCaseEntity is the aggregate root.
+    //
+    // Child entities remain owned by SupportCaseAggregate and are therefore
+    // not registered independently here.
+    //
+    // The Support module owns its internal dependency-injection composition.
+    //
+    // -------------------------------------------------------------------------
+
+    SupportModule,
   ],
 })
 export class AppModule {}
