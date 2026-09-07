@@ -109,6 +109,12 @@
 //     ├── Messaging Conversation Participant
 //     └── Messaging Message
 //
+// NotificationModule
+// └── Notification capabilities
+//     ├── Notification
+//     ├── Notification Delivery
+//     └── Notification Preference
+//
 // -----------------------------------------------------------------------------
 //
 // Composition:
@@ -119,27 +125,28 @@
 //              │                                       │
 //        Infrastructure                            Domains
 //              │                                       │
-//      ┌───────┼────────┐                    ┌─────────┼──────────────┐
-//      │       │        │                    │         │              │
-//   Prisma   Events   Logging             Identity    Auth          Assets
-//      │       │        │
-//   Security  │      HttpModule
-//                         │
-//                 GlobalExceptionFilter
-//                         │
-//              DomainExceptionHttpStatusMapper
-//                         │
-//                         ├── Social
-//                         ├── Trust
-//                         ├── Journey
-//                         ├── JourneyDemand
-//                         ├── JourneyBooking
-//                         ├── JourneyBoarding
-//                         ├── JourneyCompletion
-//                         ├── Commercial
-//                         ├── Financial
-//                         ├── Accounting
-//                         └── Messaging
+//      ┌───────┼───────────────┐             ┌─────────┼──────────────┐
+//      │       │       │       │             │         │              │
+//   Prisma  Events  Logging  Security      Identity   Auth          Assets
+//                              │
+//                         HttpModule
+//                              │
+//                   GlobalExceptionFilter
+//                              │
+//                 DomainExceptionHttpStatusMapper
+//                              │
+//                              ├── Social
+//                              ├── Trust
+//                              ├── Journey
+//                              ├── JourneyDemand
+//                              ├── JourneyBooking
+//                              ├── JourneyBoarding
+//                              ├── JourneyCompletion
+//                              ├── Commercial
+//                              ├── Financial
+//                              ├── Accounting
+//                              ├── Messaging
+//                              └── Notification
 //
 // -----------------------------------------------------------------------------
 //
@@ -170,7 +177,28 @@
 //            ├── CommercialModule
 //            ├── FinancialModule
 //            ├── AccountingModule
-//            └── MessagingModule
+//            ├── MessagingModule
+//            └── NotificationModule
+//
+// -----------------------------------------------------------------------------
+//
+// Dependency direction:
+//
+// AppModule
+//     │
+//     ├── Infrastructure modules
+//     │
+//     └── Bounded-context modules
+//             │
+//             ├── Domain
+//             ├── Application
+//             ├── Infrastructure
+//             └── Presentation
+//
+// AppModule performs composition only.
+//
+// Individual bounded contexts own their internal dependency-injection
+// composition.
 //
 // -----------------------------------------------------------------------------
 //
@@ -218,7 +246,7 @@
 // Domain/Application
 //       │
 //       ▼
-// Infrastructure abstractions / tokens
+// Repository / infrastructure abstractions
 //       │
 //       ▼
 // Infrastructure implementations
@@ -245,6 +273,10 @@
 // Individual modules are responsible for exposing only the capabilities that
 // other modules legitimately need.
 //
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
 // -----------------------------------------------------------------------------
 
 import { Module } from '@nestjs/common';
@@ -371,11 +403,28 @@ import { AccountingModule } from './domains/accounting/accounting.module';
 
 import { MessagingModule } from './domains/messaging/messaging.module';
 
+// -----------------------------------------------------------------------------
+// Notification
+// -----------------------------------------------------------------------------
+
+import { NotificationModule } from './domains/notification/notification.module';
+
 // =============================================================================
 // App Module
 // =============================================================================
 
 @Module({
+  // ===========================================================================
+  // Imports
+  // ===========================================================================
+  //
+  // AppModule composes infrastructure and bounded-context modules.
+  //
+  // No individual handlers, repositories, controllers, or services are wired
+  // here. Each bounded context owns its internal composition.
+  //
+  // ---------------------------------------------------------------------------
+
   imports: [
     // =========================================================================
     // Infrastructure
@@ -403,8 +452,8 @@ import { MessagingModule } from './domains/messaging/messaging.module';
     // - EventStore;
     // - EventPublisher.
     //
-    // Individual domains publish their own domain events through the
-    // infrastructure abstraction.
+    // Individual domains publish their own domain events through the shared
+    // event infrastructure.
     //
     // -------------------------------------------------------------------------
 
@@ -412,6 +461,10 @@ import { MessagingModule } from './domains/messaging/messaging.module';
 
     // -------------------------------------------------------------------------
     // Logging
+    // -------------------------------------------------------------------------
+    //
+    // Provides shared application logging infrastructure.
+    //
     // -------------------------------------------------------------------------
 
     LoggingModule,
@@ -509,11 +562,27 @@ import { MessagingModule } from './domains/messaging/messaging.module';
     // -------------------------------------------------------------------------
     // Commercial
     // -------------------------------------------------------------------------
+    //
+    // Provides commercial rules and platform monetization capabilities.
+    //
+    // -------------------------------------------------------------------------
 
     CommercialModule,
 
     // -------------------------------------------------------------------------
     // Financial
+    // -------------------------------------------------------------------------
+    //
+    // Provides financial capabilities and wallet-related financial operations.
+    //
+    // Financial owns its own:
+    //
+    // - aggregates;
+    // - application handlers;
+    // - repository abstractions;
+    // - persistence adapters;
+    // - REST controllers.
+    //
     // -------------------------------------------------------------------------
 
     FinancialModule,
@@ -551,6 +620,36 @@ import { MessagingModule } from './domains/messaging/messaging.module';
     // -------------------------------------------------------------------------
 
     MessagingModule,
+
+    // -------------------------------------------------------------------------
+    // Notification
+    // -------------------------------------------------------------------------
+    //
+    // Provides the Notification bounded context:
+    //
+    // - Notification;
+    // - Notification Delivery;
+    // - Notification Preference.
+    //
+    // Notification owns its own:
+    //
+    // - aggregates;
+    // - entities;
+    // - value objects;
+    // - commands;
+    // - queries;
+    // - command handlers;
+    // - query handlers;
+    // - repository abstractions;
+    // - Prisma repositories;
+    // - REST controllers.
+    //
+    // NotificationDeliveryEntity remains a child entity of
+    // NotificationAggregate and is not registered independently here.
+    //
+    // -------------------------------------------------------------------------
+
+    NotificationModule,
   ],
 })
 export class AppModule {}
