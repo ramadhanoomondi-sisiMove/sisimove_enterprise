@@ -4,29 +4,90 @@
 //
 // Presentation section for publicly discoverable Journey Demands.
 //
+// Journey Demand has two presentation contexts:
+//
+//   1. General public discovery
+//
+//      Public Journey Demands are displayed as an independent marketplace
+//      collection alongside published Journeys.
+//
+//   2. Empty Journey search conversion
+//
+//      When a traveller searches for a published Journey and no Journey is
+//      available, the same search context becomes the starting point for
+//      demand capture.
+//
+//      Example:
+//
+//        Nairobi → Kisumu
+//        18 September 2026
+//        ↓
+//        No journey available yet
+//        ↓
+//        Create travel demand
+//        ↓
+//        Register / Login
+//
+// This component supports both contexts without owning discovery,
+// authentication, routing, or conversion business logic.
+//
 // Responsibilities:
 // - Present the landing-page Journey Demand section.
 // - Explain the demand-side journey-sharing concept.
 // - Render public Journey Demand cards.
-// - Provide a truthful empty state.
-// - Allow the parent discovery layer to control card actions.
+// - Present a search-specific demand-capture state.
+// - Preserve and display the supplied search context.
+// - Allow the parent composition layer to control actions.
+// - Remain independent of APIs, authentication, routing, and business rules.
 //
 // This component intentionally does not:
-// - fetch Journey Demand data
-// - perform search or matching
-// - access authentication state
-// - expose requester identity
-// - expose matched-seat or lifecycle details
-// - perform booking or joining actions
+// - fetch Journey Demand data;
+// - perform Journey Demand search;
+// - perform matching;
+// - create Journey Demands;
+// - access authentication state;
+// - expose requester identity;
+// - expose matched-seat or lifecycle details;
+// - perform booking or joining actions;
+// - decide whether a demand should be created;
+// - perform routing or navigation.
 //
-// Discovery/search belongs to the feature layer. This component only renders
-// the public presentation supplied to it.
+// Discovery/search belongs to the feature/composition layer.
 //
-// The visual language treats Journey Demand as a first-class sisiMove
-// capability rather than simply another list of cards.
+// The parent supplies:
+// - public demands;
+// - optional empty-search context;
+// - optional actions.
+//
+// The section only renders those decisions.
+//
+// Architectural boundary:
+//
+// Discovery composition
+//        ↓
+// JourneyDemandSection
+//        ↓
+// Presentation
+//        ↓
+// parent-controlled authentication action
+//
+// Empty Journey search:
+//
+// Journey search
+//      ↓
+// no published Journey
+//      ↓
+// discovery composition
+//      ↓
+// emptySearchContext
+//      ↓
+// JourneyDemandSection
+//      ↓
+// Create travel demand
+//      ↓
+// Register / Login
 //
 // -----------------------------------------------------------------------------
-
 
 import type {
   HTMLAttributes,
@@ -40,6 +101,24 @@ import {
   type PublicJourneyDemandCardData,
 } from './journey-demand-card';
 
+// -----------------------------------------------------------------------------
+// Search Context
+// -----------------------------------------------------------------------------
+//
+// Presentation-safe representation of the search that produced no published
+// Journey.
+//
+// This is search intent, not a Journey Demand aggregate.
+//
+// The actual Journey Demand is only created later through the authenticated
+// demand-creation flow.
+// -----------------------------------------------------------------------------
+
+export interface JourneyDemandSearchContext {
+  readonly from: string;
+  readonly to: string;
+  readonly date: string;
+}
 
 // -----------------------------------------------------------------------------
 // Props
@@ -54,6 +133,17 @@ export interface JourneyDemandSectionProps
    * Public Journey Demands supplied by the discovery/read-model layer.
    */
   demands: PublicJourneyDemandCardData[];
+
+  /**
+   * Search context supplied when the Journey search returned no published
+   * Journeys.
+   *
+   * When present, the section presents the search-specific demand opportunity.
+   *
+   * The section does not determine whether the search is empty. The discovery
+   * composition layer owns that decision.
+   */
+  emptySearchContext?: JourneyDemandSearchContext | null;
 
   /**
    * Small section label.
@@ -71,28 +161,43 @@ export interface JourneyDemandSectionProps
   description?: string;
 
   /**
-   * Empty-state heading shown when no public demands are available.
+   * Empty-state heading shown when no public demands are available and there
+   * is no active empty Journey search.
    */
   emptyTitle?: string;
 
   /**
-   * Empty-state explanation shown when no public demands are available.
+   * Empty-state explanation shown when no public demands are available and
+   * there is no active empty Journey search.
    */
   emptyDescription?: string;
 
   /**
-   * Parent-controlled action rendered inside each demand card.
+   * Parent-controlled action rendered inside each public demand card.
    */
   renderAction?: (
     demand: PublicJourneyDemandCardData,
   ) => ReactNode;
 
   /**
+   * Parent-controlled action for continuing an empty Journey search into
+   * authenticated Journey Demand creation.
+   *
+   * This is intentionally a ReactNode rather than a callback.
+   *
+   * The client composition layer may supply the CreateTravelDemandAction
+   * component and connect it to the Register/Login flow while preserving the
+   * supplied search context.
+   *
+   * This component does not know what happens when the action is activated.
+   */
+  createDemandAction?: ReactNode;
+
+  /**
    * ID used to associate the section with its heading.
    */
   headingId?: string;
 }
-
 
 // -----------------------------------------------------------------------------
 // Defaults
@@ -113,9 +218,48 @@ const DEFAULT_EMPTY_TITLE =
 const DEFAULT_EMPTY_DESCRIPTION =
   'Be among the first to share where you are hoping to travel. Your plan could help connect you with someone heading the same way.';
 
+const DEFAULT_EMPTY_SEARCH_TITLE =
+  'No journey available yet';
+
+const DEFAULT_EMPTY_SEARCH_DESCRIPTION =
+  'We could not find a published journey for this search. Turn the same route and date into a travel demand so people who can make the journey can see that you are looking to travel.';
+
 const DEFAULT_HEADING_ID =
   'journey-demand-heading';
 
+// -----------------------------------------------------------------------------
+// Date Formatting
+// -----------------------------------------------------------------------------
+//
+// The search date is supplied as a transport-safe value.
+//
+// Formatting belongs in the presentation layer. The section does not interpret
+// the date for business rules; it only makes the supplied value readable.
+// -----------------------------------------------------------------------------
+
+function formatSearchDate(
+  value: string,
+): string {
+  const parsedDate =
+    new Date(`${value}T00:00:00`);
+
+  if (
+    Number.isNaN(
+      parsedDate.getTime(),
+    )
+  ) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(
+    'en-KE',
+    {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    },
+  ).format(parsedDate);
+}
 
 // -----------------------------------------------------------------------------
 // Demand Network Icon
@@ -186,9 +330,13 @@ function DemandNetworkIcon() {
   );
 }
 
-
 // -----------------------------------------------------------------------------
 // Planning Indicator
+// -----------------------------------------------------------------------------
+//
+// The number represents public Journey Demand records supplied to this
+// component. It must not be presented as a count of unique people unless the
+// read model explicitly provides that information.
 // -----------------------------------------------------------------------------
 
 function PlanningIndicator({
@@ -220,10 +368,6 @@ function PlanningIndicator({
           'sm:px-6',
         )}
       >
-        {/* ----------------------------------------------------------------- */}
-        {/* Network Icon                                                      */}
-        {/* ----------------------------------------------------------------- */}
-
         <div
           className={cn(
             'flex',
@@ -242,10 +386,6 @@ function PlanningIndicator({
           <DemandNetworkIcon />
         </div>
 
-        {/* ----------------------------------------------------------------- */}
-        {/* Message                                                           */}
-        {/* ----------------------------------------------------------------- */}
-
         <div className="min-w-0 flex-1">
           <p
             className={cn(
@@ -255,8 +395,8 @@ function PlanningIndicator({
             )}
           >
             {count === 1
-              ? '1 person is planning a journey'
-              : `${count} people are planning journeys`}
+              ? '1 travel plan is waiting'
+              : `${count} travel plans are waiting`}
           </p>
 
           <p
@@ -267,14 +407,10 @@ function PlanningIndicator({
               'text-[var(--foreground-secondary)]',
             )}
           >
-            Their plans are visible to people who may already
+            These plans are visible to people who may already
             be travelling that way.
           </p>
         </div>
-
-        {/* ----------------------------------------------------------------- */}
-        {/* Concept Badge                                                     */}
-        {/* ----------------------------------------------------------------- */}
 
         <div
           className={cn(
@@ -308,6 +444,263 @@ function PlanningIndicator({
   );
 }
 
+// -----------------------------------------------------------------------------
+// Empty Search Conversion
+// -----------------------------------------------------------------------------
+//
+// This is intentionally different from the ordinary Journey Demand empty
+// state.
+//
+// The traveller explicitly searched for a Journey. No published Journey was
+// found. Their search therefore becomes useful demand-capture context.
+//
+// No Journey Demand is created here.
+//
+// The supplied action is responsible for taking the traveller into the
+// authenticated Register/Login flow later.
+// -----------------------------------------------------------------------------
+
+function EmptySearchConversion({
+  context,
+  action,
+  title,
+  description,
+}: {
+  context: JourneyDemandSearchContext;
+  action?: ReactNode;
+  title: string;
+  description: string;
+}) {
+  const formattedDate =
+    formatSearchDate(context.date);
+
+  return (
+    <div
+      className={cn(
+        'relative',
+        'mt-8',
+        'overflow-hidden',
+        'rounded-3xl',
+        'border',
+        'border-[var(--brand)]/20',
+        'bg-[var(--brand-soft)]/60',
+        'px-6',
+        'py-9',
+        'sm:px-10',
+        'sm:py-10',
+      )}
+      role="status"
+      aria-live="polite"
+    >
+      {/* ------------------------------------------------------------------- */}
+      {/* Visual                                                              */}
+      {/* ------------------------------------------------------------------- */}
+
+      <div
+        aria-hidden="true"
+        className={cn(
+          'mx-auto',
+          'flex',
+          'size-14',
+          'items-center',
+          'justify-center',
+          'rounded-2xl',
+          'bg-white',
+          'text-[var(--brand)]',
+          'shadow-sm',
+          'ring-1',
+          'ring-[var(--brand)]/10',
+        )}
+      >
+        <DemandNetworkIcon />
+      </div>
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Heading                                                             */}
+      {/* ------------------------------------------------------------------- */}
+
+      <h3
+        className={cn(
+          'mt-5',
+          'text-center',
+          'text-xl',
+          'font-semibold',
+          'tracking-tight',
+          'text-[var(--foreground)]',
+          'sm:text-2xl',
+        )}
+      >
+        {title}
+      </h3>
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Search Context                                                      */}
+      {/* ------------------------------------------------------------------- */}
+
+      <div
+        className={cn(
+          'mx-auto',
+          'mt-5',
+          'flex',
+          'max-w-xl',
+          'flex-col',
+          'items-center',
+          'justify-center',
+          'gap-1',
+          'text-center',
+        )}
+      >
+        <div
+          className={cn(
+            'flex',
+            'flex-wrap',
+            'items-center',
+            'justify-center',
+            'gap-x-2',
+            'gap-y-1',
+            'text-base',
+            'font-semibold',
+            'text-[var(--foreground)]',
+            'sm:text-lg',
+          )}
+        >
+          <span>{context.from}</span>
+
+          <span
+            aria-hidden="true"
+            className="text-[var(--brand)]"
+          >
+            →
+          </span>
+
+          <span>{context.to}</span>
+        </div>
+
+        <span
+          className={cn(
+            'text-sm',
+            'font-medium',
+            'text-[var(--foreground-secondary)]',
+          )}
+        >
+          {formattedDate}
+        </span>
+      </div>
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Explanation                                                         */}
+      {/* ------------------------------------------------------------------- */}
+
+      <p
+        className={cn(
+          'mx-auto',
+          'mt-4',
+          'max-w-lg',
+          'text-center',
+          'text-sm',
+          'leading-6',
+          'text-[var(--foreground-secondary)]',
+          'sm:text-base',
+          'sm:leading-7',
+        )}
+      >
+        {description}
+      </p>
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Demand Capture                                                      */}
+      {/* ------------------------------------------------------------------- */}
+
+      {action && (
+        <div
+          className={cn(
+            'mt-7',
+            'flex',
+            'justify-center',
+          )}
+        >
+          {action}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// General Empty State
+// -----------------------------------------------------------------------------
+
+function GeneralEmptyState({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div
+      className={cn(
+        'relative',
+        'mt-8',
+        'overflow-hidden',
+        'rounded-3xl',
+        'border',
+        'border-dashed',
+        'border-[var(--brand)]/20',
+        'bg-[var(--brand-soft)]/50',
+        'px-6',
+        'py-10',
+        'text-center',
+        'sm:px-10',
+        'sm:py-12',
+      )}
+      role="status"
+    >
+      <div
+        aria-hidden="true"
+        className={cn(
+          'mx-auto',
+          'flex',
+          'size-14',
+          'items-center',
+          'justify-center',
+          'rounded-2xl',
+          'bg-white',
+          'text-[var(--brand)]',
+          'shadow-sm',
+          'ring-1',
+          'ring-[var(--brand)]/10',
+        )}
+      >
+        <DemandNetworkIcon />
+      </div>
+
+      <h3
+        className={cn(
+          'mt-5',
+          'text-lg',
+          'font-semibold',
+          'text-[var(--foreground)]',
+        )}
+      >
+        {title}
+      </h3>
+
+      <p
+        className={cn(
+          'mx-auto',
+          'mt-2',
+          'max-w-lg',
+          'text-sm',
+          'leading-6',
+          'text-[var(--foreground-secondary)]',
+        )}
+      >
+        {description}
+      </p>
+    </div>
+  );
+}
 
 // -----------------------------------------------------------------------------
 // Component
@@ -315,12 +708,14 @@ function PlanningIndicator({
 
 export function JourneyDemandSection({
   demands,
+  emptySearchContext = null,
   eyebrow = DEFAULT_EYEBROW,
   title = DEFAULT_TITLE,
   description = DEFAULT_DESCRIPTION,
   emptyTitle = DEFAULT_EMPTY_TITLE,
   emptyDescription = DEFAULT_EMPTY_DESCRIPTION,
   renderAction,
+  createDemandAction,
   headingId = DEFAULT_HEADING_ID,
   className,
   ...props
@@ -333,14 +728,15 @@ export function JourneyDemandSection({
   const demandCount =
     normalizedDemands.length;
 
+  const isEmptySearch =
+    emptySearchContext !== null;
+
   return (
     <section
       aria-labelledby={headingId}
       className={cn(
         'relative',
         'overflow-hidden',
-        'py-14',
-        'sm:py-20',
         className,
       )}
       {...props}
@@ -356,12 +752,20 @@ export function JourneyDemandSection({
           'absolute',
           'inset-x-0',
           'top-0',
-          'h-72',
+          'h-64',
           'bg-[radial-gradient(circle_at_15%_20%,var(--brand-soft),transparent_42%),radial-gradient(circle_at_85%_10%,var(--brand-soft),transparent_35%)]',
         )}
       />
 
-      <div className="page-container relative">
+      {/*
+       * The parent composition boundary owns the landing-page section
+       * spacing, max-width, and horizontal gutters.
+       *
+       * This section therefore does not introduce another page container or
+       * another outer padding layer.
+       */}
+
+      <div className="relative">
         {/* ----------------------------------------------------------------- */}
         {/* Section Header                                                    */}
         {/* ----------------------------------------------------------------- */}
@@ -370,7 +774,7 @@ export function JourneyDemandSection({
           className={cn(
             'flex',
             'flex-col',
-            'gap-8',
+            'gap-6',
             'lg:flex-row',
             'lg:items-end',
             'lg:justify-between',
@@ -456,182 +860,131 @@ export function JourneyDemandSection({
           {/* Demand Count                                                     */}
           {/* ----------------------------------------------------------------- */}
 
-          {demandCount > 0 && (
-            <div
-              className={cn(
-                'flex',
-                'shrink-0',
-                'items-center',
-                'gap-3',
-                'rounded-2xl',
-                'border',
-                'border-[var(--border)]',
-                'bg-[var(--surface)]',
-                'px-4',
-                'py-3',
-                'shadow-sm',
-              )}
-            >
-              <span
+          {demandCount > 0 &&
+            !isEmptySearch && (
+              <div
                 className={cn(
                   'flex',
-                  'size-10',
+                  'shrink-0',
                   'items-center',
-                  'justify-center',
-                  'rounded-xl',
-                  'bg-[var(--brand-soft)]',
-                  'text-sm',
-                  'font-bold',
-                  'text-[var(--brand)]',
+                  'gap-3',
+                  'rounded-2xl',
+                  'border',
+                  'border-[var(--border)]',
+                  'bg-[var(--surface)]',
+                  'px-4',
+                  'py-3',
+                  'shadow-sm',
                 )}
               >
-                {demandCount}
-              </span>
-
-              <div>
-                <p
+                <span
                   className={cn(
+                    'flex',
+                    'size-10',
+                    'items-center',
+                    'justify-center',
+                    'rounded-xl',
+                    'bg-[var(--brand-soft)]',
                     'text-sm',
-                    'font-semibold',
-                    'text-[var(--foreground)]',
+                    'font-bold',
+                    'text-[var(--brand)]',
                   )}
                 >
-                  {demandCount === 1
-                    ? 'Journey demand'
-                    : 'Journey demands'}
-                </p>
+                  {demandCount}
+                </span>
 
-                <p
-                  className={cn(
-                    'text-xs',
-                    'text-[var(--foreground-muted)]',
-                  )}
-                >
-                  Waiting to be matched
-                </p>
+                <div>
+                  <p
+                    className={cn(
+                      'text-sm',
+                      'font-semibold',
+                      'text-[var(--foreground)]',
+                    )}
+                  >
+                    {demandCount === 1
+                      ? 'Journey demand'
+                      : 'Journey demands'}
+                  </p>
+
+                  <p
+                    className={cn(
+                      'text-xs',
+                      'text-[var(--foreground-muted)]',
+                    )}
+                  >
+                    Waiting to be matched
+                  </p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
         </div>
 
         {/* ----------------------------------------------------------------- */}
-        {/* Demand Network Message                                            */}
+        {/* Empty Search → Demand Capture                                     */}
         {/* ----------------------------------------------------------------- */}
 
-        {demandCount > 0 && (
-          <PlanningIndicator
-            count={demandCount}
+        {isEmptySearch ? (
+          <EmptySearchConversion
+            context={emptySearchContext}
+            action={createDemandAction}
+            title={DEFAULT_EMPTY_SEARCH_TITLE}
+            description={
+              DEFAULT_EMPTY_SEARCH_DESCRIPTION
+            }
           />
-        )}
-
-        {/* ----------------------------------------------------------------- */}
-        {/* Demand List / Empty State                                         */}
-        {/* ----------------------------------------------------------------- */}
-
-        {demandCount > 0 ? (
-          <div
-            className={cn(
-              'mt-8',
-              'grid',
-              'gap-5',
-              'md:grid-cols-2',
-              'lg:mt-10',
-              'lg:grid-cols-3',
-            )}
-            aria-label="Journey demands"
-          >
-            {normalizedDemands.map(
-              (demand) => (
-                <div
-                  key={demand.publicId}
-                  className="min-w-0"
-                >
-                  <JourneyDemandCard
-                    demand={demand}
-                    actionContent={
-                      renderAction
-                        ? renderAction(demand)
-                        : undefined
-                    }
-                  />
-                </div>
-              ),
-            )}
-          </div>
         ) : (
-          <div
-            className={cn(
-              'relative',
-              'mt-10',
-              'overflow-hidden',
-              'rounded-3xl',
-              'border',
-              'border-dashed',
-              'border-[var(--brand)]/20',
-              'bg-[var(--brand-soft)]/50',
-              'px-6',
-              'py-12',
-              'text-center',
-              'sm:px-10',
-              'sm:py-16',
+          <>
+            {/* ------------------------------------------------------------- */}
+            {/* Demand Network Message                                        */}
+            {/* ------------------------------------------------------------- */}
+
+            {demandCount > 0 && (
+              <PlanningIndicator
+                count={demandCount}
+              />
             )}
-            role="status"
-          >
-            {/* ------------------------------------------------------------- */}
-            {/* Empty State Visual                                             */}
-            {/* ------------------------------------------------------------- */}
-
-            <div
-              aria-hidden="true"
-              className={cn(
-                'mx-auto',
-                'flex',
-                'size-14',
-                'items-center',
-                'justify-center',
-                'rounded-2xl',
-                'bg-white',
-                'text-[var(--brand)]',
-                'shadow-sm',
-                'ring-1',
-                'ring-[var(--brand)]/10',
-              )}
-            >
-              <DemandNetworkIcon />
-            </div>
 
             {/* ------------------------------------------------------------- */}
-            {/* Empty State Heading                                            */}
+            {/* Demand List / General Empty State                             */}
             {/* ------------------------------------------------------------- */}
 
-            <h3
-              className={cn(
-                'mt-5',
-                'text-lg',
-                'font-semibold',
-                'text-[var(--foreground)]',
-              )}
-            >
-              {emptyTitle}
-            </h3>
-
-            {/* ------------------------------------------------------------- */}
-            {/* Empty State Description                                        */}
-            {/* ------------------------------------------------------------- */}
-
-            <p
-              className={cn(
-                'mx-auto',
-                'mt-2',
-                'max-w-lg',
-                'text-sm',
-                'leading-6',
-                'text-[var(--foreground-secondary)]',
-              )}
-            >
-              {emptyDescription}
-            </p>
-          </div>
+            {demandCount > 0 ? (
+              <div
+                className={cn(
+                  'mt-8',
+                  'grid',
+                  'gap-5',
+                  'md:grid-cols-2',
+                  'lg:mt-10',
+                  'lg:grid-cols-3',
+                )}
+                aria-label="Journey demands"
+              >
+                {normalizedDemands.map(
+                  (demand) => (
+                    <div
+                      key={demand.publicId}
+                      className="min-w-0"
+                    >
+                      <JourneyDemandCard
+                        demand={demand}
+                        actionContent={
+                          renderAction
+                            ? renderAction(demand)
+                            : undefined
+                        }
+                      />
+                    </div>
+                  ),
+                )}
+              </div>
+            ) : (
+              <GeneralEmptyState
+                title={emptyTitle}
+                description={emptyDescription}
+              />
+            )}
+          </>
         )}
       </div>
     </section>

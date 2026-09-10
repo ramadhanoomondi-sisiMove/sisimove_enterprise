@@ -21,13 +21,15 @@
 // - contain financial logic;
 // - search or filter Journeys.
 //
-// Public journey discovery is composed through TravellerDiscoveryContent.
+// Public Journey discovery and Journey Demand are composed through the
+// client-side TravellerDiscoveryDemandContent boundary.
 //
 // Architectural boundary:
 // - LandingPage remains a Server Component.
-// - TravellerDiscoveryContent is the client-side composition boundary.
+// - TravellerDiscoveryDemandContent is the client-side composition boundary
+//   for public Journey Discovery and Journey Demand.
 // - Search criteria cross this boundary as serializable data only.
-// - No event handlers, hooks, or discovery state cross this boundary as props.
+// - No event handlers, hooks, or discovery state cross this boundary.
 //
 // Public journey discovery means:
 // - display publicly available published journeys;
@@ -41,7 +43,7 @@
 // - Compact but intentional vertical rhythm.
 // - Sections sit closer together so the page feels active and connected.
 // - Clear visual hierarchy without excessive empty space.
-// - Individual sections own their presentation surfaces.
+// - Each major section owns its own presentation surface.
 // - Avoid nested cards and duplicated containers.
 // - Use shared SisiMove design tokens.
 //
@@ -60,6 +62,9 @@
 //   │
 //   │ searchValues
 //   ▼
+// TravellerDiscoveryDemandContent
+//   │
+//   ▼
 // TravellerDiscoveryContent
 //   │
 //   ▼
@@ -67,6 +72,13 @@
 //   │
 //   ▼
 // GET /journeys/search
+//   │
+//   ├── journeys found
+//   │
+//   └── no journeys
+//          │
+//          ▼
+//     JourneyDemandSection
 //
 // -----------------------------------------------------------------------------
 
@@ -79,11 +91,9 @@ import { cn } from '../../foundation/utils/cn';
 import { HeroSection } from './hero/hero-section';
 
 import {
-  TravellerDiscoveryContent,
+  TravellerDiscoveryDemandContent,
   type TravellerDiscoveryContentProps,
 } from './travellers';
-
-import { JourneyDemandSection } from './journey-demand/journey-demand-section';
 
 import { TrustSection } from './trust/trust-section';
 
@@ -105,34 +115,33 @@ export interface LandingPageProps {
    *
    * The page route owns reading and normalizing URL search parameters.
    * LandingPage only passes the resulting serializable criteria into the
-   * existing client-side discovery composition.
+   * client-side discovery composition.
    */
   searchValues?: TravellerDiscoveryContentProps['searchValues'];
 
   /**
    * Optional content rendered before the landing page sections.
-   *
-   * Useful for controlled application-level composition without coupling the
-   * landing component to infrastructure or business logic.
    */
   topContent?: ReactNode;
 
   /**
-   * Optional content rendered between the hero and public journey discovery.
+   * Optional content rendered between the hero and public Journey discovery.
    */
   afterHeroContent?: ReactNode;
 
   /**
-   * Optional content rendered between public journey discovery and
+   * Optional content rendered between public Journey discovery and
    * Journey Demand.
+   *
+   * This content is composed inside TravellerDiscoveryDemandContent so the
+   * discovery-to-demand ordering remains inside the same client boundary.
    */
   afterDiscoveryContent?: ReactNode;
 
   /**
    * Replace the default Journey Demand section.
    *
-   * Useful when the feature layer supplies loading, error, or populated
-   * public Journey Demand discovery state.
+   * The override is composed by TravellerDiscoveryDemandContent.
    */
   journeyDemandContent?: ReactNode;
 
@@ -157,21 +166,16 @@ export interface LandingPageProps {
   bottomContent?: ReactNode;
 
   /**
-   * Replace the default public journey discovery content.
+   * Replace the default public Journey discovery content.
    *
-   * The default is TravellerDiscoveryContent, which owns the client-side
-   * discovery composition and connects the existing public journey discovery
-   * behavior to the presentation layer.
-   *
-   * Public journey discovery is intentionally available before authentication.
-   * The journey is the discovery object; traveller information is presented
-   * only as part of the public journey information.
+   * The default is TravellerDiscoveryContent, composed through
+   * TravellerDiscoveryDemandContent.
    *
    * This remains a ReactNode rather than a callback so the Server Component
    * never receives or passes event handlers.
    *
    * When this override is supplied, the default TravellerDiscoveryContent is
-   * not rendered and therefore searchValues are not applied to the override.
+   * not rendered and searchValues are not applied to the override.
    */
   travellerDiscoveryContent?: ReactNode;
 
@@ -211,11 +215,11 @@ export interface LandingPageProps {
 // -----------------------------------------------------------------------------
 
 /**
- * Single alignment grid used by public landing sections.
+ * Single alignment grid used by landing sections owned by this component.
  *
- * The page owns the horizontal alignment. Individual sections should not
- * introduce another page-level container unless they intentionally need a
- * narrower presentation surface.
+ * TravellerDiscoveryDemandContent owns the Discovery and Journey Demand
+ * section wrappers themselves because those sections form one client-side
+ * composition boundary.
  */
 const sectionInnerClassName = cn(
   'mx-auto w-full max-w-7xl',
@@ -223,11 +227,7 @@ const sectionInnerClassName = cn(
 );
 
 /**
- * Compact standard section spacing.
- *
- * The landing page contains several content-rich sections, so generous
- * section padding creates excessive empty space. Keep the sections visually
- * connected while preserving enough breathing room around each feature.
+ * Standard section spacing.
  */
 const sectionClassName = cn(
   'py-10 sm:py-12 lg:py-16',
@@ -298,8 +298,8 @@ export function LandingPage({
   searchValues,
   topContent,
   afterHeroContent,
-  journeyDemandContent,
   afterDiscoveryContent,
+  journeyDemandContent,
   afterJourneyDemandContent,
   afterTrustContent,
   afterHowItWorksContent,
@@ -339,47 +339,36 @@ export function LandingPage({
       {afterHeroContent}
 
       {/* ------------------------------------------------------------------- */}
-      {/* Public Journey Discovery                                            */}
+      {/* Public Journey Discovery + Journey Demand                           */}
       {/* ------------------------------------------------------------------- */}
+      {/*
+       * Discovery and Journey Demand intentionally remain inside the same
+       * client-side composition boundary.
+       *
+       * TravellerDiscoveryContent owns:
+       * - public Journey loading;
+       * - public Journey search;
+       * - public Journey Demand loading;
+       * - empty-search detection.
+       *
+       * TravellerDiscoveryDemandContent owns:
+       * - the client-side bridge between discovery and demand;
+       * - the exact empty-search context;
+       * - presentation of the Journey Demand conversion section.
+       *
+       * It also owns the visual wrappers for these two sections. LandingPage
+       * therefore does not add another section/container around them.
+       *
+       * This prevents duplicated gutters, borders, backgrounds, and vertical
+       * spacing while keeping the Server Component boundary intact.
+       */}
 
-      <section
-        id="journeys"
-        className={cn(
-          sectionClassName,
-          'border-b border-[var(--border)]',
-          'bg-[var(--surface)]',
-        )}
-      >
-        <div className={sectionInnerClassName}>
-          {travellerDiscoveryContent ?? (
-            <TravellerDiscoveryContent
-              searchValues={searchValues}
-            />
-          )}
-        </div>
-      </section>
-
-      {afterDiscoveryContent}
-
-      {/* ------------------------------------------------------------------- */}
-      {/* Journey Demand                                                      */}
-      {/* ------------------------------------------------------------------- */}
-
-      <section
-        className={cn(
-          sectionClassName,
-          'border-b border-[var(--border)]',
-          'bg-[var(--background-subtle)]',
-        )}
-      >
-        <div className={sectionInnerClassName}>
-          {journeyDemandContent ?? (
-            <JourneyDemandSection
-              demands={[]}
-            />
-          )}
-        </div>
-      </section>
+      <TravellerDiscoveryDemandContent
+        searchValues={searchValues}
+        travellerDiscoveryContent={travellerDiscoveryContent}
+        afterDiscoveryContent={afterDiscoveryContent}
+        journeyDemandContent={journeyDemandContent}
+      />
 
       {afterJourneyDemandContent}
 
@@ -418,8 +407,8 @@ export function LandingPage({
       {/* ------------------------------------------------------------------- */}
       {/*
        * HowItWorksSection owns the semantic section id and its internal
-       * presentation. The landing page must not create another element with
-       * the same id.
+       * presentation. LandingPage must not create another element with the
+       * same id.
        */}
 
       <section
@@ -441,12 +430,11 @@ export function LandingPage({
       {/* ------------------------------------------------------------------- */}
       {/* Final Conversion Area                                               */}
       {/* ------------------------------------------------------------------- */}
-
       {/*
        * Each CTA section owns its own presentation surface.
        *
-       * Do not wrap these components in another card/border here. That would
-       * create nested visual surfaces and make the landing page feel heavy.
+       * Do not wrap these components in another card or border here. The
+       * landing page only controls their shared alignment and spacing.
        */}
 
       <section
@@ -547,3 +535,4 @@ export function LandingPage({
     </main>
   );
 }
+

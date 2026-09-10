@@ -14,8 +14,12 @@
 // - Does not expose API clients, repositories, or application services.
 //
 // TravellerDiscoveryContent is the client-side composition boundary for public
-// discovery. It consumes the existing Journey and Journey Demand hooks and
-// connects feature state to the presentation layer.
+// discovery. It consumes the existing Journey and Journey Demand hooks,
+// connects feature state to the presentation layer, and reports a completed
+// empty Journey search to its outer Client Component composition boundary.
+//
+// The outer client composition is responsible for connecting that empty-search
+// context to the separate Journey Demand presentation section.
 //
 // Feature models and hooks remain available from their owning feature modules.
 //
@@ -272,3 +276,27 @@ export {
 export type {
   TravellerProfilePreferencesProps,
 } from './traveller-profile-preferences';
+
+// -----------------------------------------------------------------------------
+// sisiMove — Traveller Landing Components
+// -----------------------------------------------------------------------------
+//
+// Public presentation and client-side composition components used by the
+// landing-page traveller discovery experience.
+//
+// -----------------------------------------------------------------------------
+
+export {
+  TravellerDiscoveryDemandContent,
+} from './traveller-discovery-demand-content';
+
+export type {
+  TravellerDiscoveryDemandContentProps,
+} from './traveller-discovery-demand-content';
+
+// -----------------------------------------------------------------------------
+// Existing traveller presentation exports
+// -----------------------------------------------------------------------------
+//
+// Keep the remainder of the existing traveller exports unchanged.
+// -----------------------------------------------------------------------------
