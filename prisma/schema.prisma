@@ -4266,7 +4266,6 @@ enum JourneyDemandStatus {
   CANCELLED
   EXPIRED
 }
-
 // =============================================================================
 // ASSET ENUMS
 // =============================================================================
@@ -4289,6 +4288,7 @@ enum AssetType {
 
 enum AssetCategory {
   PROFILE_PHOTO
+
   COVER_PHOTO
   AVATAR
 

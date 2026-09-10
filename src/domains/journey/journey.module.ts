@@ -80,6 +80,7 @@ import {
   GetJourneysByProviderAndStatusQueryHandler,
   GetJourneysByProviderQueryHandler,
   GetJourneysByStatusQueryHandler,
+  SearchPublishedJourneysQueryHandler,
 } from './application/query-handlers/journey';
 
 // -----------------------------------------------------------------------------
@@ -299,6 +300,19 @@ import {
     },
 
     // =========================================================================
+    // Journey — Published Journey Search
+    //
+    // Public journey discovery delegates search to the Journey application
+    // query handler. The controller remains responsible only for HTTP
+    // transport and query construction.
+    // =========================================================================
+
+    {
+      provide: JOURNEY_TOKENS.QUERY_HANDLERS.SEARCH_PUBLISHED,
+      useClass: SearchPublishedJourneysQueryHandler,
+    },
+
+    // =========================================================================
     // Journey — Corridor Queries
     // =========================================================================
 
@@ -467,6 +481,7 @@ import {
     JOURNEY_TOKENS.QUERY_HANDLERS.GET_BY_PROVIDER,
     JOURNEY_TOKENS.QUERY_HANDLERS.GET_BY_STATUS,
     JOURNEY_TOKENS.QUERY_HANDLERS.GET_BY_PROVIDER_AND_STATUS,
+    JOURNEY_TOKENS.QUERY_HANDLERS.SEARCH_PUBLISHED,
 
     // =========================================================================
     // Corridor Query Handler Tokens

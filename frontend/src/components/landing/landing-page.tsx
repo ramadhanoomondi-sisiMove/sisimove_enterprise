@@ -8,6 +8,7 @@
 // - Compose public landing sections.
 // - Provide public navigation between sections/pages.
 // - Accept externally controlled feature content.
+// - Pass public Journey search criteria into the discovery composition.
 // - Keep business and data-fetching concerns outside the presentation layer.
 //
 // This component does NOT:
@@ -17,23 +18,55 @@
 // - create journey demands;
 // - perform bookings;
 // - contain commercial logic;
-// - contain financial logic.
+// - contain financial logic;
+// - search or filter Journeys.
 //
-// Traveller discovery is composed through TravellerDiscoveryContent.
+// Public journey discovery is composed through TravellerDiscoveryContent.
 //
 // Architectural boundary:
 // - LandingPage remains a Server Component.
 // - TravellerDiscoveryContent is the client-side composition boundary.
+// - Search criteria cross this boundary as serializable data only.
 // - No event handlers, hooks, or discovery state cross this boundary as props.
+//
+// Public journey discovery means:
+// - display publicly available published journeys;
+// - allow visitors to inspect public journey information;
+// - keep journey discovery available before authentication;
+// - leave protected actions such as booking to the appropriate flow.
 //
 // Visual principles:
 // - One consistent page width.
 // - One consistent horizontal gutter.
-// - Strong but restrained vertical rhythm.
-// - Clear visual hierarchy between sections.
+// - Compact but intentional vertical rhythm.
+// - Sections sit closer together so the page feels active and connected.
+// - Clear visual hierarchy without excessive empty space.
 // - Individual sections own their presentation surfaces.
 // - Avoid nested cards and duplicated containers.
 // - Use shared SisiMove design tokens.
+//
+// -----------------------------------------------------------------------------
+//
+// Search flow:
+//
+// URL
+//   │
+//   │ from + to + date
+//   ▼
+// page.tsx
+//   │
+//   ▼
+// LandingPage
+//   │
+//   │ searchValues
+//   ▼
+// TravellerDiscoveryContent
+//   │
+//   ▼
+// useJourneys.search()
+//   │
+//   ▼
+// GET /journeys/search
 //
 // -----------------------------------------------------------------------------
 
@@ -47,6 +80,7 @@ import { HeroSection } from './hero/hero-section';
 
 import {
   TravellerDiscoveryContent,
+  type TravellerDiscoveryContentProps,
 } from './travellers';
 
 import { JourneyDemandSection } from './journey-demand/journey-demand-section';
@@ -67,6 +101,15 @@ import { CommunityCtaSection } from './calls-to-action/community-cta-section';
 
 export interface LandingPageProps {
   /**
+   * Published Journey search criteria supplied by the public landing-page URL.
+   *
+   * The page route owns reading and normalizing URL search parameters.
+   * LandingPage only passes the resulting serializable criteria into the
+   * existing client-side discovery composition.
+   */
+  searchValues?: TravellerDiscoveryContentProps['searchValues'];
+
+  /**
    * Optional content rendered before the landing page sections.
    *
    * Useful for controlled application-level composition without coupling the
@@ -75,12 +118,13 @@ export interface LandingPageProps {
   topContent?: ReactNode;
 
   /**
-   * Optional content rendered between the hero and traveller discovery.
+   * Optional content rendered between the hero and public journey discovery.
    */
   afterHeroContent?: ReactNode;
 
   /**
-   * Optional content rendered between traveller discovery and Journey Demand.
+   * Optional content rendered between public journey discovery and
+   * Journey Demand.
    */
   afterDiscoveryContent?: ReactNode;
 
@@ -113,14 +157,21 @@ export interface LandingPageProps {
   bottomContent?: ReactNode;
 
   /**
-   * Replace the default traveller discovery content.
+   * Replace the default public journey discovery content.
    *
    * The default is TravellerDiscoveryContent, which owns the client-side
-   * discovery state and connects the existing public discovery hook to the
-   * presentation section.
+   * discovery composition and connects the existing public journey discovery
+   * behavior to the presentation layer.
+   *
+   * Public journey discovery is intentionally available before authentication.
+   * The journey is the discovery object; traveller information is presented
+   * only as part of the public journey information.
    *
    * This remains a ReactNode rather than a callback so the Server Component
    * never receives or passes event handlers.
+   *
+   * When this override is supplied, the default TravellerDiscoveryContent is
+   * not rendered and therefore searchValues are not applied to the override.
    */
   travellerDiscoveryContent?: ReactNode;
 
@@ -172,17 +223,21 @@ const sectionInnerClassName = cn(
 );
 
 /**
- * Standard section spacing.
+ * Compact standard section spacing.
+ *
+ * The landing page contains several content-rich sections, so generous
+ * section padding creates excessive empty space. Keep the sections visually
+ * connected while preserving enough breathing room around each feature.
  */
 const sectionClassName = cn(
-  'py-16 sm:py-20 lg:py-24',
+  'py-10 sm:py-12 lg:py-16',
 );
 
 /**
  * More compact spacing for the final conversion area.
  */
 const compactSectionClassName = cn(
-  'py-12 sm:py-16',
+  'py-8 sm:py-10 lg:py-12',
 );
 
 // -----------------------------------------------------------------------------
@@ -240,10 +295,11 @@ const secondaryActionClassName = cn(
 // -----------------------------------------------------------------------------
 
 export function LandingPage({
+  searchValues,
   topContent,
   afterHeroContent,
-  afterDiscoveryContent,
   journeyDemandContent,
+  afterDiscoveryContent,
   afterJourneyDemandContent,
   afterTrustContent,
   afterHowItWorksContent,
@@ -283,11 +339,11 @@ export function LandingPage({
       {afterHeroContent}
 
       {/* ------------------------------------------------------------------- */}
-      {/* Traveller Discovery                                                */}
+      {/* Public Journey Discovery                                            */}
       {/* ------------------------------------------------------------------- */}
 
       <section
-        id="travellers"
+        id="journeys"
         className={cn(
           sectionClassName,
           'border-b border-[var(--border)]',
@@ -296,7 +352,9 @@ export function LandingPage({
       >
         <div className={sectionInnerClassName}>
           {travellerDiscoveryContent ?? (
-            <TravellerDiscoveryContent />
+            <TravellerDiscoveryContent
+              searchValues={searchValues}
+            />
           )}
         </div>
       </section>
@@ -407,7 +465,7 @@ export function LandingPage({
               <FindJourneySection
                 actionContent={
                   <Link
-                    href="/"
+                    href="/#journeys"
                     className={primaryActionClassName}
                   >
                     Find a journey
@@ -415,10 +473,10 @@ export function LandingPage({
                 }
                 secondaryContent={
                   <Link
-                    href="/#travellers"
+                    href="/#journeys"
                     className={secondaryActionClassName}
                   >
-                    Explore travellers
+                    Explore journeys
                   </Link>
                 }
               />
@@ -429,7 +487,7 @@ export function LandingPage({
           {/* Share a Journey                                                  */}
           {/* ---------------------------------------------------------------- */}
 
-          <div className="mt-8 sm:mt-10">
+          <div className="mt-5 sm:mt-6">
             {shareJourneyContent ?? (
               <ShareJourneySection
                 actionContent={
@@ -456,7 +514,7 @@ export function LandingPage({
           {/* Community                                                        */}
           {/* ---------------------------------------------------------------- */}
 
-          <div className="mt-8 sm:mt-10">
+          <div className="mt-5 sm:mt-6">
             {communityContent ?? (
               <CommunityCtaSection
                 actionContent={

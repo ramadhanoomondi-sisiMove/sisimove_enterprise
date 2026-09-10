@@ -110,27 +110,37 @@ import {
 } from '../mappers';
 
 // =============================================================================
-// Traveller Profile — Administrative HTTP Controller
+// Traveller Profile HTTP Controller
 // =============================================================================
 //
-// This controller is NOT a public/self-service Traveller Profile API.
+// This controller exposes two categories of Traveller Profile operations:
 //
-// It exposes Traveller Profile management capabilities to authenticated
-// administrators and authorized operators.
+// 1. PUBLIC PROFILE DISCOVERY
 //
-// Security model:
+//    These endpoints support the public SisiMove experience, including:
 //
-//   Access Token
-//        ↓
-//   JwtAuthGuard
-//        ↓
-//   PermissionsGuard
-//        ↓
-//   Required traveller-profile permission
-//        ↓
-//   Application Command / Query Handler
-//        ↓
-//   TravellerProfileAggregate
+//    - landing-page traveller discovery;
+//    - public traveller profiles;
+//    - profile lookup by handle;
+//    - profile lookup by public identity;
+//    - public route/corridor presentation.
+//
+//    These endpoints do NOT require authentication.
+//
+// 2. AUTHENTICATED PROFILE MANAGEMENT
+//
+//    These endpoints modify Traveller Profile state or expose private/profile-
+//    management information. They require:
+//
+//        Access Token
+//             ↓
+//        JwtAuthGuard
+//             ↓
+//        PermissionsGuard
+//             ↓
+//        Required traveller-profile permission
+//             ↓
+//        Application Command / Query Handler
 //
 // Responsibilities:
 //
@@ -150,15 +160,10 @@ import {
 // - TravellerProfileCorridorEntity;
 // - application command/query handlers.
 //
-// Authorization is enforced through the authentication and permission
-// infrastructure.
-//
 // =============================================================================
 
 @ApiTags('Traveller Profiles')
-@ApiBearerAuth('access-token')
 @Controller('traveller-profiles')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class TravellerProfileController {
   constructor(
     // ========================================================================
@@ -283,12 +288,30 @@ export class TravellerProfileController {
   ) {}
 
   // ===========================================================================
-  // PROFILE QUERIES
+  // PUBLIC PROFILE DISCOVERY
+  // ===========================================================================
+  //
+  // These endpoints intentionally do not use JwtAuthGuard.
+  //
+  // They support the public SisiMove experience:
+  //
+  // - landing-page traveller discovery;
+  // - public traveller profile pages;
+  // - profile lookup by public ID;
+  // - profile lookup by handle;
+  // - profile lookup by member public ID.
+  //
+  // The response mapper is responsible for exposing the public representation
+  // rather than the internal aggregate structure.
+  //
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Get Traveller Profile By Public ID
+  // ---------------------------------------------------------------------------
+
   @Get('public/:publicId')
-  @RequirePermissions('traveller-profile:read')
-  async getByPublicId(
+  public async getByPublicId(
     @Param('publicId') publicId: string,
   ): Promise<TravellerProfileResponse | null> {
     const aggregate =
@@ -301,9 +324,12 @@ export class TravellerProfileController {
       : TravellerProfileResponseMapper.fromAggregate(aggregate);
   }
 
+  // ---------------------------------------------------------------------------
+  // Get Traveller Profile By Member Public ID
+  // ---------------------------------------------------------------------------
+
   @Get('member/:memberPublicId')
-  @RequirePermissions('traveller-profile:read')
-  async getByMemberPublicId(
+  public async getByMemberPublicId(
     @Param('memberPublicId') memberPublicId: string,
   ): Promise<TravellerProfileResponse | null> {
     const aggregate =
@@ -316,9 +342,12 @@ export class TravellerProfileController {
       : TravellerProfileResponseMapper.fromAggregate(aggregate);
   }
 
+  // ---------------------------------------------------------------------------
+  // Get Traveller Profile By Handle
+  // ---------------------------------------------------------------------------
+
   @Get('handle/:handle')
-  @RequirePermissions('traveller-profile:read')
-  async getByHandle(
+  public async getByHandle(
     @Param('handle') handle: string,
   ): Promise<TravellerProfileResponse | null> {
     const aggregate =
@@ -331,9 +360,20 @@ export class TravellerProfileController {
       : TravellerProfileResponseMapper.fromAggregate(aggregate);
   }
 
+  // ---------------------------------------------------------------------------
+  // Get Traveller Profile
+  // ---------------------------------------------------------------------------
+  //
+  // Public because a Traveller Profile is part of the public SisiMove
+  // traveller-discovery experience.
+  //
+  // Keep this route after the explicit public/member/handle routes so those
+  // routes remain unambiguous.
+  //
+  // ---------------------------------------------------------------------------
+
   @Get(':travellerProfileId')
-  @RequirePermissions('traveller-profile:read')
-  async getById(
+  public async getById(
     @Param('travellerProfileId') travellerProfileId: string,
   ): Promise<TravellerProfileResponse | null> {
     const aggregate = await this.getTravellerProfileQueryHandler.execute(
@@ -348,10 +388,20 @@ export class TravellerProfileController {
   // ===========================================================================
   // PROFILE COMMANDS
   // ===========================================================================
+  //
+  // All profile mutations require authentication and authorization.
+  //
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Create Traveller Profile
+  // ---------------------------------------------------------------------------
 
   @Post()
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('traveller-profile:create')
-  async create(
+  public async create(
     @Body() dto: CreateTravellerProfileDto,
   ): Promise<TravellerProfileResponse> {
     const correlationId = randomUUID();
@@ -372,9 +422,15 @@ export class TravellerProfileController {
     return TravellerProfileResponseMapper.fromAggregate(aggregate);
   }
 
+  // ---------------------------------------------------------------------------
+  // Change Handle
+  // ---------------------------------------------------------------------------
+
   @Patch(':travellerProfileId/handle')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('traveller-profile:update')
-  async changeHandle(
+  public async changeHandle(
     @Param('travellerProfileId') travellerProfileId: string,
     @Body() dto: ChangeTravellerProfileHandleDto,
   ): Promise<void> {
@@ -387,9 +443,15 @@ export class TravellerProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Change Bio
+  // ---------------------------------------------------------------------------
+
   @Patch(':travellerProfileId/bio')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('traveller-profile:update')
-  async changeBio(
+  public async changeBio(
     @Param('travellerProfileId') travellerProfileId: string,
     @Body() dto: ChangeTravellerProfileBioDto,
   ): Promise<void> {
@@ -402,9 +464,15 @@ export class TravellerProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Change Avatar
+  // ---------------------------------------------------------------------------
+
   @Patch(':travellerProfileId/avatar')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('traveller-profile:update')
-  async changeAvatar(
+  public async changeAvatar(
     @Param('travellerProfileId') travellerProfileId: string,
     @Body() dto: ChangeTravellerProfileAvatarDto,
   ): Promise<void> {
@@ -417,9 +485,15 @@ export class TravellerProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Change Country
+  // ---------------------------------------------------------------------------
+
   @Patch(':travellerProfileId/country')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('traveller-profile:update')
-  async changeCountry(
+  public async changeCountry(
     @Param('travellerProfileId') travellerProfileId: string,
     @Body() dto: ChangeTravellerProfileCountryDto,
   ): Promise<void> {
@@ -432,9 +506,15 @@ export class TravellerProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Change Status
+  // ---------------------------------------------------------------------------
+
   @Patch(':travellerProfileId/status')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('traveller-profile:update')
-  async changeStatus(
+  public async changeStatus(
     @Param('travellerProfileId') travellerProfileId: string,
     @Body() dto: ChangeTravellerProfileStatusDto,
   ): Promise<void> {
@@ -447,9 +527,15 @@ export class TravellerProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Change Visibility
+  // ---------------------------------------------------------------------------
+
   @Patch(':travellerProfileId/visibility')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('traveller-profile:update')
-  async changeVisibility(
+  public async changeVisibility(
     @Param('travellerProfileId') travellerProfileId: string,
     @Body() dto: ChangeTravellerProfileVisibilityDto,
   ): Promise<void> {
@@ -465,10 +551,23 @@ export class TravellerProfileController {
   // ===========================================================================
   // PREFERENCES
   // ===========================================================================
+  //
+  // Preferences are intentionally protected.
+  //
+  // They control profile presentation and traveller interaction behavior and
+  // should not become part of the anonymous public profile surface.
+  //
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Create Preferences
+  // ---------------------------------------------------------------------------
 
   @Post(':travellerProfileId/preferences')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('traveller-profile:update')
-  async createPreferences(
+  public async createPreferences(
     @Param('travellerProfileId') travellerProfileId: string,
     @Body() dto: CreateTravellerProfilePreferencesDto,
   ): Promise<void> {
@@ -483,9 +582,15 @@ export class TravellerProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Get Preferences
+  // ---------------------------------------------------------------------------
+
   @Get(':travellerProfileId/preferences')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('traveller-profile:read')
-  async getPreferences(
+  public async getPreferences(
     @Param('travellerProfileId') travellerProfileId: string,
   ): Promise<TravellerProfilePreferencesResponse | null> {
     const preferences =
@@ -498,9 +603,15 @@ export class TravellerProfileController {
       : TravellerProfileResponseMapper.fromPreferences(preferences);
   }
 
+  // ---------------------------------------------------------------------------
+  // Change Preferences
+  // ---------------------------------------------------------------------------
+
   @Patch(':travellerProfileId/preferences')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('traveller-profile:update')
-  async changePreferences(
+  public async changePreferences(
     @Param('travellerProfileId') travellerProfileId: string,
     @Body() dto: ChangeTravellerProfilePreferencesDto,
   ): Promise<void> {
@@ -515,9 +626,15 @@ export class TravellerProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Remove Preferences
+  // ---------------------------------------------------------------------------
+
   @Delete(':travellerProfileId/preferences')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('traveller-profile:update')
-  async removePreferences(
+  public async removePreferences(
     @Param('travellerProfileId') travellerProfileId: string,
   ): Promise<void> {
     await this.removeTravellerProfilePreferencesHandler.execute(
@@ -531,10 +648,26 @@ export class TravellerProfileController {
   // ===========================================================================
   // CORRIDORS
   // ===========================================================================
+  //
+  // Traveller corridors are part of the public traveller-discovery experience.
+  //
+  // SisiMove can use the primary corridor and corridor information to show
+  // where a traveller commonly travels without requiring the visitor to log
+  // in first.
+  //
+  // Corridor mutations remain protected.
+  //
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Add Corridor
+  // ---------------------------------------------------------------------------
 
   @Post(':travellerProfileId/corridors')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('traveller-profile:update')
-  async addCorridor(
+  public async addCorridor(
     @Param('travellerProfileId') travellerProfileId: string,
     @Body() dto: AddTravellerProfileCorridorDto,
   ): Promise<void> {
@@ -554,9 +687,16 @@ export class TravellerProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Get Primary Corridor
+  // ---------------------------------------------------------------------------
+  //
+  // Public discovery endpoint.
+  //
+  // ---------------------------------------------------------------------------
+
   @Get(':travellerProfileId/corridors/primary')
-  @RequirePermissions('traveller-profile:read')
-  async getPrimaryCorridor(
+  public async getPrimaryCorridor(
     @Param('travellerProfileId') travellerProfileId: string,
   ): Promise<TravellerProfileCorridorResponse | null> {
     const corridor =
@@ -569,9 +709,16 @@ export class TravellerProfileController {
       : TravellerProfileResponseMapper.fromCorridor(corridor);
   }
 
+  // ---------------------------------------------------------------------------
+  // Get Corridors
+  // ---------------------------------------------------------------------------
+  //
+  // Public discovery endpoint.
+  //
+  // ---------------------------------------------------------------------------
+
   @Get(':travellerProfileId/corridors')
-  @RequirePermissions('traveller-profile:read')
-  async getCorridors(
+  public async getCorridors(
     @Param('travellerProfileId') travellerProfileId: string,
   ): Promise<TravellerProfileCorridorResponse[]> {
     const corridors =
@@ -582,9 +729,12 @@ export class TravellerProfileController {
     return TravellerProfileResponseMapper.fromCorridors(corridors);
   }
 
+  // ---------------------------------------------------------------------------
+  // Get Corridor
+  // ---------------------------------------------------------------------------
+
   @Get(':travellerProfileId/corridors/:corridorId')
-  @RequirePermissions('traveller-profile:read')
-  async getCorridor(
+  public async getCorridor(
     @Param('corridorId') corridorId: string,
   ): Promise<TravellerProfileCorridorResponse | null> {
     const corridor = await this.getTravellerProfileCorridorQueryHandler.execute(
@@ -596,9 +746,15 @@ export class TravellerProfileController {
       : TravellerProfileResponseMapper.fromCorridor(corridor);
   }
 
+  // ---------------------------------------------------------------------------
+  // Update Corridor
+  // ---------------------------------------------------------------------------
+
   @Patch(':travellerProfileId/corridors/:corridorId')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('traveller-profile:update')
-  async updateCorridor(
+  public async updateCorridor(
     @Param('travellerProfileId') travellerProfileId: string,
     @Param('corridorId') corridorId: string,
     @Body() dto: UpdateTravellerProfileCorridorDto,
@@ -619,9 +775,15 @@ export class TravellerProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Remove Corridor
+  // ---------------------------------------------------------------------------
+
   @Delete(':travellerProfileId/corridors/:corridorId')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('traveller-profile:update')
-  async removeCorridor(
+  public async removeCorridor(
     @Param('travellerProfileId') travellerProfileId: string,
     @Param('corridorId') corridorId: string,
   ): Promise<void> {
@@ -634,9 +796,15 @@ export class TravellerProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Set Primary Corridor
+  // ---------------------------------------------------------------------------
+
   @Patch(':travellerProfileId/corridors/:corridorId/primary')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('traveller-profile:update')
-  async setPrimaryCorridor(
+  public async setPrimaryCorridor(
     @Param('travellerProfileId') travellerProfileId: string,
     @Param('corridorId') corridorId: string,
   ): Promise<void> {
@@ -649,9 +817,15 @@ export class TravellerProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Clear Primary Corridor
+  // ---------------------------------------------------------------------------
+
   @Delete(':travellerProfileId/corridors/primary')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('traveller-profile:update')
-  async clearPrimaryCorridor(
+  public async clearPrimaryCorridor(
     @Param('travellerProfileId') travellerProfileId: string,
   ): Promise<void> {
     await this.clearTravellerProfilePrimaryCorridorHandler.execute(
@@ -662,3 +836,9 @@ export class TravellerProfileController {
     );
   }
 }
+
+// =============================================================================
+// Default Export
+// =============================================================================
+
+export default TravellerProfileController;

@@ -4,11 +4,18 @@
 //
 // React hook for retrieving a single public Journey.
 //
-// This hook owns request state for the Journey feature while keeping API
+// This hook owns request state for the Journey feature while keeping HTTP
 // concerns inside the Journey API layer.
 //
-// It intentionally does not use an effect for automatic fetching. The caller
-// explicitly controls when the request is made through `load` or `refresh`.
+// Public Journey retrieval is Journey-first:
+//
+//   GET /journeys/:journeyPublicId
+//
+// The hook intentionally does not fetch automatically through an effect.
+// Consumers explicitly control retrieval through `load()` or `refresh()`.
+//
+// Stale requests are ignored so that an older response cannot overwrite the
+// state produced by a newer request.
 // -----------------------------------------------------------------------------
 
 import { useCallback, useRef, useState } from 'react';
@@ -45,7 +52,19 @@ export function useJourney(): UseJourneyResult {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
+  /**
+   * Monotonically increasing request identifier.
+   *
+   * Every new load invalidates the result of any previous request.
+   */
   const requestSequenceRef = useRef(0);
+
+  /**
+   * Public identifier of the currently loaded Journey.
+   *
+   * Refresh uses this identifier without requiring the caller to provide it
+   * again.
+   */
   const publicIdRef = useRef<string | null>(null);
 
   // ---------------------------------------------------------------------------
@@ -59,6 +78,12 @@ export function useJourney(): UseJourneyResult {
       const validationError = new Error(
         'Journey public ID is required.',
       );
+
+      /**
+       * Invalidate any request that may still be in flight.
+       */
+      requestSequenceRef.current += 1;
+      publicIdRef.current = null;
 
       setJourney(null);
       setError(validationError);
@@ -77,6 +102,9 @@ export function useJourney(): UseJourneyResult {
     try {
       const result = await journeysApi.getPublic(normalizedPublicId);
 
+      /**
+       * Ignore a response belonging to an older request.
+       */
       if (requestSequence !== requestSequenceRef.current) {
         return null;
       }
@@ -85,6 +113,9 @@ export function useJourney(): UseJourneyResult {
 
       return result;
     } catch (cause) {
+      /**
+       * Ignore errors belonging to an older request.
+       */
       if (requestSequence !== requestSequenceRef.current) {
         return null;
       }
@@ -99,6 +130,9 @@ export function useJourney(): UseJourneyResult {
 
       return null;
     } finally {
+      /**
+       * Only the current request may change the loading state.
+       */
       if (requestSequence === requestSequenceRef.current) {
         setIsLoading(false);
       }
@@ -124,6 +158,9 @@ export function useJourney(): UseJourneyResult {
   // ---------------------------------------------------------------------------
 
   const reset = useCallback(() => {
+    /**
+     * Invalidate any request currently in flight.
+     */
     requestSequenceRef.current += 1;
     publicIdRef.current = null;
 

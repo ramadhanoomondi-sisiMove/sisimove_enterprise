@@ -89,10 +89,12 @@ function normalizeNonNegativeInteger(
     return null;
   }
 
-  const normalized = Math.floor(value);
+  if (!Number.isInteger(value)) {
+    return null;
+  }
 
-  return normalized >= 0
-    ? normalized
+  return value >= 0
+    ? value
     : null;
 }
 
@@ -133,13 +135,6 @@ export function TravellerAvailability({
   const resolvedLabel =
     label ?? getDefaultLabel(normalizedAvailable);
 
-  const hasCapacity =
-    showCapacity;
-
-  const hasLeadingContent =
-    leadingContent !== null &&
-    leadingContent !== undefined;
-
   const textSize =
     size === 'sm'
       ? 'text-xs'
@@ -167,19 +162,21 @@ export function TravellerAvailability({
         className,
       )}
     >
-      {hasLeadingContent && (
-        <span
-          aria-hidden="true"
-          className="inline-flex shrink-0 items-center text-[var(--foreground-muted)]"
-        >
-          {leadingContent}
-        </span>
-      )}
+      {leadingContent !== null &&
+        leadingContent !== undefined && (
+          <span
+            aria-hidden="true"
+            className="inline-flex shrink-0 items-center text-[var(--foreground-muted)]"
+          >
+            {leadingContent}
+          </span>
+        )}
 
       <svg
         viewBox="0 0 20 20"
         fill="none"
         aria-hidden="true"
+        focusable="false"
         className={cn(
           'shrink-0',
           iconSize,
@@ -205,7 +202,7 @@ export function TravellerAvailability({
           {resolvedLabel}
         </span>
 
-        {hasCapacity && (
+        {showCapacity && (
           <span className="text-[var(--foreground-muted)]">
             {' '}
             of {normalizedCapacity}

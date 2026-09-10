@@ -2,26 +2,27 @@
 // sisiMove — Traveller Journey
 // -----------------------------------------------------------------------------
 //
-// Presentation component for a public traveller journey.
+// Presentation component for a publicly discoverable Journey.
+//
+// The Journey is the primary public discovery object.
 //
 // Responsibilities:
-// - Compose the public journey route, schedule, vehicle, availability,
+// - Compose the public Journey route, schedule, vehicle, availability,
 //   and price components.
-// - Consume the public traveller journey read model directly.
+// - Consume the frontend Journey read model directly.
+// - Map public Journey waypoint projections into presentation values.
 // - Provide presentation-level display controls.
 //
 // This component does not:
-// - fetch journey data;
+// - fetch Journey data;
 // - calculate availability;
 // - calculate prices;
 // - calculate Commercial fees or commissions;
 // - perform booking logic;
 // - expose private vehicle information;
-// - determine journey eligibility.
+// - determine Journey eligibility.
 //
-// The supplied PublicTravellerJourney is already a server-authoritative
-// public projection.
-//
+// The supplied Journey is already a server-authoritative public projection.
 // -----------------------------------------------------------------------------
 
 import type {
@@ -29,9 +30,7 @@ import type {
   ReactNode,
 } from 'react';
 
-import type {
-  PublicTravellerJourney,
-} from '@/features/traveller-discovery';
+import type { Journey } from '@/features/journeys';
 
 import { cn } from '../../../foundation/utils/cn';
 
@@ -51,9 +50,12 @@ export interface TravellerJourneyProps
     'children'
   > {
   /**
-   * Public traveller journey projection.
+   * Public Journey read model.
+   *
+   * The Journey is the authoritative public discovery object from which the
+   * presentation sections are composed.
    */
-  readonly journey: PublicTravellerJourney;
+  readonly journey: Journey;
 
   /**
    * Optional presentation content.
@@ -77,22 +79,43 @@ export interface TravellerJourneyProps
 // Helpers
 // -----------------------------------------------------------------------------
 
+/**
+ * Determines whether the public vehicle projection contains information worth
+ * rendering.
+ *
+ * This is a presentation decision only. It does not determine whether a
+ * Journey has a vehicle assigned or whether the Journey is eligible.
+ */
 function hasVehicleInformation(
-  vehicle:
-    PublicTravellerJourney['vehicle'],
+  vehicle: Journey['vehicle'],
 ): boolean {
   if (!vehicle) {
     return false;
   }
 
-  return Boolean(
-    vehicle.make?.trim() ||
-      vehicle.model?.trim() ||
-      vehicle.year !== null &&
-      vehicle.year !== undefined ||
-      vehicle.color?.trim() ||
-      vehicle.imageUrl?.trim(),
+  return (
+    Boolean(vehicle.make?.trim()) ||
+    Boolean(vehicle.model?.trim()) ||
+    vehicle.year !== null ||
+    Boolean(vehicle.color?.trim()) ||
+    Boolean(vehicle.imageUrl?.trim())
   );
+}
+
+/**
+ * Maps the structured public Journey waypoints into the plain display values
+ * expected by TravellerRoute.
+ *
+ * Only the public waypoint name crosses into the generic presentation
+ * component. Coordinates, identifiers, and operational pickup/drop-off
+ * information remain outside TravellerRoute.
+ */
+function getPublicWaypointNames(
+  waypoints: Journey['route']['waypoints'],
+): string[] {
+  return waypoints
+    .map((waypoint) => waypoint.name.trim())
+    .filter(Boolean);
 }
 
 // -----------------------------------------------------------------------------
@@ -120,13 +143,23 @@ export function TravellerJourney({
     route,
     schedule,
     vehicle,
-    availability,
+    capacity,
     pricing,
   } = journey;
 
   const showVehicleSection =
     showVehicle &&
     hasVehicleInformation(vehicle);
+
+  const publicVehicle =
+    showVehicleSection
+      ? vehicle
+      : null;
+
+  const waypointNames =
+    showWaypoints
+      ? getPublicWaypointNames(route.waypoints)
+      : [];
 
   return (
     <div
@@ -141,8 +174,9 @@ export function TravellerJourney({
       {/* ------------------------------------------------------------------- */}
 
       <TravellerRoute
-        origin={route.origin}
-        destination={route.destination}
+        origin={route.originName}
+        destination={route.destinationName}
+        waypoints={waypointNames}
         showWaypoints={showWaypoints}
         leadingContent={routeLeadingContent}
       />
@@ -156,24 +190,20 @@ export function TravellerJourney({
         arrivalAt={schedule.arrivalAt}
         timezone={schedule.timezone}
         type="FIXED"
-        leadingContent={
-          scheduleLeadingContent
-        }
+        leadingContent={scheduleLeadingContent}
       />
 
       {/* ------------------------------------------------------------------- */}
       {/* Vehicle                                                             */}
       {/* ------------------------------------------------------------------- */}
 
-      {showVehicleSection && (
+      {publicVehicle && (
         <TravellerVehicle
-          make={vehicle?.make}
-          model={vehicle?.model}
-          year={vehicle?.year}
-          color={vehicle?.color}
-          leadingContent={
-            vehicleLeadingContent
-          }
+          make={publicVehicle.make}
+          model={publicVehicle.model}
+          year={publicVehicle.year}
+          color={publicVehicle.color}
+          leadingContent={vehicleLeadingContent}
         />
       )}
 
@@ -183,15 +213,9 @@ export function TravellerJourney({
 
       {showAvailability && (
         <TravellerAvailability
-          capacity={
-            availability.totalSeats
-          }
-          available={
-            availability.availableSeats
-          }
-          leadingContent={
-            availabilityLeadingContent
-          }
+          capacity={capacity.totalSeats}
+          available={capacity.availableSeats}
+          leadingContent={availabilityLeadingContent}
         />
       )}
 
@@ -203,9 +227,7 @@ export function TravellerJourney({
         <TravellerPrice
           amount={pricing.amount}
           currency={pricing.currency}
-          leadingContent={
-            priceLeadingContent
-          }
+          leadingContent={priceLeadingContent}
         />
       )}
     </div>

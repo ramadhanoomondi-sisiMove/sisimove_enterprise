@@ -112,6 +112,8 @@ export const JOURNEY_TOKENS = {
       'GetJourneysByProviderAndStatusQueryHandler',
     ),
 
+    SEARCH_PUBLISHED: Symbol('SearchPublishedJourneysQueryHandler'),
+
     // -------------------------------------------------------------------------
     // Corridor
     // -------------------------------------------------------------------------

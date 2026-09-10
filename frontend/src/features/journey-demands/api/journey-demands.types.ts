@@ -18,7 +18,15 @@
 //      ↓
 // Journey Demand feature models
 //
+// Collection endpoints currently return plain arrays:
+//
+//   GET /journey-demands
+//   GET /journey-demands/open
+//
+// They do not return an `{ items, total, offset, limit }` wrapper.
+//
 // -----------------------------------------------------------------------------
+
 
 // -----------------------------------------------------------------------------
 // Journey Demand Status
@@ -38,6 +46,7 @@ export type JourneyDemandStatus =
   | 'FULFILLED'
   | 'CANCELLED'
   | 'EXPIRED';
+
 
 // -----------------------------------------------------------------------------
 // Journey Demand Response
@@ -100,6 +109,7 @@ export interface JourneyDemandResponse {
   isMatchable: boolean;
 }
 
+
 // -----------------------------------------------------------------------------
 // Route Response
 // -----------------------------------------------------------------------------
@@ -128,6 +138,7 @@ export interface JourneyDemandRouteResponse {
    */
   waypoints: JourneyDemandWaypointResponse[];
 }
+
 
 // -----------------------------------------------------------------------------
 // Waypoint Response
@@ -177,6 +188,7 @@ export interface JourneyDemandWaypointResponse {
    */
   dropoffRequired: boolean;
 }
+
 
 // -----------------------------------------------------------------------------
 // Schedule Response
@@ -231,6 +243,7 @@ export interface JourneyDemandScheduleResponse {
   timezone: string;
 }
 
+
 // -----------------------------------------------------------------------------
 // Capacity Response
 // -----------------------------------------------------------------------------
@@ -261,6 +274,7 @@ export interface JourneyDemandCapacityResponse {
    */
   remainingSeats: number;
 }
+
 
 // -----------------------------------------------------------------------------
 // Pricing Response
@@ -299,6 +313,7 @@ export interface JourneyDemandPricingResponse {
   currency: string;
 }
 
+
 // -----------------------------------------------------------------------------
 // Collection Response
 // -----------------------------------------------------------------------------
@@ -306,29 +321,18 @@ export interface JourneyDemandPricingResponse {
 /**
  * HTTP response representation for a collection of Journey Demands.
  *
- * Pagination metadata is intentionally kept transport-level and does not
- * become part of the JourneyDemand feature model.
+ * The backend collection endpoints currently return plain arrays.
+ *
+ * Examples:
+ *
+ *   GET /journey-demands
+ *   GET /journey-demands/open
+ *
+ * Both return:
+ *
+ *   JourneyDemandResponse[]
+ *
+ * Pagination parameters may be accepted by the backend, but pagination
+ * metadata is not currently part of the HTTP response contract.
  */
-export interface JourneyDemandsResponse {
-  /**
-   * Journey Demand records returned by the API.
-   */
-  items: JourneyDemandResponse[];
-
-  /**
-   * Total number of records matching the request.
-   *
-   * Null when the endpoint does not provide a total count.
-   */
-  total: number | null;
-
-  /**
-   * Number of records skipped before this page.
-   */
-  offset: number;
-
-  /**
-   * Maximum number of records requested for this page.
-   */
-  limit: number;
-}
+export type JourneyDemandsResponse = JourneyDemandResponse[];

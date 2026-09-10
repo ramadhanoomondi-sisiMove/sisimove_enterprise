@@ -2,13 +2,27 @@
 // sisiMove — Traveller Discovery Error State
 // -----------------------------------------------------------------------------
 //
-// Presentation component for errors occurring while loading public traveller
+// Presentation component for errors occurring while loading public Journey
 // discovery.
+//
+// Public discovery is Journey-first. The discovery layer may load:
+// - published Journeys;
+// - open Journey Demands.
+//
+// This component presents the resulting discovery-loading failure without
+// knowing which owning feature produced the error.
 //
 // Responsibilities:
 // - Present a discovery-specific error message.
 // - Delegate action behavior to the parent.
 // - Remain independent of API, authentication, routing, and business logic.
+//
+// This component does not:
+// - fetch discovery data;
+// - retry requests itself;
+// - inspect API errors;
+// - determine business state;
+// - resolve traveller identity.
 //
 // -----------------------------------------------------------------------------
 
@@ -39,14 +53,14 @@ export interface DiscoveryErrorStateProps {
   /**
    * Optional retry action.
    *
-   * The parent component owns the retry behavior.
+   * The parent composition layer owns the retry behavior.
    */
   readonly retryAction?: ErrorStateAction;
 
   /**
    * Optional secondary action.
    *
-   * The parent component owns the action behavior.
+   * The parent composition layer owns the action behavior.
    */
   readonly secondaryAction?: ErrorStateAction;
 
@@ -66,9 +80,9 @@ export interface DiscoveryErrorStateProps {
 // -----------------------------------------------------------------------------
 
 export function DiscoveryErrorState({
-  title = 'Unable to load travellers',
+  title = 'Unable to load journeys',
   description =
-    'Something went wrong while loading traveller discovery. Please try again.',
+    'Something went wrong while loading available journeys. Please try again.',
   retryAction,
   secondaryAction,
   icon,
@@ -81,7 +95,10 @@ export function DiscoveryErrorState({
       description={description}
       retryAction={retryAction}
       secondaryAction={secondaryAction}
-      className={cn('min-h-56', className)}
+      className={cn(
+        'min-h-56',
+        className,
+      )}
     />
   );
 }

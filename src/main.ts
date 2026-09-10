@@ -317,7 +317,7 @@ async function bootstrap(): Promise<void> {
   const configuredPort = process.env.PORT?.trim();
 
   const port =
-    configuredPort && configuredPort.length > 0 ? Number(configuredPort) : 3000;
+    configuredPort && configuredPort.length > 0 ? Number(configuredPort) : 3001;
 
   if (!Number.isInteger(port) || port <= 0 || port > 65535) {
     throw new Error(

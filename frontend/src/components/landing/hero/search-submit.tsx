@@ -2,7 +2,7 @@
 // sisiMove — Search Submit
 // -----------------------------------------------------------------------------
 //
-// Submit action for the public traveller search.
+// Submit action for the public Journey search.
 //
 // Responsibilities:
 // - Provide a consistent search action.
@@ -59,7 +59,7 @@ export interface SearchSubmitProps
 // -----------------------------------------------------------------------------
 
 export function SearchSubmit({
-  label = 'Find people',
+  label = 'Find a journey',
   loading = false,
   leadingIcon,
   trailingIcon,
@@ -82,3 +82,4 @@ export function SearchSubmit({
     </Button>
   );
 }
+

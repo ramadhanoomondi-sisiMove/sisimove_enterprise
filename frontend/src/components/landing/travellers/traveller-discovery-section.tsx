@@ -1,15 +1,25 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Traveller Discovery Section
+// sisiMove — Public Journey Discovery Section
 // -----------------------------------------------------------------------------
 //
-// Top-level presentation component for public traveller discovery.
+// Top-level presentation component for public journey discovery.
+//
+// The journey is the primary discovery object.
+//
+// Visitors can discover published journeys before authentication. The journey
+// establishes the public traveller, vehicle, route, availability, pricing, and
+// other information that may be displayed.
+//
+// Journey Demand remains a secondary public discovery stream and is presented
+// through the existing discovery tabs. It does not establish a separate
+// discovery system.
 //
 // Responsibilities:
-// - Compose the discovery header.
+// - Compose the public journey discovery header.
 // - Compose the discovery tabs.
 // - Establish the tab -> tab-panel relationship.
 // - Render loading, error, empty, and successful states.
-// - Delegate activity rendering to TravellerActivityList.
+// - Delegate result rendering to TravellerActivityList.
 //
 // This component does NOT:
 // - fetch data;
@@ -24,6 +34,10 @@
 // Although this component is presentation-only, it is a Client Component
 // because it composes the interactive TravellerDiscoveryTabs component and
 // accepts its callback from the client-side discovery composition boundary.
+//
+// Component names and existing feature boundaries are intentionally retained
+// to avoid unnecessary file churn while public discovery terminology is being
+// aligned around journeys.
 //
 // -----------------------------------------------------------------------------
 
@@ -70,29 +84,35 @@ export interface TravellerDiscoverySectionProps
     'children'
   > {
   /**
-   * Current discovery presentation state.
+   * Current public discovery presentation state.
    */
   readonly status?: TravellerDiscoveryStatus;
 
   /**
-   * Activities currently visible in discovery.
+   * Already-resolved public discovery results currently visible.
+   *
+   * The existing TravellerActivityList item contract is retained so this
+   * section remains a presentation boundary and does not require additional
+   * result-specific component files.
    */
   readonly items?: readonly TravellerActivityListItem[];
 
   /**
-   * Currently selected discovery tab.
+   * Currently selected public discovery tab.
    */
   readonly tab?: TravellerDiscoveryTab;
 
   /**
-   * Called when the selected discovery tab changes.
+   * Called when the selected public discovery tab changes.
    */
   readonly onTabChange?: (
     tab: TravellerDiscoveryTab,
   ) => void;
 
   /**
-   * Optional tab definitions.
+   * Optional public discovery tab definitions.
+   *
+   * When omitted, TravellerDiscoveryTabs supplies its own default tabs.
    */
   readonly tabs?: readonly TravellerDiscoveryTabItem[];
 
@@ -104,7 +124,8 @@ export interface TravellerDiscoverySectionProps
   /**
    * Optional content rendered between the header and result panel.
    *
-   * Useful for search summaries or filters.
+   * Useful for search summaries or filters when those concerns are introduced
+   * by a parent composition boundary.
    */
   readonly topContent?: ReactNode;
 
@@ -139,20 +160,21 @@ export interface TravellerDiscoverySectionProps
   readonly headingId?: string;
 
   /**
-   * ID of the discovery section.
+   * ID of the public journey discovery section.
    *
    * Used by public navigation such as:
-   * /#travellers
+   *
+   * /#journeys
    */
   readonly sectionId?: string;
 
   /**
-   * ID of the tab panel.
+   * ID of the discovery result panel.
    */
   readonly panelId?: string;
 
   /**
-   * Number of columns used by the activity list.
+   * Number of columns used by the discovery result list.
    */
   readonly columns?: 1 | 2 | 3;
 
@@ -167,7 +189,7 @@ export interface TravellerDiscoverySectionProps
   readonly showTabs?: boolean;
 
   /**
-   * Whether the activity list should display its empty state.
+   * Whether the result list should display its empty state.
    */
   readonly showEmptyState?: boolean;
 }
@@ -177,13 +199,13 @@ export interface TravellerDiscoverySectionProps
 // -----------------------------------------------------------------------------
 
 const DEFAULT_SECTION_ID =
-  'travellers';
+  'journeys';
 
 const DEFAULT_HEADING_ID =
-  'traveller-discovery-heading';
+  'public-journey-discovery-heading';
 
 const DEFAULT_PANEL_ID =
-  'traveller-discovery-panel';
+  'public-journey-discovery-panel';
 
 // -----------------------------------------------------------------------------
 // Helpers
@@ -223,22 +245,27 @@ export function TravellerDiscoverySection({
   className,
   ...props
 }: TravellerDiscoverySectionProps) {
-  const resolvedTabs =
-    tabs && tabs.length > 0
-      ? tabs
-      : undefined;
-
   const selectedTab =
-    resolvedTabs?.find(
+    tabs?.find(
       (item) => item.value === tab,
     );
 
+  /*
+   * TravellerDiscoveryTabs has default tab definitions when `tabs` is not
+   * supplied. Therefore the panel relationship must not depend on `tabs`
+   * being explicitly provided to this component.
+   */
   const selectedTabId =
-    showTabs && selectedTab
+    showTabs
       ? getTabId(
           panelId,
-          selectedTab.value,
+          selectedTab?.value ?? tab,
         )
+      : undefined;
+
+  const panelRole =
+    showTabs
+      ? 'tabpanel'
       : undefined;
 
   return (
@@ -252,14 +279,17 @@ export function TravellerDiscoverySection({
       )}
     >
       {/* ------------------------------------------------------------------- */}
-      {/* Discovery header                                                    */}
+      {/* Public journey discovery header                                    */}
       {/* ------------------------------------------------------------------- */}
 
       {headerContent ?? (
         <TravellerDiscoveryHeader
-          eyebrow="PEOPLE TRAVELLING YOUR WAY"
-          title="Discover people sharing journeys and looking for one."
-          description={description}
+          eyebrow="PUBLISHED JOURNEYS"
+          title="Find a journey that matches your plans."
+          description={
+            description ??
+            'Explore published journeys, see the public journey details, and choose the one that works for you.'
+          }
           trailingContent={
             headerTrailingContent
           }
@@ -292,30 +322,10 @@ export function TravellerDiscoverySection({
       )}
 
       {/* ------------------------------------------------------------------- */}
-      {/* Tab panel / discovery results                                       */}
+      {/* Public discovery results                                            */}
       {/* ------------------------------------------------------------------- */}
 
-      <div
-        id={panelId}
-        role="tabpanel"
-        tabIndex={0}
-        aria-labelledby={
-          selectedTabId ??
-          headingId
-        }
-        aria-busy={
-          status === 'loading'
-            ? true
-            : undefined
-        }
-        className={cn(
-          'mt-8',
-          'rounded-[var(--radius-lg)]',
-          'outline-none',
-          'focus-visible:ring-2',
-          'focus-visible:ring-[var(--brand)]/30',
-          'focus-visible:ring-offset-2',
-        )}
+   <div id={panelId} role={panelRole} tabIndex={ showTabs ? 0 : undefined } aria-labelledby={ selectedTabId ?? undefined } aria-busy={ status === 'loading' ? true : undefined } className={cn( 'mt-8', 'rounded-[var(--radius-lg)]', 'outline-none', showTabs ? 'focus-visible:ring-2 focus-visible:ring-[var(--brand)]/30 focus-visible:ring-offset-2' : false, )}
       >
         {status === 'loading' && (
           loadingContent ?? (

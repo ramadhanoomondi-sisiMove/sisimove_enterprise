@@ -46,15 +46,14 @@ export interface TravellerPriceProps {
    * Public price amount in integer minor units.
    *
    * Example:
-   * KES 1,500.00 is represented according to the currency's
-   * minor-unit convention, rather than as the display amount.
+   * KES 1,500.00 is represented as 150000 minor units.
    */
   readonly amount: number | null | undefined;
 
   /**
    * ISO 4217 currency code.
    *
-   * Example: KES.
+   * Defaults to KES for the Kenya-first public experience.
    */
   readonly currency?: string;
 
@@ -99,12 +98,13 @@ function normalizeAmount(
     amount === null ||
     amount === undefined ||
     !Number.isFinite(amount) ||
+    !Number.isInteger(amount) ||
     amount < 0
   ) {
     return null;
   }
 
-  return Math.trunc(amount);
+  return amount;
 }
 
 function normalizeCurrency(
@@ -167,32 +167,34 @@ export function TravellerPrice({
         className,
       )}
     >
-      {leadingContent && (
-        <span
-          aria-hidden="true"
-          className={cn(
-            'inline-flex',
-            'shrink-0',
-            'items-center',
-            'self-center',
-            'text-[var(--foreground-muted)]',
-          )}
-        >
-          {leadingContent}
-        </span>
-      )}
+      {leadingContent !== null &&
+        leadingContent !== undefined && (
+          <span
+            aria-hidden="true"
+            className={cn(
+              'inline-flex',
+              'shrink-0',
+              'items-center',
+              'self-center',
+              'text-[var(--foreground-muted)]',
+            )}
+          >
+            {leadingContent}
+          </span>
+        )}
 
-      {label && (
-        <span
-          className={cn(
-            'shrink-0',
-            'text-[var(--foreground-muted)]',
-            secondaryTextSize,
-          )}
-        >
-          {label}
-        </span>
-      )}
+      {label !== null &&
+        label !== undefined && (
+          <span
+            className={cn(
+              'shrink-0',
+              'text-[var(--foreground-muted)]',
+              secondaryTextSize,
+            )}
+          >
+            {label}
+          </span>
+        )}
 
       <span
         className={cn(
@@ -205,17 +207,18 @@ export function TravellerPrice({
         {formattedAmount}
       </span>
 
-      {suffix && (
-        <span
-          className={cn(
-            'shrink-0',
-            'text-[var(--foreground-muted)]',
-            secondaryTextSize,
-          )}
-        >
-          {suffix}
-        </span>
-      )}
+      {suffix !== null &&
+        suffix !== undefined && (
+          <span
+            className={cn(
+              'shrink-0',
+              'text-[var(--foreground-muted)]',
+              secondaryTextSize,
+            )}
+          >
+            {suffix}
+          </span>
+        )}
     </div>
   );
 }

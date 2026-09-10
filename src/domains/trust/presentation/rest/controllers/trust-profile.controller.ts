@@ -135,23 +135,37 @@ import {
 } from '../mappers/trust-profile-response.mapper';
 
 // =============================================================================
-// Trust Profile — Administrative HTTP Controller
+// Trust Profile HTTP Controller
 // =============================================================================
 //
-// This controller is NOT a public/self-service Trust Profile API.
+// This controller exposes two categories of Trust Profile operations:
 //
-// It exposes Trust Profile management capabilities for authenticated
-// administrators and authorized operators.
+// 1. PUBLIC TRUST DISCOVERY
 //
-// Security model:
+//    These endpoints support the public SisiMove traveller experience:
 //
-//   JWT authentication
-//        ↓
-//   PermissionsGuard
-//        ↓
-//   Required trust-* permission
-//        ↓
-//   Application command/query handler
+//    - public trust profiles;
+//    - trust profile lookup by member;
+//    - ratings;
+//    - reviews;
+//    - trust badges.
+//
+//    These endpoints do NOT require authentication.
+//
+// 2. AUTHENTICATED TRUST MANAGEMENT
+//
+//    These endpoints modify trust state or expose operational/moderation data.
+//    They require:
+//
+//        Access Token
+//             ↓
+//        JwtAuthGuard
+//             ↓
+//        PermissionsGuard
+//             ↓
+//        Required trust-* permission
+//             ↓
+//        Application Command / Query Handler
 //
 // Responsibilities:
 //
@@ -165,21 +179,18 @@ import {
 // The controller contains no business rules.
 //
 // Domain behavior remains in:
+//
 // - TrustProfileAggregate;
 // - TrustRatingEntity;
 // - TrustReviewEntity;
 // - TrustProfileBadgeEntity;
-// - TrustEventEntity.
-//
-// Authorization is expressed through permissions and enforced by the
-// authentication/authorization infrastructure.
+// - TrustEventEntity;
+// - application command/query handlers.
 //
 // =============================================================================
 
 @ApiTags('Trust Profiles')
-@ApiBearerAuth('access-token')
 @Controller('trust-profiles')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class TrustProfileController {
   constructor(
     // ========================================================================
@@ -346,12 +357,25 @@ export class TrustProfileController {
   ) {}
 
   // ===========================================================================
-  // PROFILE QUERIES
+  // PUBLIC TRUST PROFILE DISCOVERY
+  // ===========================================================================
+  //
+  // Trust is a core part of the public SisiMove traveller experience.
+  //
+  // Visitors should be able to inspect a traveller's public trust profile
+  // before deciding whether to interact with that traveller, without being
+  // forced to authenticate first.
+  //
+  // The response mapper defines the public representation.
+  //
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Get Trust Profile By Public ID
+  // ---------------------------------------------------------------------------
+
   @Get('public/:publicId')
-  @RequirePermissions('trust-profile:read')
-  async getByPublicId(
+  public async getByPublicId(
     @Param('publicId') publicId: string,
   ): Promise<TrustProfileResponse | null> {
     const aggregate = await this.getTrustProfileQueryHandler.execute(
@@ -363,9 +387,12 @@ export class TrustProfileController {
       : TrustProfileResponseMapper.fromAggregate(aggregate);
   }
 
+  // ---------------------------------------------------------------------------
+  // Get Trust Profile By Member Public ID
+  // ---------------------------------------------------------------------------
+
   @Get('member/:memberPublicId')
-  @RequirePermissions('trust-profile:read')
-  async getByMemberPublicId(
+  public async getByMemberPublicId(
     @Param('memberPublicId') memberPublicId: string,
   ): Promise<TrustProfileResponse | null> {
     const aggregate =
@@ -381,10 +408,20 @@ export class TrustProfileController {
   // ===========================================================================
   // PROFILE COMMANDS
   // ===========================================================================
+  //
+  // Profile creation and state changes are authenticated operations.
+  //
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Create Trust Profile
+  // ---------------------------------------------------------------------------
 
   @Post()
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-profile:create')
-  async create(
+  public async create(
     @Body() dto: CreateTrustProfileDto,
   ): Promise<TrustProfileResponse> {
     const aggregate = await this.createTrustProfileHandler.execute(
@@ -399,9 +436,15 @@ export class TrustProfileController {
     return TrustProfileResponseMapper.fromAggregate(aggregate);
   }
 
+  // ---------------------------------------------------------------------------
+  // Change Trust Profile Status
+  // ---------------------------------------------------------------------------
+
   @Patch(':trustProfileId/status')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-profile:update')
-  async changeStatus(
+  public async changeStatus(
     @Param('trustProfileId') trustProfileId: string,
     @Body() dto: ChangeTrustProfileStatusDto,
   ): Promise<void> {
@@ -417,10 +460,21 @@ export class TrustProfileController {
   // ===========================================================================
   // VERIFICATION
   // ===========================================================================
+  //
+  // Verification state is public information when included in the public
+  // TrustProfileResponse, but granting/revoking verification is privileged.
+  //
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Grant Verification
+  // ---------------------------------------------------------------------------
 
   @Post(':trustProfileId/verification')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-profile:update')
-  async grantVerification(
+  public async grantVerification(
     @Param('trustProfileId') trustProfileId: string,
     @Body() dto: GrantTrustVerificationDto,
   ): Promise<void> {
@@ -433,9 +487,15 @@ export class TrustProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Revoke Verification
+  // ---------------------------------------------------------------------------
+
   @Patch(':trustProfileId/verification/revoke')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-profile:update')
-  async revokeVerification(
+  public async revokeVerification(
     @Param('trustProfileId') trustProfileId: string,
   ): Promise<void> {
     await this.revokeTrustVerificationHandler.execute(
@@ -444,12 +504,19 @@ export class TrustProfileController {
   }
 
   // ===========================================================================
-  // RATING QUERIES
+  // PUBLIC RATING DISCOVERY
+  // ===========================================================================
+  //
+  // Ratings are part of the public trust/reputation surface.
+  //
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Get Ratings
+  // ---------------------------------------------------------------------------
+
   @Get(':trustProfileId/ratings')
-  @RequirePermissions('trust-rating:read')
-  async getRatings(
+  public async getRatings(
     @Param('trustProfileId') trustProfileId: string,
   ): Promise<TrustRatingResponse[]> {
     const ratings = await this.getTrustProfileRatingsQueryHandler.execute(
@@ -459,9 +526,12 @@ export class TrustProfileController {
     return TrustProfileResponseMapper.fromRatings([...ratings]);
   }
 
+  // ---------------------------------------------------------------------------
+  // Get Rating
+  // ---------------------------------------------------------------------------
+
   @Get(':trustProfileId/ratings/:ratingId')
-  @RequirePermissions('trust-rating:read')
-  async getRating(
+  public async getRating(
     @Param('trustProfileId') trustProfileId: string,
     @Param('ratingId') ratingId: string,
   ): Promise<TrustRatingResponse | null> {
@@ -477,10 +547,20 @@ export class TrustProfileController {
   // ===========================================================================
   // RATING COMMANDS
   // ===========================================================================
+  //
+  // Rating creation and modification require authentication.
+  //
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Receive Rating
+  // ---------------------------------------------------------------------------
 
   @Post(':trustProfileId/ratings')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-rating:create')
-  async receiveRating(
+  public async receiveRating(
     @Param('trustProfileId') trustProfileId: string,
     @Body() dto: ReceiveTrustRatingDto,
   ): Promise<void> {
@@ -500,9 +580,15 @@ export class TrustProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Change Rating Score
+  // ---------------------------------------------------------------------------
+
   @Patch(':trustProfileId/ratings/:ratingId/score')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-rating:update')
-  async changeRatingScore(
+  public async changeRatingScore(
     @Param('trustProfileId') trustProfileId: string,
     @Param('ratingId') ratingId: string,
     @Body() dto: ChangeTrustRatingScoreDto,
@@ -517,9 +603,15 @@ export class TrustProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Hide Rating
+  // ---------------------------------------------------------------------------
+
   @Patch(':trustProfileId/ratings/:ratingId/hide')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-rating:moderate')
-  async hideRating(
+  public async hideRating(
     @Param('trustProfileId') trustProfileId: string,
     @Param('ratingId') ratingId: string,
     @Body() dto: HideTrustRatingDto,
@@ -534,9 +626,15 @@ export class TrustProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Remove Rating
+  // ---------------------------------------------------------------------------
+
   @Patch(':trustProfileId/ratings/:ratingId/remove')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-rating:moderate')
-  async removeRating(
+  public async removeRating(
     @Param('trustProfileId') trustProfileId: string,
     @Param('ratingId') ratingId: string,
     @Body() dto: RemoveTrustRatingDto,
@@ -551,9 +649,15 @@ export class TrustProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Restore Rating
+  // ---------------------------------------------------------------------------
+
   @Patch(':trustProfileId/ratings/:ratingId/restore')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-rating:moderate')
-  async restoreRating(
+  public async restoreRating(
     @Param('trustProfileId') trustProfileId: string,
     @Param('ratingId') ratingId: string,
   ): Promise<void> {
@@ -563,12 +667,19 @@ export class TrustProfileController {
   }
 
   // ===========================================================================
-  // REVIEW QUERIES
+  // PUBLIC REVIEW DISCOVERY
+  // ===========================================================================
+  //
+  // Reviews contribute directly to the public reputation experience.
+  //
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Get Reviews
+  // ---------------------------------------------------------------------------
+
   @Get(':trustProfileId/reviews')
-  @RequirePermissions('trust-review:read')
-  async getReviews(
+  public async getReviews(
     @Param('trustProfileId') trustProfileId: string,
   ): Promise<TrustReviewResponse[]> {
     const reviews = await this.getTrustProfileReviewsQueryHandler.execute(
@@ -578,9 +689,12 @@ export class TrustProfileController {
     return TrustProfileResponseMapper.fromReviews([...reviews]);
   }
 
+  // ---------------------------------------------------------------------------
+  // Get Review
+  // ---------------------------------------------------------------------------
+
   @Get(':trustProfileId/reviews/:reviewId')
-  @RequirePermissions('trust-review:read')
-  async getReview(
+  public async getReview(
     @Param('trustProfileId') trustProfileId: string,
     @Param('reviewId') reviewId: string,
   ): Promise<TrustReviewResponse | null> {
@@ -597,9 +711,15 @@ export class TrustProfileController {
   // REVIEW COMMANDS
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Create Review
+  // ---------------------------------------------------------------------------
+
   @Post(':trustProfileId/reviews')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-review:create')
-  async createReview(
+  public async createReview(
     @Param('trustProfileId') trustProfileId: string,
     @Body() dto: CreateTrustReviewDto,
   ): Promise<void> {
@@ -614,9 +734,15 @@ export class TrustProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Update Review
+  // ---------------------------------------------------------------------------
+
   @Patch(':trustProfileId/reviews/:reviewId')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-review:update')
-  async updateReview(
+  public async updateReview(
     @Param('trustProfileId') trustProfileId: string,
     @Param('reviewId') reviewId: string,
     @Body() dto: UpdateTrustReviewDto,
@@ -631,9 +757,15 @@ export class TrustProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Remove Review
+  // ---------------------------------------------------------------------------
+
   @Patch(':trustProfileId/reviews/:reviewId/remove')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-review:moderate')
-  async removeReview(
+  public async removeReview(
     @Param('trustProfileId') trustProfileId: string,
     @Param('reviewId') reviewId: string,
     @Body() dto: RemoveTrustReviewDto,
@@ -649,12 +781,19 @@ export class TrustProfileController {
   }
 
   // ===========================================================================
-  // BADGE QUERIES
+  // PUBLIC BADGE DISCOVERY
+  // ===========================================================================
+  //
+  // Trust badges are public reputation signals.
+  //
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Get Badges
+  // ---------------------------------------------------------------------------
+
   @Get(':trustProfileId/badges')
-  @RequirePermissions('trust-badge:read')
-  async getBadges(
+  public async getBadges(
     @Param('trustProfileId') trustProfileId: string,
   ): Promise<TrustProfileBadgeResponse[]> {
     const profileBadges = await this.getTrustProfileBadgesQueryHandler.execute(
@@ -664,9 +803,12 @@ export class TrustProfileController {
     return TrustProfileResponseMapper.fromProfileBadges([...profileBadges]);
   }
 
+  // ---------------------------------------------------------------------------
+  // Get Badge
+  // ---------------------------------------------------------------------------
+
   @Get(':trustProfileId/badges/:profileBadgeId')
-  @RequirePermissions('trust-badge:read')
-  async getBadge(
+  public async getBadge(
     @Param('trustProfileId') trustProfileId: string,
     @Param('profileBadgeId') profileBadgeId: string,
   ): Promise<TrustProfileBadgeResponse | null> {
@@ -683,9 +825,15 @@ export class TrustProfileController {
   // BADGE COMMANDS
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Award Badge
+  // ---------------------------------------------------------------------------
+
   @Post(':trustProfileId/badges')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-badge:award')
-  async awardBadge(
+  public async awardBadge(
     @Param('trustProfileId') trustProfileId: string,
     @Body() dto: AwardTrustBadgeDto,
   ): Promise<void> {
@@ -699,9 +847,15 @@ export class TrustProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Revoke Badge
+  // ---------------------------------------------------------------------------
+
   @Patch(':trustProfileId/badges/:profileBadgeId/revoke')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-badge:revoke')
-  async revokeBadge(
+  public async revokeBadge(
     @Param('trustProfileId') trustProfileId: string,
     @Param('profileBadgeId') profileBadgeId: string,
     @Body() dto: RevokeTrustBadgeDto,
@@ -717,12 +871,23 @@ export class TrustProfileController {
   }
 
   // ===========================================================================
-  // EVENT QUERIES
+  // INTERNAL TRUST EVENT QUERIES
+  // ===========================================================================
+  //
+  // Trust events are operational/audit information and are therefore not part
+  // of the anonymous public trust profile.
+  //
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Get Trust Events
+  // ---------------------------------------------------------------------------
+
   @Get(':trustProfileId/events')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-profile:read')
-  async getEvents(
+  public async getEvents(
     @Param('trustProfileId') trustProfileId: string,
   ): Promise<TrustEventResponse[]> {
     const events = await this.getTrustProfileEventsQueryHandler.execute(
@@ -735,10 +900,21 @@ export class TrustProfileController {
   // ===========================================================================
   // JOURNEY PROJECTIONS
   // ===========================================================================
+  //
+  // These operations project journey outcomes into the Trust domain.
+  // They are internal/application-level operations and remain protected.
+  //
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Apply Journey Completed
+  // ---------------------------------------------------------------------------
 
   @Post(':trustProfileId/journeys/completed')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-profile:project')
-  async applyJourneyCompleted(
+  public async applyJourneyCompleted(
     @Param('trustProfileId') trustProfileId: string,
     @Body() dto: ApplyTrustJourneyCompletedDto,
   ): Promise<void> {
@@ -753,9 +929,15 @@ export class TrustProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Apply Journey Cancelled
+  // ---------------------------------------------------------------------------
+
   @Post(':trustProfileId/journeys/cancelled')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-profile:project')
-  async applyJourneyCancelled(
+  public async applyJourneyCancelled(
     @Param('trustProfileId') trustProfileId: string,
     @Body() dto: ApplyTrustJourneyCancelledDto,
   ): Promise<void> {
@@ -774,10 +956,20 @@ export class TrustProfileController {
   // ===========================================================================
   // DISPUTES
   // ===========================================================================
+  //
+  // Dispute projections are protected operational operations.
+  //
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Apply Dispute Opened
+  // ---------------------------------------------------------------------------
 
   @Post(':trustProfileId/disputes/opened')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-profile:project')
-  async applyDisputeOpened(
+  public async applyDisputeOpened(
     @Param('trustProfileId') trustProfileId: string,
     @Body() dto: ApplyTrustDisputeOpenedDto,
   ): Promise<void> {
@@ -794,9 +986,15 @@ export class TrustProfileController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Apply Dispute Resolved
+  // ---------------------------------------------------------------------------
+
   @Post(':trustProfileId/disputes/resolved')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-profile:project')
-  async applyDisputeResolved(
+  public async applyDisputeResolved(
     @Param('trustProfileId') trustProfileId: string,
     @Body() dto: ApplyTrustDisputeResolvedDto,
   ): Promise<void> {
@@ -814,12 +1012,18 @@ export class TrustProfileController {
   }
 
   // ===========================================================================
-  // MANUAL ADJUSTMENT
+  // MANUAL TRUST ADJUSTMENT
+  // ===========================================================================
+  //
+  // Manual trust adjustments are privileged administrative operations.
+  //
   // ===========================================================================
 
   @Post(':trustProfileId/adjustments')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-profile:adjust')
-  async applyManualAdjustment(
+  public async applyManualAdjustment(
     @Param('trustProfileId') trustProfileId: string,
     @Body() dto: ApplyTrustManualAdjustmentDto,
   ): Promise<void> {
@@ -835,3 +1039,9 @@ export class TrustProfileController {
     );
   }
 }
+
+// =============================================================================
+// Default Export
+// =============================================================================
+
+export default TrustProfileController;

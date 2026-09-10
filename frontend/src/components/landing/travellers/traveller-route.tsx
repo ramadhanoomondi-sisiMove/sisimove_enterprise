@@ -17,6 +17,9 @@
 // - determine route eligibility;
 // - access Journey APIs.
 //
+// The component accepts already-mapped public location strings. Structured
+// Journey waypoint models are intentionally kept outside this presentation
+// component.
 // -----------------------------------------------------------------------------
 
 import type { ReactNode } from 'react';
@@ -49,8 +52,8 @@ export interface TravellerRouteProps {
   /**
    * Optional public intermediate waypoints.
    *
-   * The parent is responsible for mapping structured route waypoints
-   * into display names.
+   * The parent is responsible for mapping structured route waypoints into
+   * display names.
    */
   readonly waypoints?: readonly string[];
 
@@ -293,23 +296,22 @@ export function TravellerRoute({
         </div>
       )}
 
-<div
-  aria-label={`${normalizedOrigin} to ${normalizedDestination}`}
-  className={cn(
-    'min-w-0',
-    orientation === 'horizontal'
-      ? 'flex flex-wrap items-center gap-x-2 gap-y-2'
-      : 'flex flex-col items-start',
-  )}
->
+      <div
+        aria-label={`${normalizedOrigin} to ${normalizedDestination}`}
+        className={cn(
+          'min-w-0',
+          orientation === 'horizontal'
+            ? 'flex flex-wrap items-center gap-x-2 gap-y-2'
+            : 'flex flex-col items-start',
+        )}
+      >
         {locations.map(
           (location, index) => {
             const isOrigin =
               index === 0;
 
             const isDestination =
-              index ===
-              locations.length - 1;
+              index === locations.length - 1;
 
             return (
               <div
@@ -324,9 +326,7 @@ export function TravellerRoute({
                 <RoutePoint
                   location={location}
                   isOrigin={isOrigin}
-                  isDestination={
-                    isDestination
-                  }
+                  isDestination={isDestination}
                   size={size}
                 />
 
@@ -339,9 +339,7 @@ export function TravellerRoute({
                     )}
                   >
                     <RouteConnector
-                      orientation={
-                        orientation
-                      }
+                      orientation={orientation}
                       size={size}
                     />
                   </div>

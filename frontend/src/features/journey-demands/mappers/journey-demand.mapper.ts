@@ -31,7 +31,16 @@
 //
 // The mapper is the explicit boundary between those two representations.
 //
+// Collection responses are handled by the application/hook layer:
+//
+// JourneyDemandResponse[]
+//       ↓
+// response.map(journeyDemandMapper.map)
+//       ↓
+// JourneyDemand[]
+//
 // -----------------------------------------------------------------------------
+
 
 // -----------------------------------------------------------------------------
 // Feature Models
@@ -46,6 +55,7 @@ import type {
   JourneyDemandWaypoint,
 } from '../models';
 
+
 // -----------------------------------------------------------------------------
 // Transport Types
 // -----------------------------------------------------------------------------
@@ -59,15 +69,19 @@ import type {
   JourneyDemandWaypointResponse,
 } from '../api';
 
+
 // -----------------------------------------------------------------------------
 // Mapper
 // -----------------------------------------------------------------------------
 
 export class JourneyDemandMapper {
   /**
-   * Maps a Journey Demand API response into the frontend feature model.
+   * Maps a single Journey Demand API response into the frontend feature model.
+   *
+   * The mapper does not transform or derive business state. Values supplied
+   * by the backend are preserved as received.
    */
-  map(response: JourneyDemandResponse): JourneyDemand {
+  public map(response: JourneyDemandResponse): JourneyDemand {
     return {
       publicId: response.publicId,
       requesterPublicId: response.requesterPublicId,
@@ -166,6 +180,7 @@ export class JourneyDemandMapper {
     };
   }
 }
+
 
 // -----------------------------------------------------------------------------
 // Shared Mapper Instance

@@ -2,10 +2,10 @@
 // sisiMove — Traveller Activity Type
 // -----------------------------------------------------------------------------
 //
-// Presentation component that communicates whether a traveller is:
+// Presentation component that communicates the type of public activity:
 //
-// - Travelling — the traveller has published a journey.
-// - Looking    — the traveller has published a journey demand.
+// - JOURNEY — a published journey with available travel capacity.
+// - DEMAND  — a published journey demand from someone looking to travel.
 //
 // Responsibilities:
 // - Translate the public activity type into user-facing language.
@@ -18,15 +18,16 @@
 // - perform filtering;
 // - perform routing;
 // - perform authentication or authorization;
-// - contain Journey, Booking, Commercial, or Financial logic.
+// - contain Journey, Booking, Commercial, or Financial logic;
+// - depend on the obsolete PublicTravellerDiscovery model.
+//
+// Architectural note:
+// The activity type is a presentation concern. The component retains its
+// existing name and file boundary to avoid unnecessary file churn.
 //
 // -----------------------------------------------------------------------------
 
 import type { ReactNode } from 'react';
-
-import type {
-  PublicTravellerActivityType,
-} from '@/features/traveller-discovery';
 
 import { Badge } from '../../ui';
 
@@ -35,11 +36,12 @@ import { Badge } from '../../ui';
 // -----------------------------------------------------------------------------
 
 export type TravellerActivityType =
-  PublicTravellerActivityType;
+  | 'JOURNEY'
+  | 'DEMAND';
 
 export interface TravellerActivityTypeProps {
   /**
-   * Type of public traveller activity.
+   * Type of public activity being presented.
    */
   readonly type: TravellerActivityType;
 
@@ -47,8 +49,8 @@ export interface TravellerActivityTypeProps {
    * Optional custom label.
    *
    * When omitted:
-   * - JOURNEY → Travelling
-   * - DEMAND  → Looking
+   * - JOURNEY → Journey
+   * - DEMAND  → Demand
    */
   readonly label?: ReactNode;
 
@@ -67,10 +69,10 @@ function getDefaultLabel(
 ): string {
   switch (type) {
     case 'JOURNEY':
-      return 'Travelling';
+      return 'Journey';
 
     case 'DEMAND':
-      return 'Looking';
+      return 'Demand';
   }
 }
 
@@ -84,6 +86,7 @@ function JourneyIcon() {
       viewBox="0 0 20 20"
       fill="none"
       aria-hidden="true"
+      focusable="false"
       className="h-3.5 w-3.5"
     >
       <path
@@ -111,6 +114,7 @@ function DemandIcon() {
       viewBox="0 0 20 20"
       fill="none"
       aria-hidden="true"
+      focusable="false"
       className="h-3.5 w-3.5"
     >
       <path

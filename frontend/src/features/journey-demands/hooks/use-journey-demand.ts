@@ -24,7 +24,9 @@
 //
 // -----------------------------------------------------------------------------
 
+
 'use client';
+
 
 // -----------------------------------------------------------------------------
 // React
@@ -32,11 +34,13 @@
 
 import { useCallback, useRef, useState } from 'react';
 
+
 // -----------------------------------------------------------------------------
 // API
 // -----------------------------------------------------------------------------
 
 import { journeyDemandsApi } from '../api';
+
 
 // -----------------------------------------------------------------------------
 // Mapper
@@ -44,22 +48,25 @@ import { journeyDemandsApi } from '../api';
 
 import { journeyDemandMapper } from '../mappers';
 
+
 // -----------------------------------------------------------------------------
 // Models
 // -----------------------------------------------------------------------------
 
 import type { JourneyDemand } from '../models';
 
+
 // -----------------------------------------------------------------------------
 // Hook State
 // -----------------------------------------------------------------------------
 
 export interface UseJourneyDemandState {
-  journeyDemand: JourneyDemand | null;
-  isLoading: boolean;
-  isRefreshing: boolean;
-  error: Error | null;
+  readonly journeyDemand: JourneyDemand | null;
+  readonly isLoading: boolean;
+  readonly isRefreshing: boolean;
+  readonly error: Error | null;
 }
+
 
 // -----------------------------------------------------------------------------
 // Hook Result
@@ -67,10 +74,13 @@ export interface UseJourneyDemandState {
 
 export interface UseJourneyDemandResult
   extends UseJourneyDemandState {
-  load: (publicId: string) => Promise<JourneyDemand | null>;
-  refresh: () => Promise<JourneyDemand | null>;
-  reset: () => void;
+  readonly load: (
+    publicId: string,
+  ) => Promise<JourneyDemand | null>;
+  readonly refresh: () => Promise<JourneyDemand | null>;
+  readonly reset: () => void;
 }
+
 
 // -----------------------------------------------------------------------------
 // Helpers
@@ -87,8 +97,11 @@ function normalizeError(cause: unknown): Error {
     return cause;
   }
 
-  return new Error('Unable to load Journey Demand.');
+  return new Error(
+    'Unable to load Journey Demand.',
+  );
 }
+
 
 // -----------------------------------------------------------------------------
 // Hook
@@ -98,35 +111,80 @@ export function useJourneyDemand(): UseJourneyDemandResult {
   const [journeyDemand, setJourneyDemand] =
     useState<JourneyDemand | null>(null);
 
-  const [isLoading, setIsLoading] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const [isLoading, setIsLoading] =
+    useState(false);
 
-  const requestSequenceRef = useRef(0);
-  const publicIdRef = useRef<string | null>(null);
-  const hasDataRef = useRef(false);
+  const [isRefreshing, setIsRefreshing] =
+    useState(false);
+
+  const [error, setError] =
+    useState<Error | null>(null);
+
+  // ---------------------------------------------------------------------------
+  // Request sequencing
+  // ---------------------------------------------------------------------------
+  //
+  // Prevents an older asynchronous request from overwriting state established
+  // by a newer request.
+  //
+
+  const requestSequenceRef =
+    useRef(0);
+
+  // ---------------------------------------------------------------------------
+  // Current public identifier
+  // ---------------------------------------------------------------------------
+  //
+  // Used by refresh() to reload the currently selected Journey Demand.
+  //
+
+  const publicIdRef =
+    useRef<string | null>(null);
+
+  // ---------------------------------------------------------------------------
+  // Successful-load tracking
+  // ---------------------------------------------------------------------------
+  //
+  // Tracks successful data independently from the value itself.
+  //
+
+  const hasDataRef =
+    useRef(false);
 
   // ---------------------------------------------------------------------------
   // Load
   // ---------------------------------------------------------------------------
 
   const load = useCallback(
-    async (publicId: string): Promise<JourneyDemand | null> => {
-      const normalizedPublicId = normalizePublicId(publicId);
+    async (
+      publicId: string,
+    ): Promise<JourneyDemand | null> => {
+      const normalizedPublicId =
+        normalizePublicId(publicId);
 
-      const requestSequence = ++requestSequenceRef.current;
+      const requestSequence =
+        ++requestSequenceRef.current;
+
+      // -----------------------------------------------------------------------
+      // Invalid identifier
+      // -----------------------------------------------------------------------
 
       if (!normalizedPublicId) {
-        if (requestSequence === requestSequenceRef.current) {
+        if (
+          requestSequence ===
+          requestSequenceRef.current
+        ) {
           publicIdRef.current = null;
           hasDataRef.current = false;
 
           setJourneyDemand(null);
+
           setError(
             new Error(
               'Journey Demand public ID is required.',
             ),
           );
+
           setIsLoading(false);
           setIsRefreshing(false);
         }
@@ -134,9 +192,15 @@ export function useJourneyDemand(): UseJourneyDemandResult {
         return null;
       }
 
-      publicIdRef.current = normalizedPublicId;
+      // -----------------------------------------------------------------------
+      // Remember the current Journey Demand.
+      // -----------------------------------------------------------------------
 
-      const hasExistingData = hasDataRef.current;
+      publicIdRef.current =
+        normalizedPublicId;
+
+      const hasExistingData =
+        hasDataRef.current;
 
       setError(null);
 
@@ -146,11 +210,25 @@ export function useJourneyDemand(): UseJourneyDemandResult {
         setIsLoading(true);
       }
 
+      // -----------------------------------------------------------------------
+      // Load Journey Demand
+      // -----------------------------------------------------------------------
+
       try {
+        // ---------------------------------------------------------------------
+        // Retrieve the Journey Demand through the bounded-context API.
+        //
+        // `get()` is the single-resource API operation.
+        // ---------------------------------------------------------------------
+
         const response =
-          await journeyDemandsApi.getPublic(
+          await journeyDemandsApi.get(
             normalizedPublicId,
           );
+
+        // ---------------------------------------------------------------------
+        // Ignore stale responses.
+        // ---------------------------------------------------------------------
 
         if (
           requestSequence !==
@@ -158,17 +236,28 @@ export function useJourneyDemand(): UseJourneyDemandResult {
         ) {
           return null;
         }
+
+        // ---------------------------------------------------------------------
+        // Map transport representation into the feature model.
+        // ---------------------------------------------------------------------
 
         const mappedJourneyDemand =
           journeyDemandMapper.map(response);
 
         hasDataRef.current = true;
 
-        setJourneyDemand(mappedJourneyDemand);
+        setJourneyDemand(
+          mappedJourneyDemand,
+        );
+
         setError(null);
 
         return mappedJourneyDemand;
       } catch (cause) {
+        // ---------------------------------------------------------------------
+        // Ignore errors from stale requests.
+        // ---------------------------------------------------------------------
+
         if (
           requestSequence !==
           requestSequenceRef.current
@@ -176,10 +265,20 @@ export function useJourneyDemand(): UseJourneyDemandResult {
           return null;
         }
 
-        setError(normalizeError(cause));
+        setError(
+          normalizeError(cause),
+        );
+
+        // ---------------------------------------------------------------------
+        // Preserve existing data during refresh failure.
+        // ---------------------------------------------------------------------
 
         return null;
       } finally {
+        // ---------------------------------------------------------------------
+        // Only the current request may update loading state.
+        // ---------------------------------------------------------------------
+
         if (
           requestSequence ===
           requestSequenceRef.current
@@ -196,21 +295,29 @@ export function useJourneyDemand(): UseJourneyDemandResult {
   // Refresh
   // ---------------------------------------------------------------------------
 
-  const refresh = useCallback(async (): Promise<JourneyDemand | null> => {
-    const publicId = publicIdRef.current;
+  const refresh = useCallback(
+    async (): Promise<JourneyDemand | null> => {
+      const publicId =
+        publicIdRef.current;
 
-    if (!publicId) {
-      return null;
-    }
+      if (!publicId) {
+        return null;
+      }
 
-    return load(publicId);
-  }, [load]);
+      return load(publicId);
+    },
+    [load],
+  );
 
   // ---------------------------------------------------------------------------
   // Reset
   // ---------------------------------------------------------------------------
 
   const reset = useCallback(() => {
+    // -------------------------------------------------------------------------
+    // Invalidate any request currently in flight.
+    // -------------------------------------------------------------------------
+
     requestSequenceRef.current += 1;
 
     publicIdRef.current = null;

@@ -2,24 +2,38 @@
 // Use Journeys
 // -----------------------------------------------------------------------------
 //
-// React hook for retrieving multiple public Journeys.
+// React hook for retrieving publicly discoverable Journeys.
 //
-// The Journey feature intentionally does not invent a generic public Journey
-// collection endpoint. Public discovery is owned by the traveller-discovery
-// read model:
+// Public Journey discovery is Journey-first:
 //
-//   GET /public/traveller-discovery
+//   GET /journeys/status/PUBLISHED
 //
-// This hook is therefore useful when a higher-level feature already has a
-// collection of public Journey identifiers and needs to resolve their full
-// Journey representations.
+// Search is delegated to the Journey domain:
 //
+//   GET /journeys/search?from=&to=&date=
+//
+// The backend Journey domain owns both the published Journey collection and
+// Journey search. This hook therefore does not perform discovery filtering
+// locally and does not depend on a traveller-discovery endpoint.
+//
+// A single Journey can subsequently be resolved through useJourney() using its
+// public identifier.
 // -----------------------------------------------------------------------------
 
 import { useCallback, useRef, useState } from 'react';
 
 import { journeysApi } from '../api';
 import type { Journey } from '../models';
+
+// -----------------------------------------------------------------------------
+// Search Values
+// -----------------------------------------------------------------------------
+
+export interface UseJourneysSearchValues {
+  from: string;
+  to: string;
+  date: string;
+}
 
 // -----------------------------------------------------------------------------
 // Hook State
@@ -36,7 +50,8 @@ export interface UseJourneysState {
 // -----------------------------------------------------------------------------
 
 export interface UseJourneysResult extends UseJourneysState {
-  load: (publicIds: string[]) => Promise<Journey[]>;
+  load: () => Promise<Journey[]>;
+  search: (values: UseJourneysSearchValues) => Promise<Journey[]>;
   refresh: () => Promise<Journey[]>;
   reset: () => void;
 }
@@ -51,42 +66,19 @@ export function useJourneys(): UseJourneysResult {
   const [error, setError] = useState<Error | null>(null);
 
   const requestSequenceRef = useRef(0);
-  const publicIdsRef = useRef<string[]>([]);
 
   // ---------------------------------------------------------------------------
-  // Load
+  // Load Published Journeys
   // ---------------------------------------------------------------------------
 
-  const load = useCallback(async (publicIds: string[]) => {
-    const normalizedPublicIds = Array.from(
-      new Set(
-        publicIds
-          .map((publicId) => publicId.trim())
-          .filter(Boolean),
-      ),
-    );
-
-    publicIdsRef.current = normalizedPublicIds;
-
+  const load = useCallback(async () => {
     const requestSequence = ++requestSequenceRef.current;
 
+    setIsLoading(true);
     setError(null);
 
-    if (normalizedPublicIds.length === 0) {
-      setJourneys([]);
-      setIsLoading(false);
-
-      return [];
-    }
-
-    setIsLoading(true);
-
     try {
-      const results = await Promise.all(
-        normalizedPublicIds.map((publicId) =>
-          journeysApi.getPublic(publicId),
-        ),
-      );
+      const results = await journeysApi.getPublished();
 
       if (requestSequence !== requestSequenceRef.current) {
         return [];
@@ -103,7 +95,7 @@ export function useJourneys(): UseJourneysResult {
       const normalizedError =
         cause instanceof Error
           ? cause
-          : new Error('Unable to load Journeys.');
+          : new Error('Unable to load published Journeys.');
 
       setJourneys([]);
       setError(normalizedError);
@@ -117,11 +109,71 @@ export function useJourneys(): UseJourneysResult {
   }, []);
 
   // ---------------------------------------------------------------------------
+  // Search Published Journeys
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Searches published Journeys using the Journey backend search operation.
+   *
+   * No filtering is performed in the frontend.
+   *
+   * The latest request wins. A stale response cannot replace the results of
+   * a newer search or load operation.
+   */
+  const search = useCallback(
+    async ({
+      from,
+      to,
+      date,
+    }: UseJourneysSearchValues): Promise<Journey[]> => {
+      const requestSequence = ++requestSequenceRef.current;
+
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const results = await journeysApi.searchPublished(
+          from,
+          to,
+          date,
+        );
+
+        if (requestSequence !== requestSequenceRef.current) {
+          return [];
+        }
+
+        setJourneys(results);
+
+        return results;
+      } catch (cause) {
+        if (requestSequence !== requestSequenceRef.current) {
+          return [];
+        }
+
+        const normalizedError =
+          cause instanceof Error
+            ? cause
+            : new Error('Unable to search published Journeys.');
+
+        setJourneys([]);
+        setError(normalizedError);
+
+        return [];
+      } finally {
+        if (requestSequence === requestSequenceRef.current) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [],
+  );
+
+  // ---------------------------------------------------------------------------
   // Refresh
   // ---------------------------------------------------------------------------
 
   const refresh = useCallback(async () => {
-    return load(publicIdsRef.current);
+    return load();
   }, [load]);
 
   // ---------------------------------------------------------------------------
@@ -130,7 +182,6 @@ export function useJourneys(): UseJourneysResult {
 
   const reset = useCallback(() => {
     requestSequenceRef.current += 1;
-    publicIdsRef.current = [];
 
     setJourneys([]);
     setIsLoading(false);
@@ -146,6 +197,7 @@ export function useJourneys(): UseJourneysResult {
     isLoading,
     error,
     load,
+    search,
     refresh,
     reset,
   };

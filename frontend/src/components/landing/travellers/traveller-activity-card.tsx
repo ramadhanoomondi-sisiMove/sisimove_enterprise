@@ -2,23 +2,36 @@
 // sisiMove — Traveller Activity Card
 // -----------------------------------------------------------------------------
 //
-// Traveller-first activity card for public discovery.
+// Public activity card shell for Journey-first discovery.
+//
+// The Journey is the discovery object. This component provides the reusable
+// card presentation around the supplied activity content.
 //
 // Responsibilities:
-// - Present a traveller's public identity and trust summary
-// - Present one journey or demand activity
-// - Present optional activity actions
-// - Keep the traveller visually primary
-// - Remain independent of API calls, routing, and domain logic
+// - Present one public Journey or Demand activity.
+// - Provide optional presentation header content.
+// - Provide optional activity actions.
+// - Provide consistent card presentation.
+// - Remain independent of API calls, routing, and domain logic.
 //
-// Architectural boundary:
-// - Presentation-only component
-// - Does not own discovery state
-// - Does not fetch data
-// - Does not perform authentication
-// - Does not perform routing
-// - Does not contain Commercial or Financial information
-// - Does not define an alternative traveller/domain model
+// This component does NOT:
+// - fetch data;
+// - own discovery state;
+// - resolve traveller identity;
+// - calculate trust;
+// - perform authentication;
+// - perform routing;
+// - contain Commercial or Financial logic;
+// - depend on the obsolete PublicTravellerDiscovery model.
+//
+// Architectural note:
+// The existing component name is intentionally retained to avoid unnecessary
+// file churn while the public discovery presentation is being aligned around
+// Journey-first discovery.
+//
+// Traveller-specific presentation, when legitimately available, is supplied
+// by the parent through `headerContent` rather than being required by this
+// generic card shell.
 //
 // -----------------------------------------------------------------------------
 
@@ -27,23 +40,13 @@ import type {
   ReactNode,
 } from 'react';
 
-import type {
-  PublicTravellerActivityType,
-} from '@/features/traveller-discovery';
-
 import { Card } from '../../ui';
 
 import { cn } from '../../../foundation/utils/cn';
 
-import { TravellerActivityType } from './traveller-activity-type';
-import { TravellerSummary } from './traveller-summary';
-
 // -----------------------------------------------------------------------------
 // Types
 // -----------------------------------------------------------------------------
-
-export type TravellerActivityCardType =
-  PublicTravellerActivityType;
 
 export interface TravellerActivityCardProps
   extends Omit<
@@ -51,58 +54,19 @@ export interface TravellerActivityCardProps
     'children'
   > {
   /**
-   * Type of traveller activity.
-   *
-   * Mirrors the public discovery activity contract.
-   */
-  readonly type: TravellerActivityCardType;
-
-  /**
-   * Public traveller handle.
-   */
-  readonly handle: string;
-
-  /**
-   * Optional traveller avatar URL.
-   */
-  readonly avatarUrl?: string | null;
-
-  /**
-   * Whether the traveller has a public verified status.
-   */
-  readonly verified?: boolean;
-
-  /**
-   * Public verification level.
-   */
-  readonly verificationLevel?:
-    | 'NONE'
-    | 'BASIC'
-    | 'VERIFIED'
-    | string
-    | null;
-
-  /**
-   * Traveller rating score.
-   */
-  readonly rating?: number | null;
-
-  /**
-   * Number of ratings received.
-   */
-  readonly ratingCount?: number | null;
-
-  /**
-   * Number of completed journeys.
-   */
-  readonly completedJourneys?: number | null;
-
-  /**
    * Activity content.
    *
    * Typically TravellerJourney or TravellerDemand.
    */
   readonly children: ReactNode;
+
+  /**
+   * Optional replacement header.
+   *
+   * The parent owns the header content and may provide Journey, traveller,
+   * or other public presentation content appropriate to the context.
+   */
+  readonly headerContent?: ReactNode;
 
   /**
    * Optional action associated with the activity.
@@ -113,28 +77,11 @@ export interface TravellerActivityCardProps
   readonly action?: ReactNode;
 
   /**
-   * Optional replacement for the default traveller/activity header.
-   *
-   * When supplied, the default header is not rendered.
-   */
-  readonly headerContent?: ReactNode;
-
-  /**
    * Optional replacement for the default footer.
    *
-   * When omitted, action is used.
+   * When omitted, `action` is used.
    */
   readonly footerContent?: ReactNode;
-
-  /**
-   * Whether to display the activity type.
-   */
-  readonly showActivityType?: boolean;
-
-  /**
-   * Whether to display traveller trust information.
-   */
-  readonly showTrust?: boolean;
 
   /**
    * Card presentation variant.
@@ -157,48 +104,16 @@ export interface TravellerActivityCardProps
 // -----------------------------------------------------------------------------
 
 export function TravellerActivityCard({
-  type,
-  handle,
-  avatarUrl,
-  verified = false,
-  verificationLevel = verified ? 'VERIFIED' : 'NONE',
-  rating = null,
-  ratingCount = 0,
-  completedJourneys = 0,
   children,
   action,
   headerContent,
   footerContent,
-  showActivityType = true,
-  showTrust = true,
   variant = 'default',
   padding = 'md',
   interactive = false,
   className,
   ...props
 }: TravellerActivityCardProps) {
-  const resolvedHeaderContent =
-    headerContent ?? (
-      <div className="min-w-0">
-        {showActivityType && (
-          <div className="mb-4">
-            <TravellerActivityType type={type} />
-          </div>
-        )}
-
-        <TravellerSummary
-          handle={handle}
-          avatarUrl={avatarUrl}
-          verified={verified}
-          verificationLevel={verificationLevel}
-          rating={rating}
-          ratingCount={ratingCount}
-          completedJourneys={completedJourneys}
-          showTrust={showTrust}
-        />
-      </div>
-    );
-
   const resolvedFooterContent =
     footerContent ?? action;
 
@@ -208,7 +123,7 @@ export function TravellerActivityCard({
       variant={variant}
       padding={padding}
       interactive={interactive}
-      header={resolvedHeaderContent}
+      header={headerContent}
       footer={
         resolvedFooterContent ? (
           <div className="w-full">

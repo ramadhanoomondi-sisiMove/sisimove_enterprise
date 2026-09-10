@@ -1,22 +1,31 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Traveller Discovery Tabs
+// sisiMove — Public Journey Discovery Tabs
 // -----------------------------------------------------------------------------
 //
-// Accessible presentation tabs for public traveller discovery.
+// Accessible presentation tabs for public journey discovery.
 //
 // Responsibilities:
-// - Present All / Travelling / Looking views.
-// - Expose the selected tab.
+// - Present All / Journeys / Demand views.
+// - Expose the selected discovery view.
 // - Notify the parent when selection changes.
 // - Display optional result counts.
 // - Provide keyboard navigation.
 // - Establish tab -> tab-panel relationships.
 //
+// The discovery object is the journey. Published journeys are publicly
+// discoverable before authentication.
+//
+// The Demand view remains available as part of the broader public discovery
+// surface, but it is not a traveller-profile discovery view.
+//
 // This component does not:
 // - fetch data;
 // - filter data;
 // - perform routing;
-// - own discovery state.
+// - own discovery state;
+// - perform authentication;
+// - perform bookings;
+// - contain business rules.
 //
 // The parent discovery section owns those responsibilities.
 //
@@ -31,14 +40,15 @@
 // React
 // -----------------------------------------------------------------------------
 
-import type {
-  HTMLAttributes,
-  KeyboardEvent,
-  ReactNode,
+import {
+  useRef,
+  type HTMLAttributes,
+  type KeyboardEvent,
+  type ReactNode,
 } from 'react';
 
 // -----------------------------------------------------------------------------
-// Traveller Discovery Feature
+// Public Journey Discovery Feature
 // -----------------------------------------------------------------------------
 
 import type {
@@ -92,19 +102,19 @@ export interface TravellerDiscoveryTabsProps
     | 'onChange'
   > {
   /**
-   * Currently selected tab.
+   * Currently selected discovery view.
    */
   readonly value: TravellerDiscoveryTab;
 
   /**
-   * Called when the selected tab changes.
+   * Called when the selected discovery view changes.
    */
   readonly onChange: (
     value: TravellerDiscoveryTab,
   ) => void;
 
   /**
-   * Tabs to display.
+   * Discovery views to display.
    */
   readonly tabs?: readonly TravellerDiscoveryTabItem[];
 
@@ -191,12 +201,12 @@ const defaultTabs:
     },
     {
       value: 'JOURNEYS',
-      label: 'Available Journeys',
+      label: 'Journeys',
       icon: <CarIcon />,
     },
     {
       value: 'DEMANDS',
-      label: 'Looking for Journeys',
+      label: 'Demand',
       icon: <PeopleIcon />,
     },
   ];
@@ -244,7 +254,8 @@ function normalizeIdPart(
     )
     .replace(
       /^-+|-+$/g,
-      '');
+      '',
+    );
 }
 
 function getTabId(
@@ -253,7 +264,7 @@ function getTabId(
 ): string {
   const normalizedPrefix =
     normalizeIdPart(prefix) ||
-    'traveller-discovery';
+    'public-journey-discovery';
 
   return [
     normalizedPrefix,
@@ -288,6 +299,9 @@ interface DiscoveryTabButtonProps {
   readonly selected: boolean;
   readonly tabId: string;
   readonly panelId?: string;
+  readonly buttonRef: (
+    element: HTMLButtonElement | null,
+  ) => void;
   readonly onSelect: (
     value: TravellerDiscoveryTab,
   ) => void;
@@ -302,6 +316,7 @@ function DiscoveryTabButton({
   selected,
   tabId,
   panelId,
+  buttonRef,
   onSelect,
   onKeyDown,
 }: DiscoveryTabButtonProps) {
@@ -320,6 +335,7 @@ function DiscoveryTabButton({
 
   return (
     <button
+      ref={buttonRef}
       id={tabId}
       type="button"
       role="tab"
@@ -454,7 +470,7 @@ export function TravellerDiscoveryTabs({
   tabs = defaultTabs,
   panelId,
   idPrefix,
-  ariaLabel = 'Traveller discovery',
+  ariaLabel = 'Public journey discovery',
   className,
   ...props
 }: TravellerDiscoveryTabsProps) {
@@ -466,7 +482,7 @@ export function TravellerDiscoveryTabs({
   const resolvedIdPrefix =
     idPrefix?.trim() ||
     panelId?.trim() ||
-    'traveller-discovery';
+    'public-journey-discovery';
 
   const selectableIndexes =
     getSelectableIndexes(
@@ -484,8 +500,16 @@ export function TravellerDiscoveryTabs({
       ? selectedIndex
       : selectableIndexes[0] ?? -1;
 
+  const buttonRefs = useRef<
+    Record<
+      string,
+      HTMLButtonElement | null
+    >
+  >({});
+
   function selectTab(
     nextIndex: number,
+    shouldFocus = false,
   ): void {
     const nextTab =
       resolvedTabs[nextIndex];
@@ -498,6 +522,20 @@ export function TravellerDiscoveryTabs({
     }
 
     onChange(nextTab.value);
+
+    if (shouldFocus) {
+      const nextTabId =
+        getTabId(
+          resolvedIdPrefix,
+          nextTab.value,
+        );
+
+      requestAnimationFrame(() => {
+        buttonRefs.current[
+          nextTabId
+        ]?.focus();
+      });
+    }
   }
 
   function handleKeyDown(
@@ -576,7 +614,10 @@ export function TravellerDiscoveryTabs({
       return;
     }
 
-    selectTab(targetIndex);
+    selectTab(
+      targetIndex,
+      true,
+    );
   }
 
   return (
@@ -616,6 +657,11 @@ export function TravellerDiscoveryTabs({
               selected={selected}
               tabId={tabId}
               panelId={panelId}
+              buttonRef={(element) => {
+                buttonRefs.current[
+                  tabId
+                ] = element;
+              }}
               onSelect={onChange}
               onKeyDown={
                 handleKeyDown

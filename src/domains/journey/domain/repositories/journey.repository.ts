@@ -171,7 +171,12 @@ export interface JourneyRepository {
   // ===========================================================================
   // Journey Queries
   // ===========================================================================
-
+  findPublishedJourneysByRouteAndDate(
+    origin: string,
+    destination: string,
+    departureFrom: Date,
+    departureTo: Date,
+  ): Promise<JourneyEntity[]>;
   /**
    * Find only the Journey entity by internal identifier.
    */

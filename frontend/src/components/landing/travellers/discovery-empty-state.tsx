@@ -2,13 +2,28 @@
 // sisiMove — Traveller Discovery Empty State
 // -----------------------------------------------------------------------------
 //
-// Presentation component for an empty public traveller-discovery result.
+// Presentation component for an empty public Journey discovery result.
+//
+// Public discovery is Journey-first:
+//
+// - Published Journeys are the primary discovery result.
+// - Open Journey Demands are an additional public discovery stream.
+// - This component presents the absence of results supplied by the parent.
 //
 // Responsibilities:
-// - Present an appropriate empty state for discovery.
-// - Distinguish between an unfiltered discovery state and filtered search.
+// - Present an appropriate empty state for public discovery.
+// - Distinguish between an unfiltered discovery result and a constrained result.
 // - Allow the parent composition to provide actions.
-// - Remain independent of routing, API calls, authentication, and business rules.
+// - Remain independent of routing, API calls, authentication, and business
+//   rules.
+//
+// This component does not:
+// - fetch discovery data;
+// - perform search or filtering;
+// - determine whether a Journey should be published;
+// - determine matching eligibility;
+// - resolve traveller identity;
+// - perform booking.
 //
 // -----------------------------------------------------------------------------
 
@@ -27,9 +42,26 @@ export type DiscoveryEmptyStateActionVariant =
   | 'ghost';
 
 export interface DiscoveryEmptyStateAction {
+  /**
+   * Visible action label.
+   */
   readonly label: string;
+
+  /**
+   * Optional presentation content displayed before the label.
+   */
   readonly leadingContent?: ReactNode;
+
+  /**
+   * Visual treatment of the action.
+   */
   readonly variant?: DiscoveryEmptyStateActionVariant;
+
+  /**
+   * Optional action handler.
+   *
+   * The parent composition layer owns the behavior.
+   */
   readonly onClick?: () => void;
 }
 
@@ -68,8 +100,10 @@ export interface DiscoveryEmptyStateProps {
   readonly icon?: ReactNode;
 
   /**
-   * Whether the empty result was produced by active
-   * discovery criteria such as route, date, or activity type.
+   * Whether the empty result represents a constrained discovery request.
+   *
+   * This flag describes the state supplied by the parent. It does not cause
+   * this component to perform filtering or search.
    */
   readonly hasFilters?: boolean;
 
@@ -95,14 +129,14 @@ export function DiscoveryEmptyState({
   const resolvedTitle =
     title ??
     (hasFilters
-      ? 'No travellers found'
-      : 'No travellers to show yet');
+      ? 'No journeys match your search'
+      : 'No journeys available yet');
 
   const resolvedDescription =
     description ??
     (hasFilters
-      ? 'Try a different route or date to find people travelling your way.'
-      : 'Travellers sharing journeys or looking for one will appear here.');
+      ? 'Try a different route or date to see other journeys.'
+      : 'Published journeys and open travel requests will appear here.');
 
   return (
     <EmptyState
@@ -129,6 +163,10 @@ function DefaultDiscoveryIcon() {
       className="h-6 w-6"
       focusable="false"
     >
+      {/* ------------------------------------------------------------------- */}
+      {/* Journey / traveller representation                                  */}
+      {/* ------------------------------------------------------------------- */}
+
       <circle
         cx="9"
         cy="8"
@@ -143,6 +181,10 @@ function DefaultDiscoveryIcon() {
         strokeWidth="1.75"
         strokeLinecap="round"
       />
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Additional participant                                              */}
+      {/* ------------------------------------------------------------------- */}
 
       <path
         d="M15 6.5a2.5 2.5 0 1 1 0 5"

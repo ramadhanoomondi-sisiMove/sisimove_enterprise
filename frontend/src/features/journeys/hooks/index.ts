@@ -19,7 +19,6 @@ export type {
   UseJourneyResult,
 } from './use-journey';
 
-
 // -----------------------------------------------------------------------------
 // Multiple Journeys
 // -----------------------------------------------------------------------------
@@ -29,6 +28,7 @@ export {
 } from './use-journeys';
 
 export type {
+  UseJourneysSearchValues,
   UseJourneysState,
   UseJourneysResult,
 } from './use-journeys';

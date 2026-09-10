@@ -41,6 +41,7 @@ export type {
 // -----------------------------------------------------------------------------
 
 export {
+  TravellerDiscoveryContent,
   TravellerDiscoverySection,
   TravellerDiscoveryHeader,
   TravellerDiscoveryTabs,
@@ -66,6 +67,7 @@ export {
 } from './travellers';
 
 export type {
+  TravellerDiscoveryContentProps,
   TravellerDiscoverySectionProps,
   TravellerDiscoveryStatus,
   TravellerDiscoveryHeaderProps,
@@ -75,7 +77,6 @@ export type {
   TravellerActivityListProps,
   TravellerActivityListItem,
   TravellerActivityCardProps,
-  TravellerActivityCardType,
   TravellerSummaryProps,
   TravellerAvatarProps,
   TravellerVerificationProps,
@@ -94,7 +95,6 @@ export type {
   TravellerDemandProps,
   DiscoveryEmptyStateProps,
   DiscoveryLoadingStateProps,
-  DiscoveryErrorStateProps,
 } from './travellers';
 
 // -----------------------------------------------------------------------------
@@ -152,4 +152,3 @@ export type {
   ShareJourneySectionProps,
   FindJourneySectionProps,
 } from './calls-to-action';
-

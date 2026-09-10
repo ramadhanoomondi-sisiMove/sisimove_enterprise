@@ -2,10 +2,14 @@
 // sisiMove — Traveller Activity List
 // -----------------------------------------------------------------------------
 //
-// Collection component for traveller discovery.
+// Collection component for public Journey discovery.
+//
+// The Journey is the discovery object. This component is intentionally a
+// generic presentation collection: the parent supplies the already-resolved
+// card content and optional presentation controls.
 //
 // Responsibilities:
-// - Render a collection of traveller activity cards.
+// - Render a collection of public activity cards.
 // - Provide the responsive grid layout.
 // - Provide an optional empty state.
 // - Remain independent of API calls, routing, and discovery state.
@@ -17,9 +21,15 @@
 // - perform routing;
 // - authenticate users;
 // - calculate trust;
-// - transform API responses.
+// - resolve traveller identity;
+// - transform API responses;
+// - inspect Journey or Journey Demand domain models.
 //
 // The parent discovery/container layer owns discovery state and data retrieval.
+//
+// Component names and the existing file boundary are intentionally retained
+// to avoid unnecessary file churn while public discovery terminology is being
+// aligned around journeys.
 //
 // -----------------------------------------------------------------------------
 
@@ -28,7 +38,6 @@ import type {
   ReactNode,
 } from 'react';
 
-
 import { cn } from '../../../foundation/utils/cn';
 
 import { DiscoveryEmptyState } from './discovery-empty-state';
@@ -36,52 +45,29 @@ import { DiscoveryEmptyState } from './discovery-empty-state';
 import {
   TravellerActivityCard,
   type TravellerActivityCardProps,
-  type TravellerActivityCardType,
 } from './traveller-activity-card';
-
-import type {
-  PublicTravellerActivity,
-  PublicTravellerDiscoveryResult,
-} from '@/features/traveller-discovery';
-
-
 
 // -----------------------------------------------------------------------------
 // Types
 // -----------------------------------------------------------------------------
 
 /**
- * Presentation item for the activity list.
+ * Presentation item for the public activity list.
  *
- * The traveller and trust data come directly from the public discovery
- * projection. Activity data is likewise sourced from the public discovery
- * projection.
- *
- * `content`, `action`, `headerContent`, and `footerContent` remain presentation
- * concerns and are supplied by the parent/container.
+ * The parent/container is responsible for resolving the activity and supplying
+ * its presentation content. The list does not know whether that content is a
+ * Journey, Demand, or another supported public activity.
  */
 export interface TravellerActivityListItem {
   /**
-   * Stable public activity identifier.
+   * Stable public identifier used as the React rendering key.
    *
-   * This should normally be PublicTravellerActivity.publicId and is used
-   * as the React rendering key.
+   * For Journey-first discovery this should normally be the Journey public ID.
    */
   readonly publicId: string;
 
   /**
-   * Public discovery result containing the traveller, trust projection,
-   * and activity collection.
-   */
-  readonly discovery: PublicTravellerDiscoveryResult;
-
-  /**
-   * Activity being rendered.
-   */
-  readonly activityIndex?: number;
-
-  /**
-   * Activity content.
+   * Activity presentation content.
    *
    * Usually TravellerJourney or TravellerDemand.
    */
@@ -96,23 +82,17 @@ export interface TravellerActivityListItem {
 
   /**
    * Optional replacement header.
+   *
+   * The parent owns the header presentation.
    */
   readonly headerContent?: ReactNode;
 
   /**
    * Optional replacement footer.
+   *
+   * When omitted, `action` is used.
    */
   readonly footerContent?: ReactNode;
-
-  /**
-   * Whether to display the activity type.
-   */
-  readonly showActivityType?: boolean;
-
-  /**
-   * Whether to display trust information.
-   */
-  readonly showTrust?: boolean;
 
   /**
    * Card presentation variant.
@@ -127,7 +107,7 @@ export interface TravellerActivityListItem {
   /**
    * Whether the card receives interactive styling.
    */
-  readonly interactive?: boolean;
+  readonly interactive?: TravellerActivityCardProps['interactive'];
 }
 
 export interface TravellerActivityListProps
@@ -136,7 +116,7 @@ export interface TravellerActivityListProps
     'children'
   > {
   /**
-   * Activities to display.
+   * Public activities to display.
    */
   readonly items: readonly TravellerActivityListItem[];
 
@@ -205,27 +185,6 @@ const gapClasses: Record<
 };
 
 // -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
-
-function resolveActivityType(
-  type: PublicTravellerActivity['type'],
-): TravellerActivityCardType {
-  switch (type) {
-    case 'JOURNEY':
-      return 'JOURNEY';
-
-    case 'DEMAND':
-      return 'DEMAND';
-
-    default: {
-      const exhaustiveCheck: never = type;
-      return exhaustiveCheck;
-    }
-  }
-}
-
-// -----------------------------------------------------------------------------
 // Component
 // -----------------------------------------------------------------------------
 
@@ -269,72 +228,19 @@ export function TravellerActivityList({
         className,
       )}
     >
-      {items.map((item) => {
-        const activity =
-          item.discovery.activities[
-            item.activityIndex ?? 0
-          ];
-
-        if (!activity) {
-          return null;
-        }
-
-        const {
-          traveller,
-          trust,
-        } = item.discovery;
-
-        return (
-          <TravellerActivityCard
-            key={item.publicId}
-            type={resolveActivityType(
-              activity.type,
-            )}
-            handle={
-              traveller.handle
-            }
-            avatarUrl={
-              traveller.avatarUrl
-            }
-            verified={
-              trust.verification.verified
-            }
-            verificationLevel={
-              trust.verification.level
-            }
-            rating={
-              trust.rating.score
-            }
-            ratingCount={
-              trust.rating.count
-            }
-            completedJourneys={
-              trust.journeyHistory
-                .completedJourneys
-            }
-            action={item.action}
-            headerContent={
-              item.headerContent
-            }
-            footerContent={
-              item.footerContent
-            }
-            showActivityType={
-              item.showActivityType
-            }
-            showTrust={
-              item.showTrust
-            }
-            variant={item.variant}
-            padding={item.padding}
-            interactive={
-              item.interactive
-            }
-          >
-            {item.content}
-          </TravellerActivityCard>
-        );
-      })}
+      {items.map((item) => (
+        <TravellerActivityCard
+          key={item.publicId}
+          action={item.action}
+          headerContent={item.headerContent}
+          footerContent={item.footerContent}
+          variant={item.variant}
+          padding={item.padding}
+          interactive={item.interactive}
+        >
+          {item.content}
+        </TravellerActivityCard>
+      ))}
     </div>
   );
 }

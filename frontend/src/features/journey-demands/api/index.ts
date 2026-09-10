@@ -28,7 +28,6 @@
 // -----------------------------------------------------------------------------
 
 export {
-  getPublicJourneyDemand,
   getPublicJourneyDemands,
   getJourneyDemand,
   journeyDemandsApi,

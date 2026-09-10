@@ -8,12 +8,12 @@
 // Demand HTTP API.
 //
 // It must not:
-// - contain business logic
-// - contain persistence logic
-// - expose Prisma models
-// - expose domain entities
-// - map transport responses into feature models
-// - contain React or hook concerns
+// - contain business logic;
+// - contain persistence logic;
+// - expose Prisma models;
+// - contain React or hook concerns;
+// - own discovery state;
+// - perform client-side filtering.
 //
 // Architectural boundary:
 //
@@ -27,17 +27,29 @@
 //    ↓
 // Journey Demand feature model
 //
-// Public discovery and authenticated Journey Demand management are deliberately
-// separated. Public discovery must use public read endpoints. Management
-// operations must use authenticated endpoints.
+// Public discovery is provided directly by the Journey Demand bounded context.
+//
+// Public discovery:
+//
+//   GET /journey-demands
+//   GET /journey-demands/open
+//   GET /journey-demands/:journeyDemandPublicId
+//
+// Authenticated Journey Demand operations use the same bounded-context API
+// where the backend operation requires authentication.
+//
+// The frontend does not invent a `/public/journey-demands` route. The backend
+// controller is mounted directly at `/journey-demands`.
 //
 // -----------------------------------------------------------------------------
+
 
 // -----------------------------------------------------------------------------
 // Foundation HTTP Client
 // -----------------------------------------------------------------------------
 
 import { apiClient } from '../../../foundation/http/api-client';
+
 
 // -----------------------------------------------------------------------------
 // API Transport Types
@@ -48,72 +60,29 @@ import type {
   JourneyDemandsResponse,
 } from './journey-demands.types';
 
+
 // -----------------------------------------------------------------------------
 // API Paths
 // -----------------------------------------------------------------------------
 
-const PUBLIC_JOURNEY_DEMANDS_PATH = '/public/journey-demands';
-
 const JOURNEY_DEMANDS_PATH = '/journey-demands';
 
-// -----------------------------------------------------------------------------
-// Get Public Journey Demand
-// -----------------------------------------------------------------------------
-
-/**
- * Retrieves a publicly discoverable Journey Demand by its public identifier.
- *
- * Authentication is not required.
- *
- * The endpoint returns a public read representation rather than a Journey
- * Demand domain entity.
- *
- * @param publicId Public Journey Demand identifier.
- */
-export async function getPublicJourneyDemand(
-  publicId: string,
-): Promise<JourneyDemandResponse> {
-  const normalizedPublicId = publicId.trim();
-
-  if (!normalizedPublicId) {
-    throw new Error('Journey Demand public ID is required.');
-  }
-
-  return apiClient.get<JourneyDemandResponse>(
-    `${PUBLIC_JOURNEY_DEMANDS_PATH}/${encodeURIComponent(normalizedPublicId)}`,
-  );
-}
 
 // -----------------------------------------------------------------------------
-// Get Public Journey Demands
+// Get Journey Demand
 // -----------------------------------------------------------------------------
 
 /**
- * Retrieves publicly discoverable Journey Demands.
+ * Retrieves a Journey Demand by its public identifier.
  *
- * Authentication is not required.
+ * The backend currently exposes:
  *
- * This operation is intentionally kept separate from authenticated Journey
- * Demand management/search workflows.
- */
-export async function getPublicJourneyDemands(): Promise<JourneyDemandsResponse> {
-  return apiClient.get<JourneyDemandsResponse>(
-    PUBLIC_JOURNEY_DEMANDS_PATH,
-  );
-}
-
-// -----------------------------------------------------------------------------
-// Get Authenticated Journey Demand
-// -----------------------------------------------------------------------------
-
-/**
- * Retrieves a Journey Demand belonging to the authenticated workflow.
+ *   GET /journey-demands/:journeyDemandPublicId
  *
- * Authentication is required by the backend.
+ * Authentication requirements, if any, are determined by the backend route
+ * policy. The frontend does not duplicate that policy in the API client.
  *
- * This operation is intentionally separate from the public read endpoint.
- *
- * @param publicId Public Journey Demand identifier.
+ * @param publicId Journey Demand public identifier.
  */
 export async function getJourneyDemand(
   publicId: string,
@@ -121,7 +90,9 @@ export async function getJourneyDemand(
   const normalizedPublicId = publicId.trim();
 
   if (!normalizedPublicId) {
-    throw new Error('Journey Demand public ID is required.');
+    throw new Error(
+      'Journey Demand public ID is required.',
+    );
   }
 
   return apiClient.get<JourneyDemandResponse>(
@@ -129,19 +100,76 @@ export async function getJourneyDemand(
   );
 }
 
+
+// -----------------------------------------------------------------------------
+// Get Public Journey Demands
+// -----------------------------------------------------------------------------
+
+/**
+ * Retrieves the public Journey Demand collection.
+ *
+ * This corresponds to:
+ *
+ *   GET /journey-demands
+ *
+ * The backend currently returns a plain array of Journey Demand transport
+ * records.
+ *
+ * The backend owns:
+ * - which Journey Demands are publicly discoverable;
+ * - ordering;
+ * - filtering;
+ * - pagination, if supported by the endpoint.
+ *
+ * No client-side discovery filtering is performed here.
+ */
+export async function getPublicJourneyDemands(): Promise<JourneyDemandsResponse> {
+  return apiClient.get<JourneyDemandsResponse>(
+    JOURNEY_DEMANDS_PATH,
+  );
+}
+
+
+// -----------------------------------------------------------------------------
+// Get Open Journey Demands
+// -----------------------------------------------------------------------------
+
+/**
+ * Retrieves Journey Demands currently classified as open by the backend.
+ *
+ * This corresponds to:
+ *
+ *   GET /journey-demands/open
+ *
+ * The backend currently returns a plain array of Journey Demand transport
+ * records.
+ *
+ * The backend owns the definition of an open Journey Demand.
+ */
+export async function getOpenJourneyDemands(): Promise<JourneyDemandsResponse> {
+  return apiClient.get<JourneyDemandsResponse>(
+    `${JOURNEY_DEMANDS_PATH}/open`,
+  );
+}
+
+
 // -----------------------------------------------------------------------------
 // API
 // -----------------------------------------------------------------------------
 
 export const journeyDemandsApi = {
   /**
-   * Public Journey Demand read operations.
+   * Retrieves a Journey Demand by public identifier.
    */
-  getPublic: getPublicJourneyDemand,
+  get: getJourneyDemand,
+
+  /**
+   * Retrieves the public Journey Demand collection.
+   */
   getPublicMany: getPublicJourneyDemands,
 
   /**
-   * Authenticated Journey Demand operations.
+   * Retrieves the public open Journey Demand collection.
    */
-  get: getJourneyDemand,
+  getOpen: getOpenJourneyDemands,
 };

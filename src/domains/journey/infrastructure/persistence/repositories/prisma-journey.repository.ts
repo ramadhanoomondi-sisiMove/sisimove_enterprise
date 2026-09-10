@@ -4,13 +4,14 @@
 // Prisma
 // -----------------------------------------------------------------------------
 
+import { Injectable } from '@nestjs/common';
 import type { Prisma, $Enums } from '@prisma/client';
 
 // -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
-import type { PrismaService } from '../../../../../infrastructure/database/prisma/prisma.service';
+import { PrismaService } from '../../../../../infrastructure/database/prisma/prisma.service';
 
 // -----------------------------------------------------------------------------
 // Aggregate
@@ -79,8 +80,9 @@ import {
 // Repository
 // -----------------------------------------------------------------------------
 
+@Injectable()
 export class PrismaJourneyRepository implements JourneyRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  public constructor(private readonly prisma: PrismaService) {}
 
   // ===========================================================================
   // Prisma Enum Boundary
@@ -1366,7 +1368,49 @@ export class PrismaJourneyRepository implements JourneyRepository {
 
     return count > 0;
   }
+  public async findPublishedJourneysByRouteAndDate(
+    origin: string,
+    destination: string,
+    departureFrom: Date,
+    departureTo: Date,
+  ): Promise<JourneyEntity[]> {
+    const records = await this.prisma.journey.findMany({
+      where: {
+        status: this.toPrismaJourneyStatus('PUBLISHED'),
 
+        corridor: {
+          is: {
+            originName: {
+              equals: origin,
+              mode: 'insensitive',
+            },
+
+            destinationName: {
+              equals: destination,
+              mode: 'insensitive',
+            },
+          },
+        },
+
+        schedule: {
+          is: {
+            departureAt: {
+              gte: departureFrom,
+              lt: departureTo,
+            },
+          },
+        },
+      },
+
+      orderBy: {
+        schedule: {
+          departureAt: 'asc',
+        },
+      },
+    });
+
+    return records.map((record) => JourneyPrismaMapper.toDomain(record));
+  }
   // ===========================================================================
   // Aggregate Reconstruction
   // ===========================================================================

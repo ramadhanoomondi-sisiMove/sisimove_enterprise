@@ -5,9 +5,10 @@
 // Public landing-page hero.
 //
 // Responsibilities:
-// - Compose the hero copy and traveller search.
+// - Compose the hero copy and Journey search.
 // - Establish the primary landing-page entry point.
-// - Keep presentation and search composition separate from data fetching.
+// - Navigate submitted Journey search criteria through the URL.
+// - Keep presentation and Journey data fetching separate.
 //
 // Design:
 // - Strong visual hierarchy.
@@ -17,9 +18,54 @@
 // - Minimal decorative treatment.
 // - Responsive without relying on arbitrary offsets.
 //
+// Architectural boundary:
+// - This component does not fetch Journeys.
+// - This component does not search or filter Journey data.
+// - Search criteria are written to the landing-page URL.
+// - The URL acts as the coordination boundary between the hero and
+//   the server-rendered landing composition.
+// - TravellerDiscoveryContent owns the subsequent Journey search execution.
+//
+// -----------------------------------------------------------------------------
+//
+// Search flow:
+//
+// TravellerSearch
+//      │
+//      │ from + to + date
+//      ▼
+// HeroSection
+//      │
+//      │ URL navigation
+//      ▼
+// /?from=...&to=...&date=...#journeys
+//      │
+//      ▼
+// page.tsx
+//      │
+//      ▼
+// LandingPage
+//      │
+//      ▼
+// TravellerDiscoveryContent
+//      │
+//      ▼
+// useJourneys.search()
+//      │
+//      ▼
+// GET /journeys/search
+//
 // -----------------------------------------------------------------------------
 
 'use client';
+
+import {
+  usePathname,
+  useRouter,
+} from 'next/navigation';
+import {
+  useTransition,
+} from 'react';
 
 import {
   HeroCopy,
@@ -34,8 +80,13 @@ import { Container } from '../../ui';
 // -----------------------------------------------------------------------------
 
 export interface HeroSectionProps {
-  onSearch?: (values: TravellerSearchValues) => void;
-  searchLoading?: boolean;
+  /**
+   * Allows the containing presentation composition to disable Journey search.
+   *
+   * The hero remains responsible only for navigating valid search criteria.
+   * Journey retrieval is handled by the discovery composition after the URL
+   * changes.
+   */
   searchDisabled?: boolean;
 }
 
@@ -44,10 +95,35 @@ export interface HeroSectionProps {
 // -----------------------------------------------------------------------------
 
 export function HeroSection({
-  onSearch,
-  searchLoading = false,
   searchDisabled = false,
 }: HeroSectionProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const [isNavigating, startNavigation] = useTransition();
+
+  // ---------------------------------------------------------------------------
+  // Search Navigation
+  // ---------------------------------------------------------------------------
+
+  function handleSearch(values: TravellerSearchValues): void {
+    const searchParams = new URLSearchParams();
+
+    searchParams.set('from', values.from);
+    searchParams.set('to', values.to);
+    searchParams.set('date', values.date);
+
+    startNavigation(() => {
+      router.push(
+        `${pathname}?${searchParams.toString()}#journeys`,
+      );
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+
   return (
     <section
       aria-labelledby="hero-heading"
@@ -129,7 +205,7 @@ export function HeroSection({
           </div>
 
           {/* ---------------------------------------------------------------- */}
-          {/* Traveller Search                                                 */}
+          {/* Journey Search                                                   */}
           {/* ---------------------------------------------------------------- */}
 
           <div className="w-full max-w-5xl">
@@ -145,9 +221,9 @@ export function HeroSection({
               ].join(' ')}
             >
               <TravellerSearch
-                onSubmit={onSearch}
-                loading={searchLoading}
-                disabled={searchDisabled}
+                onSubmit={handleSearch}
+                loading={isNavigating}
+                disabled={searchDisabled || isNavigating}
               />
             </div>
           </div>
@@ -169,7 +245,7 @@ export function HeroSection({
               'text-[var(--foreground-muted)]',
             ].join(' ')}
           >
-            <span>Looking for a journey?</span>
+            <span>Can’t find a journey?</span>
 
             <a
               href="#journey-demand"
@@ -187,7 +263,7 @@ export function HeroSection({
                 'focus-visible:ring-[var(--brand)]/30',
               ].join(' ')}
             >
-              Find someone going your way
+              Tell us where you want to go
             </a>
           </div>
         </div>
@@ -195,3 +271,4 @@ export function HeroSection({
     </section>
   );
 }
+

@@ -14,12 +14,10 @@
 // - Does not expose API clients, repositories, or application services.
 //
 // TravellerDiscoveryContent is the client-side composition boundary for public
-// discovery. It consumes the existing discovery hook and connects feature
-// state to the presentation layer.
+// discovery. It consumes the existing Journey and Journey Demand hooks and
+// connects feature state to the presentation layer.
 //
-// Feature models and hooks remain available from:
-//
-// @/features/traveller-discovery
+// Feature models and hooks remain available from their owning feature modules.
 //
 // -----------------------------------------------------------------------------
 
@@ -81,7 +79,6 @@ export {
 
 export type {
   TravellerActivityCardProps,
-  TravellerActivityCardType,
 } from './traveller-activity-card';
 
 // -----------------------------------------------------------------------------
@@ -230,10 +227,6 @@ export type {
 
 export {
   DiscoveryErrorState,
-} from './discovery-error-state';
-
-export type {
-  DiscoveryErrorStateProps,
 } from './discovery-error-state';
 
 // -----------------------------------------------------------------------------

@@ -17,6 +17,7 @@
 // - apply timezone business rules;
 // - access Journey or Demand APIs.
 //
+// The component consumes presentation-ready timestamps and timezone values.
 // -----------------------------------------------------------------------------
 
 import type { ReactNode } from 'react';
@@ -68,7 +69,7 @@ export interface TravellerScheduleProps {
   /**
    * Optional display override for the date.
    *
-   * Useful for flexible demand windows such as "Sep 13–14".
+   * Useful for flexible schedule windows.
    */
   readonly dateLabel?: ReactNode;
 
@@ -219,34 +220,34 @@ export function TravellerSchedule({
   const normalizedTimezone =
     normalizeText(timezone);
 
-  const formattedDate =
-    dateLabel ??
-    formatPublicDate(
-      departureAt,
-      normalizedTimezone,
-    );
-
   const normalizedDepartureAt =
     normalizeText(departureAt);
 
   const normalizedArrivalAt =
     normalizeText(arrivalAt);
 
+  const formattedDate =
+    dateLabel ??
+    formatPublicDate(
+      normalizedDepartureAt,
+      normalizedTimezone,
+    );
+
   const formattedDeparture =
-    type === 'FLEXIBLE'
-      ? null
-      : formatPublicTime(
+    type === 'FIXED'
+      ? formatPublicTime(
           normalizedDepartureAt,
           normalizedTimezone,
-        );
+        )
+      : null;
 
   const formattedArrival =
-    type === 'FLEXIBLE'
-      ? null
-      : formatPublicTime(
+    type === 'FIXED'
+      ? formatPublicTime(
           normalizedArrivalAt,
           normalizedTimezone,
-        );
+        )
+      : null;
 
   const resolvedDepartureLabel =
     departureLabel ??

@@ -35,14 +35,14 @@ export interface TravellerVehicleProps {
   /**
    * Public vehicle make.
    *
-   * Example: Toyota
+   * Example: Toyota.
    */
   readonly make?: string | null;
 
   /**
    * Public vehicle model.
    *
-   * Example: Fielder
+   * Example: Fielder.
    */
   readonly model?: string | null;
 
@@ -97,21 +97,20 @@ function normalizeYear(
   if (
     value === null ||
     value === undefined ||
-    !Number.isFinite(value)
+    !Number.isFinite(value) ||
+    !Number.isInteger(value)
   ) {
     return null;
   }
-
-  const normalized = Math.trunc(value);
 
   if (
-    normalized < 1900 ||
-    normalized > 2100
+    value < 1900 ||
+    value > 2100
   ) {
     return null;
   }
 
-  return normalized;
+  return value;
 }
 
 // -----------------------------------------------------------------------------
@@ -216,9 +215,17 @@ export function TravellerVehicle({
   const resolvedLabel =
     label ?? generatedLabel;
 
+  const hasLabel =
+    resolvedLabel !== null &&
+    resolvedLabel !== undefined;
+
+  const hasLeadingContent =
+    leadingContent !== null &&
+    leadingContent !== undefined;
+
   if (
-    !resolvedLabel &&
-    !leadingContent
+    !hasLabel &&
+    !hasLeadingContent
   ) {
     return null;
   }
@@ -246,7 +253,7 @@ export function TravellerVehicle({
         />
       )}
 
-      {resolvedLabel && (
+      {hasLabel && (
         <span
           className="min-w-0 truncate"
           title={

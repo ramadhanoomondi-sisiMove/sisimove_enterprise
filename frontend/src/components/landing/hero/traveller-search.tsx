@@ -2,13 +2,13 @@
 // sisiMove — Traveller Search
 // -----------------------------------------------------------------------------
 //
-// Public traveller discovery search form.
+// Public Journey discovery search form.
 //
 // Responsibilities:
 // - Compose origin, destination, and date fields.
 // - Manage local form input state.
 // - Validate required search inputs.
-// - Emit a normalized search request to the parent.
+// - Emit a normalized Journey search request to the parent.
 // - Remain independent of API/data-fetching implementation.
 //
 // Architectural boundary:
@@ -84,7 +84,7 @@ export function TravellerSearch({
   function updateField(
     field: keyof TravellerSearchValues,
     value: string,
-  ) {
+  ): void {
     setValues((current) => ({
       ...current,
       [field]: value,
@@ -101,7 +101,7 @@ export function TravellerSearch({
 
   function handleSubmit(
     event: FormEvent<HTMLFormElement>,
-  ) {
+  ): void {
     event.preventDefault();
 
     if (isDisabled) {
@@ -224,7 +224,7 @@ export function TravellerSearch({
 
           <SearchSubmit
             loading={loading}
-            disabled={disabled}
+            disabled={isDisabled}
             className="w-full md:min-w-32"
           />
         </div>
@@ -250,3 +250,4 @@ export function TravellerSearch({
     </form>
   );
 }
+

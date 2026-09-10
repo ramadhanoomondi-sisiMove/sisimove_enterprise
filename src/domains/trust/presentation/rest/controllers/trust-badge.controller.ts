@@ -108,15 +108,44 @@ import {
 } from '../mappers/trust-badge-response.mapper';
 
 // =============================================================================
-// Trust Badge — Administrative HTTP Controller
+// Trust Badge HTTP Controller
 // =============================================================================
 //
-// This controller is NOT a public/self-service Trust Badge API.
+// This controller exposes two categories of Trust Badge endpoints:
 //
-// It exposes Trust Badge management capabilities to authenticated
-// administrators and authorized operators.
+// 1. PUBLIC DISCOVERY
 //
-// Security model:
+//    These endpoints support:
+//
+//    - public Trust Profiles;
+//    - public traveller reputation surfaces;
+//    - landing-page presentation;
+//    - displaying available Trust Badge definitions;
+//    - resolving badge information without authentication.
+//
+//    Public queries:
+//      GET /trust-badges/active
+//      GET /trust-badges/name/:name
+//      GET /trust-badges/type/:type
+//      GET /trust-badges/asset/:assetPublicId
+//      GET /trust-badges/:trustBadgeId
+//
+// 2. ADMINISTRATIVE MANAGEMENT
+//
+//    These endpoints mutate the Trust Badge catalogue and therefore require
+//    authentication plus the appropriate Trust Badge permission.
+//
+//    Protected commands:
+//      POST  /trust-badges
+//      PATCH /trust-badges/:trustBadgeId
+//      PATCH /trust-badges/:trustBadgeId/type
+//      PATCH /trust-badges/:trustBadgeId/name
+//      PATCH /trust-badges/:trustBadgeId/description
+//      PATCH /trust-badges/:trustBadgeId/asset
+//      POST  /trust-badges/:trustBadgeId/activate
+//      POST  /trust-badges/:trustBadgeId/deactivate
+//
+// Security model for protected operations:
 //
 //   Access Token
 //        ↓
@@ -126,9 +155,21 @@ import {
 //        ↓
 //   Required trust-badge permission
 //        ↓
-//   Application Command / Query Handler
+//   Application Command Handler
 //        ↓
 //   TrustBadgeAggregate
+//
+// Public query model:
+//
+//   HTTP Request
+//        ↓
+//   Application Query Handler
+//        ↓
+//   TrustBadgeAggregate
+//        ↓
+//   TrustBadgeResponseMapper
+//        ↓
+//   Public HTTP Response
 //
 // Responsibilities:
 //
@@ -136,26 +177,22 @@ import {
 // - DTO binding;
 // - command/query construction;
 // - dispatching application handlers;
-// - mapping application/domain results to HTTP responses;
-// - declaring authorization requirements.
+// - mapping domain/application results to HTTP responses;
+// - declaring authorization requirements for protected operations.
 //
 // The controller contains no business rules.
 //
 // Domain behavior remains in:
-// - TrustBadgeAggregate;
-// - Trust Badge domain value objects;
-// - application command/query handlers.
 //
-// Authorization is enforced through the authentication and permission
-// infrastructure. An administrator must possess the specific permission
-// required by each operation.
+// - TrustBadgeAggregate;
+// - Trust Badge entities/value objects;
+// - application command handlers;
+// - application query handlers.
 //
 // =============================================================================
 
 @ApiTags('Trust Badges')
-@ApiBearerAuth('access-token')
 @Controller('trust-badges')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class TrustBadgeController {
   constructor(
     // ========================================================================
@@ -225,14 +262,31 @@ export class TrustBadgeController {
   ) {}
 
   // ===========================================================================
-  // QUERIES
+  // PUBLIC QUERIES
+  // ===========================================================================
+  //
+  // These endpoints intentionally do NOT use:
+  //
+  //   @ApiBearerAuth()
+  //   @UseGuards(JwtAuthGuard, PermissionsGuard)
+  //   @RequirePermissions(...)
+  //
+  // Trust Badge definitions are public catalogue/discovery information.
+  // Public Trust Profiles and landing-page surfaces may need to resolve
+  // badge definitions without requiring an authenticated session.
+  //
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Get Active Trust Badges
+  // ---------------------------------------------------------------------------
+
   @Get('active')
-  @RequirePermissions('trust-badge:read')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Get all active trust badges.',
+    description:
+      'Returns all active Trust Badge definitions available for public discovery.',
   })
   @ApiOkResponse({
     description: 'Active trust badges retrieved successfully.',
@@ -245,16 +299,23 @@ export class TrustBadgeController {
     return TrustBadgeResponseMapper.fromAggregates([...aggregates]);
   }
 
+  // ---------------------------------------------------------------------------
+  // Get Trust Badge By Name
+  // ---------------------------------------------------------------------------
+
   @Get('name/:name')
-  @RequirePermissions('trust-badge:read')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Get a trust badge by name.',
+    description:
+      'Returns a Trust Badge definition matching the supplied public name.',
   })
   @ApiOkResponse({
     description: 'Trust badge retrieved successfully.',
   })
-  @ApiNotFoundResponse()
+  @ApiNotFoundResponse({
+    description: 'Trust badge was not found.',
+  })
   async getByName(
     @Param('name') name: string,
   ): Promise<TrustBadgeResponse | null> {
@@ -267,16 +328,23 @@ export class TrustBadgeController {
       : TrustBadgeResponseMapper.fromAggregate(aggregate);
   }
 
+  // ---------------------------------------------------------------------------
+  // Get Trust Badge By Type
+  // ---------------------------------------------------------------------------
+
   @Get('type/:type')
-  @RequirePermissions('trust-badge:read')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Get a trust badge by type.',
+    description:
+      'Returns a Trust Badge definition matching the supplied Trust Badge type.',
   })
   @ApiOkResponse({
     description: 'Trust badge retrieved successfully.',
   })
-  @ApiNotFoundResponse()
+  @ApiNotFoundResponse({
+    description: 'Trust badge was not found.',
+  })
   async getByType(
     @Param('type') type: TrustBadgeType,
   ): Promise<TrustBadgeResponse | null> {
@@ -289,11 +357,16 @@ export class TrustBadgeController {
       : TrustBadgeResponseMapper.fromAggregate(aggregate);
   }
 
+  // ---------------------------------------------------------------------------
+  // Get Trust Badges By Asset
+  // ---------------------------------------------------------------------------
+
   @Get('asset/:assetPublicId')
-  @RequirePermissions('trust-badge:read')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Get trust badges using an asset.',
+    description:
+      'Returns Trust Badge definitions associated with the specified public asset.',
   })
   @ApiOkResponse({
     description: 'Trust badges retrieved successfully.',
@@ -308,16 +381,23 @@ export class TrustBadgeController {
     return TrustBadgeResponseMapper.fromAggregates([...aggregates]);
   }
 
+  // ---------------------------------------------------------------------------
+  // Get Trust Badge
+  // ---------------------------------------------------------------------------
+
   @Get(':trustBadgeId')
-  @RequirePermissions('trust-badge:read')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Get a trust badge.',
+    description:
+      'Returns a public Trust Badge definition by its public identifier.',
   })
   @ApiOkResponse({
     description: 'Trust badge retrieved successfully.',
   })
-  @ApiNotFoundResponse()
+  @ApiNotFoundResponse({
+    description: 'Trust badge was not found.',
+  })
   async getById(
     @Param('trustBadgeId') trustBadgeId: string,
   ): Promise<TrustBadgeResponse | null> {
@@ -331,14 +411,30 @@ export class TrustBadgeController {
   }
 
   // ===========================================================================
-  // COMMANDS
+  // PROTECTED COMMANDS
+  // ===========================================================================
+  //
+  // Every mutation explicitly declares its authentication and authorization
+  // requirements at method level.
+  //
+  // This is intentional because the controller contains public GET endpoints.
+  // Class-level authentication would incorrectly protect those public routes.
+  //
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Create Trust Badge
+  // ---------------------------------------------------------------------------
+
   @Post()
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-badge:create')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Create a trust badge.',
+    description:
+      'Creates a new Trust Badge definition. Requires Trust Badge creation permission.',
   })
   @ApiCreatedResponse({
     description: 'Trust badge created successfully.',
@@ -357,16 +453,25 @@ export class TrustBadgeController {
     return TrustBadgeResponseMapper.fromAggregate(aggregate);
   }
 
+  // ---------------------------------------------------------------------------
+  // Update Trust Badge
+  // ---------------------------------------------------------------------------
+
   @Patch(':trustBadgeId')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-badge:update')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Update a trust badge.',
+    description: 'Updates the definition of an existing Trust Badge.',
   })
   @ApiOkResponse({
     description: 'Trust badge updated successfully.',
   })
-  @ApiNotFoundResponse()
+  @ApiNotFoundResponse({
+    description: 'Trust badge was not found.',
+  })
   async update(
     @Param('trustBadgeId') trustBadgeId: string,
     @Body() dto: UpdateTrustBadgeDto,
@@ -387,16 +492,25 @@ export class TrustBadgeController {
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // Change Trust Badge Type
+  // ---------------------------------------------------------------------------
+
   @Patch(':trustBadgeId/type')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-badge:update')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Change a trust badge type.',
+    description: 'Changes the classification type of an existing Trust Badge.',
   })
   @ApiOkResponse({
     description: 'Trust badge type changed successfully.',
   })
-  @ApiNotFoundResponse()
+  @ApiNotFoundResponse({
+    description: 'Trust badge was not found.',
+  })
   async changeType(
     @Param('trustBadgeId') trustBadgeId: string,
     @Body() dto: ChangeTrustBadgeTypeDto,
@@ -414,16 +528,25 @@ export class TrustBadgeController {
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // Change Trust Badge Name
+  // ---------------------------------------------------------------------------
+
   @Patch(':trustBadgeId/name')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-badge:update')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Change a trust badge name.',
+    description: 'Changes the display name of an existing Trust Badge.',
   })
   @ApiOkResponse({
     description: 'Trust badge name changed successfully.',
   })
-  @ApiNotFoundResponse()
+  @ApiNotFoundResponse({
+    description: 'Trust badge was not found.',
+  })
   async changeName(
     @Param('trustBadgeId') trustBadgeId: string,
     @Body() dto: ChangeTrustBadgeNameDto,
@@ -441,16 +564,25 @@ export class TrustBadgeController {
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // Change Trust Badge Description
+  // ---------------------------------------------------------------------------
+
   @Patch(':trustBadgeId/description')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-badge:update')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Change a trust badge description.',
+    description: 'Changes the description of an existing Trust Badge.',
   })
   @ApiOkResponse({
     description: 'Trust badge description changed successfully.',
   })
-  @ApiNotFoundResponse()
+  @ApiNotFoundResponse({
+    description: 'Trust badge was not found.',
+  })
   async changeDescription(
     @Param('trustBadgeId') trustBadgeId: string,
     @Body() dto: ChangeTrustBadgeDescriptionDto,
@@ -468,16 +600,25 @@ export class TrustBadgeController {
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // Set Trust Badge Asset
+  // ---------------------------------------------------------------------------
+
   @Patch(':trustBadgeId/asset')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-badge:update')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Set a trust badge asset.',
+    description: 'Associates a public asset with an existing Trust Badge.',
   })
   @ApiOkResponse({
     description: 'Trust badge asset set successfully.',
   })
-  @ApiNotFoundResponse()
+  @ApiNotFoundResponse({
+    description: 'Trust badge was not found.',
+  })
   async setAsset(
     @Param('trustBadgeId') trustBadgeId: string,
     @Body() dto: SetTrustBadgeAssetDto,
@@ -495,16 +636,26 @@ export class TrustBadgeController {
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // Activate Trust Badge
+  // ---------------------------------------------------------------------------
+
   @Post(':trustBadgeId/activate')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-badge:update')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Activate a trust badge.',
+    description:
+      'Activates an existing Trust Badge so it can be used by the platform.',
   })
   @ApiOkResponse({
     description: 'Trust badge activated successfully.',
   })
-  @ApiNotFoundResponse()
+  @ApiNotFoundResponse({
+    description: 'Trust badge was not found.',
+  })
   async activate(
     @Param('trustBadgeId') trustBadgeId: string,
   ): Promise<{ message: string }> {
@@ -517,16 +668,26 @@ export class TrustBadgeController {
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // Deactivate Trust Badge
+  // ---------------------------------------------------------------------------
+
   @Post(':trustBadgeId/deactivate')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('trust-badge:update')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Deactivate a trust badge.',
+    description:
+      'Deactivates an existing Trust Badge so it is no longer available for active use.',
   })
   @ApiOkResponse({
     description: 'Trust badge deactivated successfully.',
   })
-  @ApiNotFoundResponse()
+  @ApiNotFoundResponse({
+    description: 'Trust badge was not found.',
+  })
   async deactivate(
     @Param('trustBadgeId') trustBadgeId: string,
   ): Promise<{ message: string }> {

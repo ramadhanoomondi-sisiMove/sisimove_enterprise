@@ -2,13 +2,26 @@
 // sisiMove — Traveller Discovery Loading State
 // -----------------------------------------------------------------------------
 //
-// Presentation component for the loading state of public traveller discovery.
+// Presentation component for the loading state of public Journey discovery.
+//
+// Public discovery is Journey-first. The discovery layer may contain:
+// - published Journeys;
+// - open Journey Demands.
+//
+// The loading state therefore represents discovery activity rather than a
+// resolved traveller profile.
 //
 // Responsibilities:
 // - Render a responsive grid of discovery skeletons.
 // - Provide an accessible loading status.
-// - Keep the skeleton structure aligned with the traveller discovery card.
+// - Keep the skeleton structure aligned with discovery activity cards.
 // - Remain independent of API, authentication, routing, and business logic.
+//
+// This component does not:
+// - fetch discovery data;
+// - resolve traveller identity;
+// - determine Journey or Demand state;
+// - perform filtering or matching.
 //
 // -----------------------------------------------------------------------------
 
@@ -50,7 +63,10 @@ function normalizeCount(count: number): number {
   }
 
   return Math.min(
-    Math.max(Math.floor(count), MIN_LOADING_COUNT),
+    Math.max(
+      Math.floor(count),
+      MIN_LOADING_COUNT,
+    ),
     MAX_LOADING_COUNT,
   );
 }
@@ -67,82 +83,72 @@ function TravellerDiscoveryLoadingCard() {
     >
       <div className="space-y-5">
         {/* ----------------------------------------------------------------- */}
-        {/* Traveller Summary                                                 */}
+        {/* Activity Type                                                     */}
         {/* ----------------------------------------------------------------- */}
 
-        <div className="flex items-start gap-3">
+        <div className="flex items-center justify-between gap-3">
           <Skeleton
-            radius="full"
-            className="h-10 w-10 shrink-0"
+            radius="sm"
+            className="h-4 w-20"
           />
 
-          <div className="min-w-0 flex-1 space-y-2">
-            <Skeleton
-              radius="sm"
-              className="h-4 w-32"
-            />
-
-            <div className="flex flex-wrap gap-2">
-              <Skeleton
-                radius="sm"
-                className="h-3 w-16"
-              />
-
-              <Skeleton
-                radius="sm"
-                className="h-3 w-20"
-              />
-
-              <Skeleton
-                radius="sm"
-                className="h-3 w-24"
-              />
-            </div>
-          </div>
+          <Skeleton
+            radius="full"
+            className="h-6 w-16"
+          />
         </div>
 
         {/* ----------------------------------------------------------------- */}
-        {/* Activity                                                          */}
+        {/* Route                                                              */}
         {/* ----------------------------------------------------------------- */}
 
-        <div className="border-t border-[var(--border-subtle)] pt-4">
-          <div className="space-y-4">
-            <Skeleton
-              radius="sm"
-              className="h-4 w-20"
-            />
+        <div className="space-y-3">
+          <Skeleton
+            radius="sm"
+            className="h-5 w-4/5"
+          />
 
-            {/* Route */}
-            <div className="space-y-2">
-              <Skeleton
-                radius="sm"
-                className="h-5 w-full"
-              />
+          <Skeleton
+            radius="sm"
+            className="h-5 w-3/5"
+          />
+        </div>
 
-              <Skeleton
-                radius="sm"
-                className="h-5 w-3/4"
-              />
-            </div>
+        {/* ----------------------------------------------------------------- */}
+        {/* Journey Details                                                    */}
+        {/* ----------------------------------------------------------------- */}
 
-            {/* Schedule / vehicle / availability */}
-            <div className="flex flex-wrap gap-3">
-              <Skeleton
-                radius="sm"
-                className="h-4 w-28"
-              />
+        <div className="flex flex-wrap gap-3">
+          <Skeleton
+            radius="sm"
+            className="h-4 w-28"
+          />
 
-              <Skeleton
-                radius="sm"
-                className="h-4 w-24"
-              />
+          <Skeleton
+            radius="sm"
+            className="h-4 w-24"
+          />
 
-              <Skeleton
-                radius="sm"
-                className="h-4 w-20"
-              />
-            </div>
-          </div>
+          <Skeleton
+            radius="sm"
+            className="h-4 w-20"
+          />
+        </div>
+
+        {/* ----------------------------------------------------------------- */}
+        {/* Availability / Price                                               */}
+        {/* ----------------------------------------------------------------- */}
+
+        <div className="flex items-center justify-between gap-4 border-t border-[var(--border-subtle)] pt-4">
+          <Skeleton
+            radius="sm"
+            className="h-4 w-28"
+          />
+
+          <Skeleton
+            radius="sm"
+            className="h-5 w-20"
+          />
         </div>
       </div>
     </Card>
@@ -165,7 +171,7 @@ export function DiscoveryLoadingState({
       {...props}
       role="status"
       aria-busy="true"
-      aria-label="Loading travellers"
+      aria-label="Loading journeys"
       className={cn(
         'grid',
         'grid-cols-1',
@@ -185,7 +191,7 @@ export function DiscoveryLoadingState({
       )}
 
       <span className="sr-only">
-        Loading travellers.
+        Loading journeys.
       </span>
     </div>
   );

@@ -4,13 +4,14 @@
 // Prisma
 // -----------------------------------------------------------------------------
 
+import { Injectable } from '@nestjs/common';
 import type { Prisma, $Enums } from '@prisma/client';
 
 // -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
-import type { PrismaService } from '../../../../../infrastructure/database/prisma/prisma.service';
+import { PrismaService } from '../../../../../infrastructure/database/prisma/prisma.service';
 
 // -----------------------------------------------------------------------------
 // Aggregate
@@ -75,12 +76,13 @@ import {
 // Repository
 // -----------------------------------------------------------------------------
 
+@Injectable()
 export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
   // ===========================================================================
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly prisma: PrismaService) {}
+  public constructor(private readonly prisma: PrismaService) {}
 
   // ===========================================================================
   // Prisma Enum Boundary
@@ -152,6 +154,7 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
     const persistence = JourneyDemandPrismaMapper.toPersistence(
       aggregate.journeyDemand,
     );
+
     await this.prisma.$transaction(async (tx) => {
       const journeyDemandId = persistence.journeyDemand.id;
 
@@ -345,6 +348,7 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
           },
         });
       }
+
       // -----------------------------------------------------------------------
       // Schedule
       // -----------------------------------------------------------------------

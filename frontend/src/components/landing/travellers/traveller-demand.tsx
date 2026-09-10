@@ -2,7 +2,7 @@
 // sisiMove — Traveller Demand
 // -----------------------------------------------------------------------------
 //
-// Presentation component for a public traveller journey demand.
+// Presentation component for a public Journey Demand.
 //
 // Responsibilities:
 // - Render the public demand route.
@@ -19,7 +19,7 @@
 // - perform authentication or authorization;
 // - expose private traveller information.
 //
-// The component consumes the authoritative public discovery demand contract.
+// The component consumes the authoritative Journey Demand feature model.
 // -----------------------------------------------------------------------------
 
 import type {
@@ -28,8 +28,8 @@ import type {
 } from 'react';
 
 import type {
-  PublicTravellerDemand,
-} from '@/features/traveller-discovery';
+  JourneyDemand,
+} from '@/features/journey-demands';
 
 import { cn } from '../../../foundation/utils/cn';
 
@@ -43,12 +43,12 @@ import { TravellerRoute } from './traveller-route';
 export interface TravellerDemandProps
   extends Omit<HTMLAttributes<HTMLDivElement>, 'children'> {
   /**
-   * Public traveller demand.
+   * Public Journey Demand.
    *
-   * The feature model is authoritative. This component does not reconstruct
-   * demand data from independent primitive props.
+   * The Journey Demand feature model is authoritative. This component does
+   * not reconstruct demand data from independent primitive props.
    */
-  readonly demand: PublicTravellerDemand;
+  readonly demand: JourneyDemand;
 
   /**
    * Optional presentation content displayed before the route.
@@ -66,7 +66,7 @@ export interface TravellerDemandProps
   readonly availabilityLeadingContent?: ReactNode;
 
   /**
-   * Optional presentation content displayed before the preferred price.
+   * Optional presentation content displayed before the maximum price.
    */
   readonly priceLeadingContent?: ReactNode;
 
@@ -114,26 +114,29 @@ function hasPriceInformation(
   );
 }
 
+// -----------------------------------------------------------------------------
+// Schedule
+// -----------------------------------------------------------------------------
+
 function formatDemandSchedule(
-  demand: PublicTravellerDemand,
+  demand: JourneyDemand,
 ): ReactNode {
   const {
-    earliestDepartureAt,
-    latestDepartureAt,
+    earliestDeparture,
+    latestDeparture,
     timezone,
-    flexibleDeparture,
   } = demand.schedule;
 
   if (
-    !earliestDepartureAt ||
-    !latestDepartureAt ||
+    !earliestDeparture ||
+    !latestDeparture ||
     !timezone
   ) {
     return null;
   }
 
-  const earliest = new Date(earliestDepartureAt);
-  const latest = new Date(latestDepartureAt);
+  const earliest = new Date(earliestDeparture);
+  const latest = new Date(latestDeparture);
 
   if (
     Number.isNaN(earliest.getTime()) ||
@@ -176,7 +179,10 @@ function formatDemandSchedule(
   const sameDate =
     earliestDate === latestDate;
 
-  if (!flexibleDeparture) {
+  const sameTime =
+    earliest.getTime() === latest.getTime();
+
+  if (sameTime) {
     return (
       <div className="space-y-1">
         <p className="text-sm font-medium text-[var(--foreground)]">
@@ -229,7 +235,7 @@ export function TravellerDemand({
 
   const seatsNeeded =
     normalizeNonNegativeInteger(
-      capacity.seatsNeeded,
+      capacity.requestedSeats,
     );
 
   const showAvailabilitySection =
@@ -238,7 +244,9 @@ export function TravellerDemand({
 
   const showPriceSection =
     showPrice &&
-    hasPriceInformation(pricing.maxAmount);
+    hasPriceInformation(
+      pricing.maximumPricePerSeat,
+    );
 
   const scheduleContent =
     formatDemandSchedule(demand);
@@ -256,8 +264,8 @@ export function TravellerDemand({
       {/* ------------------------------------------------------------------- */}
 
       <TravellerRoute
-        origin={route.origin}
-        destination={route.destination}
+        origin={route.originName}
+        destination={route.destinationName}
         leadingContent={routeLeadingContent}
       />
 
@@ -278,9 +286,7 @@ export function TravellerDemand({
 
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--foreground-muted)]">
-              {schedule.flexibleDeparture
-                ? 'Flexible departure'
-                : 'Departure'}
+              Travel window
             </p>
 
             <div className="mt-1">
@@ -349,7 +355,7 @@ export function TravellerDemand({
 
       {showPriceSection && (
         <TravellerPrice
-          amount={pricing.maxAmount!}
+          amount={pricing.maximumPricePerSeat!}
           currency={pricing.currency}
           label="Up to"
           leadingContent={priceLeadingContent}

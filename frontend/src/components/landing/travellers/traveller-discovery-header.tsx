@@ -1,8 +1,8 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Traveller Discovery Header
+// sisiMove — Public Journey Discovery Header
 // -----------------------------------------------------------------------------
 //
-// Presentation header for public traveller discovery.
+// Presentation header for public journey discovery.
 //
 // Responsibilities:
 // - Present the section eyebrow.
@@ -11,15 +11,23 @@
 // - Present optional supporting/trailing content.
 // - Present optional content below the heading area.
 //
+// Public journey discovery allows visitors to discover published journeys
+// available on SisiMove before authentication.
+//
+// The journey is the discovery object. Public traveller information, vehicle
+// information, trust information, route information, and other safe journey
+// details are presented as part of the selected journey.
+//
 // This component does not:
-// - fetch discovery data;
+// - fetch journey data;
 // - own discovery state;
-// - filter travellers;
+// - filter journeys;
 // - perform routing;
 // - perform authentication;
+// - perform bookings;
 // - contain business rules.
 //
-// The parent discovery section owns those responsibilities.
+// The parent discovery composition owns those responsibilities.
 //
 // -----------------------------------------------------------------------------
 
@@ -63,7 +71,7 @@ export interface TravellerDiscoveryHeaderProps {
    * Examples:
    * - Search summary
    * - Filter controls
-   * - Discovery tabs
+   * - Discovery controls
    */
   readonly bottomContent?: ReactNode;
 
@@ -98,10 +106,10 @@ function hasContent(
 // -----------------------------------------------------------------------------
 
 export function TravellerDiscoveryHeader({
-  eyebrow = 'PEOPLE TRAVELLING YOUR WAY',
-  title =
-    'Discover people sharing journeys and looking for one.',
-  description,
+  eyebrow = 'AVAILABLE JOURNEYS',
+  title = 'Find a journey that works for you.',
+  description =
+    'Explore published journeys available on SisiMove and see the public journey details before you book.',
   trailingContent,
   bottomContent,
   headingId,
