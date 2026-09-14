@@ -2,32 +2,23 @@
 // sisiMove — Traveller Profile API
 // -----------------------------------------------------------------------------
 //
-// Public exports for Traveller Profile API operations and transport contracts.
+// Public API barrel for the Traveller Profile feature.
 //
-// Responsibilities:
-// - Expose Traveller Profile API functions.
-// - Expose API transport types.
+// Consumers should import Traveller Profile API operations through this barrel
+// instead of depending on individual implementation files.
 //
-// Non-responsibilities:
-// - No feature-model exports.
-// - No mapping logic.
-// - No React state.
-// - No Trust exports.
+// Public operations:
 //
-// Trust has its own API boundary under:
-// features/trust/api
+// - retrieve a public Traveller Profile by Traveller Profile public ID;
+// - retrieve a public Traveller Profile by Member public ID;
+// - retrieve a public Traveller Profile by Traveller handle.
 //
+// The barrel intentionally exports only operations backed by the dedicated
+// public Traveller Profile REST boundary.
 // -----------------------------------------------------------------------------
 
 export {
-  getPublicTravellerProfile,
-  travellerProfileApi,
+  getTravellerProfileByPublicId,
+  getTravellerProfileByMemberPublicId,
+  getTravellerProfileByHandle,
 } from './traveller-profile.api';
-
-export type {
-  PublicTravellerProfileResponse,
-  PublicTravellerProfileTravellerResponse,
-  PublicTravellerProfileCorridorResponse,
-  PublicTravellerProfileCorridorWaypointResponse,
-  PublicTravellerProfilePreferencesResponse,
-} from './traveller-profile.types';

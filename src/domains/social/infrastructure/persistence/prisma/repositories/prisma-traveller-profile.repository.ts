@@ -1,4 +1,27 @@
-// src/domains/social/infrastructure/persistence/prisma/repositories/prisma-traveller-profile.repository.ts
+// -----------------------------------------------------------------------------
+// sisiMove — Prisma Traveller Profile Repository
+// -----------------------------------------------------------------------------
+//
+// Infrastructure implementation of the TravellerProfileRepository contract.
+//
+// This repository is responsible for translating Prisma persistence records
+// into Traveller Profile domain objects.
+//
+// Aggregate-level queries reconstruct the complete TravellerProfileAggregate
+// including:
+//
+// - profile;
+// - preferences;
+// - corridors.
+//
+// Entity-level queries intentionally return only the requested persistence
+// entity when the complete aggregate is not required.
+//
+// The repository does not apply application-level visibility rules. Public
+// query handlers are responsible for evaluating aggregate state such as
+// TravellerProfileAggregate.isPublic() before constructing public responses.
+//
+// -----------------------------------------------------------------------------
 
 import type { Prisma } from '@prisma/client';
 
@@ -139,7 +162,26 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
   async findById(
     id: TravellerProfileId,
   ): Promise<TravellerProfileAggregate | null> {
-    return this.findAggregateByPublicId(id.value);
+    const record = await this.prisma.travellerProfile.findUnique({
+      where: {
+        id: id.toString(),
+      },
+
+      include: {
+        preferences: true,
+        corridors: {
+          orderBy: {
+            createdAt: 'asc',
+          },
+        },
+      },
+    });
+
+    if (record === null) {
+      return null;
+    }
+
+    return this.toAggregate(record);
   }
 
   async findByPublicId(
@@ -173,10 +215,44 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
     return this.toAggregate(record);
   }
 
+  /**
+   * Find the complete Traveller Profile aggregate by its public handle.
+   *
+   * This method is intentionally distinct from findProfileByHandle().
+   *
+   * Public handle queries need the aggregate because the application layer
+   * must evaluate aggregate-owned state such as isPublic() before exposing
+   * the reduced public representation.
+   */
+  async findByHandle(
+    handle: TravellerHandle,
+  ): Promise<TravellerProfileAggregate | null> {
+    const record = await this.prisma.travellerProfile.findUnique({
+      where: {
+        handle: handle.value,
+      },
+
+      include: {
+        preferences: true,
+        corridors: {
+          orderBy: {
+            createdAt: 'asc',
+          },
+        },
+      },
+    });
+
+    if (record === null) {
+      return null;
+    }
+
+    return this.toAggregate(record);
+  }
+
   async delete(id: TravellerProfileId): Promise<void> {
     const profile = await this.prisma.travellerProfile.findUnique({
       where: {
-        publicId: id.value,
+        id: id.toString(),
       },
 
       select: {
@@ -198,7 +274,7 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
   async exists(id: TravellerProfileId): Promise<boolean> {
     const count = await this.prisma.travellerProfile.count({
       where: {
-        publicId: id.value,
+        id: id.toString(),
       },
     });
 
@@ -236,7 +312,7 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
   ): Promise<TravellerProfileEntity | null> {
     const record = await this.prisma.travellerProfile.findUnique({
       where: {
-        publicId: id.value,
+        id: id.toString(),
       },
     });
 
@@ -279,6 +355,11 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
     return TravellerProfilePrismaMapper.toDomain(record);
   }
 
+  /**
+   * Find only the Traveller Profile entity by handle.
+   *
+   * Use findByHandle() when aggregate-owned behavior or state is required.
+   */
   async findProfileByHandle(
     handle: TravellerHandle,
   ): Promise<TravellerProfileEntity | null> {
@@ -304,7 +385,7 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
   ): Promise<TravellerProfilePreferencesEntity | null> {
     const profile = await this.prisma.travellerProfile.findUnique({
       where: {
-        publicId: profileId.value,
+        id: profileId.toString(),
       },
 
       select: {
@@ -354,7 +435,7 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
   ): Promise<TravellerProfileCorridorEntity[]> {
     const profile = await this.prisma.travellerProfile.findUnique({
       where: {
-        publicId: profileId.value,
+        id: profileId.toString(),
       },
 
       select: {
@@ -391,7 +472,7 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
   ): Promise<TravellerProfileCorridorEntity | null> {
     const profile = await this.prisma.travellerProfile.findUnique({
       where: {
-        publicId: profileId.value,
+        id: profileId.toString(),
       },
 
       select: {
@@ -431,7 +512,7 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
 
     const profile = await this.prisma.travellerProfile.findUnique({
       where: {
-        publicId: profileId.value,
+        id: profileId.toString(),
       },
 
       select: {
@@ -457,6 +538,9 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
   // Internal Mapping
   // ===========================================================================
 
+  /**
+   * Reconstruct a complete Traveller Profile aggregate from its public ID.
+   */
   private async findAggregateByPublicId(
     publicId: string,
   ): Promise<TravellerProfileAggregate | null> {
@@ -482,6 +566,13 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
     return this.toAggregate(record);
   }
 
+  /**
+   * Reconstruct the Traveller Profile aggregate from its persistence graph.
+   *
+   * Prisma remains an infrastructure concern. Domain reconstruction is
+   * performed through the existing Prisma-to-domain mappers and the aggregate
+   * rehydration boundary.
+   */
   private toAggregate(
     record: TravellerProfileWithComponents,
   ): TravellerProfileAggregate {

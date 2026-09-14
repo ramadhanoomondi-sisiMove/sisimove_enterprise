@@ -4333,6 +4333,7 @@ enum StorageProvider {
   GOOGLE_CLOUD_STORAGE
   AZURE_BLOB
   CLOUDINARY
+  BUNNY
   OTHER
 }
 

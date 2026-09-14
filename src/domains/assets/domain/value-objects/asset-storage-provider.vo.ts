@@ -1,6 +1,26 @@
 // -----------------------------------------------------------------------------
 // Asset Storage Provider
 // -----------------------------------------------------------------------------
+//
+// Domain value object identifying the infrastructure provider responsible for
+// storing an Asset's physical object.
+//
+// The domain knows the provider identity only.
+//
+// It does NOT know:
+// - credentials;
+// - connection configuration;
+// - SDKs;
+// - filesystem paths;
+// - HTTP endpoints;
+// - buckets or containers;
+// - CDN URLs;
+// - signed URLs;
+// - provider-specific APIs.
+//
+// Those concerns belong to the infrastructure layer.
+//
+// -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
 // Foundation
@@ -12,8 +32,38 @@ import { ValueObject } from '../../../../foundation/kernel/domain/value-object';
 // Types
 // -----------------------------------------------------------------------------
 
+/**
+ * Supported Asset storage providers.
+ *
+ * LOCAL
+ *   Local filesystem storage, primarily useful for development or
+ *   self-hosted deployments.
+ *
+ * BUNNY
+ *   Bunny Storage.
+ *
+ * AWS_S3
+ *   Amazon S3.
+ *
+ * GOOGLE_CLOUD_STORAGE
+ *   Google Cloud Storage.
+ *
+ * AZURE_BLOB
+ *   Microsoft Azure Blob Storage.
+ *
+ * CLOUDINARY
+ *   Cloudinary storage.
+ *
+ * OTHER
+ *   A provider that is intentionally not modeled by the domain.
+ *
+ * The provider identifier is deliberately infrastructure-neutral. Provider
+ * connection details and implementation-specific configuration remain outside
+ * the domain.
+ */
 export type AssetStorageProviderValue =
   | 'LOCAL'
+  | 'BUNNY'
   | 'AWS_S3'
   | 'GOOGLE_CLOUD_STORAGE'
   | 'AZURE_BLOB'
@@ -33,21 +83,11 @@ interface AssetStorageProviderProps {
 // -----------------------------------------------------------------------------
 
 /**
- * Represents the infrastructure provider responsible for storing an Asset's
- * physical object.
+ * Represents the storage provider responsible for an Asset's physical object.
  *
- * Valid providers:
+ * This value object identifies WHAT provider is responsible for storage.
  *
- * - LOCAL                 — Local filesystem storage.
- * - AWS_S3                — Amazon Simple Storage Service.
- * - GOOGLE_CLOUD_STORAGE  — Google Cloud Storage.
- * - AZURE_BLOB            — Microsoft Azure Blob Storage.
- * - CLOUDINARY            — Cloudinary asset storage and delivery.
- * - OTHER                 — Another storage provider not explicitly modeled.
- *
- * The value object identifies the selected storage provider only. Connection
- * details, credentials, SDKs, filesystem paths, buckets, and provider-specific
- * APIs belong to the infrastructure layer.
+ * It does not describe HOW that provider is accessed.
  */
 export class AssetStorageProvider extends ValueObject<AssetStorageProviderProps> {
   // ---------------------------------------------------------------------------
@@ -55,6 +95,8 @@ export class AssetStorageProvider extends ValueObject<AssetStorageProviderProps>
   // ---------------------------------------------------------------------------
 
   public static readonly LOCAL = 'LOCAL' as const;
+
+  public static readonly BUNNY = 'BUNNY' as const;
 
   public static readonly AWS_S3 = 'AWS_S3' as const;
 
@@ -69,6 +111,7 @@ export class AssetStorageProvider extends ValueObject<AssetStorageProviderProps>
   private static readonly VALID_VALUES: ReadonlySet<AssetStorageProviderValue> =
     new Set([
       AssetStorageProvider.LOCAL,
+      AssetStorageProvider.BUNNY,
       AssetStorageProvider.AWS_S3,
       AssetStorageProvider.GOOGLE_CLOUD_STORAGE,
       AssetStorageProvider.AZURE_BLOB,
@@ -99,6 +142,10 @@ export class AssetStorageProvider extends ValueObject<AssetStorageProviderProps>
 
   public static local(): AssetStorageProvider {
     return new AssetStorageProvider(AssetStorageProvider.LOCAL);
+  }
+
+  public static bunny(): AssetStorageProvider {
+    return new AssetStorageProvider(AssetStorageProvider.BUNNY);
   }
 
   public static awsS3(): AssetStorageProvider {
@@ -141,6 +188,10 @@ export class AssetStorageProvider extends ValueObject<AssetStorageProviderProps>
 
   public isLocal(): boolean {
     return this.props.value === AssetStorageProvider.LOCAL;
+  }
+
+  public isBunny(): boolean {
+    return this.props.value === AssetStorageProvider.BUNNY;
   }
 
   public isAwsS3(): boolean {

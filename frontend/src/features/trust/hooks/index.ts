@@ -1,17 +1,15 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Trust Hooks Barrel
+// sisiMove — Trust Hooks
 // -----------------------------------------------------------------------------
 //
-// Public exports for React hooks belonging to the Trust feature.
+// Public hook barrel for the Trust feature.
 //
-// Keeps hook consumers independent from individual hook implementation files.
+// Consumers should import Trust hooks through this barrel rather than reaching
+// into individual hook implementation files.
 // -----------------------------------------------------------------------------
 
 export {
-  useTrustProfile,
-} from './use-trust-profile';
+  useTravellerTrust,
+  travellerTrustQueryKeys,
+} from './use-traveller-trust';
 
-export type {
-  UseTrustProfileState,
-  UseTrustProfileResult,
-} from './use-trust-profile';

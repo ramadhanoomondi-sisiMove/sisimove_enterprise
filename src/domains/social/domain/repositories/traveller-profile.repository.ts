@@ -27,9 +27,10 @@ export interface TravellerProfileRepository {
    * Persist a Traveller Profile aggregate.
    *
    * The implementation is responsible for persisting:
-   * - TravellerProfileEntity
-   * - TravellerProfilePreferencesEntity
-   * - TravellerProfileCorridorEntity[]
+   *
+   * - TravellerProfileEntity;
+   * - TravellerProfilePreferencesEntity;
+   * - TravellerProfileCorridorEntity[].
    */
   save(aggregate: TravellerProfileAggregate): Promise<void>;
 
@@ -46,10 +47,25 @@ export interface TravellerProfileRepository {
   ): Promise<TravellerProfileAggregate | null>;
 
   /**
-   * Find a Traveller Profile aggregate by the owning member.
+   * Find a Traveller Profile aggregate by the owning Member public identifier.
    */
   findByMemberPublicId(
     memberPublicId: MemberPublicId,
+  ): Promise<TravellerProfileAggregate | null>;
+
+  /**
+   * Find a Traveller Profile aggregate by its public handle.
+   *
+   * This returns the complete aggregate because application-level queries may
+   * need to evaluate aggregate-owned behavior or state before constructing
+   * their response.
+   *
+   * In particular, the public Traveller Profile query uses this method to
+   * evaluate TravellerProfileAggregate.isPublic() before exposing any public
+   * representation.
+   */
+  findByHandle(
+    handle: TravellerHandle,
   ): Promise<TravellerProfileAggregate | null>;
 
   /**
@@ -65,7 +81,7 @@ export interface TravellerProfileRepository {
   exists(id: TravellerProfileId): Promise<boolean>;
 
   /**
-   * Determine whether a Traveller Profile exists for a member.
+   * Determine whether a Traveller Profile exists for a Member.
    */
   existsByMemberPublicId(memberPublicId: MemberPublicId): Promise<boolean>;
 
@@ -96,7 +112,7 @@ export interface TravellerProfileRepository {
   ): Promise<TravellerProfileEntity | null>;
 
   /**
-   * Find only the Traveller Profile entity by member.
+   * Find only the Traveller Profile entity by Member public identifier.
    */
   findProfileByMemberPublicId(
     memberPublicId: MemberPublicId,
@@ -104,6 +120,14 @@ export interface TravellerProfileRepository {
 
   /**
    * Find only the Traveller Profile entity by handle.
+   *
+   * This remains separate from findByHandle().
+   *
+   * - findByHandle() returns the complete aggregate;
+   * - findProfileByHandle() returns only the TravellerProfileEntity.
+   *
+   * Callers should use the aggregate-level method when aggregate-owned
+   * behavior or state is required.
    */
   findProfileByHandle(
     handle: TravellerHandle,

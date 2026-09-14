@@ -1,5 +1,24 @@
 // src/domains/journey/application/journey.tokens.ts
 
+// -----------------------------------------------------------------------------
+// sisiMove — Journey Application Tokens
+// -----------------------------------------------------------------------------
+//
+// Dependency-injection tokens for the Journey application layer.
+//
+// The token registry is intentionally grouped by application responsibility:
+//
+// - Repository
+// - Command handlers
+// - Query handlers
+//
+// Public Journey queries are kept distinct from general Journey queries.
+// A public query represents a public read boundary and therefore has its own
+// handler, even when the underlying persistence query eventually uses the same
+// Journey repository.
+//
+// -----------------------------------------------------------------------------
+
 export const JOURNEY_TOKENS = {
   // ===========================================================================
   // Repository
@@ -102,6 +121,9 @@ export const JOURNEY_TOKENS = {
     // Journey
     // -------------------------------------------------------------------------
 
+    /**
+     * Retrieves a Journey through the general Journey application boundary.
+     */
     GET: Symbol('GetJourneyQueryHandler'),
 
     GET_BY_PROVIDER: Symbol('GetJourneyByProviderQueryHandler'),
@@ -113,6 +135,18 @@ export const JOURNEY_TOKENS = {
     ),
 
     SEARCH_PUBLISHED: Symbol('SearchPublishedJourneysQueryHandler'),
+
+    // -------------------------------------------------------------------------
+    // Public Journey
+    // -------------------------------------------------------------------------
+    //
+    // Public queries are intentionally separate from the general Journey
+    // queries. The public read boundary must enforce public visibility rather
+    // than exposing arbitrary Journey lifecycle state.
+    //
+    // -------------------------------------------------------------------------
+
+    GET_PUBLIC: Symbol('GetPublicJourneyQueryHandler'),
 
     // -------------------------------------------------------------------------
     // Corridor

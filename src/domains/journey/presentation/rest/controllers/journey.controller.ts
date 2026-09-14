@@ -1,10 +1,13 @@
+// src/domains/journey/presentation/http/journey.controller.ts
+
 // -----------------------------------------------------------------------------
-// Journey — HTTP Controller
+// sisiMove — Journey HTTP Controller
 // -----------------------------------------------------------------------------
 //
-// REST controller for Journey aggregate and its associated journey components.
+// REST controller for the Journey aggregate and its associated Journey
+// components.
 //
-// Aggregate boundaries:
+// Aggregate boundary:
 //
 // JourneyAggregate
 // ├── Journey
@@ -18,47 +21,58 @@
 // └── JourneyAsset[]
 //
 // -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// PUBLIC JOURNEY DISCOVERY
+// -----------------------------------------------------------------------------
 //
-// Public landing-page operations:
+// Public Journey reads are intentionally separated from general Journey
+// queries.
 //
-// 1. GET    /journeys/search?from=&to=&date=
-//    Public search for published journeys by route and departure date.
+// The public read boundary answers:
 //
-// 2. GET    /journeys/status/:status
-//    Public journey discovery by status.
+//     "Can this Journey currently be discovered by an anonymous visitor?"
 //
-// 3. GET    /journeys/:journeyPublicId
-//    Public journey detail.
+// Public visibility is enforced by the Journey repository/application query
+// boundary, not by the HTTP controller.
 //
-// 4. GET    /journeys/:journeyPublicId/corridor
-//    Public corridor information.
+// Public operations:
 //
-// 5. GET    /journeys/:journeyPublicId/waypoints
-//    Public journey route waypoints.
+// 1. GET /journeys/search?from=&to=&date=
+//    Public search for published journeys.
 //
-// 6. GET    /journeys/:journeyPublicId/waypoints/:waypointPublicId
+// 2. GET /journeys/:journeyPublicId
+//    Public Journey detail.
+//
+// 3. GET /journeys/:journeyPublicId/corridor
+//    Public Journey corridor.
+//
+// 4. GET /journeys/:journeyPublicId/waypoints
+//    Public Journey waypoints.
+//
+// 5. GET /journeys/:journeyPublicId/waypoints/:waypointPublicId
 //    Public individual waypoint.
 //
-// 7. GET    /journeys/:journeyPublicId/schedule
-//    Public journey schedule.
+// 6. GET /journeys/:journeyPublicId/schedule
+//    Public Journey schedule.
 //
-// 8. GET    /journeys/:journeyPublicId/vehicle
-//    Public journey vehicle information.
+// 7. GET /journeys/:journeyPublicId/vehicle
+//    Public Journey vehicle.
 //
-// 9. GET    /journeys/:journeyPublicId/capacity
-//    Public journey capacity.
+// 8. GET /journeys/:journeyPublicId/capacity
+//    Public Journey capacity.
 //
-// 10. GET   /journeys/:journeyPublicId/pricing
-//     Public journey pricing.
+// 9. GET /journeys/:journeyPublicId/pricing
+//    Public Journey pricing.
 //
-// 11. GET   /journeys/:journeyPublicId/preferences
-//     Public journey preferences.
+// 10. GET /journeys/:journeyPublicId/preferences
+//     Public Journey preferences.
 //
-// 12. GET   /journeys/:journeyPublicId/assets
-//     Public journey assets.
+// 11. GET /journeys/:journeyPublicId/assets
+//     Public Journey assets.
 //
-// 13. GET   /journeys/:journeyPublicId/assets/:assetPublicId
-//     Public individual journey asset.
+// 12. GET /journeys/:journeyPublicId/assets/:assetPublicId
+//     Public individual Journey asset.
 //
 // Public operations intentionally do NOT require:
 //
@@ -66,9 +80,18 @@
 //     PermissionsGuard
 //     @RequirePermissions(...)
 //
-// -----------------------------------------------------------------------------
+// IMPORTANT:
 //
-// Authenticated journey operations:
+// `GET /journeys/status/:status` is intentionally NOT treated as a public
+// marketplace operation. Lifecycle status is an internal Journey-domain
+// concern. Public discovery should use semantic public-read queries instead
+// of exposing arbitrary lifecycle states.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// AUTHENTICATED JOURNEY OPERATIONS
+// -----------------------------------------------------------------------------
 //
 // Journey creation, lifecycle transitions, component mutation, and provider
 // queries remain protected.
@@ -80,11 +103,16 @@
 //     @RequirePermissions(...)
 //
 // -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// RESPONSIBILITIES
+// -----------------------------------------------------------------------------
 //
-// Responsibilities:
+// The controller is responsible only for:
 //
 // - HTTP transport;
-// - DTO binding and validation;
+// - DTO binding;
+// - transport validation;
 // - conversion of transport primitives to domain value objects;
 // - generation of application correlation metadata;
 // - dispatching application commands and queries.
@@ -207,15 +235,18 @@ import {
   GetJourneyCorridorQuery,
   GetJourneyPreferencesQuery,
   GetJourneyPricingQuery,
-  GetJourneyQuery,
   GetJourneyScheduleQuery,
   GetJourneyVehicleQuery,
   GetJourneyWaypointQuery,
   GetJourneyWaypointsQuery,
   GetJourneysByProviderAndStatusQuery,
   GetJourneysByProviderQuery,
-  GetJourneysByStatusQuery,
   SearchPublishedJourneysQuery,
+
+  // ---------------------------------------------------------------------------
+  // Public Journey
+  // ---------------------------------------------------------------------------
+  GetPublicJourneyQuery,
 } from '../../../application/queries/journey';
 
 // -----------------------------------------------------------------------------
@@ -285,11 +316,25 @@ import { JourneyPublicId } from '../../../domain/value-objects/journey-public-id
 
 import { JourneySchedulePublicId } from '../../../domain/value-objects/journey-schedule-public-id.vo';
 
-import { JourneyStatus } from '../../../domain/value-objects/journey-status.vo';
-
 import { JourneyVehiclePublicId } from '../../../domain/value-objects/journey-vehicle-public-id.vo';
 
 import { JourneyWaypointPublicId } from '../../../domain/value-objects/journey-waypoint-public-id.vo';
+
+// -----------------------------------------------------------------------------
+// Journey Status
+// -----------------------------------------------------------------------------
+//
+// IMPORTANT:
+//
+// JourneyStatus is the frozen domain enum defined by the Journey status value
+// object. The controller does not modify or duplicate that definition.
+//
+// The controller only converts the HTTP path parameter into the already
+// existing domain enum before constructing the application query.
+//
+// -----------------------------------------------------------------------------
+
+import { JourneyStatus } from '../../../domain/value-objects/journey-status.vo';
 
 // =============================================================================
 // Controller
@@ -409,24 +454,26 @@ export class JourneyController {
     private readonly removeAssetHandler: CommandHandler<RemoveJourneyAssetCommand>,
 
     // =========================================================================
-    // Journey Queries
+    // General Journey Queries
     // =========================================================================
-
-    @Inject(JOURNEY_TOKENS.QUERY_HANDLERS.GET)
-    private readonly getJourneyQueryHandler: QueryHandler<
-      GetJourneyQuery,
-      JourneyAggregate | null
-    >,
+    //
+    // NOTE:
+    //
+    // There is intentionally no GetJourneyQuery handler here.
+    //
+    // Anonymous Journey detail uses GetPublicJourneyQuery so that the public
+    // endpoint cannot accidentally bypass the repository's public visibility
+    // boundary.
+    //
+    // Authenticated callers that require general Journey reads should use the
+    // appropriate application query boundary rather than being exposed through
+    // this anonymous public detail endpoint.
+    //
+    // =========================================================================
 
     @Inject(JOURNEY_TOKENS.QUERY_HANDLERS.GET_BY_PROVIDER)
     private readonly getJourneysByProviderQueryHandler: QueryHandler<
       GetJourneysByProviderQuery,
-      readonly JourneyAggregate[]
-    >,
-
-    @Inject(JOURNEY_TOKENS.QUERY_HANDLERS.GET_BY_STATUS)
-    private readonly getJourneysByStatusQueryHandler: QueryHandler<
-      GetJourneysByStatusQuery,
       readonly JourneyAggregate[]
     >,
 
@@ -440,6 +487,28 @@ export class JourneyController {
     private readonly searchPublishedJourneysQueryHandler: QueryHandler<
       SearchPublishedJourneysQuery,
       readonly JourneyEntity[]
+    >,
+
+    // =========================================================================
+    // Public Journey Query
+    // =========================================================================
+    //
+    // IMPORTANT:
+    //
+    // This is deliberately separate from GetJourneyQuery.
+    //
+    // GetPublicJourneyQuery is the anonymous/public discovery read and
+    // delegates to the repository's public visibility boundary.
+    //
+    // A Journey that exists but is not publicly discoverable therefore does
+    // not leak through this endpoint.
+    //
+    // =========================================================================
+
+    @Inject(JOURNEY_TOKENS.QUERY_HANDLERS.GET_PUBLIC)
+    private readonly getPublicJourneyQueryHandler: QueryHandler<
+      GetPublicJourneyQuery,
+      JourneyEntity | null
     >,
 
     // =========================================================================
@@ -543,12 +612,17 @@ export class JourneyController {
   // Search Published Journeys
   // ---------------------------------------------------------------------------
   //
-  // Public landing-page operation.
+  // Public route-search operation.
   //
-  // Journey is the primary discovery object.
+  // This remains a Journey-domain query rather than a Marketplace query.
   //
-  // The search is deliberately delegated to the Journey application query
-  // handler. The controller does not search, filter, or inspect Journey data.
+  // The Marketplace will later compose Journey and Journey Demand independently.
+  //
+  // IMPORTANT:
+  //
+  // This endpoint is route/date search, not the primary marketplace listing.
+  // The public marketplace should eventually use its own read boundary for
+  // "all available journeys" plus optional filtering.
   //
   // Example:
   //
@@ -590,41 +664,6 @@ export class JourneyController {
   ): Promise<readonly JourneyEntity[]> {
     return this.searchPublishedJourneysQueryHandler.execute(
       new SearchPublishedJourneysQuery(from, to, date),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Get Journeys By Status
-  // ---------------------------------------------------------------------------
-  //
-  // Public landing-page operation.
-  //
-  // No authentication is required.
-  //
-  // Example:
-  //
-  //     GET /journeys/status/PUBLISHED
-  //
-  // ---------------------------------------------------------------------------
-
-  @ApiOperation({
-    summary: 'Get public journeys by status',
-    description:
-      'Returns journeys matching the specified status for public journey discovery.',
-  })
-  @ApiParam({
-    name: 'status',
-    type: String,
-    required: true,
-    description: 'Journey status.',
-    example: 'PUBLISHED',
-  })
-  @Get('status/:status')
-  public async getByStatus(
-    @Param('status') status: string,
-  ): Promise<readonly JourneyAggregate[]> {
-    return this.getJourneysByStatusQueryHandler.execute(
-      new GetJourneysByStatusQuery(this.parseJourneyStatus(status)),
     );
   }
 
@@ -698,17 +737,33 @@ export class JourneyController {
   }
 
   // ===========================================================================
-  // PUBLIC JOURNEY
+  // PUBLIC JOURNEY DETAIL
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
-  // Get Journey
+  // Get Public Journey
+  // ---------------------------------------------------------------------------
+  //
+  // This endpoint MUST use GetPublicJourneyQuery rather than GetJourneyQuery.
+  //
+  // The distinction is architectural:
+  //
+  //     GetJourneyQuery
+  //         -> general Journey read
+  //
+  //     GetPublicJourneyQuery
+  //         -> anonymous public-discovery read
+  //         -> repository public-visibility policy
+  //
+  // Therefore a Journey that exists internally but is not currently publicly
+  // discoverable will not be returned here.
+  //
   // ---------------------------------------------------------------------------
 
   @ApiOperation({
     summary: 'Get public journey',
     description:
-      'Returns a journey by its public ID for public journey discovery and display.',
+      'Returns a currently publicly discoverable journey by its public ID.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -718,11 +773,11 @@ export class JourneyController {
     example: 'JRN-8VBLAO',
   })
   @Get(':journeyPublicId')
-  public async get(
+  public async getPublicJourney(
     @Param('journeyPublicId') journeyPublicId: string,
-  ): Promise<JourneyAggregate | null> {
-    return this.getJourneyQueryHandler.execute(
-      new GetJourneyQuery(new JourneyPublicId(journeyPublicId)),
+  ): Promise<JourneyEntity | null> {
+    return this.getPublicJourneyQueryHandler.execute(
+      new GetPublicJourneyQuery(new JourneyPublicId(journeyPublicId)),
     );
   }
 
@@ -916,12 +971,12 @@ export class JourneyController {
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
-  // Get Corridor
+  // Get Public Corridor
   // ---------------------------------------------------------------------------
 
   @ApiOperation({
     summary: 'Get public journey corridor',
-    description: 'Returns the corridor associated with a journey.',
+    description: 'Returns the corridor of a publicly discoverable journey.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -1000,12 +1055,13 @@ export class JourneyController {
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
-  // Get Waypoints
+  // Get Public Waypoints
   // ---------------------------------------------------------------------------
 
   @ApiOperation({
     summary: 'Get public journey waypoints',
-    description: 'Returns all waypoints belonging to a journey.',
+    description:
+      'Returns waypoints belonging to a publicly discoverable journey.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -1023,12 +1079,13 @@ export class JourneyController {
   }
 
   // ---------------------------------------------------------------------------
-  // Get Waypoint
+  // Get Public Waypoint
   // ---------------------------------------------------------------------------
 
   @ApiOperation({
     summary: 'Get public journey waypoint',
-    description: 'Returns a single waypoint belonging to a journey.',
+    description:
+      'Returns a waypoint belonging to a publicly discoverable journey.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -1128,12 +1185,12 @@ export class JourneyController {
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
-  // Get Schedule
+  // Get Public Schedule
   // ---------------------------------------------------------------------------
 
   @ApiOperation({
     summary: 'Get public journey schedule',
-    description: 'Returns the schedule associated with a journey.',
+    description: 'Returns the schedule of a publicly discoverable journey.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -1215,12 +1272,12 @@ export class JourneyController {
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
-  // Get Vehicle
+  // Get Public Vehicle
   // ---------------------------------------------------------------------------
 
   @ApiOperation({
     summary: 'Get public journey vehicle',
-    description: 'Returns the vehicle associated with a journey.',
+    description: 'Returns the vehicle of a publicly discoverable journey.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -1302,12 +1359,12 @@ export class JourneyController {
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
-  // Get Capacity
+  // Get Public Capacity
   // ---------------------------------------------------------------------------
 
   @ApiOperation({
     summary: 'Get public journey capacity',
-    description: 'Returns the capacity information associated with a journey.',
+    description: 'Returns the capacity of a publicly discoverable journey.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -1386,12 +1443,12 @@ export class JourneyController {
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
-  // Get Pricing
+  // Get Public Pricing
   // ---------------------------------------------------------------------------
 
   @ApiOperation({
     summary: 'Get public journey pricing',
-    description: 'Returns pricing information associated with a journey.',
+    description: 'Returns pricing of a publicly discoverable journey.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -1470,12 +1527,12 @@ export class JourneyController {
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
-  // Get Preferences
+  // Get Public Preferences
   // ---------------------------------------------------------------------------
 
   @ApiOperation({
     summary: 'Get public journey preferences',
-    description: 'Returns preferences associated with a journey.',
+    description: 'Returns preferences of a publicly discoverable journey.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -1557,12 +1614,12 @@ export class JourneyController {
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
-  // Get Assets
+  // Get Public Assets
   // ---------------------------------------------------------------------------
 
   @ApiOperation({
     summary: 'Get public journey assets',
-    description: 'Returns assets associated with a journey.',
+    description: 'Returns assets belonging to a publicly discoverable journey.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -1580,12 +1637,13 @@ export class JourneyController {
   }
 
   // ---------------------------------------------------------------------------
-  // Get Asset
+  // Get Public Asset
   // ---------------------------------------------------------------------------
 
   @ApiOperation({
     summary: 'Get public journey asset',
-    description: 'Returns a single asset associated with a journey.',
+    description:
+      'Returns an asset belonging to a publicly discoverable journey.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -1681,29 +1739,40 @@ export class JourneyController {
   }
 
   // ===========================================================================
-  // PRIVATE HELPERS
+  // PRIVATE TRANSPORT HELPERS
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Parse Journey Status
   // ---------------------------------------------------------------------------
+  //
+  // The JourneyStatus enum is the single source of truth.
+  //
+  // The controller must not duplicate the allowed status values and must not
+  // use an unsafe type assertion such as:
+  //
+  //     normalized as JourneyStatus
+  //
+  // The explicit lookup proves that the incoming HTTP value belongs to the
+  // frozen domain enum before it is passed into the application query.
+  //
+  // This is transport validation only. It does not implement Journey business
+  // rules.
+  //
+  // ---------------------------------------------------------------------------
 
-  private parseJourneyStatus(status: string): JourneyStatus {
-    const normalizedStatus = status.trim().toUpperCase();
+  private parseJourneyStatus(value: string): JourneyStatus {
+    const normalized = value.trim().toUpperCase();
 
-    if (!this.isJourneyStatus(normalizedStatus)) {
-      throw new BadRequestException(`Invalid journey status "${status}".`);
+    const status = Object.values(JourneyStatus).find(
+      (candidate) => String(candidate) === normalized,
+    );
+
+    if (status === undefined) {
+      throw new BadRequestException(`Invalid journey status "${value}".`);
     }
 
-    return normalizedStatus;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Check Journey Status
-  // ---------------------------------------------------------------------------
-
-  private isJourneyStatus(value: string): value is JourneyStatus {
-    return Object.values(JourneyStatus).includes(value as JourneyStatus);
+    return status;
   }
 }
 

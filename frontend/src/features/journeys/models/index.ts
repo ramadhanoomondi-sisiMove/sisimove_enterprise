@@ -1,47 +1,67 @@
+// src/features/journeys/models/index.ts
 // -----------------------------------------------------------------------------
-// Journey Models
+// sisiMove — Public Journey Models
+// -----------------------------------------------------------------------------
+//
+// Public barrel for Journey frontend models.
+//
+// Consumers should normally import Journey models through the feature
+// boundary rather than importing individual model files directly.
+//
+// Example:
+//
+// import type {
+//   PublicJourney,
+//   PublicJourneyQuery,
+// } from "@/features/journeys";
 // -----------------------------------------------------------------------------
 
 export type {
-  JourneyWaypointType,
-  JourneyWaypoint,
-} from './journey-waypoint';
+  PublicJourney,
+} from './public-journey';
 
 export type {
-  JourneyRoute,
-} from './journey-route';
+  PublicJourneyQuery,
+} from './public-journey-query';
 
 export type {
-  JourneySchedule,
-} from './journey-schedule';
+  PublicJourneyProvider,
+} from './public-journey-provider';
 
 export type {
-  JourneyPricing,
-} from './journey-pricing';
+  PublicJourneyRoute,
+  PublicJourneyLocation,
+  PublicJourneyWaypoint,
+  PublicJourneyWaypointType,
+} from './public-journey-route';
 
 export type {
-  JourneyCapacity,
-} from './journey-capacity';
+  PublicJourneySchedule,
+} from './public-journey-schedule';
 
 export type {
-  JourneyVehicle,
-} from './journey-vehicle';
+  PublicJourneyVehicle,
+  PublicJourneyVehicleAsset,
+} from './public-journey-vehicle';
 
 export type {
-  JourneySmokingPolicy,
-  JourneyPetsPolicy,
-  JourneyLuggagePolicy,
-  JourneyConversationPreference,
-  JourneyMusicPreference,
-  JourneyPreferences,
-} from './journey-preferences';
+  PublicJourneyCapacity,
+} from './public-journey-capacity';
 
 export type {
-  JourneyAssetType,
-  JourneyAsset,
-} from './journey-asset';
+  PublicJourneyPricing,
+} from './public-journey-pricing';
 
 export type {
-  JourneyStatus,
-  Journey,
-} from './journey';
+  PublicJourneyPreferences,
+  PublicJourneySmokingPolicy,
+  PublicJourneyPetsPolicy,
+  PublicJourneyLuggagePolicy,
+  PublicJourneyConversationPreference,
+  PublicJourneyMusicPreference,
+} from './public-journey-preferences';
+
+export type {
+  PublicJourneyAsset,
+  PublicJourneyAssetType,
+} from './public-journey-asset';

@@ -1,5 +1,3 @@
-// src/domains/social/presentation/rest/controllers/traveller-profile.controller.ts
-
 import { randomUUID } from 'crypto';
 
 import {
@@ -52,6 +50,8 @@ import {
   GetTravellerProfileQuery,
   GetTravellerProfileByPublicIdQuery,
   GetTravellerProfileByMemberPublicIdQuery,
+  GetPublicTravellerByMemberQuery,
+  GetPublicTravellerByHandleQuery,
   GetTravellerProfileByHandleQuery,
   GetTravellerProfilePreferencesQuery,
   GetTravellerProfileCorridorQuery,
@@ -73,6 +73,8 @@ import type { QueryHandler } from '../../../../../foundation/kernel/application/
 import type { TravellerProfileAggregate } from '../../../domain/aggregates/traveller-profile.aggregate';
 import type { TravellerProfilePreferencesEntity } from '../../../domain/entities/traveller-profile-preferences.entity';
 import type { TravellerProfileCorridorEntity } from '../../../domain/entities/traveller-profile-corridor.entity';
+
+import { MemberPublicId } from '../../../domain/value-objects/member-public-id.vo';
 
 // -----------------------------------------------------------------------------
 // Application Tokens
@@ -107,6 +109,7 @@ import {
   type TravellerProfileResponse,
   type TravellerProfilePreferencesResponse,
   type TravellerProfileCorridorResponse,
+  type PublicTravellerProfileResponse,
 } from '../mappers';
 
 // =============================================================================
@@ -120,7 +123,8 @@ import {
 //    These endpoints support the public SisiMove experience, including:
 //
 //    - landing-page traveller discovery;
-//    - public traveller profiles;
+//    - reduced public traveller profiles;
+//    - public traveller profile pages;
 //    - profile lookup by handle;
 //    - profile lookup by public identity;
 //    - public route/corridor presentation.
@@ -148,7 +152,7 @@ import {
 // - DTO binding;
 // - command/query construction;
 // - dispatching application handlers;
-// - mapping application/domain results to HTTP responses;
+// - mapping broad application/domain results to HTTP responses;
 // - declaring authorization requirements.
 //
 // The controller contains no business rules.
@@ -159,6 +163,55 @@ import {
 // - TravellerProfilePreferencesEntity;
 // - TravellerProfileCorridorEntity;
 // - application command/query handlers.
+//
+// IMPORTANT PUBLIC READ DESIGN:
+//
+// The reduced public traveller query is deliberately separate from the broad
+// Traveller Profile queries.
+//
+// The broad profile response is an internal/application representation used by
+// existing profile endpoints. The reduced public representation exists for
+// anonymous marketplace consumers and exposes only the fields required by the
+// public SisiMove experience.
+//
+// Therefore:
+//
+//     GET /traveller-profiles/member/:memberPublicId
+//
+// and:
+//
+//     GET /traveller-profiles/public/member/:memberPublicId
+//
+// are intentionally different contracts.
+//
+// The public member endpoint uses:
+//
+//     GetPublicTravellerByMemberQuery
+//
+// rather than the broad member lookup query.
+//
+// The same boundary applies to public handle discovery:
+//
+//     GET /traveller-profiles/handle/:handle
+//
+// and:
+//
+//     GET /traveller-profiles/public/handle/:handle
+//
+// are intentionally different contracts.
+//
+// The first returns the broad Traveller Profile representation.
+// The second is the anonymous/public marketplace representation.
+//
+// Public query handlers own:
+//
+// - public visibility enforcement;
+// - public data selection;
+// - public response shaping;
+// - public asset resolution when required.
+//
+// The controller only converts HTTP parameters into the application query
+// representation and dispatches the appropriate handler.
 //
 // =============================================================================
 
@@ -248,6 +301,28 @@ export class TravellerProfileController {
       TravellerProfileAggregate | null
     >,
 
+    // ------------------------------------------------------------------------
+    // Public Traveller Profile Queries
+    // ------------------------------------------------------------------------
+
+    @Inject(
+      TRAVELLER_PROFILE_TOKENS.QUERY_HANDLERS.GET_PUBLIC_BY_MEMBER_PUBLIC_ID,
+    )
+    private readonly getPublicTravellerByMemberQueryHandler: QueryHandler<
+      GetPublicTravellerByMemberQuery,
+      PublicTravellerProfileResponse
+    >,
+
+    @Inject(TRAVELLER_PROFILE_TOKENS.QUERY_HANDLERS.GET_PUBLIC_BY_HANDLE)
+    private readonly getPublicTravellerByHandleQueryHandler: QueryHandler<
+      GetPublicTravellerByHandleQuery,
+      PublicTravellerProfileResponse
+    >,
+
+    // ------------------------------------------------------------------------
+    // Broad Traveller Profile Queries
+    // ------------------------------------------------------------------------
+
     @Inject(TRAVELLER_PROFILE_TOKENS.QUERY_HANDLERS.GET_BY_HANDLE)
     private readonly getTravellerProfileByHandleQueryHandler: QueryHandler<
       GetTravellerProfileByHandleQuery,
@@ -290,21 +365,78 @@ export class TravellerProfileController {
   // ===========================================================================
   // PUBLIC PROFILE DISCOVERY
   // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Get Reduced Public Traveller Profile By Member Public ID
+  // ---------------------------------------------------------------------------
   //
-  // These endpoints intentionally do not use JwtAuthGuard.
+  // Anonymous marketplace endpoint.
   //
-  // They support the public SisiMove experience:
+  // The HTTP route receives a primitive string because HTTP parameters are
+  // primitives. The application query requires the domain MemberPublicId value
+  // object, so conversion happens here at the presentation/application
+  // boundary.
   //
-  // - landing-page traveller discovery;
-  // - public traveller profile pages;
-  // - profile lookup by public ID;
-  // - profile lookup by handle;
-  // - profile lookup by member public ID.
+  // The public query handler owns the actual public read boundary.
   //
-  // The response mapper is responsible for exposing the public representation
-  // rather than the internal aggregate structure.
+  // It is responsible for ensuring that only a publicly visible Traveller
+  // Profile is returned and for producing the reduced public representation.
   //
-  // ===========================================================================
+  // No broad TravellerProfileResponseMapper is used here because doing so would
+  // unnecessarily expose the broad Traveller Profile contract to this public
+  // marketplace endpoint.
+  //
+  // ---------------------------------------------------------------------------
+
+  @Get('public/member/:memberPublicId')
+  public async getPublicByMemberPublicId(
+    @Param('memberPublicId') memberPublicId: string,
+  ): Promise<PublicTravellerProfileResponse> {
+    return this.getPublicTravellerByMemberQueryHandler.execute(
+      new GetPublicTravellerByMemberQuery(new MemberPublicId(memberPublicId)),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Get Reduced Public Traveller Profile By Handle
+  // ---------------------------------------------------------------------------
+  //
+  // Anonymous marketplace endpoint.
+  //
+  // This endpoint is intentionally separate from the broad:
+  //
+  //     GET /traveller-profiles/handle/:handle
+  //
+  // endpoint.
+  //
+  // The broad endpoint exposes the existing Traveller Profile response and is
+  // not the contract used by anonymous marketplace pages.
+  //
+  // This endpoint instead dispatches:
+  //
+  //     GetPublicTravellerByHandleQuery
+  //
+  // which applies the public visibility boundary and returns the reduced
+  // PublicTravellerProfileResponse.
+  //
+  // Keeping the route under `/public` also makes the API contract explicit:
+  // callers requesting a public traveller by handle are receiving the same
+  // public-safe representation used by other anonymous traveller lookups.
+  //
+  // The handle remains a primitive HTTP parameter. Handle normalization and
+  // validation belong to the application/domain boundary rather than the
+  // controller.
+  //
+  // ---------------------------------------------------------------------------
+
+  @Get('public/handle/:handle')
+  public async getPublicByHandle(
+    @Param('handle') handle: string,
+  ): Promise<PublicTravellerProfileResponse> {
+    return this.getPublicTravellerByHandleQueryHandler.execute(
+      new GetPublicTravellerByHandleQuery(handle),
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // Get Traveller Profile By Public ID
@@ -363,14 +495,6 @@ export class TravellerProfileController {
   // ---------------------------------------------------------------------------
   // Get Traveller Profile
   // ---------------------------------------------------------------------------
-  //
-  // Public because a Traveller Profile is part of the public SisiMove
-  // traveller-discovery experience.
-  //
-  // Keep this route after the explicit public/member/handle routes so those
-  // routes remain unambiguous.
-  //
-  // ---------------------------------------------------------------------------
 
   @Get(':travellerProfileId')
   public async getById(
@@ -387,10 +511,6 @@ export class TravellerProfileController {
 
   // ===========================================================================
   // PROFILE COMMANDS
-  // ===========================================================================
-  //
-  // All profile mutations require authentication and authorization.
-  //
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
@@ -551,13 +671,6 @@ export class TravellerProfileController {
   // ===========================================================================
   // PREFERENCES
   // ===========================================================================
-  //
-  // Preferences are intentionally protected.
-  //
-  // They control profile presentation and traveller interaction behavior and
-  // should not become part of the anonymous public profile surface.
-  //
-  // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Create Preferences
@@ -648,16 +761,6 @@ export class TravellerProfileController {
   // ===========================================================================
   // CORRIDORS
   // ===========================================================================
-  //
-  // Traveller corridors are part of the public traveller-discovery experience.
-  //
-  // SisiMove can use the primary corridor and corridor information to show
-  // where a traveller commonly travels without requiring the visitor to log
-  // in first.
-  //
-  // Corridor mutations remain protected.
-  //
-  // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Add Corridor
@@ -690,10 +793,6 @@ export class TravellerProfileController {
   // ---------------------------------------------------------------------------
   // Get Primary Corridor
   // ---------------------------------------------------------------------------
-  //
-  // Public discovery endpoint.
-  //
-  // ---------------------------------------------------------------------------
 
   @Get(':travellerProfileId/corridors/primary')
   public async getPrimaryCorridor(
@@ -711,10 +810,6 @@ export class TravellerProfileController {
 
   // ---------------------------------------------------------------------------
   // Get Corridors
-  // ---------------------------------------------------------------------------
-  //
-  // Public discovery endpoint.
-  //
   // ---------------------------------------------------------------------------
 
   @Get(':travellerProfileId/corridors')

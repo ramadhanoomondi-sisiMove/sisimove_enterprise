@@ -1,4 +1,6 @@
-// src/domains/journey-demand/journey-demand.module.ts
+// -----------------------------------------------------------------------------
+// sisiMove — Journey Demand Module
+// -----------------------------------------------------------------------------
 
 import { Module } from '@nestjs/common';
 
@@ -25,6 +27,7 @@ import { JourneyDemandController } from './presentation/rest/controllers/journey
 // -----------------------------------------------------------------------------
 
 import { JOURNEY_DEMAND_PROVIDERS } from './infrastructure/dependency-injection/journey-demand.providers';
+
 // -----------------------------------------------------------------------------
 // Application — Tokens
 // -----------------------------------------------------------------------------
@@ -78,6 +81,7 @@ import {
   GetJourneyDemandScheduleQueryHandler,
   GetJourneyDemandWaypointsQueryHandler,
   GetMyJourneyDemandsQueryHandler,
+  GetPublicJourneyDemandQueryHandler,
 } from './application/query-handlers';
 
 // -----------------------------------------------------------------------------
@@ -124,6 +128,7 @@ import {
     // -------------------------------------------------------------------------
 
     ...JOURNEY_DEMAND_PROVIDERS,
+
     // =========================================================================
     // Lifecycle Command Handlers
     // =========================================================================
@@ -261,6 +266,23 @@ import {
       useClass: GetJourneyDemandByPublicIdQueryHandler,
     },
 
+    // -------------------------------------------------------------------------
+    // Public Discovery
+    //
+    // This handler is intentionally separate from GET_BY_PUBLIC_ID.
+    //
+    // GET_BY_PUBLIC_ID performs a generic lookup and must not be used as the
+    // anonymous/public visibility boundary.
+    //
+    // GET_PUBLIC resolves only Journey Demands that satisfy the repository's
+    // public visibility rules (currently OPEN).
+    // -------------------------------------------------------------------------
+
+    {
+      provide: JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.GET_PUBLIC,
+      useClass: GetPublicJourneyDemandQueryHandler,
+    },
+
     {
       provide: JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.GET_ALL,
       useClass: GetJourneyDemandsQueryHandler,
@@ -270,6 +292,10 @@ import {
       provide: JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.GET_MY,
       useClass: GetMyJourneyDemandsQueryHandler,
     },
+
+    // =========================================================================
+    // Discovery Query Handlers
+    // =========================================================================
 
     {
       provide: JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.FIND_OPEN,

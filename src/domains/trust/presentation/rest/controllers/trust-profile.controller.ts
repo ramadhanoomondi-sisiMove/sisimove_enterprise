@@ -60,6 +60,7 @@ import {
 import {
   GetTrustProfileQuery,
   GetTrustProfileByMemberQuery,
+  GetPublicTrustProfileByMemberQuery,
   GetTrustProfileRatingsQuery,
   GetTrustProfileRatingQuery,
   GetTrustProfileReviewsQuery,
@@ -75,6 +76,12 @@ import {
 
 import type { CommandHandler } from '../../../../../foundation/kernel/application/command-handler';
 import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
+
+// -----------------------------------------------------------------------------
+// Application Query Result
+// -----------------------------------------------------------------------------
+
+import type { PublicTrustProfile } from '../../../application/query-handlers/trust-profile/get-public-trust-profile-by-member.query-handler';
 
 // -----------------------------------------------------------------------------
 // Domain Aggregate
@@ -134,28 +141,48 @@ import {
   type TrustEventResponse,
 } from '../mappers/trust-profile-response.mapper';
 
+// -----------------------------------------------------------------------------
+// Public Trust Profile Response
+// -----------------------------------------------------------------------------
+
+import type {
+  PublicTrustProfileResponse,
+  PublicTrustBadgeResponse,
+  PublicTrustBadgeAssetResponse,
+} from '../mappers/public-trust-profile-response.mapper';
+
 // =============================================================================
 // Trust Profile HTTP Controller
 // =============================================================================
 //
-// This controller exposes two categories of Trust Profile operations:
+// This controller exposes two distinct Trust Profile read surfaces:
 //
-// 1. PUBLIC TRUST DISCOVERY
+// 1. PUBLIC MARKETPLACE TRUST
 //
-//    These endpoints support the public SisiMove traveller experience:
+//    These endpoints expose deliberately reduced information intended for
+//    anonymous public traveller and journey discovery.
 //
-//    - public trust profiles;
-//    - trust profile lookup by member;
-//    - ratings;
-//    - reviews;
-//    - trust badges.
+//    The public marketplace representation is NOT the same thing as the
+//    operational TrustProfileResponse.
 //
-//    These endpoints do NOT require authentication.
+//    Public marketplace consumers receive only:
 //
-// 2. AUTHENTICATED TRUST MANAGEMENT
+//    - verification level;
+//    - aggregate rating;
+//    - rating count;
+//    - completed journeys;
+//    - active public badges;
+//    - public badge artwork.
 //
-//    These endpoints modify trust state or expose operational/moderation data.
-//    They require:
+// 2. EXISTING TRUST PROFILE DISCOVERY
+//
+//    Existing public Trust endpoints continue to expose the established
+//    TrustProfileResponse contract. That contract is intentionally preserved
+//    for backward compatibility with the Trust bounded context.
+//
+// 3. AUTHENTICATED TRUST MANAGEMENT
+//
+//    Commands and operational queries continue to require:
 //
 //        Access Token
 //             ↓
@@ -173,7 +200,7 @@ import {
 // - DTO binding;
 // - command/query construction;
 // - dispatching application handlers;
-// - mapping domain results to HTTP responses;
+// - mapping application/domain results to HTTP responses;
 // - declaring authorization requirements.
 //
 // The controller contains no business rules.
@@ -298,6 +325,27 @@ export class TrustProfileController {
     >,
 
     // ========================================================================
+    // Public Marketplace Trust Query
+    // ========================================================================
+    //
+    // This query is deliberately separate from GET_BY_MEMBER_PUBLIC_ID.
+    //
+    // GET_BY_MEMBER_PUBLIC_ID returns the broad TrustProfileAggregate because
+    // that existing endpoint belongs to the Trust bounded context's established
+    // REST contract.
+    //
+    // GET_PUBLIC_BY_MEMBER_PUBLIC_ID returns the reduced marketplace-safe
+    // application result specifically intended for anonymous public discovery.
+    //
+    // ========================================================================
+
+    @Inject(TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_PUBLIC_BY_MEMBER_PUBLIC_ID)
+    private readonly getPublicTrustProfileByMemberPublicIdQueryHandler: QueryHandler<
+      GetPublicTrustProfileByMemberQuery,
+      PublicTrustProfile
+    >,
+
+    // ========================================================================
     // Rating Queries
     // ========================================================================
 
@@ -359,16 +407,6 @@ export class TrustProfileController {
   // ===========================================================================
   // PUBLIC TRUST PROFILE DISCOVERY
   // ===========================================================================
-  //
-  // Trust is a core part of the public SisiMove traveller experience.
-  //
-  // Visitors should be able to inspect a traveller's public trust profile
-  // before deciding whether to interact with that traveller, without being
-  // forced to authenticate first.
-  //
-  // The response mapper defines the public representation.
-  //
-  // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Get Trust Profile By Public ID
@@ -385,6 +423,38 @@ export class TrustProfileController {
     return aggregate === null
       ? null
       : TrustProfileResponseMapper.fromAggregate(aggregate);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Get Public Marketplace Trust Profile By Member Public ID
+  // ---------------------------------------------------------------------------
+  //
+  // This endpoint is intentionally more restrictive than the existing
+  // TrustProfileResponse endpoint.
+  //
+  // It is the contract consumed by public marketplace experiences such as:
+  //
+  // - public Journey cards;
+  // - public Journey detail pages;
+  // - public Traveller discovery;
+  // - public traveller profiles.
+  //
+  // It exposes only the reduced PublicTrustProfileResponse contract.
+  //
+  // No authentication is required.
+  //
+  // ---------------------------------------------------------------------------
+
+  @Get('public/member/:memberPublicId')
+  public async getPublicByMemberPublicId(
+    @Param('memberPublicId') memberPublicId: string,
+  ): Promise<PublicTrustProfileResponse> {
+    const result =
+      await this.getPublicTrustProfileByMemberPublicIdQueryHandler.execute(
+        new GetPublicTrustProfileByMemberQuery(memberPublicId),
+      );
+
+    return this.toPublicTrustProfileResponse(result);
   }
 
   // ---------------------------------------------------------------------------
@@ -407,10 +477,6 @@ export class TrustProfileController {
 
   // ===========================================================================
   // PROFILE COMMANDS
-  // ===========================================================================
-  //
-  // Profile creation and state changes are authenticated operations.
-  //
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
@@ -460,11 +526,6 @@ export class TrustProfileController {
   // ===========================================================================
   // VERIFICATION
   // ===========================================================================
-  //
-  // Verification state is public information when included in the public
-  // TrustProfileResponse, but granting/revoking verification is privileged.
-  //
-  // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Grant Verification
@@ -506,10 +567,6 @@ export class TrustProfileController {
   // ===========================================================================
   // PUBLIC RATING DISCOVERY
   // ===========================================================================
-  //
-  // Ratings are part of the public trust/reputation surface.
-  //
-  // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Get Ratings
@@ -546,10 +603,6 @@ export class TrustProfileController {
 
   // ===========================================================================
   // RATING COMMANDS
-  // ===========================================================================
-  //
-  // Rating creation and modification require authentication.
-  //
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
@@ -669,10 +722,6 @@ export class TrustProfileController {
   // ===========================================================================
   // PUBLIC REVIEW DISCOVERY
   // ===========================================================================
-  //
-  // Reviews contribute directly to the public reputation experience.
-  //
-  // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Get Reviews
@@ -783,10 +832,6 @@ export class TrustProfileController {
   // ===========================================================================
   // PUBLIC BADGE DISCOVERY
   // ===========================================================================
-  //
-  // Trust badges are public reputation signals.
-  //
-  // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Get Badges
@@ -873,11 +918,6 @@ export class TrustProfileController {
   // ===========================================================================
   // INTERNAL TRUST EVENT QUERIES
   // ===========================================================================
-  //
-  // Trust events are operational/audit information and are therefore not part
-  // of the anonymous public trust profile.
-  //
-  // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Get Trust Events
@@ -899,11 +939,6 @@ export class TrustProfileController {
 
   // ===========================================================================
   // JOURNEY PROJECTIONS
-  // ===========================================================================
-  //
-  // These operations project journey outcomes into the Trust domain.
-  // They are internal/application-level operations and remain protected.
-  //
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
@@ -955,10 +990,6 @@ export class TrustProfileController {
 
   // ===========================================================================
   // DISPUTES
-  // ===========================================================================
-  //
-  // Dispute projections are protected operational operations.
-  //
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
@@ -1014,10 +1045,10 @@ export class TrustProfileController {
   // ===========================================================================
   // MANUAL TRUST ADJUSTMENT
   // ===========================================================================
-  //
-  // Manual trust adjustments are privileged administrative operations.
-  //
-  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Apply Manual Adjustment
+  // ---------------------------------------------------------------------------
 
   @Post(':trustProfileId/adjustments')
   @ApiBearerAuth('access-token')
@@ -1037,6 +1068,47 @@ export class TrustProfileController {
         randomUUID(),
       ),
     );
+  }
+
+  // ===========================================================================
+  // PUBLIC TRUST RESPONSE MAPPING
+  // ===========================================================================
+  //
+  // The application handler deliberately returns an application-level public
+  // Trust result.
+  //
+  // The controller owns the HTTP representation and therefore performs the
+  // final mapping into PublicTrustProfileResponse.
+  //
+  // No domain entity is exposed directly from this public endpoint.
+  //
+  // ===========================================================================
+
+  private toPublicTrustProfileResponse(
+    result: PublicTrustProfile,
+  ): PublicTrustProfileResponse {
+    return {
+      verificationLevel: result.verificationLevel,
+      ratingAverage: result.ratingAverage,
+      ratingCount: result.ratingCount,
+      completedJourneys: result.completedJourneys,
+
+      badges: result.badges.map((badge): PublicTrustBadgeResponse => ({
+        publicId: badge.publicId,
+        type: badge.type,
+        name: badge.name,
+        description: badge.description,
+
+        asset:
+          badge.asset === null
+            ? null
+            : ({
+                publicId: badge.asset.publicId,
+                url: badge.asset.url,
+                alt: badge.asset.alt,
+              } satisfies PublicTrustBadgeAssetResponse),
+      })),
+    };
   }
 }
 

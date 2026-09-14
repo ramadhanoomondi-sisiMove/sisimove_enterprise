@@ -228,10 +228,6 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
             id: corridor.id,
           },
 
-          // ---------------------------------------------------------------------
-          // Create
-          // ---------------------------------------------------------------------
-
           create: {
             id: corridor.id,
             publicId: corridor.publicId,
@@ -250,10 +246,6 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
             createdAt: corridor.createdAt,
             updatedAt: corridor.updatedAt,
           },
-
-          // ---------------------------------------------------------------------
-          // Update
-          // ---------------------------------------------------------------------
 
           update: {
             publicId: corridor.publicId,
@@ -275,10 +267,6 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
 
         // ---------------------------------------------------------------------
         // Replace Waypoint Set
-        //
-        // The aggregate owns the complete waypoint collection.
-        // Replacing the persisted set keeps persistence aligned with the
-        // aggregate state.
         // ---------------------------------------------------------------------
 
         await tx.journeyDemandWaypoint.deleteMany({
@@ -290,45 +278,18 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
         if (corridor.waypoints.length > 0) {
           await tx.journeyDemandWaypoint.createMany({
             data: corridor.waypoints.map((waypoint) => ({
-              // -----------------------------------------------------------------
-              // Identity
-              // -----------------------------------------------------------------
-
               id: waypoint.id,
               publicId: waypoint.publicId,
-
-              // -----------------------------------------------------------------
-              // Relationship
-              // -----------------------------------------------------------------
-
               corridorId: corridor.id,
-
-              // -----------------------------------------------------------------
-              // Waypoint Type
-              //
-              // Pickup/dropoff semantics are derived from `type`.
-              // -----------------------------------------------------------------
 
               type: this.toPrismaJourneyDemandWaypointType(waypoint.type),
 
-              // -----------------------------------------------------------------
-              // Sequence
-              // -----------------------------------------------------------------
-
               sequence: waypoint.sequence,
-
-              // -----------------------------------------------------------------
-              // Location
-              // -----------------------------------------------------------------
 
               name: waypoint.name,
 
               latitude: waypoint.latitude,
               longitude: waypoint.longitude,
-
-              // -----------------------------------------------------------------
-              // Audit
-              // -----------------------------------------------------------------
 
               createdAt: waypoint.createdAt,
               updatedAt: waypoint.updatedAt,
@@ -336,12 +297,6 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
           });
         }
       } else {
-        // -----------------------------------------------------------------------
-        // No Corridor
-        //
-        // Remove any previously persisted corridor belonging to this demand.
-        // -----------------------------------------------------------------------
-
         await tx.journeyDemandCorridor.deleteMany({
           where: {
             demandId: journeyDemandId,
@@ -492,10 +447,6 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
       // -----------------------------------------------------------------------
       // Participants
       // -----------------------------------------------------------------------
-      //
-      // Participants are aggregate-owned. We persist the aggregate snapshot
-      // rather than attempting independent participant lifecycle persistence.
-      //
 
       await tx.journeyDemandParticipant.deleteMany({
         where: {
@@ -548,12 +499,44 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
     return record === null ? null : this.toAggregate(record);
   }
 
+  /**
+   * Generic aggregate lookup.
+   *
+   * This method deliberately does not enforce public visibility. It is used by
+   * authenticated/internal application operations where the caller's
+   * authorization boundary is handled above the repository.
+   */
   public async findByPublicId(
     publicId: JourneyDemandPublicId,
   ): Promise<JourneyDemandAggregate | null> {
     const record = await this.prisma.journeyDemand.findUnique({
       where: {
         publicId: publicId.value,
+      },
+
+      include: this.include,
+    });
+
+    return record === null ? null : this.toAggregate(record);
+  }
+
+  /**
+   * Public marketplace aggregate lookup.
+   *
+   * Only OPEN JourneyDemands are anonymously discoverable.
+   *
+   * The visibility rule is applied directly in the persistence query so that
+   * callers of the public query handler cannot accidentally retrieve a
+   * non-public demand through a generic public-ID lookup.
+   */
+  public async findPublicJourneyDemandByPublicId(
+    publicId: JourneyDemandPublicId,
+  ): Promise<JourneyDemandAggregate | null> {
+    const record = await this.prisma.journeyDemand.findFirst({
+      where: {
+        publicId: publicId.value,
+
+        status: this.toPrismaJourneyDemandStatus('OPEN'),
       },
 
       include: this.include,
@@ -627,10 +610,6 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
     await this.prisma.$transaction(async (tx) => {
       const journeyDemandId = id.value;
 
-      // -----------------------------------------------------------------------
-      // Waypoints
-      // -----------------------------------------------------------------------
-
       await tx.journeyDemandWaypoint.deleteMany({
         where: {
           corridor: {
@@ -639,19 +618,11 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
         },
       });
 
-      // -----------------------------------------------------------------------
-      // Participants
-      // -----------------------------------------------------------------------
-
       await tx.journeyDemandParticipant.deleteMany({
         where: {
           demandId: journeyDemandId,
         },
       });
-
-      // -----------------------------------------------------------------------
-      // Components
-      // -----------------------------------------------------------------------
 
       await tx.journeyDemandCorridor.deleteMany({
         where: {
@@ -676,10 +647,6 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
           demandId: journeyDemandId,
         },
       });
-
-      // -----------------------------------------------------------------------
-      // Root
-      // -----------------------------------------------------------------------
 
       await tx.journeyDemand.delete({
         where: {

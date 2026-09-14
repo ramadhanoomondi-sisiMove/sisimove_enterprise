@@ -1,5 +1,6 @@
 // -----------------------------------------------------------------------------
-// Assets — HTTP Controller
+// sisiMove — Assets
+// HTTP Controller
 // -----------------------------------------------------------------------------
 //
 // REST controller for Asset aggregate operations.
@@ -9,16 +10,22 @@
 // AssetAggregate
 // └── AssetEntity
 //
-// Responsibilities:
+// -----------------------------------------------------------------------------
 //
-// - HTTP transport;
-// - DTO binding and validation;
+// RESPONSIBILITIES
+// -----------------------------------------------------------------------------
+//
+// This controller is responsible only for HTTP transport concerns:
+//
+// - HTTP route definitions;
+// - DTO binding;
+// - request validation that is specific to HTTP transport;
 // - conversion from transport primitives to domain value objects;
+// - extraction of authenticated Identity context;
+// - extraction of uploaded file data;
+// - creation of application-operation metadata;
 // - dispatching application commands and queries;
-// - mapping application/domain results to transport responses;
-// - extracting authenticated Identity context;
-// - extracting uploaded file transport data;
-// - generating application message correlation identifiers.
+// - mapping application/domain results to HTTP responses.
 //
 // The controller contains NO business rules.
 //
@@ -40,15 +47,25 @@
 //
 // - AssetStoragePort.
 //
+// Public Asset delivery remains behind:
+//
+// - GetPublicAssetReferenceQueryHandler;
+// - GetPublicAssetContentHandler;
+// - AssetDeliveryPort;
+// - AssetStoragePort.
+//
 // -----------------------------------------------------------------------------
 //
-// AUTHORIZATION MODEL
+// SECURITY MODEL
+// -----------------------------------------------------------------------------
 //
-// Asset operations are divided into two security categories:
+// Asset HTTP operations fall into three categories:
 //
-// 1. Authenticated-owner operations
+// 1. AUTHENTICATED-OWNER OPERATIONS
 //
-//    These operate on behalf of the authenticated Identity and therefore use:
+//    These operate on behalf of the currently authenticated Identity.
+//
+//    They use:
 //
 //        JwtAuthGuard
 //
@@ -62,23 +79,25 @@
 //        DELETE /assets/:assetPublicId
 //        PATCH  /assets/:assetPublicId/visibility
 //
-//    The authenticated Identity is obtained from:
+//    The owner Identity is ALWAYS obtained from:
 //
 //        request.user.identityPublicId
 //
-//    Owner-scoped operations must never accept the owner's Identity public ID
-//    from the caller.
+//    The caller must never provide an arbitrary owner Identity public ID.
 //
-//    Ownership authorization is enforced by the application command handler.
+//    Ownership authorization is enforced by the application handler.
 //
-// 2. Permission-controlled operations
 //
-//    These expose broader Asset access and therefore use:
+// 2. PERMISSION-CONTROLLED OPERATIONS
+//
+//    These expose broader Asset access.
+//
+//    They use:
 //
 //        JwtAuthGuard
 //        PermissionsGuard
 //
-//    with an explicit permission.
+//    together with an explicit permission.
 //
 //    Examples:
 //
@@ -89,87 +108,273 @@
 //        GET /assets/exists
 //        GET /assets/:assetPublicId
 //
-//    These operations are not restricted to the authenticated Identity's own
-//    Asset and therefore require explicit application permissions.
+//    These endpoints are NOT anonymous public Asset endpoints.
+//
+//
+// 3. ANONYMOUS PUBLIC ASSET DELIVERY
+//
+//    These endpoints expose only information that the Asset application layer
+//    has determined is safe for anonymous public consumption.
+//
+//    Public delivery is deliberately divided into two capabilities:
+//
+//        GET /assets/public/:assetPublicId/reference
+//
+//            resolves a public Asset reference.
+//
+//        GET /assets/public/:assetPublicId
+//
+//            streams the physical Asset content.
+//
+//    Neither endpoint requires authentication.
+//
+// -----------------------------------------------------------------------------
+//
+// PUBLIC ASSET REFERENCE
+// -----------------------------------------------------------------------------
+//
+// The public Asset reference endpoint returns the deliberately reduced
+// consumer-facing representation:
+//
+//     {
+//       publicId,
+//       url,
+//     }
+//
+// The controller does not construct the URL.
+//
+// URL resolution belongs to:
+//
+//     GetPublicAssetReferenceQueryHandler
+//             │
+//             └── AssetDeliveryPort
+//
+// This allows delivery implementations such as:
+//
+//     LocalAssetDeliveryService
+//     BunnyAssetDeliveryService
+//
+// to determine how the Asset is consumed without exposing their infrastructure
+// details through the HTTP controller.
+//
+// The public reference does NOT expose:
+//
+// - internal persistence IDs;
+// - owner Identity IDs;
+// - storage provider;
+// - bucket;
+// - object key;
+// - lifecycle internals;
+// - storage implementation metadata.
+//
+// -----------------------------------------------------------------------------
+//
+// PUBLIC ASSET CONTENT
+// -----------------------------------------------------------------------------
+//
+// GET /assets/public/:assetPublicId
+//
+// This endpoint streams the physical content of an Asset that is explicitly:
+//
+//     - PUBLIC;
+//     - usable / READY.
+//
+// The application handler is responsible for:
+//
+// - resolving the Asset;
+// - verifying public visibility;
+// - verifying usability;
+// - loading the physical object.
+//
+// The controller is responsible only for translating the resulting content
+// into an HTTP StreamableFile response.
+//
+// -----------------------------------------------------------------------------
+//
+// IMPORTANT
+//
+// `/assets/:assetPublicId` is an authenticated Asset-management endpoint.
+//
+// It must NOT be used by the anonymous public marketplace merely because an
+// Asset has:
+//
+//     visibility = PUBLIC
+//
+// Public marketplace consumers should receive a deliberately reduced
+// PublicAsset representation through the appropriate public read boundary.
+//
+// For example:
+//
+//     PublicAsset
+//     ├── publicId
+//     ├── url
+//     └── alt
+//
+// The public read boundary is responsible for resolving the safe renderable
+// representation.
+//
+// The public Asset URL may ultimately resolve to:
+//
+//     GET /assets/public/:assetPublicId
+//
+// while the public reference query may expose that URL through:
+//
+//     GET /assets/public/:assetPublicId/reference
+//
+// -----------------------------------------------------------------------------
+//
+// PUBLIC ASSET REFERENCE FLOW
+// -----------------------------------------------------------------------------
+//
+//     Browser / Public Read Boundary
+//        │
+//        │ GET /assets/public/:assetPublicId/reference
+//        ▼
+//     AssetsController
+//        │
+//        │ GetPublicAssetReferenceQuery
+//        ▼
+//     GetPublicAssetReferenceQueryHandler
+//        │
+//        ├── AssetRepository
+//        │      │
+//        │      └── AssetAggregate
+//        │
+//        ├── verify usable
+//        ├── verify public
+//        │
+//        └── AssetDeliveryPort
+//               │
+//               └── consumer-facing URL
+//        │
+//        ▼
+//     AssetsController
+//        │
+//        └── { publicId, url }
+//        │
+//        ▼
+//     Public Marketplace
+//
+// The controller does not construct the URL and does not access storage.
+//
+// -----------------------------------------------------------------------------
+//
+// PUBLIC ASSET CONTENT FLOW
+// -----------------------------------------------------------------------------
+//
+//     Browser
+//        │
+//        │ GET /assets/public/:assetPublicId
+//        ▼
+//     AssetsController
+//        │
+//        │ GetPublicAssetContentQuery
+//        ▼
+//     GetPublicAssetContentHandler
+//        │
+//        ├── AssetRepository
+//        │      │
+//        │      └── AssetAggregate
+//        │
+//        ├── verify PUBLIC
+//        │
+//        ├── verify READY / usable
+//        │
+//        └── AssetStoragePort
+//               │
+//               └── AssetStorageObjectContent
+//                       │
+//                       └── Readable
+//        │
+//        ▼
+//     AssetsController
+//        │
+//        ├── Content-Type
+//        ├── Content-Length
+//        ├── Content-Disposition
+//        └── StreamableFile
+//        │
+//        ▼
+//     Browser
+//
+// The controller never accesses the repository or physical storage directly
+// for public delivery.
 //
 // -----------------------------------------------------------------------------
 //
 // OWNER AUTHORIZATION MODEL
 //
-// For owner-scoped mutations:
-//
-//     Controller
-//         │
-//         ├── JwtAuthGuard
-//         │
-//         ▼
+//     HTTP request
+//          │
+//          ▼
+//     JwtAuthGuard
+//          │
+//          ▼
 //     request.user.identityPublicId
-//         │
-//         ▼
+//          │
+//          ▼
 //     Application Command
-//         │
-//         ├── authenticatedIdentityPublicId
-//         │
-//         ▼
+//          │
+//          ▼
 //     Command Handler
-//         │
-//         ├── load AssetAggregate
-//         ├── verify ownership
-//         └── delegate domain operation
+//          │
+//          ├── load AssetAggregate
+//          ├── verify ownership
+//          └── execute domain operation
+//          │
+//          ▼
+//     AssetAggregate
 //
 // The controller authenticates the caller.
 //
-// The command handler verifies that the authenticated Identity owns the Asset.
+// The application handler authorizes ownership.
 //
-// The AssetAggregate / AssetEntity then enforces the actual domain operation
-// and lifecycle rules.
+// The domain enforces Asset lifecycle and business invariants.
 //
 // -----------------------------------------------------------------------------
 //
-// IMPORTANT APPLICATION BOUNDARY
+// UPLOAD APPLICATION BOUNDARY
 //
-// The user-facing Asset operation is:
+// The user-facing operation is:
 //
 //     Upload a file
 //
-// The client does NOT perform:
+// It is NOT:
 //
 //     Create Asset
 //
-// as a separate public operation.
-//
 // Therefore:
 //
-// POST /assets
-//      │
-//      ├── file
-//      ├── type
-//      ├── category
-//      └── visibility
-//      │
-//      ▼
-// UploadAssetCommand
-//      │
-//      ▼
-// UploadAssetHandler
-//      │
-//      ├── AssetStoragePort
-//      │
-//      └── CreateAssetCommand
-//              │
-//              ▼
-//          CreateAssetHandler
-//              │
-//              ▼
-//          AssetAggregate
+//     POST /assets
+//          │
+//          ├── physical file
+//          ├── type
+//          ├── category
+//          └── visibility
+//          │
+//          ▼
+//     UploadAssetCommand
+//          │
+//          ▼
+//     UploadAssetHandler
+//          │
+//          ├── AssetStoragePort
+//          │
+//          └── CreateAssetCommand
+//                  │
+//                  ▼
+//             CreateAssetHandler
+//                  │
+//                  ▼
+//             AssetAggregate
 //
-// CreateAssetHandler remains a separate application operation because it owns
-// Asset aggregate creation and persistence, but it is delegated to by the
-// UploadAssetHandler rather than being exposed as a separate HTTP operation.
+// CreateAsset remains a separate application operation because it owns Asset
+// aggregate creation, but it is orchestrated by UploadAssetHandler rather than
+// exposed as a separate HTTP operation.
 //
 // -----------------------------------------------------------------------------
 //
-// PUBLIC HTTP REPRESENTATION
+// CLIENT INPUT
 //
 // The client provides only:
 //
@@ -191,135 +396,81 @@
 // - correlationId;
 // - causationId.
 //
-// These values are generated, derived, or supplied by the application and
+// Those values are generated, derived, or supplied by application and
 // infrastructure layers.
-//
-// -----------------------------------------------------------------------------
-//
-// ASSET UPLOAD
-//
-// HTTP multipart request
-//      │
-//      ├── file
-//      ├── type
-//      ├── category
-//      └── visibility
-//      │
-//      ▼
-// JwtAuthGuard
-//      │
-//      ▼
-// authenticated Identity
-//      │
-//      ▼
-// UploadAssetCommand
-//      │
-//      ▼
-// UploadAssetHandler
-//      │
-//      ├── AssetStoragePort.upload()
-//      │
-//      └── CreateAssetCommand
-//              │
-//              ▼
-//          CreateAssetHandler
-//              │
-//              ▼
-//          AssetAggregate
-//              │
-//              ▼
-//          markUploaded()
-//              │
-//              ▼
-//          repository.save()
-//
-// The controller does NOT resolve an existing Asset before upload.
-//
-// The AssetPublicId does not exist before creation.
-//
-// The UploadAssetHandler owns the orchestration of the complete operation.
 //
 // -----------------------------------------------------------------------------
 //
 // STORAGE METADATA
 //
-// The controller generates only technical metadata required by the
-// UploadAssetCommand:
+// The controller generates the unique object key because the current
+// UploadAssetCommand contract requires one.
 //
-// - storageProvider;
-// - bucket;
-// - objectKey.
+// However, the controller does NOT decide storage behavior.
 //
-// AssetPublicId remains owned by AssetAggregate / AssetEntity.
+// Provider and bucket values are configuration/infrastructure concerns exposed
+// to the application boundary through the current command contract.
 //
-// -----------------------------------------------------------------------------
-//
-// AUTHENTICATED IDENTITY
-//
-// JwtAuthGuard populates request.user from the authenticated JWT.
-//
-// The Identity public ID is obtained from:
-//
-//     request.user.identityPublicId
-//
-// The controller does NOT resolve Identity directly.
-//
-// -----------------------------------------------------------------------------
-//
-// ASSET LIFECYCLE
-//
-// UPLOADING
-//     │
-//     ▼
-// UPLOADED
-//     │
-//     ▼
-// READY
-//     │
-//     ▼
-// ARCHIVED
-//
-// DELETED is terminal.
-//
-// Lifecycle validation belongs to AssetAggregate / AssetEntity.
+// The controller therefore performs only the final transport-to-value-object
+// conversion required by UploadAssetCommand.
 //
 // -----------------------------------------------------------------------------
 //
 // APPLICATION MESSAGE METADATA
 //
-// Direct HTTP commands begin a new application operation.
+// A direct HTTP request starts a new application operation.
 //
 // Therefore:
 //
-// - correlationId is generated at the HTTP/application boundary;
-// - causationId is undefined because there is no preceding application
-//   command/event in the HTTP request.
+// - correlationId is generated at the HTTP boundary;
+// - causationId is undefined because the request is not caused by a preceding
+//   application command/event.
+//
+// -----------------------------------------------------------------------------
+//
+// ASSET LIFECYCLE
+//
+//     UPLOADING
+//         │
+//         ▼
+//     UPLOADED
+//         │
+//         ▼
+//        READY
+//         │
+//         ▼
+//      ARCHIVED
+//
+// DELETED is terminal.
+//
+// Lifecycle rules remain inside the Asset domain.
 //
 // -----------------------------------------------------------------------------
 //
 // QUERY DTO ALIGNMENT
 //
-// The following DTOs are query DTOs:
+// Query DTOs remain responsible for HTTP query parameters:
 //
-// - GetAssetsByCategoryQueryDto;
-// - GetAssetsByStatusQueryDto;
+// - CheckAssetExistsQueryDto;
 // - GetAssetByObjectKeyQueryDto;
-// - CheckAssetExistsQueryDto.
+// - GetAssetsByCategoryQueryDto;
+// - GetAssetsByOwnerQueryDto;
+// - GetAssetsByStatusQueryDto.
 //
-// GetAssetsByOwnerQueryDto is retained by the presentation layer if required
-// by the existing contract, but the authenticated-owner HTTP operation does
-// NOT trust an owner Identity public ID supplied by the caller.
+// The owner operation does not trust an owner ID supplied by the caller.
 //
-// The owner is always derived from:
+// GET /assets/owner always derives ownership from:
 //
 //     request.user.identityPublicId
 //
-// The Asset public identifier for:
+// GET /assets/:assetPublicId receives the public identifier directly through
+// @Param() because there is no dedicated GetAssetQueryDto.
 //
-//     GET /assets/:assetPublicId
+// GET /assets/public/:assetPublicId/reference receives only the stable Asset
+// public identifier. The caller cannot supply storage metadata.
 //
-// is received directly from @Param() because there is no GetAssetQueryDto
-// contract.
+// GET /assets/public/:assetPublicId also receives only the stable Asset public
+// identifier.
 //
 // -----------------------------------------------------------------------------
 
@@ -346,6 +497,7 @@ import {
   Post,
   Query,
   Req,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -420,7 +572,17 @@ import {
   GetAssetsByOwnerQuery,
   GetAssetsByStatusQuery,
   GetAssetsQuery,
+  GetPublicAssetContentQuery,
+  GetPublicAssetReferenceQuery,
 } from '../../../application/queries';
+
+import type { PublicAssetReference } from '../../../application/queries/get-public-asset-reference.query';
+
+// -----------------------------------------------------------------------------
+// Application — Ports
+// -----------------------------------------------------------------------------
+
+import type { AssetStorageObjectContent } from '../../../application/ports/asset-storage.port';
 
 // -----------------------------------------------------------------------------
 // Domain — Aggregate
@@ -481,34 +643,27 @@ import type { AssetResponse } from '../mappers/asset.response.mapper';
 // =============================================================================
 
 /**
- * JwtAuthGuard populates request.user from the authenticated JWT.
+ * Request shape after JwtAuthGuard has authenticated the caller.
  *
- * The JWT subject is mapped by JwtStrategy to:
+ * The authentication layer owns the creation of this identity context.
  *
- *     request.user.identityPublicId
- *
- * Asset ownership therefore comes exclusively from the authenticated security
- * context and is never accepted from the caller.
+ * The Asset controller merely consumes it.
  */
 interface AuthenticatedRequest extends Request {
   user: AuthenticatedIdentity;
 }
 
 // =============================================================================
-// Transport Types
+// Uploaded File Transport
 // =============================================================================
 
 /**
- * Minimal HTTP representation required from the multipart file interceptor.
+ * Minimal file representation required by the Asset application boundary.
  *
- * This deliberately avoids depending on the global Express.Multer namespace.
+ * The controller deliberately does not pass the complete Multer/Express file
+ * object into the application layer.
  *
- * The controller only needs:
- *
- * - original filename;
- * - MIME type;
- * - byte size;
- * - uploaded Buffer.
+ * Only information required by UploadAssetCommand is extracted.
  */
 interface UploadedAssetFile {
   readonly originalname?: string;
@@ -530,7 +685,7 @@ export class AssetsController {
 
   public constructor(
     // -------------------------------------------------------------------------
-    // Asset Command Handlers
+    // Commands
     // -------------------------------------------------------------------------
 
     @Inject(ASSET_TOKENS.COMMAND_HANDLERS.UPLOAD_ASSET)
@@ -558,7 +713,7 @@ export class AssetsController {
     >,
 
     // -------------------------------------------------------------------------
-    // Asset Query Handlers
+    // Queries
     // -------------------------------------------------------------------------
 
     @Inject(ASSET_TOKENS.QUERY_HANDLERS.GET_ASSET)
@@ -602,20 +757,38 @@ export class AssetsController {
       CheckAssetExistsQuery,
       boolean
     >,
+
+    @Inject(ASSET_TOKENS.QUERY_HANDLERS.GET_PUBLIC_ASSET_REFERENCE)
+    private readonly getPublicAssetReferenceHandler: QueryHandler<
+      GetPublicAssetReferenceQuery,
+      PublicAssetReference
+    >,
+
+    @Inject(ASSET_TOKENS.QUERY_HANDLERS.GET_PUBLIC_ASSET_CONTENT)
+    private readonly getPublicAssetContentHandler: QueryHandler<
+      GetPublicAssetContentQuery,
+      AssetStorageObjectContent
+    >,
   ) {}
 
   // ===========================================================================
-  // Asset Queries
+  // Queries
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
-  // Get Assets
+  // GET /assets
+  // ---------------------------------------------------------------------------
+  //
+  // Permission-controlled Asset administration/read operation.
+  //
+  // This is NOT a public marketplace endpoint.
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'List assets',
-    description: 'Returns all Asset aggregates available to the caller.',
+    description:
+      'Returns Asset aggregates available to the authenticated caller with the required permission.',
   })
   @Get()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -631,16 +804,7 @@ export class AssetsController {
   }
 
   // ---------------------------------------------------------------------------
-  // Get Assets By Owner
-  // ---------------------------------------------------------------------------
-  //
-  // Authenticated-owner operation.
-  //
-  // The owner is ALWAYS the authenticated Identity.
-  //
-  // The caller cannot select another Identity by supplying an arbitrary
-  // identityPublicId through the HTTP request.
-  //
+  // GET /assets/owner
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -668,7 +832,7 @@ export class AssetsController {
   }
 
   // ---------------------------------------------------------------------------
-  // Get Assets By Category
+  // GET /assets/category
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -696,7 +860,7 @@ export class AssetsController {
   }
 
   // ---------------------------------------------------------------------------
-  // Get Assets By Status
+  // GET /assets/status
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -724,7 +888,7 @@ export class AssetsController {
   }
 
   // ---------------------------------------------------------------------------
-  // Get Asset By Object Key
+  // GET /assets/object-key
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -752,7 +916,7 @@ export class AssetsController {
   }
 
   // ---------------------------------------------------------------------------
-  // Check Asset Exists
+  // GET /assets/exists
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -798,13 +962,130 @@ export class AssetsController {
   }
 
   // ---------------------------------------------------------------------------
-  // Get Asset
+  // GET /assets/public/:assetPublicId/reference
+  // ---------------------------------------------------------------------------
+  //
+  // Anonymous public Asset-reference resolution.
+  //
+  // This endpoint does NOT return AssetResponse.
+  //
+  // It returns the deliberately reduced public Asset reference:
+  //
+  //     {
+  //       publicId,
+  //       url,
+  //     }
+  //
+  // The application handler is responsible for:
+  //
+  // - resolving the Asset;
+  // - verifying that the Asset is usable;
+  // - verifying that the Asset is public;
+  // - resolving the consumer-facing delivery URL.
+  //
+  // The controller does not:
+  //
+  // - query the repository;
+  // - inspect Asset visibility;
+  // - inspect Asset lifecycle;
+  // - construct a delivery URL;
+  // - access physical storage;
+  // - accept storage metadata from the caller.
+  //
+  // ---------------------------------------------------------------------------
+
+  @ApiOperation({
+    summary: 'Get a public asset reference',
+    description:
+      'Returns the public identity and consumer-facing delivery URL of a publicly visible and usable Asset.',
+  })
+  @Get('public/:assetPublicId/reference')
+  public async getPublicReference(
+    @Param('assetPublicId') assetPublicId: string,
+  ): Promise<PublicAssetReference> {
+    const publicId = new AssetPublicId(assetPublicId);
+
+    const query = new GetPublicAssetReferenceQuery(publicId);
+
+    return this.getPublicAssetReferenceHandler.execute(query);
+  }
+
+  // ---------------------------------------------------------------------------
+  // GET /assets/public/:assetPublicId
+  // ---------------------------------------------------------------------------
+  //
+  // Anonymous public Asset-content delivery.
+  //
+  // IMPORTANT:
+  //
+  // This endpoint does NOT return AssetResponse.
+  //
+  // It returns only the physical content of an Asset that the application
+  // layer has determined is both:
+  //
+  //     PUBLIC
+  //     READY / usable
+  //
+  // There is deliberately NO JwtAuthGuard here.
+  //
+  // The stable AssetPublicId is sufficient to address the public Asset.
+  //
+  // The controller does not:
+  //
+  // - query the repository;
+  // - inspect Asset visibility;
+  // - inspect Asset lifecycle;
+  // - access storage directly;
+  // - construct a storage path;
+  // - accept bucket/objectKey from the caller.
+  //
+  // All of those concerns belong behind the application boundary.
+  //
+  // StreamableFile keeps the HTTP transport concern here while allowing the
+  // application handler to return a normal Node Readable stream.
+  // ---------------------------------------------------------------------------
+
+  @ApiOperation({
+    summary: 'Deliver a public asset',
+    description:
+      'Streams the content of a publicly visible and usable Asset by public ID.',
+  })
+  @Get('public/:assetPublicId')
+  public async getPublicContent(
+    @Param('assetPublicId') assetPublicId: string,
+  ): Promise<StreamableFile> {
+    const publicId = new AssetPublicId(assetPublicId);
+
+    const query = new GetPublicAssetContentQuery(publicId);
+
+    const content = await this.getPublicAssetContentHandler.execute(query);
+
+    return new StreamableFile(content.content, {
+      type: content.mimeType.value,
+      length: content.sizeBytes.value,
+      disposition: 'inline',
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // GET /assets/:assetPublicId
+  // ---------------------------------------------------------------------------
+  //
+  // IMPORTANT:
+  //
+  // This is an authenticated Asset-management endpoint.
+  //
+  // It is NOT the public Asset read boundary.
+  //
+  // The complete AssetResponse may contain storage metadata and therefore must
+  // not be exposed anonymously merely because an Asset has PUBLIC visibility.
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Get an asset',
-    description: 'Returns an Asset aggregate by its public ID.',
+    description:
+      'Returns an Asset aggregate by public ID for an authenticated caller with the required permission.',
   })
   @Get(':assetPublicId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -826,35 +1107,18 @@ export class AssetsController {
   }
 
   // ===========================================================================
-  // Asset Upload
+  // Upload
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
-  // Upload Asset
-  // ---------------------------------------------------------------------------
-  //
   // POST /assets
-  //
-  // Authenticated-owner operation.
-  //
-  // The authenticated Identity becomes the owner of the newly uploaded Asset.
-  //
-  // IMPORTANT:
-  //
-  // This endpoint intentionally uses JwtAuthGuard only.
-  //
-  // It does NOT require:
-  //
-  //     PermissionsGuard
-  //     @RequirePermissions('asset:upload')
-  //
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Upload an asset',
     description:
-      'Uploads a physical asset for the authenticated Identity and creates the Asset aggregate.',
+      'Uploads a physical file for the authenticated Identity and creates the Asset aggregate.',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -909,7 +1173,7 @@ export class AssetsController {
     @Req() req: AuthenticatedRequest,
   ): Promise<AssetResponse> {
     // -------------------------------------------------------------------------
-    // Validate uploaded HTTP file
+    // HTTP file validation
     // -------------------------------------------------------------------------
 
     if (file === undefined) {
@@ -932,7 +1196,7 @@ export class AssetsController {
     }
 
     // -------------------------------------------------------------------------
-    // Authenticated Identity
+    // Authenticated owner
     // -------------------------------------------------------------------------
 
     const ownerIdentityPublicId = new AssetIdentityPublicId(
@@ -972,17 +1236,21 @@ export class AssetsController {
         : undefined;
 
     // -------------------------------------------------------------------------
-    // Technical storage metadata
+    // Storage configuration
     // -------------------------------------------------------------------------
 
     const storageProvider = this.createStorageProvider();
 
     const bucket = this.createStorageBucket();
 
+    // -------------------------------------------------------------------------
+    // Object key
+    // -------------------------------------------------------------------------
+
     const objectKey = this.createObjectKey();
 
     // -------------------------------------------------------------------------
-    // HTTP Buffer -> Readable
+    // HTTP Buffer -> application Readable
     // -------------------------------------------------------------------------
 
     const content = this.createReadableContent(file);
@@ -994,7 +1262,7 @@ export class AssetsController {
     const correlationId = randomUUID();
 
     // -------------------------------------------------------------------------
-    // Application command
+    // Upload command
     // -------------------------------------------------------------------------
 
     const command = new UploadAssetCommand(
@@ -1023,19 +1291,11 @@ export class AssetsController {
   }
 
   // ===========================================================================
-  // Asset Lifecycle
+  // Lifecycle
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
-  // Archive Asset
-  // ---------------------------------------------------------------------------
-  //
-  // Authenticated-owner operation.
-  //
-  // The authenticated Identity is passed into the command.
-  //
-  // ArchiveAssetHandler verifies that the authenticated Identity owns the Asset.
-  //
+  // PATCH /assets/:assetPublicId/archive
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -1067,17 +1327,7 @@ export class AssetsController {
   }
 
   // ---------------------------------------------------------------------------
-  // Delete Asset
-  // ---------------------------------------------------------------------------
-  //
-  // Authenticated-owner operation.
-  //
-  // The authenticated Identity is passed into the command.
-  //
-  // DeleteAssetHandler verifies that the authenticated Identity owns the Asset
-  // before coordinating physical storage deletion and the domain lifecycle
-  // transition.
-  //
+  // DELETE /assets/:assetPublicId
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -1109,16 +1359,7 @@ export class AssetsController {
   }
 
   // ---------------------------------------------------------------------------
-  // Change Asset Visibility
-  // ---------------------------------------------------------------------------
-  //
-  // Authenticated-owner operation.
-  //
-  // The authenticated Identity is passed into the command.
-  //
-  // ChangeAssetVisibilityHandler verifies that the authenticated Identity owns
-  // the Asset before delegating the visibility operation to the aggregate.
-  //
+  // PATCH /assets/:assetPublicId/visibility
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -1173,7 +1414,7 @@ export class AssetsController {
         return AssetStorageProvider.create('LOCAL');
 
       case 'BUNNY':
-        return AssetStorageProvider.create('OTHER');
+        return AssetStorageProvider.create('BUNNY');
 
       case 'AWS_S3':
         return AssetStorageProvider.create('AWS_S3');

@@ -84,6 +84,24 @@ export const JOURNEY_DEMAND_TOKENS = {
 
     GET_BY_PUBLIC_ID: Symbol('GetJourneyDemandByPublicIdQueryHandler'),
 
+    // -------------------------------------------------------------------------
+    // Public Discovery
+    // -------------------------------------------------------------------------
+    //
+    // Public discovery is intentionally separate from the generic
+    // GetJourneyDemandByPublicIdQuery.
+    //
+    // A Journey Demand may exist internally without being publicly
+    // discoverable. The public query therefore has its own application
+    // handler and repository read contract.
+    //
+
+    GET_PUBLIC: Symbol('GetPublicJourneyDemandQueryHandler'),
+
+    // -------------------------------------------------------------------------
+    // Collections
+    // -------------------------------------------------------------------------
+
     GET_ALL: Symbol('GetJourneyDemandsQueryHandler'),
 
     GET_MY: Symbol('GetMyJourneyDemandsQueryHandler'),

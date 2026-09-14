@@ -1,5 +1,3 @@
-// src/domains/social/social.module.ts
-
 import { Module } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
@@ -52,6 +50,8 @@ import {
   GetTravellerProfileQueryHandler,
   GetTravellerProfileByPublicIdQueryHandler,
   GetTravellerProfileByMemberPublicIdQueryHandler,
+  GetPublicTravellerByMemberQueryHandler,
+  GetPublicTravellerByHandleQueryHandler,
   GetTravellerProfileByHandleQueryHandler,
   GetTravellerProfilePreferencesQueryHandler,
   GetTravellerProfileCorridorQueryHandler,
@@ -232,6 +232,34 @@ import { TRAVELLER_PROFILE_TOKENS } from './application/traveller-profile.tokens
       useClass: GetTravellerProfileByMemberPublicIdQueryHandler,
     },
 
+    // =========================================================================
+    // Public Traveller Profile Query Handlers
+    //
+    // Dedicated unauthenticated read boundaries for public Traveller Profile
+    // discovery.
+    //
+    // These handlers are intentionally separate from the broader Traveller
+    // Profile queries. Public consumers receive only the reduced representation
+    // permitted by the public visibility boundary.
+    // =========================================================================
+
+    {
+      provide:
+        TRAVELLER_PROFILE_TOKENS.QUERY_HANDLERS.GET_PUBLIC_BY_MEMBER_PUBLIC_ID,
+
+      useClass: GetPublicTravellerByMemberQueryHandler,
+    },
+
+    {
+      provide: TRAVELLER_PROFILE_TOKENS.QUERY_HANDLERS.GET_PUBLIC_BY_HANDLE,
+
+      useClass: GetPublicTravellerByHandleQueryHandler,
+    },
+
+    // =========================================================================
+    // Broad Traveller Profile Query Handlers
+    // =========================================================================
+
     {
       provide: TRAVELLER_PROFILE_TOKENS.QUERY_HANDLERS.GET_BY_HANDLE,
 
@@ -311,6 +339,18 @@ import { TRAVELLER_PROFILE_TOKENS } from './application/traveller-profile.tokens
     TRAVELLER_PROFILE_TOKENS.QUERY_HANDLERS.GET,
     TRAVELLER_PROFILE_TOKENS.QUERY_HANDLERS.GET_BY_PUBLIC_ID,
     TRAVELLER_PROFILE_TOKENS.QUERY_HANDLERS.GET_BY_MEMBER_PUBLIC_ID,
+
+    // -------------------------------------------------------------------------
+    // Public Traveller Profile Query Handlers
+    // -------------------------------------------------------------------------
+
+    TRAVELLER_PROFILE_TOKENS.QUERY_HANDLERS.GET_PUBLIC_BY_MEMBER_PUBLIC_ID,
+    TRAVELLER_PROFILE_TOKENS.QUERY_HANDLERS.GET_PUBLIC_BY_HANDLE,
+
+    // -------------------------------------------------------------------------
+    // Broad Traveller Profile Query Handlers
+    // -------------------------------------------------------------------------
+
     TRAVELLER_PROFILE_TOKENS.QUERY_HANDLERS.GET_BY_HANDLE,
 
     TRAVELLER_PROFILE_TOKENS.QUERY_HANDLERS.GET_PREFERENCES,

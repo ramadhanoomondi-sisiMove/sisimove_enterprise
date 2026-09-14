@@ -4,104 +4,85 @@
 //
 // Public read model for an Asset.
 //
-// This model intentionally does NOT mirror the backend Asset entity.
-// Storage details, ownership information, internal classifications,
-// moderation state, and lifecycle information remain server-side.
+// This is intentionally NOT a mirror of the Asset Prisma model.
 //
-// Public API consumers use `publicId` as the stable public identifier.
+// The Asset domain owns:
+// - asset ownership;
+// - asset classification;
+// - upload lifecycle;
+// - visibility;
+// - storage provider;
+// - bucket/object-key information;
+// - original file metadata;
+// - internal Identity ownership;
+// - archival/deletion state.
 //
-// Typical public assets include:
-// - profile and avatar images
-// - cover images
-// - vehicle photos
-// - approved journey images
-// - other explicitly public media
+// None of those internal concerns belong in the public marketplace contract.
 //
-// Sensitive or private assets must never be exposed through this model,
-// including:
-// - government IDs
-// - passports
-// - driver's licences
-// - verification selfies
-// - private attachments
-// - internal moderation evidence
+// A public consumer only needs enough information to render an asset safely:
 //
-// The backend is responsible for determining whether an asset is public
-// and for resolving its appropriate delivery URL.
+//     publicId
+//     url
+//     alt
+//
+// The public Asset boundary is responsible for resolving the internal storage
+// representation into a safe, renderable URL.
+//
+// This is especially important because:
+//
+//     AssetVisibility.PUBLIC
+//
+// does NOT necessarily mean that the underlying storage object should be
+// exposed directly. The backend may use signed URLs, a CDN, an application
+// media endpoint, or another controlled delivery mechanism.
+//
 // -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// Public Asset Type
-// -----------------------------------------------------------------------------
-
-export type PublicAssetType =
-  | 'IMAGE'
-  | 'VIDEO'
-  | 'AUDIO'
-  | 'OTHER';
-
-// -----------------------------------------------------------------------------
+//
 // Public Asset
+//
+//     Asset domain
+//          │
+//          │ safe public read
+//          ▼
+//     PublicAsset
+//          │
+//          ├── publicId
+//          ├── url
+//          └── alt
+//
 // -----------------------------------------------------------------------------
 
 export interface PublicAsset {
   /**
-   * Stable public identifier of the asset.
+   * Stable public identifier of the Asset.
    *
-   * This is the identifier used by public frontend APIs and cross-feature
-   * references where a public asset is required.
+   * This is Asset.publicId.
+   *
+   * The internal Asset.id must never cross the public boundary.
    */
-  readonly publicId: string;
+  publicId: string;
 
   /**
-   * URL used by the client to retrieve the public representation.
+   * Safe, renderable URL for the asset.
    *
-   * The backend determines the appropriate delivery URL. Depending on the
-   * asset and infrastructure, this may be a CDN URL, public media URL,
-   * or signed URL.
+   * The backend public read boundary is responsible for resolving this URL.
    *
-   * Raw storage-provider URLs and storage credentials must never be exposed.
+   * It may represent:
+   * - a CDN URL;
+   * - a controlled media endpoint;
+   * - a signed URL;
+   * - another application-approved public delivery mechanism.
+   *
+   * The frontend must not construct this URL from bucket, objectKey, or
+   * storageProvider information.
    */
-  readonly url: string;
+  url: string;
 
   /**
-   * Public media category.
-   */
-  readonly type: PublicAssetType;
-
-  /**
-   * MIME type of the publicly served representation.
+   * Optional accessible alternative text.
    *
-   * This is optional because the public API may intentionally omit
-   * low-level media metadata.
+   * This is presentation metadata and is deliberately separate from the
+   * Asset's original filename.
    */
-  readonly mimeType: string | null;
-
-  /**
-   * Human-readable alternative text for accessibility.
-   *
-   * Null when alternative text is not applicable or has not been provided.
-   */
-  readonly altText: string | null;
-
-  /**
-   * Display width of the public representation, when known.
-   *
-   * This is presentation metadata and does not describe storage dimensions.
-   */
-  readonly width: number | null;
-
-  /**
-   * Display height of the public representation, when known.
-   *
-   * This is presentation metadata and does not describe storage dimensions.
-   */
-  readonly height: number | null;
-
-  /**
-   * Duration of the public representation in seconds.
-   *
-   * Primarily applicable to audio and video assets.
-   */
-  readonly durationSeconds: number | null;
+  alt: string | null;
 }

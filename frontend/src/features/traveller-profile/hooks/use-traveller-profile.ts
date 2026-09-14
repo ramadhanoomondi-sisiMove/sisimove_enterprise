@@ -1,401 +1,205 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Traveller Profile Hook
+// sisiMove — Public Traveller Profile Hook
 // -----------------------------------------------------------------------------
 //
-// React hook for retrieving and managing a public Traveller Profile.
+// React hook for consuming the public Traveller Profile read boundary.
 //
 // Responsibilities:
-// - Manage profile loading state.
-// - Manage mapped profile data.
-// - Manage request errors.
-// - Support explicit profile loading.
-// - Support refresh of the latest requested profile.
-// - Prevent stale requests from overwriting newer results.
-// - Provide reset behavior.
 //
-// Non-responsibilities:
-// - No business rules.
-// - No authentication logic.
-// - No authorization logic.
-// - No HTTP transport implementation.
-// - No response normalization.
-// - No transport-to-feature mapping.
+// - expose a TanStack Query for a public Traveller Profile;
+// - select the appropriate public API operation;
+// - provide stable query-key semantics;
+// - avoid duplicating HTTP or transport mapping logic;
+// - keep server state outside presentation components.
 //
-// Boundary:
+// Architecture:
 //
-// API transport
-//      ↓
-// PublicTravellerProfileResponse
-//      ↓
-// TravellerProfileMapper
-//      ↓
-// TravellerProfile
-//      ↓
-// Hook state
-//      ↓
-// UI
+//   Component
+//       ↓
+//   useTravellerProfile()
+//       ↓
+//   TanStack Query
+//       ↓
+//   Traveller Profile API
+//       ↓
+//   PublicTraveller
 //
-// Trust is intentionally outside this hook.
-// Trust belongs to:
+// This hook consumes only the frontend-safe `PublicTraveller` model.
 //
-// features/trust/
+// It does not:
+//
+// - access the backend directly;
+// - construct Asset URLs;
+// - know backend response DTOs;
+// - access Prisma/domain entities;
+// - contain Traveller Profile business rules.
 //
 // -----------------------------------------------------------------------------
+
 
 'use client';
 
+
 // -----------------------------------------------------------------------------
-// React
+// TanStack Query
 // -----------------------------------------------------------------------------
 
-import {
-  useCallback,
-  useRef,
-  useState,
-} from 'react';
+import { useQuery } from '@tanstack/react-query';
+
 
 // -----------------------------------------------------------------------------
 // API
 // -----------------------------------------------------------------------------
 
 import {
-  getPublicTravellerProfile,
+  getTravellerProfileByHandle,
+  getTravellerProfileByMemberPublicId,
+  getTravellerProfileByPublicId,
 } from '../api';
 
-// -----------------------------------------------------------------------------
-// Mapper
-// -----------------------------------------------------------------------------
-
-import {
-  travellerProfileMapper,
-} from '../mappers';
 
 // -----------------------------------------------------------------------------
 // Models
 // -----------------------------------------------------------------------------
 
-import type {
-  TravellerProfile,
-} from '../models';
+import type { PublicTraveller } from '../models';
+
 
 // -----------------------------------------------------------------------------
-// Hook State
+// Query Key
 // -----------------------------------------------------------------------------
 
-export interface UseTravellerProfileState {
-  /**
-   * Mapped Traveller Profile feature model.
-   */
-  data: TravellerProfile | null;
+const TRAVELLER_PROFILE_QUERY_KEY = 'traveller-profile';
 
-  /**
-   * True while the first profile load is in progress.
-   */
-  isLoading: boolean;
 
+// -----------------------------------------------------------------------------
+// Query Parameters
+// -----------------------------------------------------------------------------
+
+export interface UseTravellerProfileOptions {
   /**
-   * True while an existing profile is being refreshed.
+   * Public Traveller Profile identifier.
    *
-   * Existing data remains available while refreshing.
+   * When supplied, the hook loads the profile directly by its public profile
+   * identifier.
    */
-  isRefreshing: boolean;
+  publicId?: string;
 
   /**
-   * Most recent request error.
+   * Member public identifier.
+   *
+   * When supplied, the hook resolves the associated public Traveller Profile.
    */
-  error: Error | null;
-}
-
-// -----------------------------------------------------------------------------
-// Hook Result
-// -----------------------------------------------------------------------------
-
-export interface UseTravellerProfileResult
-  extends UseTravellerProfileState {
-  /**
-   * Explicitly loads a traveller profile by social handle.
-   */
-  load: (
-    handle: string,
-  ) => Promise<TravellerProfile | null>;
+  memberPublicId?: string;
 
   /**
-   * Refreshes the most recently requested traveller profile.
+   * Public Traveller handle.
+   *
+   * When supplied, the hook loads the public Traveller Profile through the
+   * public handle endpoint.
+   *
+   * This is the lookup used by public Traveller Profile routes such as:
+   *
+   *   /travellers/:handle
    */
-  refresh: () => Promise<TravellerProfile | null>;
+  handle?: string;
 
   /**
-   * Clears the current profile state and invalidates in-flight requests.
+   * Controls whether the query is allowed to execute.
+   *
+   * This can be used by parent components when the identifier becomes
+   * available asynchronously.
    */
-  reset: () => void;
+  enabled?: boolean;
 }
 
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
-
-function normalizeHandle(
-  value: string | null | undefined,
-): string {
-  return value?.trim() ?? '';
-}
-
-function normalizeError(
-  cause: unknown,
-): Error {
-  if (cause instanceof Error) {
-    return cause;
-  }
-
-  return new Error(
-    'Unable to load the traveller profile.',
-  );
-}
 
 // -----------------------------------------------------------------------------
 // Hook
 // -----------------------------------------------------------------------------
 
+/**
+ * Consume a public Traveller Profile.
+ *
+ * The hook supports the three public lookup paths exposed by the feature API:
+ *
+ *   - Traveller Profile public ID;
+ *   - Member public ID;
+ *   - Traveller handle.
+ *
+ * When more than one identifier is supplied, the lookup precedence is:
+ *
+ *   publicId → memberPublicId → handle
+ *
+ * This keeps the query selection deterministic while allowing callers to
+ * provide whichever public reference is available in their read model.
+ */
 export function useTravellerProfile(
-  initialHandle?: string,
-): UseTravellerProfileResult {
-  // ---------------------------------------------------------------------------
-  // State
-  // ---------------------------------------------------------------------------
+  options: UseTravellerProfileOptions,
+) {
+  const normalizedPublicId = options.publicId?.trim() ?? '';
 
-  const [data, setData] =
-    useState<TravellerProfile | null>(null);
+  const normalizedMemberPublicId =
+    options.memberPublicId?.trim() ?? '';
 
-  const [isLoading, setIsLoading] =
-    useState(false);
+  const normalizedHandle =
+    options.handle?.trim() ?? '';
 
-  const [isRefreshing, setIsRefreshing] =
-    useState(false);
+  const hasPublicId = normalizedPublicId.length > 0;
 
-  const [error, setError] =
-    useState<Error | null>(null);
+  const hasMemberPublicId =
+    normalizedMemberPublicId.length > 0;
 
-  // ---------------------------------------------------------------------------
-  // Request State
-  // ---------------------------------------------------------------------------
+  const hasHandle =
+    normalizedHandle.length > 0;
 
-  /**
-   * Latest successfully requested/current handle.
-   */
-  const latestHandleRef =
-    useRef<string | null>(
-      normalizeHandle(initialHandle) || null,
-    );
+  const lookupType = hasPublicId
+    ? 'public-id'
+    : hasMemberPublicId
+      ? 'member-public-id'
+      : 'handle';
 
-  /**
-   * Indicates whether successful profile data currently exists.
-   */
-  const hasDataRef =
-    useRef(false);
+  const lookupValue = hasPublicId
+    ? normalizedPublicId
+    : hasMemberPublicId
+      ? normalizedMemberPublicId
+      : normalizedHandle;
 
-  /**
-   * Monotonically increasing request identifier.
-   *
-   * Only the latest request may commit state.
-   */
-  const requestSequenceRef =
-    useRef(0);
+  const enabled =
+    options.enabled !== false &&
+    lookupValue.length > 0;
 
-  // ---------------------------------------------------------------------------
-  // Load
-  // ---------------------------------------------------------------------------
+  return useQuery<PublicTraveller | null, Error>({
+    queryKey: [
+      TRAVELLER_PROFILE_QUERY_KEY,
+      lookupType,
+      lookupValue,
+    ],
 
-  const load = useCallback(
-    async (
-      handle: string,
-    ): Promise<TravellerProfile | null> => {
-      const normalizedHandle =
-        normalizeHandle(handle);
-
-      const requestSequence =
-        ++requestSequenceRef.current;
-
-      // -----------------------------------------------------------------------
-      // Validate Handle
-      // -----------------------------------------------------------------------
-
-      if (!normalizedHandle) {
-        if (
-          requestSequence ===
-          requestSequenceRef.current
-        ) {
-          latestHandleRef.current = null;
-          hasDataRef.current = false;
-
-          setData(null);
-          setError(
-            new Error(
-              'Traveller handle is required.',
-            ),
-          );
-          setIsLoading(false);
-          setIsRefreshing(false);
-        }
-
-        return null;
-      }
-
-      // -----------------------------------------------------------------------
-      // Track Request
-      // -----------------------------------------------------------------------
-
-      latestHandleRef.current =
-        normalizedHandle;
-
-      const hasExistingData =
-        hasDataRef.current;
-
-      setError(null);
-
-      if (hasExistingData) {
-        setIsRefreshing(true);
-      } else {
-        setIsLoading(true);
-      }
-
-      // -----------------------------------------------------------------------
-      // Request
-      // -----------------------------------------------------------------------
-
-      try {
-        const response =
-          await getPublicTravellerProfile(
-            normalizedHandle,
-          );
-
-        // ---------------------------------------------------------------------
-        // Ignore Stale Response
-        // ---------------------------------------------------------------------
-
-        if (
-          requestSequence !==
-          requestSequenceRef.current
-        ) {
-          return null;
-        }
-
-        // ---------------------------------------------------------------------
-        // Map Transport → Feature Model
-        // ---------------------------------------------------------------------
-
-        const profile =
-          travellerProfileMapper.map(
-            response,
-          );
-
-        // ---------------------------------------------------------------------
-        // Commit State
-        // ---------------------------------------------------------------------
-
-        hasDataRef.current = true;
-
-        setData(profile);
-        setError(null);
-
-        return profile;
-      } catch (cause: unknown) {
-        // ---------------------------------------------------------------------
-        // Ignore Stale Error
-        // ---------------------------------------------------------------------
-
-        if (
-          requestSequence !==
-          requestSequenceRef.current
-        ) {
-          return null;
-        }
-
-        setError(
-          normalizeError(cause),
+    queryFn: () => {
+      if (hasPublicId) {
+        return getTravellerProfileByPublicId(
+          normalizedPublicId,
         );
-
-        // Deliberately preserve existing data.
-        //
-        // This is important during refresh: a temporary network/API
-        // failure must not erase a profile that was already rendered.
-
-        return null;
-      } finally {
-        // ---------------------------------------------------------------------
-        // Complete Only Current Request
-        // ---------------------------------------------------------------------
-
-        if (
-          requestSequence ===
-          requestSequenceRef.current
-        ) {
-          setIsLoading(false);
-          setIsRefreshing(false);
-        }
-      }
-    },
-    [],
-  );
-
-  // ---------------------------------------------------------------------------
-  // Refresh
-  // ---------------------------------------------------------------------------
-
-  const refresh = useCallback(
-    async (): Promise<TravellerProfile | null> => {
-      const handle =
-        latestHandleRef.current;
-
-      if (!handle) {
-        return null;
       }
 
-      return load(handle);
+      if (hasMemberPublicId) {
+        return getTravellerProfileByMemberPublicId(
+          normalizedMemberPublicId,
+        );
+      }
+
+      return getTravellerProfileByHandle(
+        normalizedHandle,
+      );
     },
-    [load],
-  );
 
-  // ---------------------------------------------------------------------------
-  // Reset
-  // ---------------------------------------------------------------------------
+    enabled,
 
-  const reset = useCallback(() => {
-    // -------------------------------------------------------------------------
-    // Invalidate In-Flight Requests
-    // -------------------------------------------------------------------------
-
-    requestSequenceRef.current += 1;
-
-    // -------------------------------------------------------------------------
-    // Reset Internal State
-    // -------------------------------------------------------------------------
-
-    hasDataRef.current = false;
-
-    latestHandleRef.current =
-      normalizeHandle(initialHandle) || null;
-
-    // -------------------------------------------------------------------------
-    // Reset React State
-    // -------------------------------------------------------------------------
-
-    setData(null);
-    setError(null);
-    setIsLoading(false);
-    setIsRefreshing(false);
-  }, [initialHandle]);
-
-  // ---------------------------------------------------------------------------
-  // Result
-  // ---------------------------------------------------------------------------
-
-  return {
-    data,
-    isLoading,
-    isRefreshing,
-    error,
-    load,
-    refresh,
-    reset,
-  };
+    staleTime: 5 * 60 * 1000,
+  });
 }
+
+
+export default useTravellerProfile;
+

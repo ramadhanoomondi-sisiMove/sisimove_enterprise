@@ -31,3 +31,5 @@ export * from './get-journey-asset.query-handler';
 export * from './get-journey-assets.query-handler';
 
 export * from './get-journey-asset-by-reference.query-handler';
+
+export * from './get-public-journey.query-handler';

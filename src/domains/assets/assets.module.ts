@@ -1,5 +1,6 @@
 // -----------------------------------------------------------------------------
-// Assets — NestJS Module
+// sisiMove — Assets
+// NestJS Module
 // -----------------------------------------------------------------------------
 //
 // Central NestJS module for the Assets bounded context.
@@ -9,15 +10,19 @@
 // - Asset aggregate;
 // - Asset persistence;
 // - Asset physical-storage orchestration;
+// - Asset delivery resolution;
 // - Asset lifecycle management;
 // - Asset visibility;
-// - Asset retrieval and lookup.
+// - Asset retrieval and lookup;
+// - public Asset reference resolution;
+// - public Asset content delivery.
 //
 // The module wires:
 //
 // - REST controllers;
 // - infrastructure repository provider;
-// - configured asset-storage provider;
+// - configured AssetStoragePort implementation;
+// - configured AssetDeliveryPort implementation;
 // - application command handlers;
 // - application query handlers.
 //
@@ -29,12 +34,14 @@
 // Application handlers coordinate use cases and depend only on:
 //
 // - AssetRepository;
-// - AssetStoragePort.
+// - AssetStoragePort;
+// - AssetDeliveryPort.
 //
 // Infrastructure implements those abstractions through:
 //
 // - PrismaAssetRepository;
-// - configured AssetStorage implementation.
+// - configured AssetStorage implementation;
+// - configured AssetDelivery implementation.
 //
 // -----------------------------------------------------------------------------
 //
@@ -69,18 +76,26 @@
 //        │       ▼
 //        │   PrismaAssetRepository
 //        │
-//        └── APPLICATION_SERVICES.ASSET_STORAGE
+//        ├── APPLICATION_SERVICES.ASSET_STORAGE
+//        │       │
+//        │       ▼
+//        │   AssetStoragePort
+//        │       │
+//        │       └── configured storage implementation
+//        │
+//        └── APPLICATION_SERVICES.ASSET_DELIVERY
 //                │
 //                ▼
-//          AssetStoragePort
+//            AssetDeliveryPort
 //                │
-//                └── configured implementation
+//                └── configured delivery implementation
 //
-// The concrete storage implementation is selected by ASSET_PROVIDERS.
+// ASSET_PROVIDERS is responsible for binding these application-facing
+// abstractions to concrete infrastructure implementations.
 //
 // -----------------------------------------------------------------------------
 //
-// Storage selection:
+// STORAGE SELECTION
 //
 //     ASSET_STORAGE_PROVIDER=LOCAL
 //             │
@@ -88,18 +103,15 @@
 //     LocalAssetStorageService
 //
 //
-//
 //     ASSET_STORAGE_PROVIDER=BUNNY
 //             │
 //             ▼
 //     BunnyAssetStorageService
 //
-// Only the selected implementation is instantiated.
+// Only the selected storage implementation is instantiated.
 //
-// Neither LocalAssetStorageService nor BunnyAssetStorageService is registered
-// independently as a NestJS provider.
-//
-// This is intentional.
+// Concrete storage implementations are not independently registered as
+// application dependencies.
 //
 // The application layer depends only on:
 //
@@ -111,7 +123,33 @@
 //
 // -----------------------------------------------------------------------------
 //
-// Storage dependency flow:
+// DELIVERY SELECTION
+//
+// Asset delivery is deliberately separate from physical storage.
+//
+//     AssetStoragePort
+//         │
+//         └── physical object access
+//
+//     AssetDeliveryPort
+//         │
+//         └── consumer-facing URL resolution
+//
+// The application layer depends only on:
+//
+//     ASSET_TOKENS.APPLICATION_SERVICES.ASSET_DELIVERY
+//
+// which represents:
+//
+//     AssetDeliveryPort
+//
+// The concrete delivery implementation is selected by ASSET_PROVIDERS.
+//
+// The module does not instantiate a concrete delivery service directly.
+//
+// -----------------------------------------------------------------------------
+//
+// STORAGE DEPENDENCY FLOW:
 //
 //     Application Handler
 //            │
@@ -124,13 +162,99 @@
 //            ▼
 //     configured infrastructure adapter
 //
-// Therefore the application layer remains completely independent of:
+// -----------------------------------------------------------------------------
 //
-// - local filesystem implementation;
-// - Bunny implementation;
-// - Bunny credentials;
-// - storage SDKs;
-// - storage-specific configuration.
+// DELIVERY DEPENDENCY FLOW:
+//
+//     Application Handler
+//            │
+//            ▼
+//     AssetDeliveryPort
+//            │
+//            ▼
+//     ASSET_TOKENS.APPLICATION_SERVICES.ASSET_DELIVERY
+//            │
+//            ▼
+//     configured infrastructure adapter
+//
+// -----------------------------------------------------------------------------
+//
+// Public Asset reference:
+//
+//     GET /assets/public/:assetPublicId/reference
+//            │
+//            ▼
+//     GetPublicAssetReferenceQuery
+//            │
+//            ▼
+//     GetPublicAssetReferenceQueryHandler
+//            │
+//            ├── AssetRepository
+//            │       │
+//            │       └── AssetAggregate
+//            │
+//            └── AssetDeliveryPort
+//                    │
+//                    ▼
+//             consumer-facing URL
+//
+// The public reference handler verifies that the Asset:
+//
+// - exists;
+// - is usable;
+// - is public.
+//
+// It then delegates URL resolution to AssetDeliveryPort.
+//
+// The handler does not access physical storage.
+//
+// -----------------------------------------------------------------------------
+//
+// Public Asset content:
+//
+//     GET /assets/public/:assetPublicId
+//            │
+//            ▼
+//     GetPublicAssetContentQuery
+//            │
+//            ▼
+//     GetPublicAssetContentHandler
+//            │
+//            ├── AssetRepository
+//            │       │
+//            │       └── AssetAggregate
+//            │
+//            └── AssetStoragePort
+//                    │
+//                    ▼
+//             AssetStorageObjectContent
+//
+// The public-content handler verifies that the Asset:
+//
+// - exists;
+// - is public;
+// - is usable;
+//
+// before retrieving the physical content through AssetStoragePort.
+//
+// -----------------------------------------------------------------------------
+//
+// IMPORTANT
+//
+// Public Asset reference and public Asset content are intentionally separate
+// application capabilities.
+//
+// Public reference:
+//
+//     publicId + consumer-facing URL
+//
+// Public content:
+//
+//     physical content stream
+//
+// The public reference operation does not retrieve physical content.
+//
+// The public content operation does not resolve a delivery URL.
 //
 // -----------------------------------------------------------------------------
 //
@@ -165,6 +289,8 @@
 // - GetAssetsByCategoryHandler
 // - GetAssetsByStatusHandler
 // - CheckAssetExistsHandler
+// - GetPublicAssetReferenceQueryHandler
+// - GetPublicAssetContentHandler
 //
 // -----------------------------------------------------------------------------
 //
@@ -177,14 +303,16 @@
 //      │
 //      ├── AssetRepository abstraction
 //      │
-//      └── AssetStoragePort abstraction
+//      ├── AssetStoragePort abstraction
+//      │
+//      └── AssetDeliveryPort abstraction
 //             │
 //             ▼
 // Infrastructure DI
 //      │
 //      ├── PrismaAssetRepository
-//      │
-//      └── configured AssetStorage implementation
+//      ├── configured AssetStorage implementation
+//      └── configured AssetDelivery implementation
 //
 // The application layer does not import concrete infrastructure
 // implementations.
@@ -198,17 +326,18 @@
 // - controller registration;
 // - repository registration;
 // - storage abstraction registration;
+// - delivery abstraction registration;
 // - command-handler registration;
 // - query-handler registration.
 //
-// AssetsModule exposes only application-facing tokens required by other
-// modules.
+// AssetsModule exposes application-facing tokens required by other modules.
 //
 // It does NOT expose:
 //
 // - PrismaAssetRepository;
 // - LocalAssetStorageService;
-// - BunnyAssetStorageService.
+// - BunnyAssetStorageService;
+// - concrete delivery implementations.
 //
 // Concrete infrastructure implementations remain internal to AssetsModule.
 //
@@ -216,24 +345,22 @@
 //
 // IMPORTANT:
 //
-// Do not add:
+// Do not add concrete storage or delivery services directly to `providers`:
 //
 //     LocalAssetStorageService
-//
-// or:
-//
 //     BunnyAssetStorageService
+//     LocalAssetDeliveryService
+//     BunnyAssetDeliveryService
 //
-// directly to `providers`.
+// ASSET_PROVIDERS owns infrastructure selection.
 //
-// Doing so would allow NestJS to instantiate concrete infrastructure services
-// independently of the configured storage selection.
-//
-// The storage provider must remain:
+// The application dependencies must remain:
 //
 //     ASSET_TOKENS.APPLICATION_SERVICES.ASSET_STORAGE
 //
-// with ASSET_PROVIDERS responsible for selecting the implementation.
+// and:
+//
+//     ASSET_TOKENS.APPLICATION_SERVICES.ASSET_DELIVERY
 //
 // -----------------------------------------------------------------------------
 
@@ -291,6 +418,8 @@ import {
   GetAssetsByOwnerHandler,
   GetAssetsByStatusHandler,
   GetAssetsHandler,
+  GetPublicAssetContentHandler,
+  GetPublicAssetReferenceQueryHandler,
 } from './application/query-handlers';
 
 // =============================================================================
@@ -324,17 +453,15 @@ import {
   //
   // ASSET_PROVIDERS is the infrastructure composition boundary.
   //
-  // It registers exactly:
+  // It is responsible for binding:
   //
-  // 1. AssetRepository
-  // 2. AssetStoragePort
+  //     AssetRepository
+  //     AssetStoragePort
+  //     AssetDeliveryPort
   //
-  // The storage provider factory selects exactly one concrete implementation:
+  // to their configured infrastructure implementations.
   //
-  //     LOCAL → LocalAssetStorageService
-  //     BUNNY → BunnyAssetStorageService
-  //
-  // Concrete storage implementations are NOT registered separately here.
+  // Concrete infrastructure services are NOT registered separately here.
   //
   // ---------------------------------------------------------------------------
 
@@ -412,20 +539,74 @@ import {
       provide: ASSET_TOKENS.QUERY_HANDLERS.CHECK_ASSET_EXISTS,
       useClass: CheckAssetExistsHandler,
     },
+
+    // =========================================================================
+    // Public Asset Reference
+    // =========================================================================
+    //
+    // This handler backs:
+    //
+    //     GET /assets/public/:assetPublicId/reference
+    //
+    // It deliberately does not expose AssetStoragePort.
+    //
+    // Instead, it coordinates:
+    //
+    //     AssetRepository
+    //             │
+    //             ▼
+    //        AssetAggregate
+    //             │
+    //             ▼
+    //       AssetDeliveryPort
+    //
+    // The result is the reduced public Asset reference:
+    //
+    //     {
+    //       publicId,
+    //       url,
+    //     }
+    //
+    // -------------------------------------------------------------------------
+
+    {
+      provide: ASSET_TOKENS.QUERY_HANDLERS.GET_PUBLIC_ASSET_REFERENCE,
+      useClass: GetPublicAssetReferenceQueryHandler,
+    },
+
+    // =========================================================================
+    // Public Asset Content
+    // =========================================================================
+    //
+    // This handler backs:
+    //
+    //     GET /assets/public/:assetPublicId
+    //
+    // It is deliberately registered as a query handler rather than exposing
+    // AssetStoragePort directly to the controller.
+    //
+    // The handler enforces:
+    //
+    // - Asset existence;
+    // - public visibility;
+    // - usable lifecycle state;
+    // - physical content availability.
+    //
+    // -------------------------------------------------------------------------
+
+    {
+      provide: ASSET_TOKENS.QUERY_HANDLERS.GET_PUBLIC_ASSET_CONTENT,
+      useClass: GetPublicAssetContentHandler,
+    },
   ],
 
   // ===========================================================================
   // Exports
   // ===========================================================================
   //
-  // Expose application-facing abstractions/tokens only.
+  // Expose application-facing tokens only.
   //
-  // The repository token may be consumed by other application/infrastructure
-  // composition where the Assets bounded context is intentionally integrated.
-  //
-  // Command/query handler tokens are exported for the same reason.
-  //
-  // The concrete infrastructure implementations remain private.
+  // Concrete infrastructure implementations remain private to AssetsModule.
   //
   // ---------------------------------------------------------------------------
 
@@ -437,7 +618,7 @@ import {
     ASSET_TOKENS.REPOSITORIES.ASSET,
 
     // -------------------------------------------------------------------------
-    // Application — Command Handlers
+    // Command Handlers
     // -------------------------------------------------------------------------
 
     ASSET_TOKENS.COMMAND_HANDLERS.CREATE_ASSET,
@@ -451,7 +632,7 @@ import {
     ASSET_TOKENS.COMMAND_HANDLERS.CHANGE_ASSET_VISIBILITY,
 
     // -------------------------------------------------------------------------
-    // Application — Query Handlers
+    // Query Handlers
     // -------------------------------------------------------------------------
 
     ASSET_TOKENS.QUERY_HANDLERS.GET_ASSET,
@@ -467,6 +648,18 @@ import {
     ASSET_TOKENS.QUERY_HANDLERS.GET_ASSETS_BY_STATUS,
 
     ASSET_TOKENS.QUERY_HANDLERS.CHECK_ASSET_EXISTS,
+
+    // -------------------------------------------------------------------------
+    // Public Asset Reference
+    // -------------------------------------------------------------------------
+
+    ASSET_TOKENS.QUERY_HANDLERS.GET_PUBLIC_ASSET_REFERENCE,
+
+    // -------------------------------------------------------------------------
+    // Public Asset Content
+    // -------------------------------------------------------------------------
+
+    ASSET_TOKENS.QUERY_HANDLERS.GET_PUBLIC_ASSET_CONTENT,
   ],
 })
 export class AssetsModule {}

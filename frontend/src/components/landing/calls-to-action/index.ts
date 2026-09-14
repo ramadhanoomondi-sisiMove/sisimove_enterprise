@@ -1,27 +1,22 @@
 // -----------------------------------------------------------------------------
-// Calls To Action — Public API
+// sisiMove — Landing Call-to-Action Components
+// -----------------------------------------------------------------------------
+//
+// Public barrel for landing-page marketplace CTAs.
 // -----------------------------------------------------------------------------
 
 export {
-  CommunityCtaSection,
-} from './community-cta-section';
+  CreateDemandSection,
+} from "./create-demand-section";
 
 export type {
-  CommunityCtaSectionProps,
-} from './community-cta-section';
+  CreateDemandSectionProps,
+} from "./create-demand-section";
 
 export {
-  ShareJourneySection,
-} from './share-journey-section';
+  PublishJourneySection,
+} from "./publish-journey-section";
 
 export type {
-  ShareJourneySectionProps,
-} from './share-journey-section';
-
-export {
-  FindJourneySection,
-} from './find-journey-section';
-
-export type {
-  FindJourneySectionProps,
-} from './find-journey-section';
+  PublishJourneySectionProps,
+} from "./publish-journey-section";

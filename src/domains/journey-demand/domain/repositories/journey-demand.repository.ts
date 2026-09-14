@@ -126,6 +126,10 @@ import type { JourneyDemandParticipantStatusValueObject } from '../value-objects
  *
  *   - Internal IDs  -> UniqueEntityId-derived value objects
  *   - Public IDs    -> strongly typed public identifier value objects
+ *
+ * Public discovery is deliberately represented by a dedicated repository
+ * operation. A JourneyDemand may exist and be addressable by public ID while
+ * still not being eligible for anonymous/public discovery.
  */
 export interface JourneyDemandRepository {
   // ===========================================================================
@@ -155,8 +159,26 @@ export interface JourneyDemandRepository {
 
   /**
    * Find and fully rehydrate a JourneyDemand aggregate by public ID.
+   *
+   * This is a generic domain lookup and does not imply public discoverability.
    */
   findByPublicId(
+    publicId: JourneyDemandPublicId,
+  ): Promise<JourneyDemandAggregate | null>;
+
+  /**
+   * Find and fully rehydrate a JourneyDemand aggregate that is eligible for
+   * public discovery.
+   *
+   * The infrastructure implementation must enforce the public visibility
+   * rules of the JourneyDemand domain.
+   *
+   * This operation is intentionally separate from findByPublicId().
+   *
+   * A valid public ID alone must never be treated as permission to expose a
+   * JourneyDemand through the anonymous/public marketplace.
+   */
+  findPublicJourneyDemandByPublicId(
     publicId: JourneyDemandPublicId,
   ): Promise<JourneyDemandAggregate | null>;
 

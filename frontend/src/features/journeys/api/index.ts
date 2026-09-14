@@ -1,8 +1,9 @@
+// src/features/journeys/api/index.ts
 // -----------------------------------------------------------------------------
-// Journeys API
+// sisiMove — Journey API Barrel
 // -----------------------------------------------------------------------------
 
 export {
-  getPublicJourney,
-  journeysApi,
-} from './journeys.api';
+  getPublicJourneyByPublicId,
+  getPublicJourneys,
+} from './public-journeys.api';

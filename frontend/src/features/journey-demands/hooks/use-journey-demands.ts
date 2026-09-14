@@ -1,303 +1,116 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Use Journey Demands
+// sisiMove — Public Journey Demands Hook
 // -----------------------------------------------------------------------------
 //
-// React hook for retrieving the public Journey Demand collection.
+// Client-side hook for discovering publicly available Journey Demands.
 //
-// Public Journey Demand discovery is provided directly by the Journey Demand
-// bounded context:
+// The hook intentionally loads the public collection on mount and whenever the
+// marketplace query changes. An empty query is valid and represents the
+// default marketplace state: show publicly available Journey Demands without
+// requiring the visitor to search first.
 //
-//   GET /journey-demands/open
-//
-// The hook does not:
-// - resolve individual public IDs;
-// - perform client-side filtering;
-// - implement discovery rules;
-// - perform matching;
-// - own HTTP concerns.
-//
-// The API owns which Journey Demands are publicly discoverable.
-//
-// Architectural boundary:
-//
-// Journey Demand API
-//       ↓
-// JourneyDemandsResponse
-//       ↓
-// JourneyDemandMapper
-//       ↓
-// JourneyDemand[]
-//       ↓
-// React state
-//
-// This hook:
-// - contains no business logic;
-// - contains no persistence concerns;
-// - contains no search or matching rules;
-// - uses the Journey Demand API layer for HTTP operations;
-// - maps transport responses through JourneyDemandMapper;
-// - preserves existing data during refresh;
-// - protects state from stale asynchronous responses.
-//
+// Request cancellation and request IDs prevent stale responses from replacing
+// newer marketplace results when filters change quickly.
 // -----------------------------------------------------------------------------
-
 
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
+
+import { getPublicJourneyDemands } from '../api';
+import type {
+  PublicJourneyDemand,
+  PublicJourneyDemandQuery,
+} from '../models';
+import { mapPublicJourneyDemand } from '../mappers';
 
 // -----------------------------------------------------------------------------
-// React
+// State
 // -----------------------------------------------------------------------------
 
-import { useCallback, useRef, useState } from 'react';
-
-
-// -----------------------------------------------------------------------------
-// API
-// -----------------------------------------------------------------------------
-
-import { journeyDemandsApi } from '../api';
-
-
-// -----------------------------------------------------------------------------
-// Mapper
-// -----------------------------------------------------------------------------
-
-import { journeyDemandMapper } from '../mappers';
-
-
-// -----------------------------------------------------------------------------
-// Models
-// -----------------------------------------------------------------------------
-
-import type { JourneyDemand } from '../models';
-
-
-// -----------------------------------------------------------------------------
-// Hook State
-// -----------------------------------------------------------------------------
-
-export interface UseJourneyDemandsState {
-  readonly journeyDemands: JourneyDemand[];
+export interface PublicJourneyDemandsState {
+  readonly data: readonly PublicJourneyDemand[];
   readonly isLoading: boolean;
-  readonly isRefreshing: boolean;
   readonly error: Error | null;
 }
-
-
-// -----------------------------------------------------------------------------
-// Hook Result
-// -----------------------------------------------------------------------------
-
-export interface UseJourneyDemandsResult
-  extends UseJourneyDemandsState {
-  readonly load: () => Promise<JourneyDemand[]>;
-  readonly refresh: () => Promise<JourneyDemand[]>;
-  readonly reset: () => void;
-}
-
-
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
-
-function normalizeError(cause: unknown): Error {
-  if (cause instanceof Error) {
-    return cause;
-  }
-
-  return new Error(
-    'Unable to load public Journey Demands.',
-  );
-}
-
 
 // -----------------------------------------------------------------------------
 // Hook
 // -----------------------------------------------------------------------------
 
-export function useJourneyDemands(): UseJourneyDemandsResult {
-  const [journeyDemands, setJourneyDemands] =
-    useState<JourneyDemand[]>([]);
+export function useJourneyDemands(
+  query?: PublicJourneyDemandQuery,
+): PublicJourneyDemandsState {
+  const [data, setData] = useState<readonly PublicJourneyDemand[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
 
-  const [isLoading, setIsLoading] =
-    useState(false);
-
-  const [isRefreshing, setIsRefreshing] =
-    useState(false);
-
-  const [error, setError] =
-    useState<Error | null>(null);
+  const requestIdRef = useRef(0);
 
   // ---------------------------------------------------------------------------
-  // Request sequencing
-  // ---------------------------------------------------------------------------
+  // Query Dependencies
   //
-  // Protects React state from stale asynchronous responses.
-  //
-
-  const requestSequenceRef =
-    useRef(0);
-
-  // ---------------------------------------------------------------------------
-  // Successful-load tracking
-  // ---------------------------------------------------------------------------
-  //
-  // An empty collection can be a valid successful response, so this must not
-  // be inferred from journeyDemands.length.
-  //
-
-  const hasLoadedRef =
-    useRef(false);
-
-  // ---------------------------------------------------------------------------
-  // Load
+  // Extract primitive values so the effect does not re-run merely because a
+  // caller creates a new query object with the same values.
   // ---------------------------------------------------------------------------
 
-  const load = useCallback(
-    async (): Promise<JourneyDemand[]> => {
-      const requestSequence =
-        ++requestSequenceRef.current;
+  const from = query?.from;
+  const to = query?.to;
+  const date = query?.date;
 
-      const hasExistingData =
-        hasLoadedRef.current;
+  // ---------------------------------------------------------------------------
+  // Load Public Journey Demands
+  // ---------------------------------------------------------------------------
 
+  useEffect(() => {
+    let cancelled = false;
+    const requestId = ++requestIdRef.current;
+
+    const load = async (): Promise<void> => {
+      setIsLoading(true);
       setError(null);
 
-      if (hasExistingData) {
-        setIsRefreshing(true);
-      } else {
-        setIsLoading(true);
-      }
-
       try {
-        // ---------------------------------------------------------------------
-        // Retrieve the backend-authoritative public/open collection.
-        // ---------------------------------------------------------------------
+        const journeyDemands = await getPublicJourneyDemands({
+          from,
+          to,
+          date,
+        });
 
-        const response =
-          await journeyDemandsApi.getOpen();
-
-        // ---------------------------------------------------------------------
-        // Ignore stale responses.
-        // ---------------------------------------------------------------------
-
-        if (
-          requestSequence !==
-          requestSequenceRef.current
-        ) {
-          return [];
+        // Ignore responses from cancelled or superseded requests.
+        if (cancelled || requestId !== requestIdRef.current) {
+          return;
         }
 
-        // ---------------------------------------------------------------------
-        // Map transport records into frontend feature models.
-        //
-        // JourneyDemandsResponse is a plain array:
-        //
-        //   JourneyDemandResponse[]
-        //
-        // Therefore the records are mapped directly from `response`.
-        // ---------------------------------------------------------------------
-
-        const mappedJourneyDemands =
-          response.map((item) =>
-            journeyDemandMapper.map(item),
-          );
-
-        // ---------------------------------------------------------------------
-        // Mark the collection as successfully loaded.
-        //
-        // This remains true even when the backend returns an empty array.
-        // ---------------------------------------------------------------------
-
-        hasLoadedRef.current = true;
-
-        setJourneyDemands(
-          mappedJourneyDemands,
-        );
-
-        setError(null);
-
-        return mappedJourneyDemands;
+        setData(journeyDemands.map(mapPublicJourneyDemand));
       } catch (cause) {
-        // ---------------------------------------------------------------------
-        // Ignore errors from stale requests.
-        // ---------------------------------------------------------------------
-
-        if (
-          requestSequence !==
-          requestSequenceRef.current
-        ) {
-          return [];
+        if (cancelled || requestId !== requestIdRef.current) {
+          return;
         }
 
         setError(
-          normalizeError(cause),
+          cause instanceof Error
+            ? cause
+            : new Error('Unable to load public Journey Demands.'),
         );
-
-        // ---------------------------------------------------------------------
-        // Preserve the previous successful collection during refresh failure.
-        // ---------------------------------------------------------------------
-
-        return [];
       } finally {
-        // ---------------------------------------------------------------------
-        // Only the current request may change loading state.
-        // ---------------------------------------------------------------------
-
-        if (
-          requestSequence ===
-          requestSequenceRef.current
-        ) {
+        if (!cancelled && requestId === requestIdRef.current) {
           setIsLoading(false);
-          setIsRefreshing(false);
         }
       }
-    },
-    [],
-  );
+    };
 
-  // ---------------------------------------------------------------------------
-  // Refresh
-  // ---------------------------------------------------------------------------
+    void load();
 
-  const refresh = useCallback(
-    async (): Promise<JourneyDemand[]> => {
-      return load();
-    },
-    [load],
-  );
-
-  // ---------------------------------------------------------------------------
-  // Reset
-  // ---------------------------------------------------------------------------
-
-  const reset = useCallback(() => {
-    // -------------------------------------------------------------------------
-    // Invalidate any request currently in flight.
-    // -------------------------------------------------------------------------
-
-    requestSequenceRef.current += 1;
-
-    hasLoadedRef.current = false;
-
-    setJourneyDemands([]);
-    setIsLoading(false);
-    setIsRefreshing(false);
-    setError(null);
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // Return
-  // ---------------------------------------------------------------------------
+    return () => {
+      cancelled = true;
+    };
+  }, [from, to, date]);
 
   return {
-    journeyDemands,
+    data,
     isLoading,
-    isRefreshing,
     error,
-    load,
-    refresh,
-    reset,
   };
 }
+

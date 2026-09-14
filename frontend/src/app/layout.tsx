@@ -1,115 +1,67 @@
-// src/app/layout.tsx
-
 // -----------------------------------------------------------------------------
-// SisiMove — Root Application Layout
+// sisiMove — Public Route Layout
 // -----------------------------------------------------------------------------
-
-import type { Metadata, Viewport } from 'next';
-
-import './globals.css';
-
-// -----------------------------------------------------------------------------
-// Site Configuration
-// -----------------------------------------------------------------------------
-
-const siteName = 'sisiMove';
-
-const siteDescription =
-  "Kenya's long-distance travel social network. Find people travelling your way, share journeys, and travel together.";
-
-const appUrl =
-  process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
-
-// -----------------------------------------------------------------------------
-// Metadata
-// -----------------------------------------------------------------------------
-
-export const metadata: Metadata = {
-  metadataBase: new URL(appUrl),
-
-  title: {
-    default: `${siteName} — Travel together`,
-    template: `%s — ${siteName}`,
-  },
-
-  description: siteDescription,
-
-  applicationName: siteName,
-
-  keywords: [
-    'SisiMove',
-    'sisiMove',
-    'Kenya travel',
-    'long-distance travel',
-    'carpooling Kenya',
-    'shared journeys',
-    'travel community',
-  ],
-
-  authors: [
-    {
-      name: siteName,
-    },
-  ],
-
-  creator: siteName,
-
-  referrer: 'origin-when-cross-origin',
-
-  formatDetection: {
-    email: false,
-    address: false,
-    telephone: false,
-  },
-
-  icons: {
-    icon: '/favicon.ico',
-  },
-
-  robots: {
-    index: true,
-    follow: true,
-  },
-
-  openGraph: {
-    type: 'website',
-    locale: 'en_KE',
-    siteName,
-    title: `${siteName} — Travel together`,
-    description: siteDescription,
-  },
-
-  twitter: {
-    card: 'summary_large_image',
-    title: `${siteName} — Travel together`,
-    description: siteDescription,
-  },
-};
-
-// -----------------------------------------------------------------------------
-// Viewport
+//
+// Shared layout for publicly accessible sisiMove pages.
+//
+// Public routes include:
+//
+// - Journey detail
+// - Journey Demand detail
+// - Traveller profiles
+// - How it works
+//
+// The marketplace landing page is mounted from the root route (`/`). This
+// route-group layout is specifically responsible for the pages beneath
+// `/(public)`.
+//
+// Responsibilities:
+//
+// - provide the shared public site shell;
+// - render the public header and footer;
+// - provide the consistent public page structure.
+//
+// This layout intentionally does NOT:
+//
+// - fetch Journey or Journey Demand data;
+// - own marketplace state;
+// - render marketplace cards;
+// - resolve Traveller, Trust, or Asset data;
+// - contain route-specific business logic.
+//
+// Route-specific pages remain responsible for composing their own feature
+// presentation beneath this shared public shell.
+//
+// The shared visual primitives come from `globals.css`, including:
+//
+// - `.page-shell`
+// - `.page-container`
+//
+// The layout does not add page-specific spacing so individual public features
+// can control their own presentation and density.
 // -----------------------------------------------------------------------------
 
-export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  viewportFit: 'cover',
-  themeColor: '#ffffff',
-  colorScheme: 'light',
-};
+import type { ReactNode } from 'react';
 
-// -----------------------------------------------------------------------------
-// Root Layout
-// -----------------------------------------------------------------------------
+import { SiteFooter, SiteHeader } from '@/components/layout';
 
-export default function RootLayout({
+export interface PublicLayoutProps {
+  readonly children: ReactNode;
+}
+
+export default function PublicLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: PublicLayoutProps) {
   return (
-    <html lang="en-KE">
-      <body>{children}</body>
-    </html>
+    <div className="page-shell flex min-h-screen flex-col">
+      <SiteHeader />
+
+      <main className="min-w-0 flex-1">
+        {children}
+      </main>
+
+      <SiteFooter />
+    </div>
   );
 }
+

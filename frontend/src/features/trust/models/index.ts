@@ -1,27 +1,32 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Trust Models Barrel
+// sisiMove — Public Trust Models
 // -----------------------------------------------------------------------------
 //
-// Public exports for the frontend Trust feature models.
+// Public export surface for the Trust feature.
 //
-// These models represent presentation-safe Trust information consumed by
-// application and UI layers.
+// Consumers should import public Trust contracts from this barrel rather than
+// reaching into individual model files:
+//
+//     import type {
+//       PublicTravellerTrust,
+//       PublicTrustBadge,
+//       PublicTrustBadgeAsset,
+//       PublicTrustBadgeType,
+//       PublicTrustVerificationLevel,
+//     } from "@/features/trust/models";
+//
+// This keeps the internal model-file layout replaceable while presenting one
+// stable public model boundary to hooks, mappers, and UI components.
 //
 // -----------------------------------------------------------------------------
 
 export type {
-  TrustProfile,
-  TrustJourneyHistory,
-} from './trust-profile';
+  PublicTravellerTrust,
+  PublicTrustVerificationLevel,
+} from "./public-traveller-trust";
 
 export type {
-  TrustRating,
-} from './trust-rating';
-
-export type {
-  TrustBadge,
-} from './trust-badge';
-
-export type {
-  TrustVerification,
-} from './trust-verification';
+  PublicTrustBadge,
+  PublicTrustBadgeAsset,
+  PublicTrustBadgeType,
+} from "./public-trust-badge";

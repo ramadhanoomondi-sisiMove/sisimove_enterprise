@@ -1,6 +1,41 @@
 // src/domains/journey/domain/aggregates/journey.aggregate.ts
 
 // -----------------------------------------------------------------------------
+// sisiMove — Journey Aggregate
+// -----------------------------------------------------------------------------
+//
+// Aggregate:
+//   JourneyAggregate
+//   └── JourneyEntity
+//       ├── JourneyCorridorEntity?
+//       │   └── JourneyWaypointEntity[]
+//       ├── JourneyScheduleEntity?
+//       ├── JourneyVehicleEntity?
+//       ├── JourneyCapacityEntity?
+//       ├── JourneyPricingEntity?
+//       ├── JourneyPreferencesEntity?
+//       └── JourneyAssetEntity[]
+//
+// JourneyEntity remains the canonical state holder for the aggregate.
+//
+// Child entities are owned by JourneyEntity and are therefore not duplicated
+// as independent state inside JourneyAggregate.
+//
+// The aggregate owns:
+// - Journey lifecycle transitions;
+// - Journey component composition;
+// - Journey invariants;
+// - domain-event recording;
+// - aggregate-level identity and ownership checks.
+//
+// Public discovery is intentionally NOT an aggregate concern.
+//
+// Whether a Journey is publicly readable is determined by the repository's
+// public-read boundary. The aggregate only exposes its domain state and
+// lifecycle capabilities.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
@@ -80,6 +115,12 @@ import type { JourneyAssetPublicIdReference } from '../value-objects/journey-ass
  * ├── JourneyPricingEntity?
  * ├── JourneyPreferencesEntity?
  * └── JourneyAssetEntity[]
+ *
+ * Public discovery is deliberately outside this aggregate.
+ *
+ * The aggregate can answer questions about its own domain state, such as
+ * whether the Journey is published. The repository/application read boundary
+ * decides whether that state is exposed to anonymous consumers.
  */
 export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   // ===========================================================================
@@ -94,6 +135,11 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   // Factory
   // ===========================================================================
 
+  /**
+   * Create a new Journey aggregate around an existing JourneyEntity.
+   *
+   * JourneyEntity remains the canonical state container.
+   */
   public static create(journey: JourneyEntity): JourneyAggregate {
     return new JourneyAggregate(journey, journey.id);
   }
@@ -102,8 +148,9 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
    * Rehydrate the complete Journey aggregate.
    *
    * Persistence reconstructs the aggregate by supplying the root entity and
-   * its owned child entities. JourneyEntity remains the single canonical
-   * aggregate state container.
+   * its owned child entities.
+   *
+   * JourneyEntity remains the single canonical aggregate state container.
    */
   public static rehydrate(
     journey: JourneyEntity,
@@ -154,14 +201,29 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   // Aggregate Identity
   // ===========================================================================
 
+  /**
+   * Return the canonical Journey entity owned by this aggregate.
+   *
+   * The entity remains the single source of truth for Journey state.
+   */
   public get journey(): JourneyEntity {
     return this.props;
   }
 
+  /**
+   * Return the aggregate's internal identity.
+   */
   public get aggregateId(): UniqueEntityId {
     return this.id;
   }
 
+  /**
+   * Return the Journey domain identifier.
+   *
+   * JourneyId is constructed from the Journey's public identifier because the
+   * Journey domain exposes that identifier as its stable domain-facing
+   * identity.
+   */
   public get journeyId(): JourneyId {
     return new JourneyId(this.publicId.value);
   }
@@ -170,10 +232,18 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   // Provider
   // ===========================================================================
 
+  /**
+   * Provider identity associated with this Journey.
+   *
+   * The provider remains an opaque cross-domain public identifier.
+   */
   public get providerPublicId(): JourneyProviderPublicId {
     return this.journey.providerPublicId;
   }
 
+  /**
+   * Determine whether this Journey belongs to the supplied provider.
+   */
   public belongsToProvider(providerPublicId: JourneyProviderPublicId): boolean {
     return this.journey.belongsToProvider(providerPublicId);
   }
@@ -254,6 +324,12 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   // Lifecycle
   // ===========================================================================
 
+  /**
+   * Publish the Journey.
+   *
+   * Publishing is allowed only when the Journey is in DRAFT state and all
+   * mandatory Journey components have been configured.
+   */
   public publish(
     correlationId: string,
     causationId?: string,
@@ -283,6 +359,9 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
     );
   }
 
+  /**
+   * Start a published Journey.
+   */
   public start(
     correlationId: string,
     causationId?: string,
@@ -312,6 +391,9 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
     );
   }
 
+  /**
+   * Complete an in-progress Journey.
+   */
   public complete(
     correlationId: string,
     causationId?: string,
@@ -341,6 +423,9 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
     );
   }
 
+  /**
+   * Cancel the Journey.
+   */
   public cancel(
     correlationId: string,
     causationId?: string,
@@ -372,6 +457,9 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
     );
   }
 
+  /**
+   * Expire the Journey.
+   */
   public expire(
     correlationId: string,
     causationId?: string,
@@ -427,10 +515,16 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
     return this.journey.status.value === JourneyStatus.EXPIRED;
   }
 
+  /**
+   * Determine whether the Journey is currently operational.
+   */
   public isActive(): boolean {
     return this.isPublished() || this.isInProgress();
   }
 
+  /**
+   * Determine whether the Journey has reached a terminal lifecycle state.
+   */
   public isTerminal(): boolean {
     return this.isCompleted() || this.isCancelled() || this.isExpired();
   }
@@ -439,6 +533,13 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   // Lifecycle Capabilities
   // ===========================================================================
 
+  /**
+   * A Journey can become publicly discoverable only after all mandatory
+   * Journey components have been configured.
+   *
+   * Public visibility itself is still enforced by the repository's public
+   * query boundary.
+   */
   public canPublish(): boolean {
     return this.isDraft() && this.hasRequiredComponents();
   }
@@ -703,14 +804,18 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   public getAssetCount(): number {
     return this.journey.assetCount();
   }
+
   // ===========================================================================
   // Aggregate Invariants
   // ===========================================================================
 
   /**
-   * Components required before a Journey can be published.
+   * Determine whether the mandatory Journey components are present.
    *
    * Preferences and Journey assets remain optional.
+   *
+   * This invariant is intentionally concerned with Journey completeness,
+   * rather than HTTP/public-discovery concerns.
    */
   public hasRequiredComponents(): boolean {
     return (
@@ -726,6 +831,13 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   // Event Recording
   // ===========================================================================
 
+  /**
+   * Record an already-created Journey domain event.
+   *
+   * This is useful when an application/domain orchestration operation needs
+   * to attach a domain event that was constructed outside the lifecycle
+   * methods above.
+   */
   public recordDomainEvent(event: JourneyDomainEvent): void {
     this.addDomainEvent(event);
   }

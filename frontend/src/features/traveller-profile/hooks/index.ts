@@ -2,28 +2,13 @@
 // sisiMove — Traveller Profile Hooks
 // -----------------------------------------------------------------------------
 //
-// Public exports for Traveller Profile React hooks.
+// Public hook barrel for the Traveller Profile feature.
 //
-// Responsibilities:
-// - Expose Traveller Profile hook implementations.
-// - Expose hook state and result contracts.
-//
-// Non-responsibilities:
-// - No API transport exports.
-// - No feature-model exports.
-// - No mapper exports.
-// - No Trust exports.
-//
-// Trust has its own hook boundary under:
-// features/trust/hooks
-//
+// Consumers should import hooks through this barrel rather than depending on
+// individual implementation files.
 // -----------------------------------------------------------------------------
 
 export {
   useTravellerProfile,
-} from './use-traveller-profile';
-
-export type {
-  UseTravellerProfileState,
-  UseTravellerProfileResult,
+  type UseTravellerProfileOptions,
 } from './use-traveller-profile';

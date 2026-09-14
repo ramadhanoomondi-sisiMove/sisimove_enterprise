@@ -1,15 +1,19 @@
 // -----------------------------------------------------------------------------
-// Journey Demand Hooks
+// sisiMove — Journey Demand Hooks
 // -----------------------------------------------------------------------------
 
 export {
-  useJourneyDemand,
-  type UseJourneyDemandState,
-  type UseJourneyDemandResult,
-} from './use-journey-demand';
+  useJourneyDemands,
+} from './use-journey-demands';
+
+export type {
+  PublicJourneyDemandsState,
+} from './use-journey-demands';
 
 export {
-  useJourneyDemands,
-  type UseJourneyDemandsState,
-  type UseJourneyDemandsResult,
-} from './use-journey-demands';
+  useJourneyDemand,
+} from './use-journey-demand';
+
+export type {
+  PublicJourneyDemandState,
+} from './use-journey-demand';

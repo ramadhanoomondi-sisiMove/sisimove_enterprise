@@ -1,5 +1,6 @@
 // -----------------------------------------------------------------------------
-// Asset — Aggregate
+// sisiMove — Assets
+// Asset Aggregate
 // -----------------------------------------------------------------------------
 //
 // Aggregate:
@@ -13,7 +14,7 @@
 //
 // -----------------------------------------------------------------------------
 //
-// Aggregate responsibilities:
+// AGGREGATE RESPONSIBILITIES
 //
 // - own exactly one AssetEntity;
 // - expose Asset state through the aggregate boundary;
@@ -26,7 +27,7 @@
 //
 // -----------------------------------------------------------------------------
 //
-// This aggregate does NOT:
+// THIS AGGREGATE DOES NOT
 //
 // - validate Identity domain state;
 // - load the Identity aggregate;
@@ -60,7 +61,7 @@
 //
 // -----------------------------------------------------------------------------
 //
-// Aggregate identity:
+// AGGREGATE IDENTITY
 //
 // Internal identity:
 // - AssetEntity.id
@@ -73,7 +74,7 @@
 //
 // -----------------------------------------------------------------------------
 //
-// Domain events:
+// DOMAIN EVENTS
 //
 // - AssetCreatedEvent
 // - AssetUploadedEvent
@@ -87,7 +88,7 @@
 //
 // -----------------------------------------------------------------------------
 //
-// Creation:
+// CREATION
 //
 // AssetEntity.create() establishes the initial Asset state.
 //
@@ -96,19 +97,18 @@
 //
 // Creation and creation-event recording are intentionally separate operations.
 //
-// The caller is responsible for invoking recordCreated() as part of the
-// application command workflow.
+// The application command workflow is responsible for invoking recordCreated().
 //
 // -----------------------------------------------------------------------------
 //
-// Rehydration:
+// REHYDRATION
 //
 // AssetAggregate.rehydrate() reconstructs the aggregate from persistence
 // without recording domain events.
 //
 // -----------------------------------------------------------------------------
 //
-// Lifecycle:
+// LIFECYCLE
 //
 //     UPLOADING
 //         │
@@ -150,13 +150,9 @@ import type { AssetEntity } from '../entities/asset.entity';
 // -----------------------------------------------------------------------------
 
 import { AssetCreatedEvent } from '../events/asset-created.event';
-
 import { AssetUploadedEvent } from '../events/asset-uploaded.event';
-
 import { AssetReadyEvent } from '../events/asset-ready.event';
-
 import { AssetArchivedEvent } from '../events/asset-archived.event';
-
 import { AssetDeletedEvent } from '../events/asset-deleted.event';
 
 // -----------------------------------------------------------------------------
@@ -170,23 +166,14 @@ import { AssetException } from '../exceptions/asset.exception';
 // -----------------------------------------------------------------------------
 
 import type { AssetIdentityPublicId } from '../value-objects/asset-identity-public-id.vo';
-
 import type { AssetType } from '../value-objects/asset-type.vo';
-
 import type { AssetCategory } from '../value-objects/asset-category.vo';
-
 import type { AssetVisibility } from '../value-objects/asset-visibility.vo';
-
 import type { AssetStorageProvider } from '../value-objects/asset-storage-provider.vo';
-
 import type { AssetBucket } from '../value-objects/asset-bucket.vo';
-
 import type { AssetObjectKey } from '../value-objects/asset-object-key.vo';
-
 import type { AssetOriginalFilename } from '../value-objects/asset-original-filename.vo';
-
 import type { AssetMimeType } from '../value-objects/asset-mime-type.vo';
-
 import type { AssetSizeBytes } from '../value-objects/asset-size-bytes.vo';
 
 // =============================================================================
@@ -208,7 +195,7 @@ interface AssetAggregateProps {
  * Asset aggregate root.
  *
  * Owns exactly one AssetEntity representing the lifecycle and metadata of
- * one Asset.
+ * exactly one Asset.
  */
 export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
   // ===========================================================================
@@ -234,11 +221,7 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
   /**
    * Creates a new Asset aggregate around a newly created AssetEntity.
    *
-   * Entity creation and creation-event recording are intentionally separate
-   * operations.
-   *
-   * The caller is responsible for invoking recordCreated() as part of the
-   * application command workflow.
+   * Entity creation and creation-event recording remain separate operations.
    */
   public static create(asset: AssetEntity): AssetAggregate {
     AssetAggregate.ensureEntity(asset);
@@ -397,7 +380,7 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
   }
 
   /**
-   * Determines whether the Asset is ready for use.
+   * Determines whether the Asset is ready for normal application use.
    */
   public isReady(): boolean {
     return this.asset.isReady();
@@ -418,7 +401,9 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
   }
 
   /**
-   * Determines whether the Asset can currently be used.
+   * Determines whether the Asset is currently usable.
+   *
+   * AssetEntity owns the actual usability rule.
    */
   public isUsable(): boolean {
     return this.asset.isUsable();
@@ -431,8 +416,7 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
   /**
    * Records creation of the Asset aggregate.
    *
-   * Asset creation and event recording are intentionally separate so that
-   * aggregate construction remains free of application-event metadata.
+   * Aggregate construction remains free of application-event metadata.
    */
   public recordCreated(correlationId: string, causationId?: string): void {
     this.ensureCorrelationId(correlationId);
@@ -462,11 +446,16 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
   // ===========================================================================
 
   /**
-   * Marks the Asset as successfully uploaded and records
-   * AssetUploadedEvent.
+   * Marks the Asset as successfully uploaded.
    *
-   * The application workflow must perform the physical storage operation
-   * through AssetStoragePort before invoking this method.
+   * Lifecycle:
+   *
+   *     UPLOADING → UPLOADED
+   *
+   * The application workflow is responsible for completing the physical
+   * storage operation before invoking this method.
+   *
+   * AssetEntity remains responsible for enforcing the actual lifecycle rule.
    */
   public markUploaded(
     correlationId: string,
@@ -474,6 +463,11 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
     causationId?: string,
   ): void {
     this.ensureCorrelationId(correlationId);
+
+    AssetAggregate.ensureValidDate(
+      uploadedAt,
+      'Asset upload timestamp must be valid.',
+    );
 
     this.asset.markUploaded(uploadedAt);
 
@@ -505,10 +499,17 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
   // ===========================================================================
 
   /**
-   * Marks the Asset as ready for normal use and records
-   * AssetReadyEvent.
+   * Marks the Asset as ready for normal application use.
    *
-   * Processing itself belongs outside the aggregate.
+   * Lifecycle:
+   *
+   *     UPLOADED → READY
+   *
+   * The aggregate does not decide whether external processing is required.
+   * The application workflow invokes this method when the current Asset
+   * readiness criteria have been satisfied.
+   *
+   * AssetEntity remains responsible for enforcing the lifecycle transition.
    */
   public markReady(correlationId: string, causationId?: string): void {
     this.ensureCorrelationId(correlationId);
@@ -533,7 +534,11 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
   // ===========================================================================
 
   /**
-   * Archives the Asset and records AssetArchivedEvent.
+   * Archives the Asset.
+   *
+   * Lifecycle:
+   *
+   *     READY → ARCHIVED
    */
   public archive(
     archivedAt: Date = new Date(),
@@ -541,6 +546,11 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
     causationId?: string,
   ): void {
     this.ensureCorrelationId(correlationId);
+
+    AssetAggregate.ensureValidDate(
+      archivedAt,
+      'Asset archive timestamp must be valid.',
+    );
 
     this.asset.archive(archivedAt);
 
@@ -568,9 +578,17 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
   // ===========================================================================
 
   /**
-   * Deletes the Asset and records AssetDeletedEvent.
+   * Deletes the Asset.
    *
    * Physical storage deletion remains outside the aggregate.
+   *
+   * Lifecycle:
+   *
+   *     UPLOADED  → DELETED
+   *     READY     → DELETED
+   *     ARCHIVED  → DELETED
+   *
+   * AssetEntity owns the actual transition rules.
    */
   public delete(
     deletedAt: Date = new Date(),
@@ -578,6 +596,11 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
     causationId?: string,
   ): void {
     this.ensureCorrelationId(correlationId);
+
+    AssetAggregate.ensureValidDate(
+      deletedAt,
+      'Asset deletion timestamp must be valid.',
+    );
 
     this.asset.delete(deletedAt);
 
@@ -658,9 +681,9 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
   }
 
   /**
-   * Changes the storage provider metadata.
+   * Changes storage-provider metadata.
    *
-   * Actual object migration belongs to the application/infrastructure
+   * Actual physical-object migration remains an application/infrastructure
    * workflow.
    */
   public changeStorageProvider(storageProvider: AssetStorageProvider): void {
@@ -668,9 +691,10 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
   }
 
   /**
-   * Changes the storage location metadata.
+   * Changes storage-location metadata.
    *
-   * Actual object movement belongs to infrastructure.
+   * Actual physical-object movement remains an application/infrastructure
+   * workflow.
    */
   public changeStorageLocation(
     storageProvider: AssetStorageProvider,
@@ -708,7 +732,7 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
   /**
    * Updates Asset file metadata.
    *
-   * This operation does not modify the physical object.
+   * This does not modify the physical object.
    */
   public updateFileMetadata(
     mimeType: AssetMimeType,
@@ -723,7 +747,7 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
   // ===========================================================================
 
   /**
-   * Timestamp at which the Asset was uploaded.
+   * Timestamp at which the physical Asset upload completed.
    */
   public get uploadedAt(): Date | undefined {
     return this.asset.uploadedAt;
@@ -768,7 +792,7 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
   /**
    * Updates the aggregate persistence timestamp.
    *
-   * This is a persistence-support operation and does not emit a domain event.
+   * This is persistence-support behavior and does not emit a domain event.
    */
   public setUpdatedAt(updatedAt: Date): void {
     AssetAggregate.ensureValidDate(
@@ -803,10 +827,7 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
       throw new AssetException('Asset aggregate public identity is required.');
     }
 
-    if (
-      this.asset.ownerIdentityPublicId === undefined &&
-      this.asset.hasOwner()
-    ) {
+    if (this.hasOwner() !== (this.ownerIdentityPublicId !== undefined)) {
       throw new AssetException(
         'Asset owner state is structurally inconsistent.',
       );
@@ -828,6 +849,10 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
       );
     }
 
+    // -------------------------------------------------------------------------
+    // Upload timestamp invariants
+    // -------------------------------------------------------------------------
+
     if (this.isUploading() && this.uploadedAt !== undefined) {
       throw new AssetException(
         'Uploading Asset cannot have an uploaded timestamp.',
@@ -835,16 +860,21 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
     }
 
     if (
-      (this.isUploaded() ||
-        this.isReady() ||
-        this.isArchived() ||
-        this.isDeleted()) &&
-      this.uploadedAt === undefined
+      this.isUploaded() ||
+      this.isReady() ||
+      this.isArchived() ||
+      this.isDeleted()
     ) {
-      throw new AssetException(
-        'Uploaded, ready, archived, or deleted Asset must have an uploaded timestamp.',
-      );
+      if (this.uploadedAt === undefined) {
+        throw new AssetException(
+          'Asset past UPLOADING must have an uploaded timestamp.',
+        );
+      }
     }
+
+    // -------------------------------------------------------------------------
+    // Archive timestamp invariants
+    // -------------------------------------------------------------------------
 
     if (this.isArchived() && this.archivedAt === undefined) {
       throw new AssetException(
@@ -852,8 +882,23 @@ export class AssetAggregate extends AggregateRoot<AssetAggregateProps> {
       );
     }
 
+    // -------------------------------------------------------------------------
+    // Delete timestamp invariants
+    // -------------------------------------------------------------------------
+
     if (this.isDeleted() && this.deletedAt === undefined) {
       throw new AssetException('Deleted Asset must have a deleted timestamp.');
+    }
+
+    // -------------------------------------------------------------------------
+    // Terminal-state invariant
+    // -------------------------------------------------------------------------
+
+    if (this.isDeleted()) {
+      if (this.archivedAt === undefined && this.status.value === 'DELETED') {
+        // A deleted Asset does not require an archived timestamp because
+        // UPLOADED and READY may transition directly to DELETED.
+      }
     }
   }
 

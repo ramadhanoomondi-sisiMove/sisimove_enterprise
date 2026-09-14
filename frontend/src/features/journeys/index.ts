@@ -1,45 +1,15 @@
+// src/features/journeys/index.ts
 // -----------------------------------------------------------------------------
-// SisiMove — Journeys Feature
+// sisiMove — Public Journey Feature API
 // -----------------------------------------------------------------------------
 //
-// Public API for the Journeys feature.
+// Public barrel for the Journey feature.
 //
-// This barrel defines the boundary through which other frontend features,
-// routes, and application composition may consume Journey functionality.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// API
+// Consumers should import Journey feature capabilities through this barrel
+// instead of depending directly on internal feature files.
 // -----------------------------------------------------------------------------
 
 export * from './api';
-
-
-// -----------------------------------------------------------------------------
-// Hooks
-// -----------------------------------------------------------------------------
-
-export * from './hooks';
-
-
-// -----------------------------------------------------------------------------
-// Models
-// -----------------------------------------------------------------------------
-
 export * from './models';
-
-
-// -----------------------------------------------------------------------------
-// Components
-// -----------------------------------------------------------------------------
-
-export {
-  JourneyDetailPage,
-  JourneySummary,
-} from './components';
-
-export type {
-  JourneyDetailPageProps,
-  JourneySummaryProps,
-} from './components';
+export * from './mappers';
+export * from './hooks';

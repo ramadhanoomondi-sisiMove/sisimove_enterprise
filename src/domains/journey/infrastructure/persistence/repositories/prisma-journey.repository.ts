@@ -655,6 +655,36 @@ export class PrismaJourneyRepository implements JourneyRepository {
     return record === null ? null : JourneyPrismaMapper.toDomain(record);
   }
 
+  /**
+   * Returns a Journey only when it is currently publicly discoverable.
+   *
+   * This is deliberately separate from findJourneyByPublicId().
+   *
+   * A valid public identifier only establishes that the Journey can be
+   * addressed inside the Journey domain. It does not mean that the Journey
+   * should be exposed to anonymous marketplace visitors.
+   *
+   * Public visibility is therefore enforced at the repository query boundary.
+   *
+   * For the current Journey lifecycle, PUBLISHED is the public discovery
+   * state. If the lifecycle later introduces another publicly discoverable
+   * state, the public-read policy should be changed here rather than in the
+   * application handler or HTTP controller.
+   */
+  public async findPublicJourneyByPublicId(
+    publicId: JourneyPublicId,
+  ): Promise<JourneyEntity | null> {
+    const record = await this.prisma.journey.findFirst({
+      where: {
+        publicId: publicId.value,
+
+        status: this.toPrismaJourneyStatus('PUBLISHED'),
+      },
+    });
+
+    return record === null ? null : JourneyPrismaMapper.toDomain(record);
+  }
+
   public async findJourneysByProviderPublicId(
     providerPublicId: JourneyProviderPublicId,
   ): Promise<JourneyEntity[]> {
@@ -1368,6 +1398,22 @@ export class PrismaJourneyRepository implements JourneyRepository {
 
     return count > 0;
   }
+
+  // ===========================================================================
+  // Public Journey Discovery
+  // ===========================================================================
+
+  /**
+   * Finds published Journeys matching an origin, destination, and departure
+   * date range.
+   *
+   * This method is intentionally restricted to PUBLISHED Journeys because it
+   * represents anonymous/public discovery rather than an internal lifecycle
+   * query.
+   *
+   * The public visibility rule therefore remains inside the persistence
+   * implementation instead of being duplicated by controllers or handlers.
+   */
   public async findPublishedJourneysByRouteAndDate(
     origin: string,
     destination: string,
@@ -1411,6 +1457,7 @@ export class PrismaJourneyRepository implements JourneyRepository {
 
     return records.map((record) => JourneyPrismaMapper.toDomain(record));
   }
+
   // ===========================================================================
   // Aggregate Reconstruction
   // ===========================================================================

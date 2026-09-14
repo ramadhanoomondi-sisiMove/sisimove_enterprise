@@ -1,20 +1,14 @@
 // -----------------------------------------------------------------------------
-// How It Works — Public API
+// sisiMove — How It Works
+// -----------------------------------------------------------------------------
+//
+// Public barrel for landing-page How It Works components.
 // -----------------------------------------------------------------------------
 
 export {
   HowItWorksSection,
-} from './how-it-works-section';
+} from "./how-it-works-section";
 
 export type {
   HowItWorksSectionProps,
-  HowItWorksSectionStep,
-} from './how-it-works-section';
-
-export {
-  HowItWorksStep,
-} from './how-it-works-step';
-
-export type {
-  HowItWorksStepProps,
-} from './how-it-works-step';
+} from "./how-it-works-section";

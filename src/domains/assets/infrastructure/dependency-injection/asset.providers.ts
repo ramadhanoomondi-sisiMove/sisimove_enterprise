@@ -5,25 +5,13 @@
 // Infrastructure dependency-injection providers for the Assets bounded
 // context.
 //
-// The application layer depends on:
+// The application layer depends on abstractions:
 //
 // - AssetRepository;
 // - AssetStoragePort.
 //
-// This provider file binds:
-//
-// - AssetRepository to the concrete Prisma repository;
-// - AssetStoragePort to the configured storage implementation.
-//
-// Supported storage implementations:
-//
-// - LocalAssetStorageService
-// - BunnyAssetStorageService
-//
-// Storage selection is infrastructure configuration.
-//
-// The Asset domain and application layers remain unaware of which physical
-// storage implementation is being used.
+// This provider file binds those abstractions to concrete infrastructure
+// implementations.
 //
 // -----------------------------------------------------------------------------
 //
@@ -64,29 +52,39 @@
 //
 // -----------------------------------------------------------------------------
 //
-// IMPORTANT:
+// Current sisiMove deployment:
 //
-// Only the configured concrete storage service is instantiated and exposed
-// through:
+//     LOCAL
 //
-//     ASSET_TOKENS.APPLICATION_SERVICES.ASSET_STORAGE
-//
-// This is intentional.
-//
-// In particular, BunnyAssetStorageService requires Bunny credentials in its
-// constructor. Local development must therefore NOT instantiate the Bunny
-// service merely because it exists as an available infrastructure adapter.
+// Bunny remains available behind the same AssetStoragePort so that the
+// physical storage implementation can be changed later without changing the
+// Asset domain or application layer.
 //
 // -----------------------------------------------------------------------------
 //
-// The concrete storage implementations are NOT exposed to the application
-// layer. The application layer resolves only:
+// IMPORTANT:
 //
-//     AssetStoragePort
+// Only the selected concrete storage implementation is instantiated.
 //
-// through:
+// This is especially important for Bunny because its infrastructure adapter
+// may require production-only configuration such as storage credentials.
+//
+// LOCAL therefore remains completely independent of Bunny configuration.
+//
+// -----------------------------------------------------------------------------
+//
+// The application layer never resolves:
+//
+//     LocalAssetStorageService
+//     BunnyAssetStorageService
+//
+// It resolves only:
 //
 //     ASSET_TOKENS.APPLICATION_SERVICES.ASSET_STORAGE
+//
+// which represents:
+//
+//     AssetStoragePort
 //
 // -----------------------------------------------------------------------------
 
@@ -103,6 +101,18 @@ import type { Provider } from '@nestjs/common';
 import { ASSET_TOKENS } from '../../application/asset.tokens';
 
 // -----------------------------------------------------------------------------
+// Application — Ports
+// -----------------------------------------------------------------------------
+
+import type { AssetStoragePort } from '../../application/ports/asset-storage.port';
+
+// -----------------------------------------------------------------------------
+// Domain — Storage Provider
+// -----------------------------------------------------------------------------
+
+import { AssetStorageProvider } from '../../domain/value-objects/asset-storage-provider.vo';
+
+// -----------------------------------------------------------------------------
 // Infrastructure — Persistence
 // -----------------------------------------------------------------------------
 
@@ -117,43 +127,50 @@ import { BunnyAssetStorageService } from '../storage/bunny-asset-storage.service
 import { LocalAssetStorageService } from '../storage/local-asset-storage.service';
 
 // =============================================================================
+// Storage Provider Configuration
+// =============================================================================
+
+/**
+ * Reads and normalizes the configured physical Asset storage provider.
+ *
+ * LOCAL is the default because local filesystem storage is the current
+ * sisiMove deployment configuration.
+ *
+ * Bunny can be selected later without changing the application or domain
+ * contracts.
+ */
+function getConfiguredStorageProvider(): string {
+  return (process.env.ASSET_STORAGE_PROVIDER ?? 'LOCAL').trim().toUpperCase();
+}
+
+// =============================================================================
 // Storage Selection
 // =============================================================================
 
 /**
- * Selects the concrete AssetStoragePort implementation at the composition
- * root.
+ * Creates the concrete AssetStoragePort implementation selected by
+ * infrastructure configuration.
+ *
+ * The factory returns the application-facing port rather than exposing a
+ * concrete implementation type to the composition boundary.
  *
  * Only the selected implementation is instantiated.
- *
- * Supported values:
- *
- * - LOCAL
- * - BUNNY
- *
- * Default:
- *
- * - LOCAL
- *
- * This keeps local development independent from Bunny configuration while
- * allowing production to use Bunny Storage.
  */
-function createAssetStorageProvider():
-  LocalAssetStorageService | BunnyAssetStorageService {
-  const provider = (process.env.ASSET_STORAGE_PROVIDER ?? 'LOCAL')
-    .trim()
-    .toUpperCase();
+function createAssetStorageProvider(): AssetStoragePort {
+  const provider = getConfiguredStorageProvider();
 
   switch (provider) {
-    case 'LOCAL':
+    case AssetStorageProvider.LOCAL:
       return new LocalAssetStorageService();
 
-    case 'BUNNY':
+    case AssetStorageProvider.BUNNY:
       return new BunnyAssetStorageService();
 
     default:
       throw new Error(
-        `Unsupported ASSET_STORAGE_PROVIDER "${provider}". Expected "LOCAL" or "BUNNY".`,
+        `Unsupported ASSET_STORAGE_PROVIDER "${provider}". ` +
+          `Expected "${AssetStorageProvider.LOCAL}" or ` +
+          `"${AssetStorageProvider.BUNNY}".`,
       );
   }
 }
@@ -196,11 +213,8 @@ export const ASSET_PROVIDERS: Provider[] = [
   //     OR
   //     BunnyAssetStorageService
   //
-  // Selection:
-  //
-  //     ASSET_STORAGE_PROVIDER
-  //
-  // Only the selected implementation is instantiated.
+  // The concrete implementation is selected exclusively by infrastructure
+  // configuration.
   //
   // ---------------------------------------------------------------------------
 

@@ -1,100 +1,40 @@
-// src/app/(public)/page.tsx
-
 // -----------------------------------------------------------------------------
-// SisiMove — Public Home Page
+// sisiMove — Public Marketplace Route
 // -----------------------------------------------------------------------------
 //
-// Public route entry point for the SisiMove landing experience.
+// Root public entry point for the sisiMove marketplace.
 //
-// Responsibilities:
-// - Read public landing-page URL search parameters.
-// - Normalize the Journey search criteria.
-// - Pass valid search criteria into the landing composition.
+// The root route intentionally contains no marketplace data-fetching,
+// filtering, sorting, or presentation logic. Those responsibilities belong to
+// the Public Marketplace application boundary and its presentation components.
 //
-// Architectural boundary:
-// - This page does not fetch Journeys.
-// - This page does not search or filter Journey data.
-// - This page does not own discovery state.
-// - Journey retrieval remains inside TravellerDiscoveryContent through the
-//   existing Journey feature hook and API.
+// Flow:
 //
-// Search flow:
+//   /
+//    │
+//    ▼
+//   PublicMarketplaceContent
+//    │
+//    ├── owns marketplace query state
+//    ├── composes public Journey + Journey Demand data
+//    ├── resolves marketplace actions/routes
+//    │
+//    ▼
+//   LandingPage
+//    │
+//    ├── Hero
+//    ├── Marketplace
+//    ├── Create Demand CTA
+//    ├── Publish Journey CTA
+//    └── How It Works
 //
-// /?from=Nairobi&to=Kisumu&date=2026-09-15
-//      │
-//      ▼
-// HomePage
-//      │
-//      ▼
-// LandingPage
-//      │
-//      ▼
-// TravellerDiscoveryContent
-//      │
-//      ▼
-// useJourneys.search()
-//      │
-//      ▼
-// GET /journeys/search
-//
+// Keeping this route thin allows the App Router to remain a routing boundary
+// while the marketplace feature owns its application behavior.
 // -----------------------------------------------------------------------------
 
-import { LandingPage } from '@/components/landing';
+import { PublicMarketplaceContent } from '@/components/landing/marketplace/public-marketplace-content';
 
-// -----------------------------------------------------------------------------
-// Types
-// -----------------------------------------------------------------------------
-
-interface HomePageSearchParams {
-  from?: string | string[];
-  to?: string | string[];
-  date?: string | string[];
-}
-
-interface HomePageProps {
-  searchParams: Promise<HomePageSearchParams>;
-}
-
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
-
-function getSearchParameter(
-  value: string | string[] | undefined,
-): string | undefined {
-  if (Array.isArray(value)) {
-    return value[0]?.trim() || undefined;
-  }
-
-  return value?.trim() || undefined;
-}
-
-// -----------------------------------------------------------------------------
-// Page
-// -----------------------------------------------------------------------------
-
-export default async function HomePage({
-  searchParams,
-}: HomePageProps) {
-  const params = await searchParams;
-
-  const from = getSearchParameter(params.from);
-  const to = getSearchParameter(params.to);
-  const date = getSearchParameter(params.date);
-
-  const searchValues =
-    from && to && date
-      ? {
-          from,
-          to,
-          date,
-        }
-      : undefined;
-
-  return (
-    <LandingPage
-      searchValues={searchValues}
-    />
-  );
+export default function Page() {
+  return <PublicMarketplaceContent />;
 }
 

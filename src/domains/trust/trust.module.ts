@@ -93,6 +93,7 @@ import {
 // -----------------------------------------------------------------------------
 
 import {
+  GetPublicTrustProfileByMemberQueryHandler,
   GetTrustProfileBadgeQueryHandler,
   GetTrustProfileBadgesQueryHandler,
   GetTrustProfileByMemberQueryHandler,
@@ -104,9 +105,37 @@ import {
   GetTrustProfileReviewsQueryHandler,
 } from './application/query-handlers/trust-profile';
 
-// -----------------------------------------------------------------------------
-// Module
-// -----------------------------------------------------------------------------
+// =============================================================================
+// Trust Module
+// =============================================================================
+//
+// The Trust bounded context owns:
+//
+// - Trust Profile;
+// - Trust Ratings;
+// - Trust Reviews;
+// - Trust Profile Badges;
+// - Trust Badge catalogue;
+// - Trust verification;
+// - Trust journey projections;
+// - Trust dispute projections.
+//
+// The public marketplace Trust representation is implemented as a dedicated
+// application query handler:
+//
+//     GetPublicTrustProfileByMemberQueryHandler
+//
+// It is intentionally registered under:
+//
+//     GET_PUBLIC_BY_MEMBER_PUBLIC_ID
+//
+// The handler composes a reduced public Trust result and may use Asset's public
+// asset-reference capability for badge artwork.
+//
+// The module therefore only needs to wire the handler to its existing token.
+// No separate public Trust module, projection module, or repository is needed.
+//
+// =============================================================================
 
 @Module({
   // ===========================================================================
@@ -394,6 +423,24 @@ import {
       useClass: GetTrustProfileByMemberQueryHandler,
     },
 
+    // =========================================================================
+    // Trust Profile — Public Marketplace Query
+    // =========================================================================
+    //
+    // This is the reduced public Trust read capability consumed by anonymous
+    // marketplace experiences.
+    //
+    // The handler is intentionally separate from the broad Trust Profile query
+    // handler because the public contract has different exposure rules.
+    //
+    // =========================================================================
+
+    {
+      provide:
+        TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_PUBLIC_BY_MEMBER_PUBLIC_ID,
+      useClass: GetPublicTrustProfileByMemberQueryHandler,
+    },
+
     {
       provide: TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_RATINGS,
       useClass: GetTrustProfileRatingsQueryHandler,
@@ -533,6 +580,17 @@ import {
 
     TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET,
     TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_BY_MEMBER_PUBLIC_ID,
+
+    // =========================================================================
+    // Public Marketplace Query Token
+    // =========================================================================
+    //
+    // Exported because other bounded contexts/read compositions may consume
+    // the public Trust query capability through the Trust module boundary.
+    //
+    // =========================================================================
+
+    TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_PUBLIC_BY_MEMBER_PUBLIC_ID,
 
     TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_RATINGS,
     TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_RATING,

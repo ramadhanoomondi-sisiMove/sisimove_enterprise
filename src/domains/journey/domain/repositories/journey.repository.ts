@@ -27,7 +27,6 @@ import type { JourneyAssetEntity } from '../entities/journey-asset.entity';
 import type { JourneyId } from '../value-objects/journey-id.vo';
 import type { JourneyPublicId } from '../value-objects/journey-public-id.vo';
 import type { JourneyProviderPublicId } from '../value-objects/journey-provider-public-id.vo';
-
 import type { JourneyStatusValueObject } from '../value-objects/journey-status.vo';
 
 // -----------------------------------------------------------------------------
@@ -171,12 +170,20 @@ export interface JourneyRepository {
   // ===========================================================================
   // Journey Queries
   // ===========================================================================
+
+  /**
+   * Find published Journeys matching a route and departure-date window.
+   *
+   * The supplied dates represent an absolute time range constructed by the
+   * application layer from the requested calendar date.
+   */
   findPublishedJourneysByRouteAndDate(
     origin: string,
     destination: string,
     departureFrom: Date,
     departureTo: Date,
   ): Promise<JourneyEntity[]>;
+
   /**
    * Find only the Journey entity by internal identifier.
    */
@@ -184,8 +191,26 @@ export interface JourneyRepository {
 
   /**
    * Find only the Journey entity by public identifier.
+   *
+   * This is a general Journey lookup and does not imply that the Journey is
+   * publicly discoverable.
    */
   findJourneyByPublicId(
+    publicId: JourneyPublicId,
+  ): Promise<JourneyEntity | null>;
+
+  /**
+   * Find only a publicly discoverable Journey by public identifier.
+   *
+   * Public visibility is enforced by the repository implementation.
+   *
+   * A Journey that exists but is not currently publicly discoverable must
+   * therefore be returned as null.
+   *
+   * This method intentionally remains separate from findJourneyByPublicId()
+   * because a public identifier does not imply public visibility.
+   */
+  findPublicJourneyByPublicId(
     publicId: JourneyPublicId,
   ): Promise<JourneyEntity | null>;
 
@@ -196,6 +221,9 @@ export interface JourneyRepository {
     providerPublicId: JourneyProviderPublicId,
   ): Promise<JourneyEntity[]>;
 
+  /**
+   * Find Journeys belonging to a provider.
+   */
   findJourneysByProvider(
     providerPublicId: JourneyProviderPublicId,
   ): Promise<JourneyEntity[]>;

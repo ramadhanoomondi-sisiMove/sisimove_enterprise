@@ -2,537 +2,273 @@
 // sisiMove — Landing Page
 // -----------------------------------------------------------------------------
 //
-// Top-level composition component for the public SisiMove landing experience.
+// Top-level composition component for the public sisiMove landing page.
 //
-// Responsibilities:
-// - Compose public landing sections.
-// - Provide public navigation between sections/pages.
-// - Accept externally controlled feature content.
-// - Pass public Journey search criteria into the discovery composition.
-// - Keep business and data-fetching concerns outside the presentation layer.
+// The landing page is the public entry point into the sisiMove journey market.
+// It presents the marketplace before the supporting calls to action and
+// explanatory content.
 //
-// This component does NOT:
-// - fetch data;
-// - manage authentication;
-// - create journeys;
-// - create journey demands;
-// - perform bookings;
-// - contain commercial logic;
-// - contain financial logic;
-// - search or filter Journeys.
+// The page follows the physical-market interaction model:
 //
-// Public Journey discovery and Journey Demand are composed through the
-// client-side TravellerDiscoveryDemandContent boundary.
+//     LANDING
+//         │
+//         ├── Journey Market introduction
+//         │
+//         ├── Marketplace
+//         │     ├── Journeys
+//         │     └── Journey Demand
+//         │
+//         ├── Create Travel Demand
+//         │
+//         ├── Publish Journey
+//         │
+//         └── How It Works
 //
-// Architectural boundary:
-// - LandingPage remains a Server Component.
-// - TravellerDiscoveryDemandContent is the client-side composition boundary
-//   for public Journey Discovery and Journey Demand.
-// - Search criteria cross this boundary as serializable data only.
-// - No event handlers, hooks, or discovery state cross this boundary.
+// Journey and Journey Demand remain independent feature domains.
 //
-// Public journey discovery means:
-// - display publicly available published journeys;
-// - allow visitors to inspect public journey information;
-// - keep journey discovery available before authentication;
-// - leave protected actions such as booking to the appropriate flow.
-//
-// Visual principles:
-// - One consistent page width.
-// - One consistent horizontal gutter.
-// - Compact but intentional vertical rhythm.
-// - Sections sit closer together so the page feels active and connected.
-// - Clear visual hierarchy without excessive empty space.
-// - Each major section owns its own presentation surface.
-// - Avoid nested cards and duplicated containers.
-// - Use shared SisiMove design tokens.
+// The landing page does not merge their domain logic. It composes the public
+// marketplace representation supplied by the application/read boundary and
+// presents the resulting marketplace alongside the surrounding landing-page
+// sections.
 //
 // -----------------------------------------------------------------------------
 //
-// Search flow:
+// Architectural responsibility
+// -----------------------------------------------------------------------------
 //
-// URL
-//   │
-//   │ from + to + date
-//   ▼
-// page.tsx
-//   │
-//   ▼
-// LandingPage
-//   │
-//   │ searchValues
-//   ▼
-// TravellerDiscoveryDemandContent
-//   │
-//   ▼
-// TravellerDiscoveryContent
-//   │
-//   ▼
-// useJourneys.search()
-//   │
-//   ▼
-// GET /journeys/search
-//   │
-//   ├── journeys found
-//   │
-//   └── no journeys
-//          │
-//          ▼
-//     JourneyDemandSection
+// LandingPage is intentionally a composition boundary.
+//
+// It is responsible for:
+//
+// - establishing the order of public landing sections;
+// - composing the existing landing presentation components;
+// - passing the prepared marketplace presentation contract to
+//   MarketplaceSection.
+//
+// It is NOT responsible for:
+//
+// - fetching marketplace data;
+// - owning marketplace query state;
+// - managing marketplace URL state;
+// - filtering or sorting marketplace data;
+// - constructing API requests;
+// - implementing Journey business rules;
+// - implementing Journey Demand business rules;
+// - determining booking eligibility;
+// - determining demand participation eligibility;
+// - constructing navigation URLs;
+// - communicating directly with the API.
+//
+// Those responsibilities belong to the appropriate route, application,
+// marketplace read-boundary, or feature layer.
+//
+// -----------------------------------------------------------------------------
+//
+// Semantic page boundary
+// -----------------------------------------------------------------------------
+//
+// The public route layout owns the document-level <main> element.
+//
+// LandingPage therefore renders only the page content and deliberately does
+// not introduce another <main> element. This prevents invalid nested <main>
+// landmarks when LandingPage is rendered inside the public layout.
+//
+// The resulting structure is:
+//
+//     Public Layout
+//         ├── SiteHeader
+//         ├── <main>
+//         │     └── LandingPage
+//         │           ├── LandingHero
+//         │           ├── MarketplaceSection
+//         │           ├── CreateDemandSection
+//         │           ├── PublishJourneySection
+//         │           └── HowItWorksSection
+//         └── SiteFooter
+//
+// -----------------------------------------------------------------------------
+//
+// Marketplace boundary
+// -----------------------------------------------------------------------------
+//
+// LandingPage deliberately does not know how the marketplace is retrieved or
+// how its query state is managed.
+//
+// It receives the complete MarketplaceSectionProps contract and passes that
+// contract directly to MarketplaceSection.
+//
+// This keeps the landing composition independent from:
+//
+// - marketplace transport;
+// - marketplace query orchestration;
+// - URL synchronization;
+// - request lifecycle management;
+// - Journey discovery implementation;
+// - Journey Demand discovery implementation.
+//
+// The marketplace therefore remains a replaceable presentation boundary within
+// the larger landing page.
+//
+// -----------------------------------------------------------------------------
+//
+// Visual composition
+// -----------------------------------------------------------------------------
+//
+// The global SiteHeader and SiteFooter are supplied by the public layout.
+//
+// LandingPage provides the page content between them:
+//
+//     LandingHero
+//         ↓
+//     MarketplaceSection
+//         ↓
+//     CreateDemandSection
+//         ↓
+//     PublishJourneySection
+//         ↓
+//     HowItWorksSection
+//
+// The marketplace intentionally appears immediately after the hero.
+//
+// Visitors should see the actual market before being asked to read supporting
+// explanation or choose a participation path.
+//
+// MarketplaceSection owns the marketplace presentation hierarchy:
+//
+//     THE JOURNEY MARKET
+//     See where people are going...
+//
+//     [ From ] [ To ] [ Date ] [ Filters ]
+//
+//     MARKET
+//     [ All ] [ Journeys ] [ Demand ]
+//     Showing what's available
+//
+//     Journey / Demand results
+//
+// The landing page does not duplicate any of that marketplace structure.
 //
 // -----------------------------------------------------------------------------
 
-import type { ReactNode } from 'react';
-
-import Link from 'next/link';
-
-import { cn } from '../../foundation/utils/cn';
-
-import { HeroSection } from './hero/hero-section';
+import { LandingHero } from '@/components/landing/hero';
 
 import {
-  TravellerDiscoveryDemandContent,
-  type TravellerDiscoveryContentProps,
-} from './travellers';
+  MarketplaceSection,
+  type MarketplaceSectionProps,
+} from '@/components/landing/marketplace';
 
-import { TrustSection } from './trust/trust-section';
+import {
+  CreateDemandSection,
+  PublishJourneySection,
+} from '@/components/landing/calls-to-action';
 
-import { HowItWorksSection } from './how-it-works';
-
-import { FindJourneySection } from './calls-to-action/find-journey-section';
-
-import { ShareJourneySection } from './calls-to-action/share-journey-section';
-
-import { CommunityCtaSection } from './calls-to-action/community-cta-section';
+import { HowItWorksSection } from '@/components/landing/how-it-works';
 
 // -----------------------------------------------------------------------------
-// Types
+// Props
+// -----------------------------------------------------------------------------
+//
+// MarketplaceSection is intentionally controlled.
+//
+// Reusing MarketplaceSectionProps prevents LandingPage from maintaining a
+// second marketplace contract that could drift from the actual marketplace
+// presentation boundary.
+//
+// The route/application/client boundary prepares this contract and supplies it
+// to LandingPage.
+//
 // -----------------------------------------------------------------------------
 
 export interface LandingPageProps {
-  /**
-   * Published Journey search criteria supplied by the public landing-page URL.
-   *
-   * The page route owns reading and normalizing URL search parameters.
-   * LandingPage only passes the resulting serializable criteria into the
-   * client-side discovery composition.
-   */
-  searchValues?: TravellerDiscoveryContentProps['searchValues'];
-
-  /**
-   * Optional content rendered before the landing page sections.
-   */
-  topContent?: ReactNode;
-
-  /**
-   * Optional content rendered between the hero and public Journey discovery.
-   */
-  afterHeroContent?: ReactNode;
-
-  /**
-   * Optional content rendered between public Journey discovery and
-   * Journey Demand.
-   *
-   * This content is composed inside TravellerDiscoveryDemandContent so the
-   * discovery-to-demand ordering remains inside the same client boundary.
-   */
-  afterDiscoveryContent?: ReactNode;
-
-  /**
-   * Replace the default Journey Demand section.
-   *
-   * The override is composed by TravellerDiscoveryDemandContent.
-   */
-  journeyDemandContent?: ReactNode;
-
-  /**
-   * Optional content rendered between Journey Demand and Trust.
-   */
-  afterJourneyDemandContent?: ReactNode;
-
-  /**
-   * Optional content rendered between Trust and How It Works.
-   */
-  afterTrustContent?: ReactNode;
-
-  /**
-   * Optional content rendered between How It Works and the calls to action.
-   */
-  afterHowItWorksContent?: ReactNode;
-
-  /**
-   * Optional content rendered after the CTA sections.
-   */
-  bottomContent?: ReactNode;
-
-  /**
-   * Replace the default public Journey discovery content.
-   *
-   * The default is TravellerDiscoveryContent, composed through
-   * TravellerDiscoveryDemandContent.
-   *
-   * This remains a ReactNode rather than a callback so the Server Component
-   * never receives or passes event handlers.
-   *
-   * When this override is supplied, the default TravellerDiscoveryContent is
-   * not rendered and searchValues are not applied to the override.
-   */
-  travellerDiscoveryContent?: ReactNode;
-
-  /**
-   * Replace the default Trust section.
-   */
-  trustContent?: ReactNode;
-
-  /**
-   * Replace the default How It Works section.
-   */
-  howItWorksContent?: ReactNode;
-
-  /**
-   * Replace the default Find a Journey CTA.
-   */
-  findJourneyContent?: ReactNode;
-
-  /**
-   * Replace the default Share a Journey CTA.
-   */
-  shareJourneyContent?: ReactNode;
-
-  /**
-   * Replace the default Community CTA.
-   */
-  communityContent?: ReactNode;
-
-  /**
-   * Additional classes applied to the page root.
-   */
-  className?: string;
+  marketplace: MarketplaceSectionProps;
 }
 
 // -----------------------------------------------------------------------------
-// Shared layout
-// -----------------------------------------------------------------------------
-
-/**
- * Single alignment grid used by landing sections owned by this component.
- *
- * TravellerDiscoveryDemandContent owns the Discovery and Journey Demand
- * section wrappers themselves because those sections form one client-side
- * composition boundary.
- */
-const sectionInnerClassName = cn(
-  'mx-auto w-full max-w-7xl',
-  'px-4 sm:px-6 lg:px-8',
-);
-
-/**
- * Standard section spacing.
- */
-const sectionClassName = cn(
-  'py-10 sm:py-12 lg:py-16',
-);
-
-/**
- * More compact spacing for the final conversion area.
- */
-const compactSectionClassName = cn(
-  'py-8 sm:py-10 lg:py-12',
-);
-
-// -----------------------------------------------------------------------------
-// Shared actions
-// -----------------------------------------------------------------------------
-
-const primaryActionClassName = cn(
-  'inline-flex items-center justify-center',
-  'min-h-11',
-  'rounded-[var(--radius-md)]',
-  'border border-transparent',
-  'bg-[var(--brand)]',
-  'px-5',
-  'text-sm font-semibold',
-  'whitespace-nowrap',
-  'select-none',
-  'text-[var(--brand-foreground)]',
-  'shadow-sm',
-  'transition-colors',
-  'duration-150',
-  'ease-out',
-  'hover:bg-[var(--brand-hover)]',
-  'hover:shadow-md',
-  'active:bg-[var(--brand-hover)]',
-  'focus-visible:outline-2',
-  'focus-visible:outline-[var(--brand)]',
-  'focus-visible:outline-offset-2',
-);
-
-const secondaryActionClassName = cn(
-  'inline-flex items-center justify-center',
-  'min-h-11',
-  'rounded-[var(--radius-md)]',
-  'border border-[var(--border-strong)]',
-  'bg-[var(--surface)]',
-  'px-5',
-  'text-sm font-semibold',
-  'whitespace-nowrap',
-  'select-none',
-  'text-[var(--foreground)]',
-  'shadow-sm',
-  'transition-colors',
-  'duration-150',
-  'ease-out',
-  'hover:bg-[var(--background-subtle)]',
-  'hover:shadow',
-  'active:bg-[var(--background-muted)]',
-  'focus-visible:outline-2',
-  'focus-visible:outline-[var(--brand)]',
-  'focus-visible:outline-offset-2',
-);
-
-// -----------------------------------------------------------------------------
-// Component
+// Landing Page
 // -----------------------------------------------------------------------------
 
 export function LandingPage({
-  searchValues,
-  topContent,
-  afterHeroContent,
-  afterDiscoveryContent,
-  journeyDemandContent,
-  afterJourneyDemandContent,
-  afterTrustContent,
-  afterHowItWorksContent,
-  bottomContent,
-  travellerDiscoveryContent,
-  trustContent,
-  howItWorksContent,
-  findJourneyContent,
-  shareJourneyContent,
-  communityContent,
-  className,
+  marketplace,
 }: LandingPageProps) {
   return (
-    <main
-      className={cn(
-        'min-h-screen',
-        'overflow-x-clip',
-        'bg-[var(--background)]',
-        'text-[var(--foreground)]',
-        className,
-      )}
-    >
+    <div className="w-full min-w-0">
       {/* ------------------------------------------------------------------- */}
-      {/* Application-level content                                           */}
-      {/* ------------------------------------------------------------------- */}
-
-      {topContent}
-
-      {/* ------------------------------------------------------------------- */}
-      {/* Hero                                                                */}
-      {/* ------------------------------------------------------------------- */}
-
-      <section className="relative">
-        <HeroSection />
-      </section>
-
-      {afterHeroContent}
-
-      {/* ------------------------------------------------------------------- */}
-      {/* Public Journey Discovery + Journey Demand                           */}
+      {/* Journey Market introduction                                         */}
       {/* ------------------------------------------------------------------- */}
       {/*
-       * Discovery and Journey Demand intentionally remain inside the same
-       * client-side composition boundary.
+       * LandingHero establishes the public marketplace proposition.
        *
-       * TravellerDiscoveryContent owns:
-       * - public Journey loading;
-       * - public Journey search;
-       * - public Journey Demand loading;
-       * - empty-search detection.
-       *
-       * TravellerDiscoveryDemandContent owns:
-       * - the client-side bridge between discovery and demand;
-       * - the exact empty-search context;
-       * - presentation of the Journey Demand conversion section.
-       *
-       * It also owns the visual wrappers for these two sections. LandingPage
-       * therefore does not add another section/container around them.
-       *
-       * This prevents duplicated gutters, borders, backgrounds, and vertical
-       * spacing while keeping the Server Component boundary intact.
+       * It does not fetch marketplace data or own marketplace state.
        */}
 
-      <TravellerDiscoveryDemandContent
-        searchValues={searchValues}
-        travellerDiscoveryContent={travellerDiscoveryContent}
-        afterDiscoveryContent={afterDiscoveryContent}
-        journeyDemandContent={journeyDemandContent}
-      />
-
-      {afterJourneyDemandContent}
+      <LandingHero />
 
       {/* ------------------------------------------------------------------- */}
-      {/* Trust                                                               */}
-      {/* ------------------------------------------------------------------- */}
-
-      <section
-        id="trust"
-        className={cn(
-          sectionClassName,
-          'border-b border-[var(--border)]',
-          'bg-[var(--surface)]',
-        )}
-      >
-        <div className={sectionInnerClassName}>
-          {trustContent ?? (
-            <TrustSection
-              actionContent={
-                <Link
-                  href="/how-it-works#trust"
-                  className={secondaryActionClassName}
-                >
-                  See how trust works
-                </Link>
-              }
-            />
-          )}
-        </div>
-      </section>
-
-      {afterTrustContent}
-
-      {/* ------------------------------------------------------------------- */}
-      {/* How It Works                                                        */}
+      {/* Primary marketplace discovery surface                               */}
       {/* ------------------------------------------------------------------- */}
       {/*
-       * HowItWorksSection owns the semantic section id and its internal
-       * presentation. LandingPage must not create another element with the
-       * same id.
+       * MarketplaceSection is the primary interaction surface of the
+       * landing page.
+       *
+       * The complete controlled marketplace presentation contract is passed
+       * through unchanged. LandingPage does not interpret marketplace state
+       * or implement marketplace behavior.
+       *
+       * MarketplaceSection owns the presentation of:
+       *
+       * - refinement controls;
+       * - marketplace stream navigation;
+       * - loading state;
+       * - error state;
+       * - empty state;
+       * - Journey results;
+       * - Journey Demand results.
+       *
+       * Marketplace pagination is intentionally not part of this contract.
+       * The current marketplace composition is based on independent Journey
+       * and Journey Demand collections and does not expose a unified
+       * pagination model.
        */}
 
-      <section
-        className={cn(
-          sectionClassName,
-          'border-b border-[var(--border)]',
-          'bg-[var(--background-subtle)]',
-        )}
-      >
-        <div className={sectionInnerClassName}>
-          {howItWorksContent ?? (
-            <HowItWorksSection />
-          )}
-        </div>
-      </section>
-
-      {afterHowItWorksContent}
+      <MarketplaceSection {...marketplace} />
 
       {/* ------------------------------------------------------------------- */}
-      {/* Final Conversion Area                                               */}
+      {/* Demand-side marketplace participation                               */}
       {/* ------------------------------------------------------------------- */}
       {/*
-       * Each CTA section owns its own presentation surface.
+       * Provides the visitor with a path forward when the Journey they need
+       * is not currently available.
        *
-       * Do not wrap these components in another card or border here. The
-       * landing page only controls their shared alignment and spacing.
+       * The CTA does not alter marketplace state itself. Its destination and
+       * interaction behavior belong to the surrounding route/application
+       * layer.
        */}
 
-      <section
-        className={cn(
-          compactSectionClassName,
-          'bg-[var(--surface)]',
-        )}
-      >
-        <div className={sectionInnerClassName}>
-          {/* ---------------------------------------------------------------- */}
-          {/* Find a Journey                                                   */}
-          {/* ---------------------------------------------------------------- */}
-
-          <div>
-            {findJourneyContent ?? (
-              <FindJourneySection
-                actionContent={
-                  <Link
-                    href="/#journeys"
-                    className={primaryActionClassName}
-                  >
-                    Find a journey
-                  </Link>
-                }
-                secondaryContent={
-                  <Link
-                    href="/#journeys"
-                    className={secondaryActionClassName}
-                  >
-                    Explore journeys
-                  </Link>
-                }
-              />
-            )}
-          </div>
-
-          {/* ---------------------------------------------------------------- */}
-          {/* Share a Journey                                                  */}
-          {/* ---------------------------------------------------------------- */}
-
-          <div className="mt-5 sm:mt-6">
-            {shareJourneyContent ?? (
-              <ShareJourneySection
-                actionContent={
-                  <Link
-                    href="/"
-                    className={primaryActionClassName}
-                  >
-                    Share your journey
-                  </Link>
-                }
-                secondaryContent={
-                  <Link
-                    href="/how-it-works"
-                    className={secondaryActionClassName}
-                  >
-                    How it works
-                  </Link>
-                }
-              />
-            )}
-          </div>
-
-          {/* ---------------------------------------------------------------- */}
-          {/* Community                                                        */}
-          {/* ---------------------------------------------------------------- */}
-
-          <div className="mt-5 sm:mt-6">
-            {communityContent ?? (
-              <CommunityCtaSection
-                actionContent={
-                  <Link
-                    href="/"
-                    className={primaryActionClassName}
-                  >
-                    Join SisiMove
-                  </Link>
-                }
-                secondaryContent={
-                  <Link
-                    href="/how-it-works"
-                    className={secondaryActionClassName}
-                  >
-                    Learn how it works
-                  </Link>
-                }
-              />
-            )}
-          </div>
-        </div>
-      </section>
+      <CreateDemandSection />
 
       {/* ------------------------------------------------------------------- */}
-      {/* Application-level bottom content                                    */}
+      {/* Supply-side marketplace participation                               */}
       {/* ------------------------------------------------------------------- */}
+      {/*
+       * Provides the visitor with a path to publish available seats after
+       * seeing the existing marketplace.
+       */}
 
-      {bottomContent}
-    </main>
+      <PublishJourneySection />
+
+      {/* ------------------------------------------------------------------- */}
+      {/* How It Works                                                         */}
+      {/* ------------------------------------------------------------------- */}
+      {/*
+       * Supporting explanation intentionally follows the marketplace and
+       * participation CTAs.
+       *
+       * The visitor first sees what is available, then sees how they can
+       * participate, and only then receives the explanatory workflow.
+       */}
+
+      <HowItWorksSection />
+    </div>
   );
 }
 

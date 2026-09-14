@@ -2,308 +2,219 @@
 // sisiMove — How It Works Section
 // -----------------------------------------------------------------------------
 //
-// Public presentation section explaining the core SisiMove journey.
+// Public landing-page explanation of how the sisiMove journey marketplace
+// works.
 //
-// Responsibilities:
-// - Present the "How SisiMove Works" section.
-// - Render the section header.
-// - Render the ordered journey steps.
-// - Allow presentation content to be overridden by the caller.
+// The section explains both marketplace paths:
 //
-// This component does NOT:
-// - fetch data;
-// - manage authentication;
+//     EXISTING SUPPLY
+//     Browse → Book → Travel
+//
+//     EXISTING NEED
+//     Create Demand → Join → Provider Publishes → Travel
+//
+// This component is presentation-only.
+//
+// It does not:
+// - fetch marketplace data;
 // - create journeys;
-// - create journey demands;
+// - create demands;
 // - perform bookings;
-// - contain domain/application logic.
-//
-// Layout note:
-// - The landing page owns the global page container.
-// - This component therefore does not introduce a second page-container
-//   abstraction.
-// - This component owns the semantic <ol>/<li> structure.
-// - HowItWorksStep owns only the internal presentation of an individual step.
-// - Styling uses the shared SisiMove design tokens.
+// - perform authentication.
 //
 // -----------------------------------------------------------------------------
 
-import type {
-  HTMLAttributes,
-  ReactNode,
-} from 'react';
-
-import { cn } from '../../../foundation/utils/cn';
-
-import {
-  HowItWorksStep,
-  type HowItWorksStepProps,
-} from './how-it-works-step';
+import Link from "next/link";
 
 // -----------------------------------------------------------------------------
-// Types
+// Props
 // -----------------------------------------------------------------------------
 
-export interface HowItWorksSectionStep
-  extends Pick<
-    HowItWorksStepProps,
-    | 'step'
-    | 'title'
-    | 'description'
-    | 'leadingContent'
-    | 'trailingContent'
-  > {
+export interface HowItWorksSectionProps {
   /**
-   * Stable identifier used as the React list key.
+   * Destination for creating a Journey Demand.
    */
-  id: string;
+  createDemandHref?: string;
+
+  /**
+   * Destination for publishing a Journey.
+   */
+  publishJourneyHref?: string;
+
+  /**
+   * Optional additional class name.
+   */
+  className?: string;
 }
-
-export interface HowItWorksSectionProps
-  extends Omit<
-    HTMLAttributes<HTMLElement>,
-    'children' | 'title' | 'content'
-  > {
-  /**
-   * Optional custom section header.
-   *
-   * When supplied, the caller is responsible for rendering the heading.
-   */
-  headerContent?: ReactNode;
-
-  /**
-   * Section eyebrow.
-   */
-  eyebrow?: ReactNode;
-
-  /**
-   * Section heading.
-   */
-  title?: ReactNode;
-
-  /**
-   * Optional supporting description.
-   */
-  description?: ReactNode;
-
-  /**
-   * Steps displayed in order.
-   */
-  steps?: readonly HowItWorksSectionStep[];
-
-  /**
-   * Optional content displayed below the steps.
-   */
-  bottomContent?: ReactNode;
-
-  /**
-   * Heading id used by the default section header.
-   *
-   * Custom header content should use the same id when it renders
-   * the section heading.
-   */
-  headingId?: string;
-
-  /**
-   * Optional override for the section's main content area.
-   *
-   * When supplied, the default ordered step list is not rendered.
-   */
-  content?: ReactNode;
-}
-
-// -----------------------------------------------------------------------------
-// Defaults
-// -----------------------------------------------------------------------------
-
-const DEFAULT_EYEBROW = 'HOW SISIMOVE WORKS';
-
-const DEFAULT_TITLE =
-  'Travel together in three simple steps.';
-
-const DEFAULT_HEADING_ID = 'how-it-works-heading';
-
-const DEFAULT_STEPS: readonly HowItWorksSectionStep[] = [
-  {
-    id: 'find-people',
-    step: '01',
-    title: 'Find people going your way',
-    description:
-      'Search routes and discover travellers heading in the same direction.',
-  },
-  {
-    id: 'get-to-know-them',
-    step: '02',
-    title: 'Get to know them & their journey',
-    description:
-      'See their profile, trust signals and journey before you decide to connect.',
-  },
-  {
-    id: 'share-the-journey',
-    step: '03',
-    title: 'Share the journey',
-    description:
-      'Book, join or share a journey and travel together.',
-  },
-];
 
 // -----------------------------------------------------------------------------
 // Component
 // -----------------------------------------------------------------------------
 
 export function HowItWorksSection({
-  headerContent,
-  eyebrow = DEFAULT_EYEBROW,
-  title = DEFAULT_TITLE,
-  description,
-  steps = DEFAULT_STEPS,
-  bottomContent,
-  headingId = DEFAULT_HEADING_ID,
-  content,
+  createDemandHref = "/demands/create",
+  publishJourneyHref = "/journeys/create",
   className,
-  ...props
 }: HowItWorksSectionProps) {
-  const hasCustomHeader = headerContent !== undefined;
-
   return (
     <section
-      id="how-it-works"
-      aria-labelledby={
-        hasCustomHeader
-          ? undefined
-          : headingId
-      }
-      aria-label={
-        hasCustomHeader
-          ? 'How SisiMove works'
-          : undefined
-      }
-      className={cn(
-        'w-full',
+      className={[
+        "border-t border-border px-6 py-16 sm:py-20",
         className,
-      )}
-      {...props}
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      aria-labelledby="how-it-works-heading"
     >
-      {/* ------------------------------------------------------------------- */}
-      {/* Header                                                              */}
-      {/* ------------------------------------------------------------------- */}
+      <div className="mx-auto max-w-6xl">
+        {/* ----------------------------------------------------------------- */}
+        {/* Section heading                                                   */}
+        {/* ----------------------------------------------------------------- */}
 
-      {headerContent ?? (
-        <div className="mx-auto w-full max-w-3xl text-center">
-          {eyebrow ? (
-            <p
-              className={[
-                'text-[11px]',
-                'font-bold',
-                'uppercase',
-                'tracking-[0.18em]',
-                'text-[var(--brand)]',
-              ].join(' ')}
-            >
-              {eyebrow}
-            </p>
-          ) : null}
+        <div className="mx-auto max-w-2xl text-center">
+          <p className="text-sm font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            How it works
+          </p>
 
           <h2
-            id={headingId}
-            className={[
-              'mt-3',
-              'text-3xl',
-              'font-bold',
-              'leading-tight',
-              'tracking-tight',
-              'text-[var(--foreground)]',
-              'sm:text-4xl',
-            ].join(' ')}
+            id="how-it-works-heading"
+            className="mt-3 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl"
           >
-            {title}
+            See, match, travel.
           </h2>
 
-          {description ? (
-            <p
-              className={[
-                'mx-auto',
-                'mt-4',
-                'max-w-2xl',
-                'text-base',
-                'leading-7',
-                'text-[var(--foreground-secondary)]',
-              ].join(' ')}
-            >
-              {description}
+          <p className="mt-4 text-base leading-7 text-muted-foreground">
+            Browse what is already available, find people travelling the same
+            way, and turn shared travel plans into real journeys.
+          </p>
+        </div>
+
+        {/* ----------------------------------------------------------------- */}
+        {/* Primary marketplace flow                                          */}
+        {/* ----------------------------------------------------------------- */}
+
+        <div className="mt-12 grid gap-8 md:grid-cols-3">
+          <HowItWorksStep
+            number="01"
+            title="See"
+            description="Browse published journeys and travel demands already visible in the market."
+          />
+
+          <HowItWorksStep
+            number="02"
+            title="Match"
+            description="Book an available seat or join a travel demand that matches where you want to go."
+          />
+
+          <HowItWorksStep
+            number="03"
+            title="Travel"
+            description="Meet, board, and travel together once the journey is arranged."
+          />
+        </div>
+
+        {/* ----------------------------------------------------------------- */}
+        {/* Two marketplace paths                                             */}
+        {/* ----------------------------------------------------------------- */}
+
+        <div className="mt-14 grid gap-6 md:grid-cols-2">
+          {/* Supply path --------------------------------------------------- */}
+
+          <div className="rounded-2xl border border-border bg-background p-6 sm:p-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Already travelling?
             </p>
-          ) : null}
-        </div>
-      )}
 
-      {/* ------------------------------------------------------------------- */}
-      {/* Main content                                                        */}
-      {/* ------------------------------------------------------------------- */}
+            <h3 className="mt-3 text-xl font-semibold tracking-tight text-foreground">
+              Share the journey you are already making.
+            </h3>
 
-      {content ?? (
-        steps.length > 0 ? (
-          <ol
-            aria-label="How SisiMove works"
-            className={[
-              'mx-auto',
-              'mt-12',
-              'grid',
-              'w-full',
-              'max-w-6xl',
-              'gap-10',
-              'md:grid-cols-3',
-              'md:gap-8',
-              'lg:gap-12',
-            ].join(' ')}
-          >
-            {steps.map((item, index) => (
-              <li
-                key={item.id}
-                className="relative min-w-0"
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              Publish your journey, make your available seats discoverable, and
+              let travellers going the same way book them.
+            </p>
+
+            <div className="mt-6">
+              <Link
+                href={publishJourneyHref}
+                className="inline-flex min-h-10 items-center justify-center rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               >
-                <HowItWorksStep
-                  step={item.step}
-                  title={item.title}
-                  description={item.description}
-                  leadingContent={item.leadingContent}
-                  trailingContent={item.trailingContent}
-                />
+                Publish a journey
+              </Link>
+            </div>
+          </div>
 
-                {/* --------------------------------------------------------- */}
-                {/* Desktop connector                                        */}
-                {/* --------------------------------------------------------- */}
+          {/* Demand path --------------------------------------------------- */}
 
-                {index < steps.length - 1 ? (
-                  <div
-                    aria-hidden="true"
-                    className={[
-                      'pointer-events-none',
-                      'absolute',
-                      'left-[calc(100%+1rem)]',
-                      'top-6',
-                      'hidden',
-                      'h-px',
-                      'w-4',
-                      'bg-[var(--border)]',
-                      'lg:block',
-                    ].join(' ')}
-                  />
-                ) : null}
-              </li>
-            ))}
-          </ol>
-        ) : null
-      )}
+          <div className="rounded-2xl border border-border bg-background p-6 sm:p-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Need a journey?
+            </p>
 
-      {/* ------------------------------------------------------------------- */}
-      {/* Bottom content                                                      */}
-      {/* ------------------------------------------------------------------- */}
+            <h3 className="mt-3 text-xl font-semibold tracking-tight text-foreground">
+              Make your travel need visible.
+            </h3>
 
-      {bottomContent ? (
-        <div className="mt-10 flex justify-center">
-          {bottomContent}
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              Create a travel demand, let other travellers join the plan, and
+              give potential providers a clear opportunity to make the
+              journey.
+            </p>
+
+            <div className="mt-6">
+              <Link
+                href={createDemandHref}
+                className="inline-flex min-h-10 items-center justify-center rounded-lg bg-foreground px-4 py-2.5 text-sm font-semibold text-background transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              >
+                Create travel demand
+              </Link>
+            </div>
+          </div>
         </div>
-      ) : null}
+
+        {/* ----------------------------------------------------------------- */}
+        {/* Marketplace loop                                                   */}
+        {/* ----------------------------------------------------------------- */}
+
+        <div className="mt-12 rounded-2xl border border-border bg-muted/30 px-6 py-8 text-center sm:px-8">
+          <p className="text-sm font-medium text-muted-foreground">
+            When demand becomes visible, a provider can see the opportunity,
+            publish a journey, and bring new supply back into the market.
+          </p>
+        </div>
+      </div>
     </section>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// How It Works Step
+// -----------------------------------------------------------------------------
+
+interface HowItWorksStepProps {
+  number: string;
+  title: string;
+  description: string;
+}
+
+function HowItWorksStep({
+  number,
+  title,
+  description,
+}: HowItWorksStepProps) {
+  return (
+    <div className="text-center">
+      <span className="text-xs font-semibold tracking-[0.12em] text-muted-foreground">
+        {number}
+      </span>
+
+      <h3 className="mt-2 text-lg font-semibold text-foreground">
+        {title}
+      </h3>
+
+      <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
+        {description}
+      </p>
+    </div>
   );
 }

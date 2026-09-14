@@ -55,11 +55,7 @@
 //
 // This entity does NOT:
 //
-// - access the filesystem;
-// - access AWS S3;
-// - access Cloudinary;
-// - access Google Cloud Storage;
-// - access Azure Blob Storage;
+// - access physical storage;
 // - upload physical files;
 // - delete physical files;
 // - generate public URLs;
@@ -67,8 +63,7 @@
 // - inspect file contents;
 // - detect MIME types;
 // - hash files;
-// - process images;
-// - process videos;
+// - process media;
 // - persist itself;
 // - access Prisma;
 // - communicate with external systems;
@@ -105,33 +100,8 @@
 //
 // DELETED is terminal.
 //
-// The entity does not perform physical storage operations while changing
-// lifecycle state. It records the domain state only.
-//
-// -----------------------------------------------------------------------------
-//
-// Ownership:
-//
-// ownerIdentityPublicId is optional because the persistence model permits
-// ownerIdentityId to be nullable.
-//
-// When present, the value is an opaque reference to the Identity aggregate.
-// The Asset domain does not load or mutate the referenced Identity.
-//
-// -----------------------------------------------------------------------------
-//
-// File metadata:
-//
-// originalFilename is optional because the persistence model permits null.
-//
-// mimeType and sizeBytes are required.
-//
-// Storage metadata:
-//
-// storageProvider, bucket, and objectKey are required.
-//
-// objectKey identifies the physical object in storage and is distinct from
-// AssetPublicId.
+// The entity records lifecycle state only. It never performs physical
+// storage operations.
 //
 // -----------------------------------------------------------------------------
 
@@ -190,9 +160,6 @@ import type { AssetSizeBytes } from '../value-objects/asset-size-bytes.vo';
 export interface AssetProps {
   /**
    * Opaque public reference to the Identity that owns the Asset.
-   *
-   * Optional because the persistence model permits an Asset without a current
-   * owner.
    */
   ownerIdentityPublicId: AssetIdentityPublicId | undefined;
 
@@ -233,8 +200,6 @@ export interface AssetProps {
 
   /**
    * Original filename supplied for the Asset.
-   *
-   * Optional because the persistence model permits null.
    */
   originalFilename: AssetOriginalFilename | undefined;
 
@@ -296,11 +261,11 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   // ===========================================================================
 
   /**
-   * Creates a new Asset entity.
+   * Creates a new Asset.
    *
-   * A newly created Asset begins in UPLOADING state.
+   * A new Asset always begins in UPLOADING state.
    *
-   * The physical object does not need to have been successfully stored yet.
+   * Physical storage is intentionally not performed here.
    */
   public static create(
     ownerIdentityPublicId: AssetIdentityPublicId | undefined,
@@ -316,21 +281,13 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
     createdAt: Date = new Date(),
   ): AssetEntity {
     AssetEntity.ensureType(type);
-
     AssetEntity.ensureCategory(category);
-
     AssetEntity.ensureVisibility(visibility);
-
     AssetEntity.ensureStorageProvider(storageProvider);
-
     AssetEntity.ensureBucket(bucket);
-
     AssetEntity.ensureObjectKey(objectKey);
-
     AssetEntity.ensureMimeType(mimeType);
-
     AssetEntity.ensureSizeBytes(sizeBytes);
-
     AssetEntity.ensureValidDate(createdAt, 'creation date');
 
     const timestamp = AssetEntity.cloneDate(createdAt);
@@ -385,7 +342,7 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   // ===========================================================================
 
   /**
-   * Rehydrates a persisted Asset entity.
+   * Rehydrates a persisted Asset.
    *
    * Rehydration never emits domain events.
    */
@@ -413,25 +370,16 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
     }
 
     AssetEntity.ensureType(props.type);
-
     AssetEntity.ensureCategory(props.category);
-
     AssetEntity.ensureStatus(props.status);
-
     AssetEntity.ensureVisibility(props.visibility);
-
     AssetEntity.ensureStorageProvider(props.storageProvider);
-
     AssetEntity.ensureBucket(props.bucket);
-
     AssetEntity.ensureObjectKey(props.objectKey);
-
     AssetEntity.ensureMimeType(props.mimeType);
-
     AssetEntity.ensureSizeBytes(props.sizeBytes);
 
     AssetEntity.ensureValidDate(props.createdAt, 'creation date');
-
     AssetEntity.ensureValidDate(props.updatedAt, 'updated date');
 
     if (props.updatedAt.getTime() < props.createdAt.getTime()) {
@@ -441,9 +389,7 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
     }
 
     AssetEntity.ensureOptionalDate(props.uploadedAt, 'uploaded date');
-
     AssetEntity.ensureOptionalDate(props.archivedAt, 'archived date');
-
     AssetEntity.ensureOptionalDate(props.deletedAt, 'deleted date');
 
     const entity = new AssetEntity(
@@ -495,23 +441,14 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   // Identity
   // ===========================================================================
 
-  /**
-   * Public identity of the Asset entity.
-   */
   public override get publicId(): AssetPublicId {
     return super.publicId;
   }
 
-  /**
-   * Opaque public reference to the Identity that owns the Asset.
-   */
   public get ownerIdentityPublicId(): AssetIdentityPublicId | undefined {
     return this.props.ownerIdentityPublicId;
   }
 
-  /**
-   * Determines whether this Asset belongs to the supplied Identity.
-   */
   public belongsToIdentity(identityPublicId: AssetIdentityPublicId): boolean {
     if (identityPublicId === undefined) {
       return false;
@@ -524,19 +461,10 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
     return this.props.ownerIdentityPublicId.equals(identityPublicId);
   }
 
-  /**
-   * Determines whether the Asset currently has an owner.
-   */
   public hasOwner(): boolean {
     return this.props.ownerIdentityPublicId !== undefined;
   }
 
-  /**
-   * Assigns an Identity as the owner of the Asset.
-   *
-   * This changes ownership metadata only. It does not validate the referenced
-   * Identity because Identity is owned by another aggregate/domain.
-   */
   public assignOwner(identityPublicId: AssetIdentityPublicId): void {
     if (identityPublicId === undefined) {
       throw new AssetException(
@@ -558,11 +486,6 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
     this.touch();
   }
 
-  /**
-   * Removes the current Identity owner.
-   *
-   * This mirrors the nullable owner relation in persistence.
-   */
   public removeOwner(): void {
     this.ensureMutable();
 
@@ -579,16 +502,10 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   // Classification
   // ===========================================================================
 
-  /**
-   * Current Asset type.
-   */
   public get type(): AssetType {
     return this.props.type;
   }
 
-  /**
-   * Changes the Asset type.
-   */
   public changeType(type: AssetType): void {
     AssetEntity.ensureType(type);
 
@@ -603,16 +520,10 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
     this.touch();
   }
 
-  /**
-   * Current Asset category.
-   */
   public get category(): AssetCategory {
     return this.props.category;
   }
 
-  /**
-   * Changes the Asset category.
-   */
   public changeCategory(category: AssetCategory): void {
     AssetEntity.ensureCategory(category);
 
@@ -631,64 +542,60 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   // Status
   // ===========================================================================
 
-  /**
-   * Current Asset lifecycle status.
-   */
   public get status(): AssetStatus {
     return this.props.status;
   }
 
-  /**
-   * Determines whether the Asset is uploading.
-   */
   public isUploading(): boolean {
     return this.props.status.isUploading();
   }
 
-  /**
-   * Determines whether the Asset has been uploaded.
-   */
   public isUploaded(): boolean {
     return this.props.status.isUploaded();
   }
 
-  /**
-   * Determines whether the Asset is ready for use.
-   */
   public isReady(): boolean {
     return this.props.status.isReady();
   }
 
-  /**
-   * Determines whether the Asset is archived.
-   */
   public isArchived(): boolean {
     return this.props.status.isArchived();
   }
 
-  /**
-   * Determines whether the Asset is deleted.
-   */
   public isDeleted(): boolean {
     return this.props.status.isDeleted();
   }
 
   /**
-   * Determines whether the Asset can currently be used.
-   *
-   * Only READY Assets are considered usable.
+   * An Asset is usable only when it has reached READY.
    */
   public isUsable(): boolean {
     return this.props.status.isUsable();
   }
 
   /**
-   * Marks the Asset as uploaded.
+   * Marks the Asset as physically uploaded.
    *
-   * The application layer must call this only after the physical object has
-   * been successfully stored by AssetStoragePort.
+   * Valid transition:
+   *
+   * UPLOADING → UPLOADED
+   *
+   * The application layer must invoke this only after AssetStoragePort
+   * successfully stores the physical object.
    */
   public markUploaded(uploadedAt: Date = new Date()): void {
+    if (this.isDeleted()) {
+      throw new AssetDeletedException(
+        'A deleted Asset cannot be marked as uploaded.',
+      );
+    }
+
+    if (this.isArchived()) {
+      throw new AssetArchivedException(
+        'An archived Asset cannot be marked as uploaded.',
+      );
+    }
+
     if (!this.isUploading()) {
       throw new AssetInvalidStatusException(
         'Only an uploading Asset can be marked as uploaded.',
@@ -715,12 +622,37 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   /**
    * Marks the Asset as ready for use.
    *
-   * READY represents successful completion of any required processing.
+   * Valid transition:
+   *
+   * UPLOADED → READY
+   *
+   * READY means that the Asset has successfully completed the Asset
+   * workflow required for the domain to consider it usable.
+   *
+   * No physical operation occurs here.
    */
   public markReady(): void {
+    if (this.isDeleted()) {
+      throw new AssetDeletedException(
+        'A deleted Asset cannot be marked as ready.',
+      );
+    }
+
+    if (this.isArchived()) {
+      throw new AssetArchivedException(
+        'An archived Asset cannot be marked as ready.',
+      );
+    }
+
     if (!this.isUploaded()) {
       throw new AssetInvalidStatusException(
         'Only an uploaded Asset can be marked as ready.',
+      );
+    }
+
+    if (this.props.uploadedAt === undefined) {
+      throw new AssetException(
+        'An Asset cannot be ready without an uploaded timestamp.',
       );
     }
 
@@ -732,15 +664,19 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   /**
    * Archives the Asset.
    *
-   * An archived Asset remains retained but is no longer active.
+   * Valid transition:
+   *
+   * READY → ARCHIVED
+   *
+   * An archived Asset remains retained but is no longer active or usable.
    */
   public archive(archivedAt: Date = new Date()): void {
-    if (this.isArchived()) {
-      return;
-    }
-
     if (this.isDeleted()) {
       throw new AssetDeletedException('A deleted Asset cannot be archived.');
+    }
+
+    if (this.isArchived()) {
+      return;
     }
 
     if (!this.isReady()) {
@@ -776,15 +712,30 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   }
 
   /**
-   * Marks the Asset as deleted.
+   * Deletes the Asset from the domain lifecycle.
    *
-   * Deletion is terminal.
+   * Valid transitions:
    *
-   * Physical storage deletion is intentionally outside this entity.
+   * UPLOADED  → DELETED
+   * READY     → DELETED
+   * ARCHIVED  → DELETED
+   *
+   * UPLOADING is intentionally not included here. An upload operation that
+   * never reached UPLOADED should be reconciled/cleaned up through the
+   * application workflow rather than pretending that an unuploaded Asset
+   * represents a deleted physical object.
+   *
+   * Physical storage deletion remains outside the entity.
    */
   public delete(deletedAt: Date = new Date()): void {
     if (this.isDeleted()) {
       return;
+    }
+
+    if (this.isUploading()) {
+      throw new AssetInvalidStatusException(
+        'An uploading Asset cannot be deleted through the Asset lifecycle.',
+      );
     }
 
     AssetEntity.ensureValidDate(deletedAt, 'deleted date');
@@ -826,30 +777,18 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   // Visibility
   // ===========================================================================
 
-  /**
-   * Current Asset visibility.
-   */
   public get visibility(): AssetVisibility {
     return this.props.visibility;
   }
 
-  /**
-   * Determines whether the Asset is public.
-   */
   public isPublic(): boolean {
     return this.props.visibility.isPublic();
   }
 
-  /**
-   * Determines whether the Asset is private.
-   */
   public isPrivate(): boolean {
     return this.props.visibility.isPrivate();
   }
 
-  /**
-   * Changes Asset visibility.
-   */
   public changeVisibility(visibility: AssetVisibility): void {
     AssetEntity.ensureVisibility(visibility);
 
@@ -868,19 +807,10 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   // Storage
   // ===========================================================================
 
-  /**
-   * Storage provider responsible for the physical Asset.
-   */
   public get storageProvider(): AssetStorageProvider {
     return this.props.storageProvider;
   }
 
-  /**
-   * Changes the storage provider reference.
-   *
-   * This changes metadata only. Actual object migration belongs to the
-   * application/infrastructure workflow.
-   */
   public changeStorageProvider(storageProvider: AssetStorageProvider): void {
     AssetEntity.ensureStorageProvider(storageProvider);
 
@@ -895,24 +825,22 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
     this.touch();
   }
 
-  /**
-   * Logical storage bucket.
-   */
   public get bucket(): AssetBucket {
     return this.props.bucket;
   }
 
-  /**
-   * Physical storage object key.
-   */
   public get objectKey(): AssetObjectKey {
     return this.props.objectKey;
   }
 
   /**
-   * Changes the physical storage reference.
+   * Changes the storage reference metadata.
    *
-   * Actual object movement or copying belongs to infrastructure.
+   * This does NOT migrate a physical object. Any actual migration must be
+   * orchestrated outside the entity.
+   *
+   * In normal operation this should be used only before the Asset has been
+   * uploaded, or as part of an explicit infrastructure migration workflow.
    */
   public changeStorageLocation(
     storageProvider: AssetStorageProvider,
@@ -920,17 +848,19 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
     objectKey: AssetObjectKey,
   ): void {
     AssetEntity.ensureStorageProvider(storageProvider);
-
     AssetEntity.ensureBucket(bucket);
-
     AssetEntity.ensureObjectKey(objectKey);
 
     this.ensureMutable();
 
+    if (!this.isUploading()) {
+      throw new AssetInvalidStatusException(
+        'Storage location can only be changed while an Asset is uploading.',
+      );
+    }
+
     this.props.storageProvider = storageProvider;
-
     this.props.bucket = bucket;
-
     this.props.objectKey = objectKey;
 
     this.touch();
@@ -940,23 +870,14 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   // File Metadata
   // ===========================================================================
 
-  /**
-   * Original filename supplied for the Asset.
-   */
   public get originalFilename(): AssetOriginalFilename | undefined {
     return this.props.originalFilename;
   }
 
-  /**
-   * MIME type of the Asset.
-   */
   public get mimeType(): AssetMimeType {
     return this.props.mimeType;
   }
 
-  /**
-   * Size of the Asset in bytes.
-   */
   public get sizeBytes(): AssetSizeBytes {
     return this.props.sizeBytes;
   }
@@ -964,7 +885,8 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   /**
    * Updates file metadata.
    *
-   * This is metadata only and does not modify the physical object.
+   * Metadata may be changed while the Asset is mutable. Physical content is
+   * not changed by this method.
    */
   public updateFileMetadata(
     mimeType: AssetMimeType,
@@ -972,15 +894,12 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
     originalFilename?: AssetOriginalFilename,
   ): void {
     AssetEntity.ensureMimeType(mimeType);
-
     AssetEntity.ensureSizeBytes(sizeBytes);
 
     this.ensureMutable();
 
     this.props.mimeType = mimeType;
-
     this.props.sizeBytes = sizeBytes;
-
     this.props.originalFilename = originalFilename;
 
     this.touch();
@@ -990,23 +909,14 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   // Lifecycle Timestamps
   // ===========================================================================
 
-  /**
-   * Timestamp at which the Asset was uploaded.
-   */
   public get uploadedAt(): Date | undefined {
     return AssetEntity.cloneOptionalDate(this.props.uploadedAt);
   }
 
-  /**
-   * Timestamp at which the Asset was archived.
-   */
   public get archivedAt(): Date | undefined {
     return AssetEntity.cloneOptionalDate(this.props.archivedAt);
   }
 
-  /**
-   * Timestamp at which the Asset was deleted.
-   */
   public get deletedAt(): Date | undefined {
     return AssetEntity.cloneOptionalDate(this.props.deletedAt);
   }
@@ -1015,20 +925,10 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   // Audit
   // ===========================================================================
 
-  /**
-   * Asset creation timestamp.
-   *
-   * Returns a defensive copy.
-   */
   public get createdAt(): Date {
     return AssetEntity.cloneDate(this.props.createdAt);
   }
 
-  /**
-   * Asset last-update timestamp.
-   *
-   * Returns a defensive copy.
-   */
   public get updatedAt(): Date {
     return AssetEntity.cloneDate(this.props.updatedAt);
   }
@@ -1040,7 +940,7 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   /**
    * Updates the persistence timestamp.
    *
-   * This is not a business state transition.
+   * This is deliberately not a domain state transition.
    */
   public setUpdatedAt(updatedAt: Date): void {
     AssetEntity.ensureValidDate(updatedAt, 'updated date');
@@ -1060,30 +960,18 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   // Invariants
   // ===========================================================================
 
-  /**
-   * Validates all Asset entity-level invariants.
-   */
   private validateInvariants(): void {
     AssetEntity.ensureType(this.props.type);
-
     AssetEntity.ensureCategory(this.props.category);
-
     AssetEntity.ensureStatus(this.props.status);
-
     AssetEntity.ensureVisibility(this.props.visibility);
-
     AssetEntity.ensureStorageProvider(this.props.storageProvider);
-
     AssetEntity.ensureBucket(this.props.bucket);
-
     AssetEntity.ensureObjectKey(this.props.objectKey);
-
     AssetEntity.ensureMimeType(this.props.mimeType);
-
     AssetEntity.ensureSizeBytes(this.props.sizeBytes);
 
     AssetEntity.ensureValidDate(this.props.createdAt, 'creation date');
-
     AssetEntity.ensureValidDate(this.props.updatedAt, 'updated date');
 
     if (this.props.updatedAt.getTime() < this.props.createdAt.getTime()) {
@@ -1105,9 +993,6 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   // Lifecycle Invariants
   // ===========================================================================
 
-  /**
-   * Validates lifecycle-related invariants.
-   */
   private static validateLifecycleState(props: AssetProps): void {
     const status = props.status.value;
 
@@ -1115,49 +1000,57 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
     // UPLOADING
     // -------------------------------------------------------------------------
 
-    if (status === AssetStatus.UPLOADING && props.uploadedAt !== undefined) {
-      throw new AssetException(
-        'Uploading Asset cannot have an uploaded timestamp.',
-      );
+    if (status === AssetStatus.UPLOADING) {
+      if (props.uploadedAt !== undefined) {
+        throw new AssetException(
+          'Uploading Asset cannot have an uploaded timestamp.',
+        );
+      }
+
+      if (props.archivedAt !== undefined) {
+        throw new AssetException(
+          'Uploading Asset cannot have an archived timestamp.',
+        );
+      }
+
+      if (props.deletedAt !== undefined) {
+        throw new AssetException(
+          'Uploading Asset cannot have a deleted timestamp.',
+        );
+      }
     }
 
     // -------------------------------------------------------------------------
     // UPLOADED
     // -------------------------------------------------------------------------
 
-    if (
-      (status === AssetStatus.UPLOADED ||
-        status === AssetStatus.READY ||
-        status === AssetStatus.ARCHIVED ||
-        status === AssetStatus.DELETED) &&
-      props.uploadedAt === undefined
-    ) {
+    if (status === AssetStatus.UPLOADED && props.uploadedAt === undefined) {
       throw new AssetException(
-        'Uploaded, ready, archived, or deleted Asset must have an uploaded timestamp.',
+        'Uploaded Asset must have an uploaded timestamp.',
       );
+    }
+
+    // -------------------------------------------------------------------------
+    // READY
+    // -------------------------------------------------------------------------
+
+    if (status === AssetStatus.READY && props.uploadedAt === undefined) {
+      throw new AssetException('Ready Asset must have an uploaded timestamp.');
     }
 
     // -------------------------------------------------------------------------
     // ARCHIVED
     // -------------------------------------------------------------------------
 
-    if (status === AssetStatus.ARCHIVED && props.archivedAt === undefined) {
+    if (status === AssetStatus.ARCHIVED && props.uploadedAt === undefined) {
       throw new AssetException(
-        'Archived Asset must have an archived timestamp.',
+        'Archived Asset must have an uploaded timestamp.',
       );
     }
 
-    // -------------------------------------------------------------------------
-    // NON-ARCHIVED
-    // -------------------------------------------------------------------------
-
-    if (
-      status !== AssetStatus.ARCHIVED &&
-      status !== AssetStatus.DELETED &&
-      props.archivedAt !== undefined
-    ) {
+    if (status === AssetStatus.ARCHIVED && props.archivedAt === undefined) {
       throw new AssetException(
-        'Only an archived or deleted Asset may retain an archived timestamp.',
+        'Archived Asset must have an archived timestamp.',
       );
     }
 
@@ -1169,11 +1062,31 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
       throw new AssetException('Deleted Asset must have a deleted timestamp.');
     }
 
+    if (status === AssetStatus.DELETED && props.uploadedAt === undefined) {
+      throw new AssetException(
+        'Deleted Asset must have an uploaded timestamp.',
+      );
+    }
+
     // -------------------------------------------------------------------------
-    // NON-DELETED
+    // Archived timestamp may only survive into DELETED.
     // -------------------------------------------------------------------------
 
-    if (status !== AssetStatus.DELETED && props.deletedAt !== undefined) {
+    if (
+      props.archivedAt !== undefined &&
+      status !== AssetStatus.ARCHIVED &&
+      status !== AssetStatus.DELETED
+    ) {
+      throw new AssetException(
+        'Only an archived or deleted Asset may have an archived timestamp.',
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Deleted timestamp is exclusive to DELETED.
+    // -------------------------------------------------------------------------
+
+    if (props.deletedAt !== undefined && status !== AssetStatus.DELETED) {
       throw new AssetException(
         'Only a deleted Asset may have a deleted timestamp.',
       );
@@ -1228,9 +1141,10 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   // ===========================================================================
 
   /**
-   * Ensures the Asset can still be modified.
+   * Ensures the Asset can still be changed.
    *
-   * Deleted Assets are terminal and cannot be mutated.
+   * ARCHIVED and DELETED are terminal from the perspective of normal Asset
+   * mutation.
    */
   private ensureMutable(): void {
     if (this.isDeleted()) {
@@ -1306,18 +1220,12 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   // Date Guards
   // ===========================================================================
 
-  /**
-   * Validates a Date.
-   */
   private static ensureValidDate(value: Date, fieldName: string): void {
     if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
       throw new AssetException(`Asset ${fieldName} must be a valid date.`);
     }
   }
 
-  /**
-   * Validates an optional Date.
-   */
   private static ensureOptionalDate(
     value: Date | undefined,
     fieldName: string,
@@ -1330,21 +1238,15 @@ export class AssetEntity extends Entity<AssetProps, AssetPublicId> {
   }
 
   // ===========================================================================
-  // Date Clone
+  // Date Cloning
   // ===========================================================================
 
-  /**
-   * Creates a defensive Date copy.
-   */
   private static cloneDate(value: Date): Date {
     AssetEntity.ensureValidDate(value, 'date');
 
     return new Date(value.getTime());
   }
 
-  /**
-   * Creates a defensive optional Date copy.
-   */
   private static cloneOptionalDate(value: Date | undefined): Date | undefined {
     if (value === undefined) {
       return undefined;

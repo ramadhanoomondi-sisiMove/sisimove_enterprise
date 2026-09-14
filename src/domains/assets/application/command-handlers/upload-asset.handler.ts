@@ -1,142 +1,185 @@
 // -----------------------------------------------------------------------------
-// Assets — Upload Asset Command Handler
+// sisiMove — Assets
+// Upload Asset Command Handler
 // -----------------------------------------------------------------------------
 //
-// Application orchestrator for the user-facing:
+// Application orchestrator for:
 //
 //     Upload Asset
 //
-// The user does not need to understand Asset aggregate creation. The upload
-// workflow therefore owns the complete application operation:
+// Complete successful lifecycle:
 //
-//     physical upload
+//     UPLOADING
 //          ↓
-//     Asset aggregate creation
+//     UPLOADED
 //          ↓
-//     Asset lifecycle completion
+//     READY
 //
-// Responsibilities:
+// The handler coordinates the workflow.
 //
-// - coordinate physical Asset storage;
-// - invoke AssetStoragePort;
-// - delegate Asset aggregate creation to CreateAssetHandler;
-// - transition the created Asset from UPLOADING to UPLOADED;
-// - persist the updated aggregate;
-// - return the completed Asset aggregate.
+// AssetAggregate / AssetEntity remain responsible for enforcing lifecycle
+// transitions and recording domain events.
 //
-// The handler does NOT:
+// -----------------------------------------------------------------------------
 //
-// - implement Asset lifecycle rules;
-// - directly mutate AssetEntity state;
-// - construct AssetCreatedEvent;
-// - construct AssetUploadedEvent;
+// APPLICATION WORKFLOW
+//
+//     UploadAssetCommand
+//             │
+//             ▼
+//     CreateAssetHandler
+//             │
+//             ├── AssetEntity.create()
+//             ├── AssetAggregate.create()
+//             ├── AssetCreatedEvent
+//             └── repository.save()
+//             │
+//             │ Asset = UPLOADING
+//             ▼
+//     AssetStoragePort.upload()
+//             │
+//             ├── failure → Asset remains UPLOADING
+//             │
+//             ▼
+//     aggregate.markUploaded()
+//             │
+//             └── UPLOADING → UPLOADED
+//             │
+//             ▼
+//     repository.save()
+//             │
+//             │ Asset = UPLOADED
+//             ▼
+//     aggregate.markReady()
+//             │
+//             └── UPLOADED → READY
+//             │
+//             ▼
+//     repository.save()
+//             │
+//             ▼
+//     AssetAggregate
+//
+// -----------------------------------------------------------------------------
+//
+// WHY CREATE THE ASSET FIRST
+//
+// Database persistence and physical storage are separate systems and cannot
+// participate in one atomic transaction.
+//
+// The Asset domain explicitly models UPLOADING.
+//
+// Therefore:
+//
+//     1. Persist Asset as UPLOADING.
+//     2. Upload the physical object.
+//     3. Mark Asset UPLOADED.
+//     4. Persist UPLOADED.
+//     5. Mark Asset READY.
+//     6. Persist READY.
+//
+// If physical storage fails, the Asset remains:
+//
+//     UPLOADING
+//
+// This avoids the more problematic state:
+//
+//     physical object exists
+//     Asset record does not exist
+//
+// which creates an orphaned physical object.
+//
+// -----------------------------------------------------------------------------
+//
+// WHY UPLOADED IS PERSISTED BEFORE READY
+//
+// UPLOADED represents a durable acknowledgement that the physical object has
+// successfully been accepted by AssetStoragePort.
+//
+// READY is the final application-level state for the current Asset workflow.
+//
+// Persisting UPLOADED before attempting READY gives the system a recoverable
+// intermediate state:
+//
+//     physical object exists
+//     Asset = UPLOADED
+//
+// If the READY persistence operation fails, a later reconciliation workflow
+// can retry:
+//
+//     UPLOADED → READY
+//
+// without uploading the physical object again.
+//
+// -----------------------------------------------------------------------------
+//
+// RESPONSIBILITIES
+//
+// This handler:
+//
+// - coordinates the Upload Asset use case;
+// - delegates initial Asset creation to CreateAssetHandler;
+// - invokes AssetStoragePort;
+// - requests UPLOADING → UPLOADED;
+// - persists UPLOADED;
+// - requests UPLOADED → READY;
+// - persists READY;
+// - returns the completed Asset aggregate.
+//
+// This handler does NOT:
+//
+// - implement lifecycle rules;
+// - mutate AssetEntity directly;
+// - assign AssetStatus directly;
+// - construct domain events;
 // - access Prisma;
-// - access AWS SDK;
-// - access Google Cloud SDK;
-// - access Azure Blob SDK;
-// - access Cloudinary SDK;
-// - access concrete filesystem implementations;
+// - access storage-provider SDKs;
 // - depend on Express.Multer.File;
-// - validate Identity domain state;
-// - load Identity aggregates;
 // - generate AssetPublicId;
 // - generate internal persistence IDs;
 // - generate URLs;
 // - generate signed URLs;
-// - perform authorization checks;
-// - process images, videos, audio, or documents.
-//
-// Physical storage is accessed exclusively through AssetStoragePort.
-//
-// Asset aggregate creation belongs to CreateAssetHandler.
-//
-// Asset lifecycle transitions belong to AssetAggregate / AssetEntity.
-//
-// Asset persistence belongs to AssetRepository.
+// - perform authorization;
+// - process media.
 //
 // -----------------------------------------------------------------------------
 //
-// Orchestration:
+// FAILURE SEMANTICS
 //
-//     UploadAssetCommand
-//              │
-//              ▼
-//     assetStorage.upload()
-//              │
-//              ├── failure → operation fails
-//              │
-//              ▼
-//     CreateAssetCommand
-//              │
-//              ▼
-//     CreateAssetHandler
-//              │
-//              ├── uniqueness check
-//              ├── AssetEntity.create()
-//              ├── AssetAggregate.create()
-//              ├── AssetCreatedEvent
-//              └── repository.save()
-//              │
-//              ▼
-//     aggregate.markUploaded()
-//              │
-//              ├── UPLOADING → UPLOADED
-//              └── AssetUploadedEvent
-//              │
-//              ▼
-//     assetRepository.save()
-//              │
-//              ▼
-//        AssetAggregate
+// Create Asset failure:
+//
+//     no Asset
+//     no physical upload
+//
+// Physical upload failure:
+//
+//     Asset = UPLOADING
+//     no UPLOADED transition
+//     no READY transition
+//
+// UPLOADED persistence failure:
+//
+//     physical object exists
+//     database Asset remains UPLOADING
+//
+// READY persistence failure:
+//
+//     physical object exists
+//     database Asset remains UPLOADED
+//     READY can be retried/reconciled
 //
 // -----------------------------------------------------------------------------
 //
-// Why UploadAssetHandler orchestrates:
+// IMPORTANT
 //
-// The user-facing operation is "Upload Asset".
+// This handler does not attempt to make database persistence and physical
+// storage atomic.
 //
-// The application therefore starts with the physical file. Once the physical
-// object has been successfully accepted by storage, the handler delegates
-// aggregate creation to CreateAssetHandler.
+// A database UnitOfWork cannot roll back an already-completed operation in an
+// external storage provider.
 //
-// CreateAssetHandler remains independently responsible for the Create Asset
-// operation.
-//
-// This follows the same application-handler delegation pattern used elsewhere
-// in the system:
-//
-//     higher-level use case
-//          ↓
-//     lower-level application handler
-//
-// -----------------------------------------------------------------------------
-//
-// Physical storage:
-//
-// Storage is deliberately performed before the Asset is created.
-//
-// Therefore, CreateAssetHandler is not invoked when the physical upload fails.
-//
-// This prevents an Asset database record from being created for a failed
-// physical upload.
-//
-// -----------------------------------------------------------------------------
-//
-// Lifecycle:
-//
-// CreateAssetHandler creates the Asset in:
-//
-//     UPLOADING
-//
-// After physical storage succeeds, this handler invokes:
-//
-//     aggregate.markUploaded()
-//
-// resulting in:
-//
-//     UPLOADING → UPLOADED
-//
-// The aggregate owns the lifecycle rule and AssetUploadedEvent recording.
+// Distributed consistency is therefore represented explicitly by Asset's
+// lifecycle.
 //
 // -----------------------------------------------------------------------------
 
@@ -163,6 +206,7 @@ import { ASSET_TOKENS } from '../asset.tokens';
 // -----------------------------------------------------------------------------
 
 import type { UploadAssetCommand } from '../commands/upload-asset.command';
+
 import { CreateAssetCommand } from '../commands/create-asset.command';
 
 // -----------------------------------------------------------------------------
@@ -196,12 +240,12 @@ import type { AssetStoragePort } from '../ports/asset-storage.port';
 /**
  * Orchestrates the complete Upload Asset application workflow.
  *
- * The user-facing operation is:
+ * Successful lifecycle:
  *
- *     Upload Asset
+ *     UPLOADING → UPLOADED → READY
  *
- * This handler owns that application workflow while delegating dedicated
- * responsibilities to the appropriate application components.
+ * The handler coordinates the workflow while AssetAggregate owns the
+ * individual lifecycle transitions and domain-event recording.
  */
 @Injectable()
 export class UploadAssetHandler implements CommandHandler<
@@ -230,52 +274,29 @@ export class UploadAssetHandler implements CommandHandler<
   /**
    * Executes the complete Upload Asset workflow.
    *
-   * Application orchestration:
+   * The workflow deliberately separates:
    *
-   *     command
-   *       ↓
-   *     storage.upload()
-   *       ↓
-   *     CreateAssetCommand
-   *       ↓
-   *     CreateAssetHandler
-   *       ↓
-   *     aggregate.markUploaded()
-   *       ↓
-   *     repository.save()
-   *       ↓
-   *     return aggregate
+   *     domain creation
+   *     physical storage
+   *     lifecycle completion
+   *
+   * while presenting them as one application-level use case.
    */
   public async execute(command: UploadAssetCommand): Promise<AssetAggregate> {
     // -------------------------------------------------------------------------
-    // 1. Upload physical Asset object
+    // 1. Create the Asset aggregate in UPLOADING state
     // -------------------------------------------------------------------------
     //
-    // The physical file is uploaded before Asset aggregate creation.
+    // CreateAssetHandler owns:
     //
-    // If this operation fails, CreateAssetHandler is never invoked and no
-    // Asset aggregate is created.
-    // -------------------------------------------------------------------------
-
-    await this.assetStorage.upload({
-      storageProvider: command.storageProvider,
-      bucket: command.bucket,
-      objectKey: command.objectKey,
-      content: command.content,
-      mimeType: command.mimeType,
-      sizeBytes: command.sizeBytes,
-    });
-
-    // -------------------------------------------------------------------------
-    // 2. Construct CreateAssetCommand
-    // -------------------------------------------------------------------------
+    // - Asset identity generation;
+    // - object-key uniqueness checks;
+    // - AssetEntity creation;
+    // - AssetAggregate creation;
+    // - AssetCreatedEvent;
+    // - initial persistence.
     //
-    // UploadAssetHandler owns the orchestration.
-    //
-    // CreateAssetHandler still owns the actual Asset aggregate creation.
-    //
-    // The physical content is intentionally NOT forwarded because the physical
-    // upload has already been completed.
+    // No physical storage operation occurs before this succeeds.
     // -------------------------------------------------------------------------
 
     const createAssetCommand = new CreateAssetCommand(
@@ -293,33 +314,45 @@ export class UploadAssetHandler implements CommandHandler<
       command.causationId,
     );
 
-    // -------------------------------------------------------------------------
-    // 3. Delegate Asset aggregate creation
-    // -------------------------------------------------------------------------
-    //
-    // CreateAssetHandler owns:
-    //
-    // - uniqueness;
-    // - AssetEntity creation;
-    // - AssetAggregate creation;
-    // - AssetCreatedEvent;
-    // - initial persistence.
-    // -------------------------------------------------------------------------
-
     const aggregate = await this.createAssetHandler.execute(createAssetCommand);
 
     // -------------------------------------------------------------------------
-    // 4. Complete Asset lifecycle
+    // 2. Upload the physical object
     // -------------------------------------------------------------------------
     //
-    // The physical upload succeeded and the Asset aggregate now exists in
-    // UPLOADING state.
+    // At this point the durable Asset state is:
     //
-    // The aggregate owns the lifecycle transition:
+    //     UPLOADING
     //
-    //     UPLOADING → UPLOADED
+    // AssetStoragePort is responsible only for physical storage.
     //
-    // and records AssetUploadedEvent.
+    // It does not change Asset lifecycle state.
+    //
+    // If this operation fails, execution stops here and the Asset remains
+    // UPLOADING in persistence.
+    // -------------------------------------------------------------------------
+
+    await this.assetStorage.upload({
+      storageProvider: command.storageProvider,
+      bucket: command.bucket,
+      objectKey: command.objectKey,
+      content: command.content,
+      mimeType: command.mimeType,
+      sizeBytes: command.sizeBytes,
+    });
+
+    // -------------------------------------------------------------------------
+    // 3. Transition UPLOADING → UPLOADED
+    // -------------------------------------------------------------------------
+    //
+    // Physical storage has successfully completed.
+    //
+    // The aggregate owns the lifecycle transition.
+    //
+    // The aggregate also records AssetUploadedEvent.
+    //
+    // Correlation and causation metadata belong to the application/domain
+    // event boundary and are therefore passed through the aggregate.
     // -------------------------------------------------------------------------
 
     aggregate.markUploaded(
@@ -329,16 +362,48 @@ export class UploadAssetHandler implements CommandHandler<
     );
 
     // -------------------------------------------------------------------------
-    // 5. Persist completed Asset aggregate
+    // 4. Persist UPLOADED state
     // -------------------------------------------------------------------------
     //
-    // The aggregate is now authoritative for the successful upload state.
+    // The physical object now exists and the database records:
+    //
+    //     Asset = UPLOADED
+    //
+    // This persistence point is important because it gives the system a
+    // durable recovery state before attempting READY.
     // -------------------------------------------------------------------------
 
     await this.assetRepository.save(aggregate);
 
     // -------------------------------------------------------------------------
-    // 6. Return completed Asset aggregate
+    // 5. Transition UPLOADED → READY
+    // -------------------------------------------------------------------------
+    //
+    // READY is the final state of the current upload workflow.
+    //
+    // The aggregate owns this transition and records AssetReadyEvent.
+    //
+    // No direct status mutation occurs in the handler.
+    // -------------------------------------------------------------------------
+
+    aggregate.markReady(command.correlationId, command.causationId);
+
+    // -------------------------------------------------------------------------
+    // 6. Persist READY state
+    // -------------------------------------------------------------------------
+    //
+    // The Asset is now durably represented as:
+    //
+    //     READY
+    //
+    // Consumers may treat the Asset as usable according to their own
+    // application/domain rules.
+    // -------------------------------------------------------------------------
+
+    await this.assetRepository.save(aggregate);
+
+    // -------------------------------------------------------------------------
+    // 7. Return the completed aggregate
     // -------------------------------------------------------------------------
 
     return aggregate;

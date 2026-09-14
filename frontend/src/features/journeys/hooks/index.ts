@@ -1,34 +1,20 @@
+// src/features/journeys/hooks/index.ts
 // -----------------------------------------------------------------------------
-// SisiMove — Journey Hooks
-// -----------------------------------------------------------------------------
-//
-// Public hooks exposed by the Journeys feature.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// Single Journey
+// sisiMove — Journey Hooks Barrel
 // -----------------------------------------------------------------------------
 
 export {
-  useJourney,
-} from './use-journey';
+  usePublicJourneys,
+} from './public-use-journeys';
 
 export type {
-  UseJourneyState,
-  UseJourneyResult,
-} from './use-journey';
-
-// -----------------------------------------------------------------------------
-// Multiple Journeys
-// -----------------------------------------------------------------------------
+  PublicJourneysState,
+} from './public-use-journeys';
 
 export {
-  useJourneys,
-} from './use-journeys';
+  usePublicJourney,
+} from './public-use-journey';
 
 export type {
-  UseJourneysSearchValues,
-  UseJourneysState,
-  UseJourneysResult,
-} from './use-journeys';
+  PublicJourneyState,
+} from './public-use-journey';

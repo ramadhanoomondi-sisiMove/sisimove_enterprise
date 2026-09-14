@@ -80,6 +80,7 @@ import {
   GetJourneysByProviderAndStatusQueryHandler,
   GetJourneysByProviderQueryHandler,
   GetJourneysByStatusQueryHandler,
+  GetPublicJourneyQueryHandler,
   SearchPublishedJourneysQueryHandler,
 } from './application/query-handlers/journey';
 
@@ -285,6 +286,11 @@ import {
     },
 
     {
+      provide: JOURNEY_TOKENS.QUERY_HANDLERS.GET_PUBLIC,
+      useClass: GetPublicJourneyQueryHandler,
+    },
+
+    {
       provide: JOURNEY_TOKENS.QUERY_HANDLERS.GET_BY_PROVIDER,
       useClass: GetJourneysByProviderQueryHandler,
     },
@@ -302,9 +308,13 @@ import {
     // =========================================================================
     // Journey — Published Journey Search
     //
-    // Public journey discovery delegates search to the Journey application
-    // query handler. The controller remains responsible only for HTTP
-    // transport and query construction.
+    // Public search remains distinct from the public single-Journey query.
+    //
+    // GET_PUBLIC:
+    //   Returns one Journey only when it is publicly discoverable.
+    //
+    // SEARCH_PUBLISHED:
+    //   Returns published Journeys matching supplied search criteria.
     // =========================================================================
 
     {
@@ -478,6 +488,7 @@ import {
     // =========================================================================
 
     JOURNEY_TOKENS.QUERY_HANDLERS.GET,
+    JOURNEY_TOKENS.QUERY_HANDLERS.GET_PUBLIC,
     JOURNEY_TOKENS.QUERY_HANDLERS.GET_BY_PROVIDER,
     JOURNEY_TOKENS.QUERY_HANDLERS.GET_BY_STATUS,
     JOURNEY_TOKENS.QUERY_HANDLERS.GET_BY_PROVIDER_AND_STATUS,

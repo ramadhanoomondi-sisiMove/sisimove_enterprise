@@ -1,17 +1,46 @@
 // -----------------------------------------------------------------------------
-// Journey Demands Feature
+// sisiMove — Journey Demand Feature
 // -----------------------------------------------------------------------------
 //
-// Public entry point for the Journey Demands frontend feature.
+// Public feature boundary for Journey Demand frontend capabilities.
 //
-// Exposes:
-// - API operations
-// - React hooks
-// - Public read models
+// Consumers should normally import Journey Demand functionality through this
+// barrel rather than depending on internal feature directories.
 //
-// Domain-specific implementation remains encapsulated within the feature.
+// Example:
+//
+// import {
+//   getPublicJourneyDemands,
+//   useJourneyDemands,
+// } from '@/features/journey-demands';
+//
+// import type {
+//   PublicJourneyDemand,
+//   PublicJourneyDemandQuery,
+// } from '@/features/journey-demands';
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// API
 // -----------------------------------------------------------------------------
 
 export * from './api';
-export * from './hooks';
+
+// -----------------------------------------------------------------------------
+// Models
+// -----------------------------------------------------------------------------
+
 export * from './models';
+
+// -----------------------------------------------------------------------------
+// Mappers
+// -----------------------------------------------------------------------------
+
+export * from './mappers';
+
+// -----------------------------------------------------------------------------
+// Hooks
+// -----------------------------------------------------------------------------
+
+export * from './hooks';
+

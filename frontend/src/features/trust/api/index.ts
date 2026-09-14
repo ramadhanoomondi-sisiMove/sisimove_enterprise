@@ -1,30 +1,23 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Trust API Barrel
+// sisiMove — Public Trust API
 // -----------------------------------------------------------------------------
 //
-// Public exports for the Trust feature's HTTP API boundary.
+// Public API barrel for the frontend Trust feature.
 //
-// This barrel exposes:
-// - Trust API operations
-// - Trust API transport contracts
+// Consumers should import Trust API operations through this barrel rather than
+// depending on individual implementation files.
 //
-// It does not expose:
-// - Trust mappers
-// - Trust domain implementation details
-// - Persistence models
-// - Internal Trust-domain structures
+// Example:
+//
+//   import {
+//     getTravellerTrust,
+//     getPublicTrustProfile,
+//   } from '@/features/trust/api';
 //
 // -----------------------------------------------------------------------------
 
 export {
+  getTravellerTrust,
   getPublicTrustProfile,
-  trustApi,
-} from './trust.api';
+} from './public-trust-api';
 
-export type {
-  PublicTrustProfileResponse,
-  PublicTrustVerificationResponse,
-  PublicTrustRatingResponse,
-  PublicTrustJourneyHistoryResponse,
-  PublicTrustBadgeResponse,
-} from './trust-profile.types';

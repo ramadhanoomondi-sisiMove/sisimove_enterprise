@@ -1,29 +1,53 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Demand Models Barrel
+// sisiMove — Public Journey Demand Models
+// -----------------------------------------------------------------------------
+//
+// Public barrel for Journey Demand frontend models.
+//
+// Consumers should normally import these models through the Journey Demand
+// feature boundary.
+//
+// Example:
+//
+// import type {
+//   PublicJourneyDemand,
+// } from "@/features/journey-demands";
 // -----------------------------------------------------------------------------
 
 export type {
-  JourneyDemand,
-  JourneyDemandStatus,
-} from './journey-demand';
+  PublicJourneyDemand,
+  PublicJourneyDemandStatus,
+} from './public-journey-demand';
 
 export type {
-  JourneyDemandCapacity,
-} from './journey-demand-capacity';
+  PublicJourneyDemandRequester,
+} from './public-journey-demand-requester';
 
 export type {
-  JourneyDemandPricing,
-} from './journey-demand-pricing';
+  PublicJourneyDemandRoute,
+  PublicJourneyDemandLocation,
+  PublicJourneyDemandWaypoint,
+  PublicJourneyDemandWaypointType,
+} from './public-journey-demand-route';
 
 export type {
-  JourneyDemandRoute,
-} from './journey-demand-route';
+  PublicJourneyDemandSchedule,
+} from './public-journey-demand-schedule';
 
 export type {
-  JourneyDemandSchedule,
-} from './journey-demand-schedule';
+  PublicJourneyDemandCapacity,
+} from './public-journey-demand-capacity';
 
 export type {
-  JourneyDemandWaypoint,
-  JourneyDemandWaypointType,
-} from './journey-demand-waypoint';
+  PublicJourneyDemandPricing,
+} from './public-journey-demand-pricing';
+
+export type {
+  PublicJourneyDemandParticipant,
+  PublicJourneyDemandParticipantStatus,
+} from './public-journey-demand-participant';
+
+export type {
+  PublicJourneyDemandQuery,
+} from './public-journey-demand-query';
+

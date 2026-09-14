@@ -84,6 +84,24 @@ import {
   FindJourneyDemandsByScheduleQuery,
   FindMatchableJourneyDemandsQuery,
   FindOpenJourneyDemandsQuery,
+
+  // ---------------------------------------------------------------------------
+  // Public Journey Demand discovery
+  // ---------------------------------------------------------------------------
+  //
+  // IMPORTANT:
+  //
+  // GetPublicJourneyDemandQuery is intentionally separate from
+  // GetJourneyDemandByPublicIdQuery.
+  //
+  // The generic query retrieves a Journey Demand by public ID without applying
+  // anonymous/public marketplace visibility rules.
+  //
+  // The public query is specifically for anonymous discovery and is backed by
+  // findPublicJourneyDemandByPublicId(), which enforces the public visibility
+  // boundary in the repository.
+  //
+  GetPublicJourneyDemandQuery,
   GetJourneyDemandByPublicIdQuery,
   GetJourneyDemandCapacityQuery,
   GetJourneyDemandCorridorQuery,
@@ -175,7 +193,28 @@ import {
 // 3. STATE-CHANGING COMMANDS
 //
 // Public discovery is important to the SisiMove landing experience. A visitor
-// can discover published/open journey demands without authentication.
+// can discover publicly visible/open Journey Demands without authentication.
+//
+// IMPORTANT PUBLIC READ BOUNDARY
+// --------------------------------
+//
+// Public Journey Demand reads must use dedicated public application queries.
+//
+// The public detail operation therefore uses:
+//
+//   GetPublicJourneyDemandQuery
+//          ↓
+//   GetPublicJourneyDemandQueryHandler
+//          ↓
+//   JourneyDemandRepository.findPublicJourneyDemandByPublicId()
+//          ↓
+//   OPEN/publicly visible Journey Demand
+//
+// It must NOT use:
+//
+//   GetJourneyDemandByPublicIdQuery
+//
+// because the generic query is not a public-visibility authorization boundary.
 //
 // Authenticated operations remain protected by:
 //
@@ -378,6 +417,12 @@ export class JourneyDemandController {
     // Journey Demand Query Handlers
     // ========================================================================
 
+    @Inject(JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.GET_PUBLIC)
+    private readonly getPublicJourneyDemandHandler: QueryHandler<
+      GetPublicJourneyDemandQuery,
+      JourneyDemandAggregate | null
+    >,
+
     @Inject(JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.GET_BY_PUBLIC_ID)
     private readonly getJourneyDemandByPublicIdHandler: QueryHandler<
       GetJourneyDemandByPublicIdQuery,
@@ -476,21 +521,6 @@ export class JourneyDemandController {
   // ===========================================================================
   // PUBLIC DISCOVERY QUERIES
   // ===========================================================================
-  //
-  // These endpoints require no authentication.
-  //
-  // They form the public Journey Demand discovery surface used by:
-  //
-  // - the SisiMove landing page;
-  // - public Journey Demand discovery;
-  // - public Journey Demand search;
-  // - Journey Demand detail pages.
-  //
-  // ===========================================================================
-
-  // ---------------------------------------------------------------------------
-  // Get All Journey Demands
-  // ---------------------------------------------------------------------------
 
   @Get()
   @ApiOperation({
@@ -603,18 +633,6 @@ export class JourneyDemandController {
   // ===========================================================================
   // AUTHENTICATED COLLECTION QUERIES
   // ===========================================================================
-  //
-  // These routes are deliberately declared BEFORE:
-  //
-  //   GET /:journeyDemandPublicId
-  //
-  // so that "mine" and "matchable" are not interpreted as public IDs.
-  //
-  // ===========================================================================
-
-  // ---------------------------------------------------------------------------
-  // Get My Journey Demands
-  // ---------------------------------------------------------------------------
 
   @Get('mine')
   @ApiBearerAuth('access-token')
@@ -691,20 +709,27 @@ export class JourneyDemandController {
   // PUBLIC JOURNEY DEMAND DETAIL
   // ===========================================================================
   //
-  // This dynamic route intentionally appears after all single-segment static
-  // collection routes.
+  // This route is anonymous/public.
   //
-  // ===========================================================================
-
-  // ---------------------------------------------------------------------------
-  // Get Journey Demand By Public ID
+  // IMPORTANT:
+  //
+  // Do NOT use GetJourneyDemandByPublicIdQuery here.
+  //
+  // GetPublicJourneyDemandQuery is the explicit public-read application
+  // boundary. Its handler delegates to the repository's public lookup, which
+  // enforces that the Journey Demand is currently OPEN/publicly discoverable.
+  //
+  // This keeps public visibility rules out of the HTTP controller and prevents
+  // a valid public ID from becoming an implicit permission to expose a
+  // non-public Journey Demand.
+  //
   // ---------------------------------------------------------------------------
 
   @Get(':journeyDemandPublicId')
   @ApiOperation({
-    summary: 'Get journey demand by public ID',
+    summary: 'Get public journey demand by public ID',
     description:
-      'Returns a publicly discoverable journey demand by its public identifier.',
+      'Returns a journey demand that is currently publicly discoverable.',
   })
   @ApiParam({
     name: 'journeyDemandPublicId',
@@ -712,9 +737,9 @@ export class JourneyDemandController {
   })
   public async get(
     @Param('journeyDemandPublicId') journeyDemandPublicId: string,
-  ): Promise<JourneyDemandAggregate> {
-    return this.getJourneyDemandByPublicIdHandler.execute(
-      new GetJourneyDemandByPublicIdQuery(
+  ): Promise<JourneyDemandAggregate | null> {
+    return this.getPublicJourneyDemandHandler.execute(
+      new GetPublicJourneyDemandQuery(
         new JourneyDemandPublicId(journeyDemandPublicId),
       ),
     );
@@ -838,6 +863,26 @@ export class JourneyDemandController {
 
   // ===========================================================================
   // LIFECYCLE COMMANDS
+  // ===========================================================================
+  //
+  // The remainder of the controller is unchanged.
+  //
+  // Keep all authenticated commands exactly as currently implemented:
+  //
+  // - create
+  // - update
+  // - publish
+  // - match
+  // - convert
+  // - fulfill
+  // - cancel
+  // - expire
+  //
+  // and the corridor, waypoint, schedule, capacity, pricing and participant
+  // command/query operations.
+  //
+  // They continue to use the existing authenticated handlers and permissions.
+  //
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
@@ -1075,10 +1120,6 @@ export class JourneyDemandController {
   // CORRIDOR COMMANDS
   // ===========================================================================
 
-  // ---------------------------------------------------------------------------
-  // Update Corridor
-  // ---------------------------------------------------------------------------
-
   @Put(':journeyDemandPublicId/corridor')
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -1110,10 +1151,6 @@ export class JourneyDemandController {
   // WAYPOINT COMMANDS
   // ===========================================================================
 
-  // ---------------------------------------------------------------------------
-  // Add Waypoint
-  // ---------------------------------------------------------------------------
-
   @Post(':journeyDemandPublicId/waypoints')
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -1143,10 +1180,6 @@ export class JourneyDemandController {
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Update Waypoint
-  // ---------------------------------------------------------------------------
 
   @Put(':journeyDemandPublicId/waypoints/:waypointPublicId')
   @ApiBearerAuth('access-token')
@@ -1183,10 +1216,6 @@ export class JourneyDemandController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Remove Waypoint
-  // ---------------------------------------------------------------------------
-
   @Delete(':journeyDemandPublicId/waypoints/:waypointPublicId')
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -1221,10 +1250,6 @@ export class JourneyDemandController {
   // ===========================================================================
   // SCHEDULE COMMANDS
   // ===========================================================================
-
-  // ---------------------------------------------------------------------------
-  // Update Schedule
-  // ---------------------------------------------------------------------------
 
   @Put(':journeyDemandPublicId/schedule')
   @ApiBearerAuth('access-token')
@@ -1264,10 +1289,6 @@ export class JourneyDemandController {
   // CAPACITY COMMANDS
   // ===========================================================================
 
-  // ---------------------------------------------------------------------------
-  // Update Capacity
-  // ---------------------------------------------------------------------------
-
   @Put(':journeyDemandPublicId/capacity')
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -1297,10 +1318,6 @@ export class JourneyDemandController {
   // ===========================================================================
   // PRICING COMMANDS
   // ===========================================================================
-
-  // ---------------------------------------------------------------------------
-  // Update Pricing
-  // ---------------------------------------------------------------------------
 
   @Put(':journeyDemandPublicId/pricing')
   @ApiBearerAuth('access-token')
@@ -1333,10 +1350,6 @@ export class JourneyDemandController {
   // PARTICIPANT COMMANDS
   // ===========================================================================
 
-  // ---------------------------------------------------------------------------
-  // Add Participant
-  // ---------------------------------------------------------------------------
-
   @Post(':journeyDemandPublicId/participants')
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -1363,10 +1376,6 @@ export class JourneyDemandController {
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Update Participant
-  // ---------------------------------------------------------------------------
 
   @Put(':journeyDemandPublicId/participants/:participantPublicId')
   @ApiBearerAuth('access-token')
@@ -1400,10 +1409,6 @@ export class JourneyDemandController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Withdraw Participant
-  // ---------------------------------------------------------------------------
-
   @Post(':journeyDemandPublicId/participants/:participantPublicId/withdraw')
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -1434,10 +1439,6 @@ export class JourneyDemandController {
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Remove Participant
-  // ---------------------------------------------------------------------------
 
   @Delete(':journeyDemandPublicId/participants/:participantPublicId')
   @ApiBearerAuth('access-token')
@@ -1473,16 +1474,6 @@ export class JourneyDemandController {
   // ===========================================================================
   // PRIVATE PARTICIPANT QUERIES
   // ===========================================================================
-  //
-  // Participant information is operational/member-specific information and is
-  // therefore protected even though the parent Journey Demand itself is
-  // publicly discoverable.
-  //
-  // ===========================================================================
-
-  // ---------------------------------------------------------------------------
-  // Get Participants
-  // ---------------------------------------------------------------------------
 
   @Get(':journeyDemandPublicId/participants')
   @ApiBearerAuth('access-token')
@@ -1506,10 +1497,6 @@ export class JourneyDemandController {
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Get Participant
-  // ---------------------------------------------------------------------------
 
   @Get(':journeyDemandPublicId/participants/:participantPublicId')
   @ApiBearerAuth('access-token')

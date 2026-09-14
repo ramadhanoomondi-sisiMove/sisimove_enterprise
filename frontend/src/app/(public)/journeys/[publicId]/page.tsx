@@ -1,67 +1,53 @@
 // -----------------------------------------------------------------------------
-// SisiMove — Public Journey Detail Route
+// sisiMove — Public Journey Route
 // -----------------------------------------------------------------------------
 //
-// Public route for viewing a published Journey.
+// Public route for viewing one published Journey.
 //
-// This route is responsible only for:
-// - Next.js routing
-// - route parameter resolution
-// - public page metadata
-// - composing the Journey presentation component
+// URL:
 //
-// Journey retrieval remains inside the Journey feature/API layer.
-// Booking, Commercial, Financial, and other authenticated operations do not
-// belong in this public route.
+//   /journeys/[publicId]
+//
+// The route is intentionally thin. It is responsible only for receiving the
+// App Router route parameter and passing it to the public Journey presentation
+// boundary.
+//
+// The public Journey boundary owns the actual composition of:
+//
+// - Journey
+// - Traveller Profile
+// - Trust
+// - Vehicle
+// - Asset
+// - Journey availability
+// - Journey pricing
+// - Journey preferences
+//
+// This route does NOT:
+//
+// - call Journey APIs directly;
+// - call Traveller Profile, Trust, or Asset APIs directly;
+// - contain marketplace logic;
+// - render the Journey card used by the marketplace;
+// - duplicate Journey domain models.
+//
+// Keeping the route thin preserves the separation between Next.js routing and
+// the public Journey feature/application boundary.
 // -----------------------------------------------------------------------------
 
-import type { Metadata } from 'next';
+import { PublicJourneyContent } from '@/components/journeys/public-journey-content';
 
-import { JourneyDetailPage } from '@/features/journeys/components/journey-detail-page';
-
-// -----------------------------------------------------------------------------
-// Route Types
-// -----------------------------------------------------------------------------
-
-interface JourneyDetailRouteProps {
-  params: Promise<{
-    publicId: string;
+export interface PublicJourneyPageProps {
+  readonly params: Promise<{
+    readonly publicId: string;
   }>;
 }
 
-// -----------------------------------------------------------------------------
-// Metadata
-// -----------------------------------------------------------------------------
-
-export async function generateMetadata({
+export default async function PublicJourneyPage({
   params,
-}: JourneyDetailRouteProps): Promise<Metadata> {
+}: PublicJourneyPageProps) {
   const { publicId } = await params;
 
-  const normalizedPublicId = publicId.trim();
-
-  return {
-    title: 'Journey',
-    description:
-      'View a SisiMove journey, including its route, schedule, vehicle, availability, and journey preferences.',
-    alternates: {
-      canonical: `/journeys/${encodeURIComponent(normalizedPublicId)}`,
-    },
-  };
+  return <PublicJourneyContent publicId={publicId} />;
 }
 
-// -----------------------------------------------------------------------------
-// Page
-// -----------------------------------------------------------------------------
-
-export default async function JourneyDetailRoute({
-  params,
-}: JourneyDetailRouteProps) {
-  const { publicId } = await params;
-
-  return (
-    <JourneyDetailPage
-      publicId={publicId}
-    />
-  );
-}

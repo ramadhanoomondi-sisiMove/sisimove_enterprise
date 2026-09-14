@@ -1,21 +1,27 @@
 // -----------------------------------------------------------------------------
-// Traveller Profile Models
+// sisiMove — Public Traveller Models
 // -----------------------------------------------------------------------------
 //
-// Public exports for traveller-profile models.
+// Public barrel for Traveller Profile frontend models.
+//
+// Consumers should normally import these models through the Traveller Profile
+// feature boundary:
+//
+//   import type {
+//     PublicTraveller,
+//     PublicTravellerProfile,
+//   } from '@/features/traveller-profile';
+//
+// This keeps individual model-file paths internal to the feature.
 //
 // -----------------------------------------------------------------------------
 
 export type {
-  TravellerProfile,
-} from './traveller-profile';
+  PublicTraveller,
+  PublicTravellerAvatar,
+} from './public-traveller';
 
 export type {
-  TravellerCorridor,
-  TravellerCorridorWaypoint,
-} from './traveller-corridor';
+  PublicTravellerProfile,
+} from './public-traveller-profile';
 
-export type {
-  TravellerPreferences,
-  TravellerTravelStyle,
-} from './traveller-preferences';

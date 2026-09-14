@@ -1,8 +1,8 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Demand Mappers Barrel
+// sisiMove — Journey Demand Mappers
 // -----------------------------------------------------------------------------
 
 export {
-  JourneyDemandMapper,
-  journeyDemandMapper,
-} from './journey-demand.mapper';
+  mapPublicJourneyDemand,
+} from './map-public-journey-demand';
+
