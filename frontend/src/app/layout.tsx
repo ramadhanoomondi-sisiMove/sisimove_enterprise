@@ -1,67 +1,60 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Public Route Layout
+// sisiMove — Root Application Layout
 // -----------------------------------------------------------------------------
 //
-// Shared layout for publicly accessible sisiMove pages.
+// Root document layout for the Next.js App Router.
 //
-// Public routes include:
-//
-// - Journey detail
-// - Journey Demand detail
-// - Traveller profiles
-// - How it works
-//
-// The marketplace landing page is mounted from the root route (`/`). This
-// route-group layout is specifically responsible for the pages beneath
-// `/(public)`.
-//
-// Responsibilities:
-//
-// - provide the shared public site shell;
-// - render the public header and footer;
-// - provide the consistent public page structure.
+// Architectural responsibilities:
+// - establish the HTML document boundary required by Next.js;
+// - load global application styles;
+// - provide application-wide metadata;
+// - render the active route tree.
 //
 // This layout intentionally does NOT:
+// - render the public site header or footer;
+// - own public marketplace composition;
+// - fetch application data;
+// - contain route-specific business logic;
+// - contain authentication or feature state.
 //
-// - fetch Journey or Journey Demand data;
-// - own marketplace state;
-// - render marketplace cards;
-// - resolve Traveller, Trust, or Asset data;
-// - contain route-specific business logic.
+// Public presentation is provided by:
 //
-// Route-specific pages remain responsible for composing their own feature
-// presentation beneath this shared public shell.
+//   app/(public)/layout.tsx
 //
-// The shared visual primitives come from `globals.css`, including:
-//
-// - `.page-shell`
-// - `.page-container`
-//
-// The layout does not add page-specific spacing so individual public features
-// can control their own presentation and density.
+// This separation keeps the root document infrastructure independent from the
+// public marketplace and from future authenticated application shells.
 // -----------------------------------------------------------------------------
 
-import type { ReactNode } from 'react';
+import type { Metadata } from 'next';
 
-import { SiteFooter, SiteHeader } from '@/components/layout';
+import './globals.css';
 
-export interface PublicLayoutProps {
-  readonly children: ReactNode;
-}
+// -----------------------------------------------------------------------------
+// Application Metadata
+// -----------------------------------------------------------------------------
 
-export default function PublicLayout({
+export const metadata: Metadata = {
+  title: {
+    default: 'sisiMove',
+    template: '%s | sisiMove',
+  },
+
+  description:
+    'Long-distance journeys shared by people travelling the same way.',
+};
+
+// -----------------------------------------------------------------------------
+// Root Layout
+// -----------------------------------------------------------------------------
+
+export default function RootLayout({
   children,
-}: PublicLayoutProps) {
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
-    <div className="page-shell flex min-h-screen flex-col">
-      <SiteHeader />
-
-      <main className="min-w-0 flex-1">
-        {children}
-      </main>
-
-      <SiteFooter />
-    </div>
+    <html lang="en">
+      <body>{children}</body>
+    </html>
   );
 }
-

@@ -35,7 +35,10 @@ import type { JourneyDemandParticipantEntity } from '../../../domain/entities/jo
 // Repository
 // -----------------------------------------------------------------------------
 
-import type { JourneyDemandRepository } from '../../../domain/repositories/journey-demand.repository';
+import type {
+  JourneyDemandRepository,
+  PublicJourneyDemandFilters,
+} from '../../../domain/repositories/journey-demand.repository';
 
 // -----------------------------------------------------------------------------
 // Value Objects
@@ -91,8 +94,8 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
   /**
    * Converts the domain status into the Prisma generated enum.
    *
-   * The domain owns the lifecycle semantics. Prisma only represents the
-   * persisted representation.
+   * The domain owns lifecycle semantics. Prisma only represents the persisted
+   * representation.
    */
   private toPrismaJourneyDemandStatus(
     value: string,
@@ -122,6 +125,18 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
   // Include Graph
   // ===========================================================================
 
+  /**
+   * Complete aggregate persistence graph.
+   *
+   * Public marketplace queries deliberately reuse the same aggregate graph
+   * because the public application query composes route, schedule, capacity,
+   * pricing, participants, and requester references from the JourneyDemand
+   * aggregate before enriching the response with Traveller and Trust data.
+   *
+   * Cross-domain Traveller/Trust data is NOT included here. Those concerns
+   * belong to their own bounded contexts and are composed by the application
+   * query handler.
+   */
   private readonly include = {
     corridor: {
       include: {
@@ -503,8 +518,8 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
    * Generic aggregate lookup.
    *
    * This method deliberately does not enforce public visibility. It is used by
-   * authenticated/internal application operations where the caller's
-   * authorization boundary is handled above the repository.
+   * authenticated/internal application operations where the authorization
+   * boundary is handled above the repository.
    */
   public async findByPublicId(
     publicId: JourneyDemandPublicId,
@@ -535,7 +550,6 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
     const record = await this.prisma.journeyDemand.findFirst({
       where: {
         publicId: publicId.value,
-
         status: this.toPrismaJourneyDemandStatus('OPEN'),
       },
 
@@ -543,6 +557,173 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
     });
 
     return record === null ? null : this.toAggregate(record);
+  }
+
+  /**
+   * Public marketplace collection lookup.
+   *
+   * This is the collection counterpart to
+   * findPublicJourneyDemandByPublicId().
+   *
+   * The public visibility rule is always applied first:
+   *
+   *   status = OPEN
+   *
+   * Optional marketplace filters then narrow that public collection:
+   *
+   *   from -> corridor origin
+   *   to   -> corridor destination
+   *   date -> requested departure window
+   *
+   * An omitted filters argument therefore means:
+   *
+   *   "return all publicly discoverable JourneyDemands."
+   *
+   * The method returns fully rehydrated aggregates rather than root entities
+   * because the public application query needs the aggregate-owned route,
+   * schedule, capacity, pricing, and participant information to construct the
+   * public read model.
+   *
+   * Traveller and Trust information is deliberately NOT queried here.
+   * requesterPublicId and participant memberPublicId remain opaque
+   * cross-domain references and are resolved by the public application query
+   * handler through the Social and Trust application capabilities.
+   */
+  public async findPublicJourneyDemands(
+    filters?: PublicJourneyDemandFilters,
+  ): Promise<JourneyDemandAggregate[]> {
+    const where: Prisma.JourneyDemandWhereInput = {
+      // -----------------------------------------------------------------------
+      // Public Visibility
+      // -----------------------------------------------------------------------
+      //
+      // A JourneyDemand must be OPEN to appear in anonymous marketplace
+      // discovery. Filters must never bypass this visibility rule.
+      status: this.toPrismaJourneyDemandStatus('OPEN'),
+    };
+
+    // -------------------------------------------------------------------------
+    // Origin / Destination
+    // -------------------------------------------------------------------------
+
+    if (filters?.from?.trim()) {
+      where.corridor = {
+        is: {
+          originName: {
+            contains: filters.from.trim(),
+            mode: 'insensitive',
+          },
+        },
+      };
+    }
+
+    if (filters?.to?.trim()) {
+      const existingCorridorFilter =
+        where.corridor?.is !== undefined ? where.corridor.is : {};
+
+      where.corridor = {
+        is: {
+          ...existingCorridorFilter,
+          destinationName: {
+            contains: filters.to.trim(),
+            mode: 'insensitive',
+          },
+        },
+      };
+    }
+
+    // -------------------------------------------------------------------------
+    // Date
+    // -------------------------------------------------------------------------
+    //
+    // The public API supplies a calendar date. Journey Demand stores a
+    // departure window rather than a single departure timestamp:
+    //
+    //   earliestDeparture
+    //   latestDeparture
+    //
+    // A demand belongs in a date search when its departure window overlaps
+    // that requested calendar day.
+    //
+    // The application currently uses the Kenya marketplace timezone
+    // (Africa/Nairobi). The repository receives the already-normalized query
+    // string and constructs the corresponding UTC boundaries.
+    //
+    // Invalid date input is deliberately not converted into a broad query.
+    // An invalid date therefore cannot accidentally expose the entire public
+    // marketplace.
+    if (filters?.date?.trim()) {
+      const date = filters.date.trim();
+
+      const start = new Date(`${date}T00:00:00.000+03:00`);
+      const end = new Date(`${date}T23:59:59.999+03:00`);
+
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        throw new Error('Journey demand date is invalid.');
+      }
+
+      const existingScheduleFilter =
+        where.schedule?.is !== undefined ? where.schedule.is : {};
+
+      where.schedule = {
+        is: {
+          ...existingScheduleFilter,
+
+          // A departure window overlaps the requested date when:
+          //
+          //   earliestDeparture <= endOfDay
+          //   AND
+          //   latestDeparture >= startOfDay
+          //
+          // This handles flexible Journey Demand departure windows correctly.
+          earliestDeparture: {
+            lte: end,
+          },
+
+          latestDeparture: {
+            gte: start,
+          },
+        },
+      };
+    }
+
+    // -------------------------------------------------------------------------
+    // Pagination
+    // -------------------------------------------------------------------------
+    //
+    // Pagination is intentionally applied at the persistence boundary so the
+    // repository does not load the entire public marketplace into memory.
+    //
+    // Defensive normalization prevents negative values from reaching Prisma.
+    const limit =
+      filters?.limit === undefined
+        ? undefined
+        : Math.max(0, Math.floor(filters.limit));
+
+    const offset =
+      filters?.offset === undefined
+        ? undefined
+        : Math.max(0, Math.floor(filters.offset));
+
+    const records = await this.prisma.journeyDemand.findMany({
+      where,
+
+      include: this.include,
+
+      orderBy: [
+        {
+          publishedAt: 'desc',
+        },
+        {
+          createdAt: 'desc',
+        },
+      ],
+
+      ...(limit === undefined ? {} : { take: limit }),
+      ...(offset === undefined ? {} : { skip: offset }),
+    });
+
+    return records.map((record) => this.toAggregate(record));
   }
 
   public async findByRequesterPublicId(

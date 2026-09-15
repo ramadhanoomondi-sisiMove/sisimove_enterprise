@@ -50,24 +50,32 @@
 //
 // The Demand is a marketplace opportunity. A provider independently decides
 // whether to create and publish supply that can satisfy it.
+//
 // -----------------------------------------------------------------------------
 
-import type { PublicJourneyDemandCapacity } from "./public-journey-demand-capacity";
-import type { PublicJourneyDemandParticipant } from "./public-journey-demand-participant";
-import type { PublicJourneyDemandPricing } from "./public-journey-demand-pricing";
-import type { PublicJourneyDemandRequester } from "./public-journey-demand-requester";
-import type { PublicJourneyDemandRoute } from "./public-journey-demand-route";
-import type { PublicJourneyDemandSchedule } from "./public-journey-demand-schedule";
+import type { PublicJourneyDemandCapacity } from './public-journey-demand-capacity';
+import type { PublicJourneyDemandParticipant } from './public-journey-demand-participant';
+import type { PublicJourneyDemandPricing } from './public-journey-demand-pricing';
+import type { PublicJourneyDemandRequester } from './public-journey-demand-requester';
+import type { PublicJourneyDemandRoute } from './public-journey-demand-route';
+import type { PublicJourneyDemandSchedule } from './public-journey-demand-schedule';
 
 // -----------------------------------------------------------------------------
-// Public lifecycle
+// Public Lifecycle
 // -----------------------------------------------------------------------------
 
+/**
+ * Lifecycle states that may be represented by the public Journey Demand
+ * contract.
+ *
+ * The backend public-read boundary remains responsible for deciding which
+ * states are currently discoverable in the anonymous marketplace.
+ */
 export type PublicJourneyDemandStatus =
-  | "OPEN"
-  | "MATCHED"
-  | "CONVERTED"
-  | "FULFILLED";
+  | 'OPEN'
+  | 'MATCHED'
+  | 'CONVERTED'
+  | 'FULFILLED';
 
 // -----------------------------------------------------------------------------
 // Public Journey Demand
@@ -79,49 +87,61 @@ export interface PublicJourneyDemand {
    *
    * Example:
    *
-   * /demands/{publicId}
+   *     /demands/{publicId}
+   *
+   * This is the only Journey Demand identifier exposed by the public
+   * marketplace contract.
    */
-  publicId: string;
+  readonly publicId: string;
 
   /**
    * Traveller who created the Demand.
+   *
+   * The requester is composed from the public Traveller Profile and public
+   * Trust read models.
+   *
+   * Internal requester/member identifiers are intentionally not exposed.
    */
-  requester: PublicJourneyDemandRequester;
+  readonly requester: PublicJourneyDemandRequester;
 
   /**
    * Public Demand lifecycle state.
    *
+   * The backend public-read boundary determines which lifecycle states are
+   * actually discoverable.
+   *
    * DRAFT, CANCELLED, and EXPIRED demands are not ordinary public marketplace
-   * listings and should normally be filtered by the backend public read
-   * boundary.
+   * listings.
    */
-  status: PublicJourneyDemandStatus;
+  readonly status: PublicJourneyDemandStatus;
 
   /**
    * Requested origin, destination, and intermediate locations.
    */
-  route: PublicJourneyDemandRoute;
+  readonly route: PublicJourneyDemandRoute;
 
   /**
    * Flexible requested departure and arrival window.
    */
-  schedule: PublicJourneyDemandSchedule;
+  readonly schedule: PublicJourneyDemandSchedule;
 
   /**
-   * Number of seats requested and remaining.
+   * Number of seats requested, matched, and remaining.
    */
-  capacity: PublicJourneyDemandCapacity;
+  readonly capacity: PublicJourneyDemandCapacity;
 
   /**
    * Price requirements supplied by the requester.
    */
-  pricing: PublicJourneyDemandPricing;
+  readonly pricing: PublicJourneyDemandPricing;
 
   /**
    * Other travellers who have joined the Demand.
    *
    * Participants provide visible evidence that the Demand represents an
    * actual shared travel need.
+   *
+   * Participant member identifiers are not exposed by this public contract.
    */
-  participants: PublicJourneyDemandParticipant[];
+  readonly participants: readonly PublicJourneyDemandParticipant[];
 }

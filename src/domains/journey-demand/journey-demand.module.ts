@@ -1,6 +1,155 @@
 // -----------------------------------------------------------------------------
 // sisiMove — Journey Demand Module
 // -----------------------------------------------------------------------------
+//
+// The Journey Demand bounded context owns:
+//
+// - Journey Demand creation and lifecycle;
+// - Journey Demand-owned components;
+// - Journey Demand persistence;
+// - Journey Demand commands and queries;
+// - the public Journey Demand marketplace read boundary.
+//
+// The public Journey Demand read boundary may compose Journey Demand-owned
+// data with reduced public projections from other bounded contexts.
+//
+// Those projections are consumed through exported application capabilities.
+// Journey Demand does not own, persist, or reconstruct Traveller Profile or
+// Trust Profile data.
+//
+// -----------------------------------------------------------------------------
+//
+// PUBLIC MARKETPLACE READ COMPOSITION
+//
+// A public Journey Demand contains an opaque requesterPublicId.
+//
+// That identifier is a cross-domain reference to the member/traveller
+// associated with the Demand. It is deliberately not a Prisma relation and
+// does not make Traveller Profile or Trust Profile part of the Journey Demand
+// aggregate.
+//
+// The public Journey Demand query composes:
+//
+//     Journey Demand
+//          │
+//          ├── requesterPublicId
+//          │        │
+//          │        ├──► Traveller public read capability
+//          │        │
+//          │        └──► Trust public read capability
+//          │
+//          ├── Journey Demand-owned public data
+//          │
+//          └── participants
+//                   │
+//                   ├── participant member reference
+//                   │        │
+//                   │        ├──► Traveller public read capability
+//                   │        │
+//                   │        └──► Trust public read capability
+//                   │
+//                   └── Journey Demand-owned participant data
+//
+// Therefore:
+//
+// - Journey Demand remains the owner of Demand creation;
+// - Journey Demand remains the owner of Demand persistence;
+// - Journey Demand remains the owner of Demand participants;
+// - Traveller Profile remains owned by SocialModule;
+// - Trust Profile remains owned by TrustModule;
+// - the public Journey Demand queries are responsible only for read-side
+//   composition.
+//
+// Journey Demand does NOT:
+//
+// - inject TravellerProfileRepository;
+// - inject TrustProfileRepository;
+// - query Traveller or Trust persistence directly;
+// - construct TravellerProfileAggregate;
+// - construct TrustProfileAggregate;
+// - register Traveller or Trust query handlers locally.
+//
+// Instead, Journey Demand imports the modules that export the public
+// application capabilities it consumes.
+//
+// -----------------------------------------------------------------------------
+//
+// PUBLIC JOURNEY DEMAND QUERY BOUNDARY
+//
+// Two public query handlers are registered:
+//
+// - GET_PUBLIC:
+//     Retrieves one publicly discoverable Journey Demand by public ID.
+//
+// - GET_PUBLIC_MANY:
+//     Retrieves the public Journey Demand marketplace collection.
+//
+// The collection query supports:
+//
+// - an empty query to retrieve all publicly discoverable demands;
+// - optional origin filtering;
+// - optional destination filtering;
+// - optional departure-date filtering;
+// - optional pagination.
+//
+// Both handlers return public read models rather than raw domain entities.
+//
+// -----------------------------------------------------------------------------
+//
+// MODULE DEPENDENCY DIRECTION
+//
+//     Journey Demand public read boundary
+//              │
+//              ├──────────────► SocialModule
+//              │                    │
+//              │                    └── public Traveller capability
+//              │
+//              └──────────────► TrustModule
+//                                   │
+//                                   └── public Trust capability
+//
+// These are application-level read dependencies, not domain ownership
+// relationships.
+//
+// -----------------------------------------------------------------------------
+//
+// IMPORTANT
+//
+// The public Journey Demand response must not expose:
+//
+// - requesterPublicId;
+// - participant memberPublicId;
+// - internal database identifiers;
+// - aggregate version;
+// - persistence timestamps;
+// - private Journey Demand state.
+//
+// The public query handlers are responsible for projecting the Demand into
+// its public marketplace representation.
+//
+// -----------------------------------------------------------------------------
+//
+// PUBLIC VISIBILITY
+//
+// Anonymous public discovery is governed by the Journey Demand repository's
+// public visibility rules. The public collection and public detail handlers
+// must not bypass those rules by using generic internal queries.
+//
+// -----------------------------------------------------------------------------
+//
+// MODULE RESPONSIBILITY
+//
+// This module:
+//
+// - registers Journey Demand infrastructure;
+// - registers Journey Demand command handlers;
+// - registers Journey Demand query handlers;
+// - imports the public Traveller and Trust application capabilities;
+// - exposes only the Journey Demand repository token.
+//
+// It does not re-export Traveller or Trust capabilities.
+//
+// -----------------------------------------------------------------------------
 
 import { Module } from '@nestjs/common';
 
@@ -9,6 +158,8 @@ import { Module } from '@nestjs/common';
 // -----------------------------------------------------------------------------
 
 import { IdentityModule } from '../identity/identity.module';
+import { SocialModule } from '../social/social.module';
+import { TrustModule } from '../trust/trust.module';
 
 // -----------------------------------------------------------------------------
 // Infrastructure
@@ -82,6 +233,7 @@ import {
   GetJourneyDemandWaypointsQueryHandler,
   GetMyJourneyDemandsQueryHandler,
   GetPublicJourneyDemandQueryHandler,
+  GetPublicJourneyDemandsQueryHandler,
 } from './application/query-handlers';
 
 // -----------------------------------------------------------------------------
@@ -94,20 +246,67 @@ import {
   // ===========================================================================
 
   imports: [
-    // -------------------------------------------------------------------------
-    // Identity
+    // =========================================================================
+    // Identity / Authorization
+    // =========================================================================
     //
-    // Provides identity/authorization infrastructure required by the
+    // Provides identity and authorization infrastructure required by the
     // presentation boundary, including authentication and permission guards.
-    // -------------------------------------------------------------------------
+    //
+    // Journey Demand consumes Identity application capabilities but does not
+    // own Identity.
+    // =========================================================================
 
     IdentityModule,
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // Social / Traveller Profile Public Read Boundary
+    // =========================================================================
+    //
+    // SocialModule owns Traveller Profile.
+    //
+    // The public Journey Demand query handlers consume the reduced public
+    // Traveller capability exported by SocialModule.
+    //
+    // Journey Demand does not:
+    //
+    // - inject TravellerProfileRepository;
+    // - access Traveller Profile persistence directly;
+    // - reconstruct TravellerProfileAggregate;
+    // - register Traveller query handlers locally.
+    // =========================================================================
+
+    SocialModule,
+
+    // =========================================================================
+    // Trust / Public Trust Read Boundary
+    // =========================================================================
+    //
+    // TrustModule owns Trust Profile and its related projections.
+    //
+    // The public Journey Demand query handlers consume the reduced public
+    // Trust capability exported by TrustModule.
+    //
+    // Journey Demand does not:
+    //
+    // - inject TrustProfileRepository;
+    // - access Trust persistence directly;
+    // - reconstruct TrustProfileAggregate;
+    // - register Trust query handlers locally.
+    // =========================================================================
+
+    TrustModule,
+
+    // =========================================================================
     // Prisma
+    // =========================================================================
     //
     // Provides the Prisma client used by Journey Demand persistence.
-    // -------------------------------------------------------------------------
+    //
+    // Prisma is used for Journey Demand-owned persistence only. Public
+    // Traveller and Trust data is obtained through their application-level
+    // read capabilities, not through direct Prisma access.
+    // =========================================================================
 
     PrismaModule,
   ],
@@ -123,9 +322,9 @@ import {
   // ===========================================================================
 
   providers: [
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Infrastructure
-    // -------------------------------------------------------------------------
+    // =========================================================================
 
     ...JOURNEY_DEMAND_PROVIDERS,
 
@@ -266,22 +465,43 @@ import {
       useClass: GetJourneyDemandByPublicIdQueryHandler,
     },
 
-    // -------------------------------------------------------------------------
-    // Public Discovery
+    // =========================================================================
+    // Public Journey Demand Detail
+    // =========================================================================
     //
-    // This handler is intentionally separate from GET_BY_PUBLIC_ID.
+    // GET_PUBLIC is the anonymous/public detail boundary.
     //
-    // GET_BY_PUBLIC_ID performs a generic lookup and must not be used as the
-    // anonymous/public visibility boundary.
-    //
-    // GET_PUBLIC resolves only Journey Demands that satisfy the repository's
-    // public visibility rules (currently OPEN).
-    // -------------------------------------------------------------------------
+    // It retrieves only publicly discoverable Journey Demands and composes
+    // the public response with Traveller and Trust projections supplied by
+    // their owning bounded contexts.
+    // =========================================================================
 
     {
       provide: JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.GET_PUBLIC,
       useClass: GetPublicJourneyDemandQueryHandler,
     },
+
+    // =========================================================================
+    // Public Journey Demand Collection
+    // =========================================================================
+    //
+    // GET_PUBLIC_MANY is the anonymous/public marketplace collection boundary.
+    //
+    // An empty query returns all publicly discoverable Journey Demands.
+    // Optional filters are applied by the public Journey Demand repository
+    // contract before the handler composes Traveller and Trust projections.
+    //
+    // This handler must return public read models, never raw domain entities.
+    // =========================================================================
+
+    {
+      provide: JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.GET_PUBLIC_MANY,
+      useClass: GetPublicJourneyDemandsQueryHandler,
+    },
+
+    // =========================================================================
+    // Internal Collections
+    // =========================================================================
 
     {
       provide: JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.GET_ALL,
@@ -294,7 +514,7 @@ import {
     },
 
     // =========================================================================
-    // Discovery Query Handlers
+    // Internal Discovery Query Handlers
     // =========================================================================
 
     {
@@ -388,12 +608,16 @@ import {
   //
   // Keep the module boundary narrow.
   //
-  // Controllers consume their handlers internally, therefore command/query
-  // handler tokens do not need to be exported.
+  // Journey Demand owns its repository and exposes that application capability
+  // to other bounded contexts that genuinely need to integrate with Journey
+  // Demand.
   //
-  // The repository token is exported because other bounded contexts may need
-  // to integrate with Journey Demand through its application contract rather
-  // than directly depending on Prisma persistence.
+  // Traveller and Trust capabilities are deliberately not re-exported here.
+  // They remain owned by SocialModule and TrustModule respectively.
+  //
+  // Command and query handlers remain internal to Journey Demand unless
+  // another bounded context has an explicit application-level integration
+  // requirement.
   // ===========================================================================
 
   exports: [JOURNEY_DEMAND_TOKENS.REPOSITORY],

@@ -6,6 +6,8 @@ export { GetJourneyDemandByPublicIdQuery } from './get-journey-demand-by-public-
 
 export { GetPublicJourneyDemandQuery } from './get-public-journey-demand.query';
 
+export { GetPublicJourneyDemandsQuery } from './get-public-journey-demands.query';
+
 export { GetJourneyDemandsQuery } from './get-journey-demands.query';
 
 export { GetMyJourneyDemandsQuery } from './get-my-journey-demands.query';

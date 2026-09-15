@@ -88,36 +88,69 @@ export const JOURNEY_DEMAND_TOKENS = {
     // Public Discovery
     // -------------------------------------------------------------------------
     //
-    // Public discovery is intentionally separate from the generic
-    // GetJourneyDemandByPublicIdQuery.
+    // Public discovery is deliberately separated from generic Journey Demand
+    // queries. These handlers return public read models and may compose data
+    // from Traveller Profile and Trust bounded contexts.
     //
-    // A Journey Demand may exist internally without being publicly
-    // discoverable. The public query therefore has its own application
-    // handler and repository read contract.
+    // Public visibility is enforced by the public repository/query contract.
     //
 
+    /**
+     * Retrieves one publicly discoverable Journey Demand by public ID.
+     */
     GET_PUBLIC: Symbol('GetPublicJourneyDemandQueryHandler'),
 
+    /**
+     * Retrieves the public Journey Demand marketplace collection.
+     *
+     * Supports an empty query for all publicly discoverable demands, together
+     * with optional origin, destination, date, limit, and offset filters.
+     */
+    GET_PUBLIC_MANY: Symbol('GetPublicJourneyDemandsQueryHandler'),
+
     // -------------------------------------------------------------------------
-    // Collections
+    // Internal Collections
     // -------------------------------------------------------------------------
 
+    /**
+     * Retrieves the internal Journey Demand collection.
+     *
+     * This is not the public marketplace read boundary.
+     */
     GET_ALL: Symbol('GetJourneyDemandsQueryHandler'),
 
+    /**
+     * Retrieves Journey Demands belonging to the authenticated requester.
+     */
     GET_MY: Symbol('GetMyJourneyDemandsQueryHandler'),
 
     // -------------------------------------------------------------------------
-    // Discovery
+    // Internal Discovery
     // -------------------------------------------------------------------------
 
+    /**
+     * Retrieves open Journey Demands for internal application workflows.
+     */
     FIND_OPEN: Symbol('FindOpenJourneyDemandsQueryHandler'),
 
+    /**
+     * Retrieves Journey Demands eligible for matching workflows.
+     */
     FIND_MATCHABLE: Symbol('FindMatchableJourneyDemandsQueryHandler'),
 
+    /**
+     * Retrieves Journey Demands by corridor.
+     */
     FIND_BY_CORRIDOR: Symbol('FindJourneyDemandsByCorridorQueryHandler'),
 
+    /**
+     * Retrieves Journey Demands by schedule.
+     */
     FIND_BY_SCHEDULE: Symbol('FindJourneyDemandsByScheduleQueryHandler'),
 
+    /**
+     * Retrieves Journey Demands by requester.
+     */
     FIND_BY_REQUESTER: Symbol('FindJourneyDemandsByRequesterQueryHandler'),
 
     // -------------------------------------------------------------------------

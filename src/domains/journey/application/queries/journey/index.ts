@@ -20,7 +20,7 @@ export * from './search-published-journeys.query';
 // Public Journey
 // -----------------------------------------------------------------------------
 
-export * from './get-public-journey.query';
+export * from './get-public-journeys.query';
 
 // -----------------------------------------------------------------------------
 // Journey Corridor

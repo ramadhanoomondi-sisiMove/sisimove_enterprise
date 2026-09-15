@@ -1,4 +1,81 @@
-// src/domains/journey/journey.module.ts
+// -----------------------------------------------------------------------------
+// sisiMove — Journey Module
+// -----------------------------------------------------------------------------
+//
+// The Journey bounded context owns:
+//
+// - Journey creation and lifecycle;
+// - Journey-owned components;
+// - Journey persistence;
+// - Journey commands and queries;
+// - the public Journey marketplace read boundary.
+//
+// The public marketplace read boundary may compose Journey-owned data with
+// reduced public projections from other bounded contexts. Those projections
+// are consumed through exported application capabilities; Journey does not
+// own, persist, or reconstruct those external contexts.
+//
+// -----------------------------------------------------------------------------
+//
+// PUBLIC MARKETPLACE READ COMPOSITION
+//
+// A public Journey contains an opaque providerPublicId.
+//
+// That identifier is a cross-domain reference to the member/provider identity
+// associated with the Journey. It is deliberately not a Prisma relation and
+// does not make Traveller Profile or Trust Profile part of the Journey
+// aggregate.
+//
+// The public Journey query composes:
+//
+//     Journey
+//        │
+//        ├── providerPublicId
+//        │        │
+//        │        ├──► Traveller public read capability
+//        │        │
+//        │        └──► Trust public read capability
+//        │
+//        └── Journey-owned public data
+//
+// Therefore:
+//
+// - Journey remains the owner of Journey creation;
+// - Journey remains the owner of Journey persistence;
+// - Traveller Profile remains owned by its bounded context;
+// - Trust Profile remains owned by its bounded context;
+// - the public Journey query is responsible only for read-side composition.
+//
+// Journey does NOT:
+//
+// - inject TravellerProfileRepository;
+// - inject TrustProfileRepository;
+// - query Traveller or Trust persistence directly;
+// - construct TravellerProfileAggregate;
+// - construct TrustProfileAggregate;
+// - register Traveller or Trust query handlers locally.
+//
+// Instead, Journey imports the modules that export the public application
+// capabilities it consumes.
+//
+// -----------------------------------------------------------------------------
+//
+// MODULE DEPENDENCY DIRECTION
+//
+//     Journey public read boundary
+//          │
+//          ├──────────────► SocialModule
+//          │                    │
+//          │                    └── public Traveller capability
+//          │
+//          └──────────────► TrustModule
+//                               │
+//                               └── public Trust capability
+//
+// These are application-level read dependencies, not domain ownership
+// relationships.
+//
+// -----------------------------------------------------------------------------
 
 import { Module } from '@nestjs/common';
 
@@ -7,6 +84,8 @@ import { Module } from '@nestjs/common';
 // -----------------------------------------------------------------------------
 
 import { IdentityModule } from '../identity/identity.module';
+import { SocialModule } from '../social/social.module';
+import { TrustModule } from '../trust/trust.module';
 
 // -----------------------------------------------------------------------------
 // Infrastructure
@@ -50,15 +129,15 @@ import {
   CreateJourneyHandler,
   ExpireJourneyHandler,
   PublishJourneyHandler,
-  StartJourneyHandler,
   RemoveAssetHandler,
   RemoveJourneyCapacityHandler,
   RemoveJourneyCorridorHandler,
   RemoveJourneyScheduleHandler,
-  RemoveVehicleHandler,
   RemoveJourneyWaypointHandler,
   RemovePreferencesHandler,
   RemovePricingHandler,
+  RemoveVehicleHandler,
+  StartJourneyHandler,
 } from './application/handlers/journey';
 
 // -----------------------------------------------------------------------------
@@ -80,7 +159,7 @@ import {
   GetJourneysByProviderAndStatusQueryHandler,
   GetJourneysByProviderQueryHandler,
   GetJourneysByStatusQueryHandler,
-  GetPublicJourneyQueryHandler,
+  GetPublicJourneysQueryHandler,
   SearchPublishedJourneysQueryHandler,
 } from './application/query-handlers/journey';
 
@@ -102,9 +181,73 @@ import {
     //   PermissionsGuard
     //     -> GetIdentityPermissionsHandler
     //     -> GetIdentityRolesHandler
+    //
+    // Journey consumes the exported Identity application capabilities but does
+    // not own Identity.
     // =========================================================================
 
     IdentityModule,
+
+    // =========================================================================
+    // Social / Traveller Profile Public Read Boundary
+    //
+    // The public Journey marketplace read boundary enriches a public Journey
+    // with the reduced public Traveller Profile associated with the Journey's
+    // opaque providerPublicId.
+    //
+    // Journey does not own Traveller Profile data and therefore does not:
+    //
+    // - inject TravellerProfileRepository;
+    // - access Traveller Profile persistence directly;
+    // - reconstruct TravellerProfileAggregate;
+    // - register GetPublicTravellerByMemberQueryHandler locally.
+    //
+    // SocialModule owns the Traveller Profile application boundary and exports
+    // the public Traveller query capability consumed by Journey.
+    //
+    // This import makes that exported application contract available to
+    // GetPublicJourneysQueryHandler through NestJS dependency injection.
+    //
+    // =========================================================================
+
+    SocialModule,
+
+    // =========================================================================
+    // Trust / Public Trust Read Boundary
+    //
+    // The public Journey marketplace read boundary also enriches a public
+    // Journey with the reduced public Trust projection associated with the
+    // same opaque provider/member public identifier.
+    //
+    // Trust remains the owner of:
+    //
+    // - Trust Profile;
+    // - Trust ratings;
+    // - Trust reviews;
+    // - Trust badges;
+    // - Trust verification;
+    // - Trust-related projections.
+    //
+    // Journey does not:
+    //
+    // - inject TrustProfileRepository;
+    // - access Trust persistence directly;
+    // - reconstruct TrustProfileAggregate;
+    // - register GetPublicTrustProfileByMemberQueryHandler locally.
+    //
+    // TrustModule owns the Trust application boundary and explicitly exports:
+    //
+    //   TRUST_PROFILE_TOKENS.QUERY_HANDLERS
+    //     .GET_PUBLIC_BY_MEMBER_PUBLIC_ID
+    //
+    // Importing TrustModule therefore makes the public Trust application
+    // capability available to GetPublicJourneysQueryHandler through NestJS
+    // dependency injection.
+    //
+    // This is read-side composition, not Trust ownership of Journey.
+    // =========================================================================
+
+    TrustModule,
 
     // =========================================================================
     // Prisma
@@ -277,7 +420,7 @@ import {
     },
 
     // =========================================================================
-    // Journey — Query Handlers
+    // Journey — General Query
     // =========================================================================
 
     {
@@ -285,10 +428,9 @@ import {
       useClass: GetJourneyQueryHandler,
     },
 
-    {
-      provide: JOURNEY_TOKENS.QUERY_HANDLERS.GET_PUBLIC,
-      useClass: GetPublicJourneyQueryHandler,
-    },
+    // =========================================================================
+    // Journey — Provider Queries
+    // =========================================================================
 
     {
       provide: JOURNEY_TOKENS.QUERY_HANDLERS.GET_BY_PROVIDER,
@@ -306,15 +448,31 @@ import {
     },
 
     // =========================================================================
+    // Journey — Public Marketplace Collection
+    // =========================================================================
+    //
+    // GET_PUBLIC_MANY is the public Journey marketplace read boundary.
+    //
+    // An empty query represents the default marketplace inventory:
+    //
+    //   all publicly discoverable Journeys.
+    //
+    // Optional discovery criteria narrow the collection.
+    //
+    // This remains intentionally separate from SEARCH_PUBLISHED, which
+    // represents explicit Journey search semantics.
+    //
+    // The handler may compose Journey data with reduced public Traveller and
+    // Trust projections through their exported application capabilities.
+    // =========================================================================
+
+    {
+      provide: JOURNEY_TOKENS.QUERY_HANDLERS.GET_PUBLIC_MANY,
+      useClass: GetPublicJourneysQueryHandler,
+    },
+
+    // =========================================================================
     // Journey — Published Journey Search
-    //
-    // Public search remains distinct from the public single-Journey query.
-    //
-    // GET_PUBLIC:
-    //   Returns one Journey only when it is publicly discoverable.
-    //
-    // SEARCH_PUBLISHED:
-    //   Returns published Journeys matching supplied search criteria.
     // =========================================================================
 
     {
@@ -488,14 +646,24 @@ import {
     // =========================================================================
 
     JOURNEY_TOKENS.QUERY_HANDLERS.GET,
-    JOURNEY_TOKENS.QUERY_HANDLERS.GET_PUBLIC,
     JOURNEY_TOKENS.QUERY_HANDLERS.GET_BY_PROVIDER,
     JOURNEY_TOKENS.QUERY_HANDLERS.GET_BY_STATUS,
     JOURNEY_TOKENS.QUERY_HANDLERS.GET_BY_PROVIDER_AND_STATUS,
+
+    // =========================================================================
+    // Public Journey — Marketplace Collection
+    // =========================================================================
+
+    JOURNEY_TOKENS.QUERY_HANDLERS.GET_PUBLIC_MANY,
+
+    // =========================================================================
+    // Published Journey Search
+    // =========================================================================
+
     JOURNEY_TOKENS.QUERY_HANDLERS.SEARCH_PUBLISHED,
 
     // =========================================================================
-    // Corridor Query Handler Tokens
+    // Corridor Query Handler Token
     // =========================================================================
 
     JOURNEY_TOKENS.QUERY_HANDLERS.GET_CORRIDOR,
@@ -508,31 +676,31 @@ import {
     JOURNEY_TOKENS.QUERY_HANDLERS.GET_WAYPOINTS,
 
     // =========================================================================
-    // Schedule Query Handler Tokens
+    // Schedule Query Handler Token
     // =========================================================================
 
     JOURNEY_TOKENS.QUERY_HANDLERS.GET_SCHEDULE,
 
     // =========================================================================
-    // Vehicle Query Handler Tokens
+    // Vehicle Query Handler Token
     // =========================================================================
 
     JOURNEY_TOKENS.QUERY_HANDLERS.GET_VEHICLE,
 
     // =========================================================================
-    // Capacity Query Handler Tokens
+    // Capacity Query Handler Token
     // =========================================================================
 
     JOURNEY_TOKENS.QUERY_HANDLERS.GET_CAPACITY,
 
     // =========================================================================
-    // Pricing Query Handler Tokens
+    // Pricing Query Handler Token
     // =========================================================================
 
     JOURNEY_TOKENS.QUERY_HANDLERS.GET_PRICING,
 
     // =========================================================================
-    // Preferences Query Handler Tokens
+    // Preferences Query Handler Token
     // =========================================================================
 
     JOURNEY_TOKENS.QUERY_HANDLERS.GET_PREFERENCES,

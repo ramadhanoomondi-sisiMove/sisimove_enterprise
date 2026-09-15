@@ -170,7 +170,23 @@ export interface JourneyRepository {
   // ===========================================================================
   // Journey Queries
   // ===========================================================================
-
+  /**
+   * Find currently publicly discoverable Journeys.
+   *
+   * An empty filter object returns the complete public Journey collection.
+   *
+   * Optional filters narrow the same public collection by origin,
+   * destination, and departure date.
+   *
+   * Public visibility must always be enforced by the repository
+   * implementation. These filters must never expose unpublished, cancelled,
+   * expired, or otherwise undiscoverable Journeys.
+   */
+  findPublicJourneys(filters: {
+    readonly from?: string;
+    readonly to?: string;
+    readonly date?: string;
+  }): Promise<JourneyEntity[]>;
   /**
    * Find published Journeys matching a route and departure-date window.
    *

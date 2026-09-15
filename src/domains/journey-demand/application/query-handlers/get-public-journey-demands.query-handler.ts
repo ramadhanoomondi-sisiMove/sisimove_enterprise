@@ -1,8 +1,8 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Get Public Journey Demand Query Handler
+// sisiMove — Get Public Journey Demands Query Handler
 // -----------------------------------------------------------------------------
 //
-// Public application read boundary for Journey Demand.
+// Public application read boundary for the Journey Demand marketplace.
 //
 // Journey Demand owns:
 //   - Demand lifecycle
@@ -50,35 +50,60 @@
 // primitives when creating the public read model.
 //
 // -----------------------------------------------------------------------------
+// Public Collection Semantics
+// -----------------------------------------------------------------------------
 //
-// Public marketplace shape:
+// This handler represents the plural public marketplace collection.
 //
-// {
-//   publicId,
-//   requester: {
-//     traveller,
-//     trust
-//   },
-//   status,
-//   route: {
-//     origin,
-//     destination,
-//     waypoints
-//   },
-//   schedule,
-//   capacity,
-//   pricing,
-//   participants: [
-//     {
-//       publicId,
-//       traveller,
-//       trust,
-//       seats,
-//       status,
-//       joinedAt
-//     }
-//   ]
-// }
+// An empty query means:
+//
+//     "Return all publicly discoverable Journey Demands."
+//
+// Optional filters narrow that public collection:
+//
+//     from
+//     to
+//     date
+//
+// The public collection is therefore marketplace-first:
+//
+//     Browse all public Demands
+//             │
+//             └── optionally filter/search
+//
+// This is intentionally separate from:
+//
+//     GetJourneyDemandsQueryHandler
+//
+// because the generic collection handler returns an internal/domain-oriented
+// representation and must not also serve the public marketplace contract.
+//
+// It is also separate from:
+//
+//     GetPublicJourneyDemandQueryHandler
+//
+// which retrieves and composes one Demand.
+//
+// -----------------------------------------------------------------------------
+// Architecture
+// -----------------------------------------------------------------------------
+//
+// HTTP Controller
+//       │
+//       ▼
+// GetPublicJourneyDemandsQuery
+//       │
+//       ▼
+// GetPublicJourneyDemandsQueryHandler
+//       │
+//       ├── JourneyDemandRepository
+//       │
+//       ├── Traveller Profile public query
+//       │
+//       └── Trust Profile public query
+//       │
+//       ▼
+// PublicJourneyDemandResponse[]
 //
 // -----------------------------------------------------------------------------
 
@@ -98,7 +123,7 @@ import type { QueryHandler } from '../../../../foundation/kernel/application/que
 // Journey Demand — Query
 // -----------------------------------------------------------------------------
 
-import type { GetPublicJourneyDemandQuery } from '../queries/get-public-journey-demand.query';
+import type { GetPublicJourneyDemandsQuery } from '../queries/get-public-journey-demands.query';
 
 // -----------------------------------------------------------------------------
 // Journey Demand — Tokens
@@ -114,7 +139,10 @@ import type { JourneyDemandAggregate } from '../../domain/aggregates/journey-dem
 
 import type { JourneyDemandParticipantEntity } from '../../domain/entities/journey-demand-participant.entity';
 
-import type { JourneyDemandRepository } from '../../domain/repositories/journey-demand.repository';
+import type {
+  JourneyDemandRepository,
+  PublicJourneyDemandFilters,
+} from '../../domain/repositories/journey-demand.repository';
 
 // -----------------------------------------------------------------------------
 // Traveller Profile — Public Query
@@ -246,8 +274,10 @@ export interface PublicJourneyDemandParticipant {
  * Public Demand lifecycle.
  *
  * Internal states such as DRAFT, CANCELLED, and EXPIRED are not part of the
- * public marketplace contract. The repository's public query is responsible
- * for filtering those states before this handler receives the aggregate.
+ * public marketplace contract.
+ *
+ * The repository's public query is responsible for filtering those states
+ * before this handler receives the aggregates.
  */
 export type PublicJourneyDemandStatus =
   'OPEN' | 'MATCHED' | 'CONVERTED' | 'FULFILLED';
@@ -259,7 +289,7 @@ export type PublicJourneyDemandStatus =
 /**
  * Canonical public Journey Demand marketplace read model.
  *
- * This is deliberately smaller than the domain aggregate.
+ * This is deliberately smaller than the Journey Demand aggregate.
  *
  * It contains only information required by the public marketplace.
  */
@@ -279,9 +309,9 @@ export interface PublicJourneyDemandResponse {
 // =============================================================================
 
 @Injectable()
-export class GetPublicJourneyDemandQueryHandler implements QueryHandler<
-  GetPublicJourneyDemandQuery,
-  PublicJourneyDemandResponse | null
+export class GetPublicJourneyDemandsQueryHandler implements QueryHandler<
+  GetPublicJourneyDemandsQuery,
+  readonly PublicJourneyDemandResponse[]
 > {
   public constructor(
     // -------------------------------------------------------------------------
@@ -292,6 +322,10 @@ export class GetPublicJourneyDemandQueryHandler implements QueryHandler<
      * Journey Demand remains the source of truth for public Demand inventory.
      *
      * The repository owns the public-visibility decision.
+     *
+     * The plural public operation is deliberately separate from
+     * findJourneyDemands() because the latter returns root entities and does
+     * not represent the public marketplace boundary.
      */
     @Inject(JOURNEY_DEMAND_TOKENS.REPOSITORY)
     private readonly repository: JourneyDemandRepository,
@@ -332,24 +366,49 @@ export class GetPublicJourneyDemandQueryHandler implements QueryHandler<
   // ===========================================================================
 
   /**
-   * Retrieves one publicly discoverable Journey Demand.
+   * Retrieves all publicly discoverable Journey Demands, optionally filtered
+   * by marketplace search criteria.
    *
-   * The repository decides whether the Demand is publicly visible.
+   * An empty query is valid and means:
    *
-   * Once retrieved, this handler composes the marketplace read model.
+   *     "Return all publicly discoverable Journey Demands."
+   *
+   * The repository decides which Demands are publicly visible.
+   *
+   * Once retrieved, this handler composes every Demand into the public
+   * marketplace read model.
+   *
+   * IMPORTANT:
+   *
+   * The repository uses exactOptionalPropertyTypes.
+   *
+   * Therefore an optional property such as:
+   *
+   *     from?: string
+   *
+   * means the property may be omitted, but it must not explicitly be assigned
+   * the value undefined.
+   *
+   * Conditional object spreading ensures that undefined query values are
+   * omitted entirely while preserving the repository filter's readonly
+   * contract.
    */
   public async execute(
-    query: GetPublicJourneyDemandQuery,
-  ): Promise<PublicJourneyDemandResponse | null> {
-    const demand = await this.repository.findPublicJourneyDemandByPublicId(
-      query.journeyDemandPublicId,
+    query: GetPublicJourneyDemandsQuery,
+  ): Promise<readonly PublicJourneyDemandResponse[]> {
+    const filters: PublicJourneyDemandFilters = {
+      ...(query.from !== undefined ? { from: query.from } : {}),
+      ...(query.to !== undefined ? { to: query.to } : {}),
+      ...(query.date !== undefined ? { date: query.date } : {}),
+      ...(query.limit !== undefined ? { limit: query.limit } : {}),
+      ...(query.offset !== undefined ? { offset: query.offset } : {}),
+    };
+
+    const demands = await this.repository.findPublicJourneyDemands(filters);
+
+    return Promise.all(
+      demands.map((demand) => this.composePublicJourneyDemand(demand)),
     );
-
-    if (demand === null) {
-      return null;
-    }
-
-    return this.composePublicJourneyDemand(demand);
   }
 
   // ===========================================================================
@@ -357,18 +416,12 @@ export class GetPublicJourneyDemandQueryHandler implements QueryHandler<
   // ===========================================================================
 
   /**
-   * Composes the complete public Demand projection.
+   * Composes one Journey Demand aggregate into the public marketplace
+   * representation.
    *
-   * Ownership remains unchanged:
+   * This deliberately mirrors the singular public Demand handler.
    *
-   *     Journey Demand
-   *          │
-   *          ├── requesterPublicId
-   *          │
-   *          └── participants[].memberPublicId
-   *
-   * Those opaque references are resolved into public Traveller and Trust
-   * projections here.
+   * Collection and detail therefore expose the same public contract.
    */
   private async composePublicJourneyDemand(
     demand: JourneyDemandAggregate,
@@ -636,16 +689,10 @@ export class GetPublicJourneyDemandQueryHandler implements QueryHandler<
    *     JourneyDemandSeats
    *          └── value: number
    *
-   * The public contract deliberately exposes primitive numbers, therefore
-   * the Value Object is unwrapped at this application/read boundary.
+   * The public marketplace contract deliberately exposes primitive numbers.
    *
-   * remainingSeats is derived by the aggregate and is already a number.
+   * remainingSeats is already exposed by the aggregate as a primitive number.
    */
-
-  // ===========================================================================
-  // Capacity Projection
-  // ===========================================================================
-
   private toPublicCapacity(
     demand: JourneyDemandAggregate,
   ): PublicJourneyDemandCapacity {
@@ -657,26 +704,11 @@ export class GetPublicJourneyDemandQueryHandler implements QueryHandler<
       );
     }
 
-    /**
-     * -------------------------------------------------------------------------
-     * Public read-model projection
-     * -------------------------------------------------------------------------
-     *
-     * requestedSeats and matchedSeats are represented inside the domain by
-     * JourneyDemandSeats value objects.
-     *
-     * The public marketplace contract deliberately exposes primitive numbers.
-     *
-     * Therefore the value objects are unwrapped here at the application
-     * projection boundary.
-     *
-     *     JourneyDemandSeats -> number
-     *
-     * remainingSeats is already exposed by the aggregate as a primitive number.
-     */
     return {
       requestedSeats: capacity.requestedSeats.value,
+
       matchedSeats: capacity.matchedSeats,
+
       remainingSeats: demand.remainingSeats,
     };
   }

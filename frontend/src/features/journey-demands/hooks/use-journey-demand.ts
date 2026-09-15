@@ -10,10 +10,17 @@
 // Public visibility is enforced by the backend public-read boundary. The
 // frontend does not attempt to determine whether a Journey Demand is public.
 //
+// The API already returns the frontend PublicJourneyDemand representation.
+// There is therefore no mapper layer in this hook. A mapper should only be
+// introduced if the API representation and frontend representation genuinely
+// diverge.
+//
+// Request cancellation and request IDs prevent a stale detail response from
+// replacing the result for a newer public Journey Demand.
+//
 // The effect is responsible only for synchronizing the hook with the external
 // API request. It does not synchronously reset React state from inside the
-// effect body, which avoids cascading-render warnings from React's hooks
-// linting rules.
+// effect body.
 // -----------------------------------------------------------------------------
 
 'use client';
@@ -22,7 +29,6 @@ import { useEffect, useRef, useState } from 'react';
 
 import { getPublicJourneyDemandByPublicId } from '../api';
 import type { PublicJourneyDemand } from '../models';
-import { mapPublicJourneyDemand } from '../mappers';
 
 // -----------------------------------------------------------------------------
 // State
@@ -41,9 +47,7 @@ export interface PublicJourneyDemandState {
 export function useJourneyDemand(
   journeyDemandPublicId: string | null | undefined,
 ): PublicJourneyDemandState {
-  const normalizedPublicId =
-    journeyDemandPublicId?.trim() || null;
-
+  const normalizedPublicId = journeyDemandPublicId?.trim() || null;
   const hasPublicId = normalizedPublicId !== null;
 
   const [data, setData] = useState<PublicJourneyDemand | null>(null);
@@ -56,10 +60,9 @@ export function useJourneyDemand(
   // Load Public Journey Demand
   // ---------------------------------------------------------------------------
   //
-  // The effect does not synchronously reset state when the ID is missing.
+  // A missing public ID means that there is no external resource to load.
   //
-  // A missing ID simply means there is no external request to synchronize.
-  // The returned state is derived accordingly below.
+  // The effect therefore exits without synchronously mutating React state.
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
@@ -75,31 +78,29 @@ export function useJourneyDemand(
         const journeyDemand =
           await getPublicJourneyDemandByPublicId(normalizedPublicId);
 
+        // Ignore responses from cancelled or superseded requests.
         if (cancelled || requestId !== requestIdRef.current) {
           return;
         }
 
-        setData(
-          journeyDemand === null
-            ? null
-            : mapPublicJourneyDemand(journeyDemand),
-        );
-
+        // The public API already returns the frontend public read model.
+        //
+        // No API-to-frontend mapper is required because both boundaries
+        // currently use the same PublicJourneyDemand contract.
+        setData(journeyDemand);
         setError(null);
       } catch (cause) {
         if (cancelled || requestId !== requestIdRef.current) {
           return;
         }
 
+        setData(null);
+
         setError(
           cause instanceof Error
             ? cause
-            : new Error(
-                'Unable to load the public Journey Demand.',
-              ),
+            : new Error('Unable to load the public Journey Demand.'),
         );
-
-        setData(null);
       } finally {
         if (!cancelled && requestId === requestIdRef.current) {
           setIsLoading(false);
@@ -118,9 +119,10 @@ export function useJourneyDemand(
   // Public State
   // ---------------------------------------------------------------------------
   //
-  // When no public ID exists, there is no resource being loaded. Rather than
-  // synchronously mutating React state from the effect, expose the appropriate
-  // derived state directly.
+  // When no public ID exists, there is no resource being requested.
+  //
+  // Return the appropriate derived state directly instead of synchronously
+  // resetting React state from inside the effect.
   // ---------------------------------------------------------------------------
 
   if (!hasPublicId) {
@@ -137,4 +139,3 @@ export function useJourneyDemand(
     error,
   };
 }
-

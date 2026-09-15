@@ -1,5 +1,9 @@
 // -----------------------------------------------------------------------------
-// Journey Demand Query Handlers
+// Journey Demand — Query Handlers
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Core Journey Demand Queries
 // -----------------------------------------------------------------------------
 
 export * from './get-journey-demand.handler';
@@ -11,6 +15,20 @@ export * from './get-journey-demands.handler';
 export * from './get-my-journey-demands.handler';
 
 // -----------------------------------------------------------------------------
+// Public Marketplace Discovery
+// -----------------------------------------------------------------------------
+//
+// Both public handlers use the same public Journey Demand response contract.
+//
+// The singular handler exports the public response types. The plural handler
+// exports only its query handler to prevent duplicate named exports.
+//
+
+export { GetPublicJourneyDemandQueryHandler } from './get-public-journey-demand.query-handler';
+
+export { GetPublicJourneyDemandsQueryHandler } from './get-public-journey-demands.query-handler';
+
+// -----------------------------------------------------------------------------
 // Participants
 // -----------------------------------------------------------------------------
 
@@ -19,7 +37,7 @@ export * from './get-journey-demand-participants.handler';
 export * from './get-journey-demand-participant.handler';
 
 // -----------------------------------------------------------------------------
-// Components
+// Journey Demand Components
 // -----------------------------------------------------------------------------
 
 export * from './get-journey-demand-corridor.handler';
@@ -33,10 +51,8 @@ export * from './get-journey-demand-pricing.handler';
 export * from './get-journey-demand-waypoints.handler';
 
 // -----------------------------------------------------------------------------
-// Discovery
+// Internal Discovery
 // -----------------------------------------------------------------------------
-
-export * from './get-public-journey-demand.query-handler';
 
 export * from './find-open-journey-demands.handler';
 

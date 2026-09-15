@@ -5,13 +5,14 @@
 // Infrastructure dependency-injection providers for the Assets bounded
 // context.
 //
-// The application layer depends on abstractions:
+// The application layer depends only on abstractions:
 //
 // - AssetRepository;
-// - AssetStoragePort.
+// - AssetStoragePort;
+// - AssetDeliveryPort.
 //
-// This provider file binds those abstractions to concrete infrastructure
-// implementations.
+// This provider file binds those application-facing abstractions to their
+// concrete infrastructure implementations.
 //
 // -----------------------------------------------------------------------------
 //
@@ -29,62 +30,100 @@
 //            │
 //            └── APPLICATION_SERVICES
 //                    │
-//                    ▼
-//              AssetStoragePort
+//                    ├── ASSET_STORAGE
+//                    │       │
+//                    │       ▼
+//                    │   AssetStoragePort
+//                    │       │
+//                    │       ├───────────────┐
+//                    │       ▼               ▼
+//                    │   Local Storage    Bunny Storage
 //                    │
-//                    ├───────────────┐
-//                    ▼               ▼
-//             Local Storage     Bunny Storage
+//                    └── ASSET_DELIVERY
+//                            │
+//                            ▼
+//                      AssetDeliveryPort
+//                            │
+//                            ▼
+//                   configured delivery adapter
 //
 // -----------------------------------------------------------------------------
 //
-// Storage selection:
+// STORAGE SELECTION
 //
 //     ASSET_STORAGE_PROVIDER=LOCAL
 //             │
 //             ▼
 //     LocalAssetStorageService
 //
+//
 //     ASSET_STORAGE_PROVIDER=BUNNY
 //             │
 //             ▼
 //     BunnyAssetStorageService
 //
+// Only the selected storage implementation is instantiated.
+//
+// -----------------------------------------------------------------------------
+//
+// DELIVERY
+//
+// Asset delivery is deliberately separated from physical storage.
+//
+// AssetStoragePort answers:
+//
+//     "How do we access the physical Asset object?"
+//
+// AssetDeliveryPort answers:
+//
+//     "What consumer-facing URL should be returned for this Asset?"
+//
+// The application layer therefore never constructs delivery URLs and never
+// resolves a concrete delivery implementation.
+//
 // -----------------------------------------------------------------------------
 //
 // Current sisiMove deployment:
 //
-//     LOCAL
+//     physical storage  → LOCAL
+//     asset delivery    → LocalAssetDeliveryService
 //
-// Bunny remains available behind the same AssetStoragePort so that the
-// physical storage implementation can be changed later without changing the
-// Asset domain or application layer.
+// The delivery implementation remains behind AssetDeliveryPort so the
+// application layer does not depend on local filesystem details.
 //
-// -----------------------------------------------------------------------------
-//
-// IMPORTANT:
-//
-// Only the selected concrete storage implementation is instantiated.
-//
-// This is especially important for Bunny because its infrastructure adapter
-// may require production-only configuration such as storage credentials.
-//
-// LOCAL therefore remains completely independent of Bunny configuration.
+// A future Bunny/CDN delivery implementation can replace the configured
+// adapter without changing Asset application handlers or domain behavior.
 //
 // -----------------------------------------------------------------------------
+//
+// IMPORTANT
 //
 // The application layer never resolves:
 //
 //     LocalAssetStorageService
 //     BunnyAssetStorageService
+//     LocalAssetDeliveryService
 //
 // It resolves only:
 //
 //     ASSET_TOKENS.APPLICATION_SERVICES.ASSET_STORAGE
+//     ASSET_TOKENS.APPLICATION_SERVICES.ASSET_DELIVERY
 //
-// which represents:
+// These tokens represent:
 //
 //     AssetStoragePort
+//     AssetDeliveryPort
+//
+// respectively.
+//
+// -----------------------------------------------------------------------------
+//
+// The repository is also hidden behind:
+//
+//     ASSET_TOKENS.REPOSITORIES.ASSET
+//
+// Therefore application handlers remain completely independent from
+// infrastructure implementations.
 //
 // -----------------------------------------------------------------------------
 
@@ -103,6 +142,8 @@ import { ASSET_TOKENS } from '../../application/asset.tokens';
 // -----------------------------------------------------------------------------
 // Application — Ports
 // -----------------------------------------------------------------------------
+
+import type { AssetDeliveryPort } from '../../application/ports/asset-delivery.port';
 
 import type { AssetStoragePort } from '../../application/ports/asset-storage.port';
 
@@ -125,6 +166,12 @@ import { PrismaAssetRepository } from '../persistence/prisma/repositories/prisma
 import { BunnyAssetStorageService } from '../storage/bunny-asset-storage.service';
 
 import { LocalAssetStorageService } from '../storage/local-asset-storage.service';
+
+// -----------------------------------------------------------------------------
+// Infrastructure — Delivery
+// -----------------------------------------------------------------------------
+
+import { LocalAssetDeliveryService } from '../storage/local-asset-delivery.service';
 
 // =============================================================================
 // Storage Provider Configuration
@@ -152,7 +199,7 @@ function getConfiguredStorageProvider(): string {
  * infrastructure configuration.
  *
  * The factory returns the application-facing port rather than exposing a
- * concrete implementation type to the composition boundary.
+ * concrete implementation type to the application layer.
  *
  * Only the selected implementation is instantiated.
  */
@@ -173,6 +220,30 @@ function createAssetStorageProvider(): AssetStoragePort {
           `"${AssetStorageProvider.BUNNY}".`,
       );
   }
+}
+
+// =============================================================================
+// Delivery Selection
+// =============================================================================
+
+/**
+ * Creates the concrete AssetDeliveryPort implementation used by the
+ * application layer.
+ *
+ * Delivery is intentionally separate from physical Asset storage.
+ *
+ * The public Asset reference use case needs a consumer-facing URL, but it
+ * must not know how that URL is constructed.
+ *
+ * The delivery adapter therefore owns that responsibility.
+ *
+ * The current sisiMove deployment uses local delivery.
+ *
+ * A future Bunny/CDN delivery adapter can be selected here without changing
+ * GetPublicAssetReferenceQueryHandler or any other application handler.
+ */
+function createAssetDeliveryProvider(): AssetDeliveryPort {
+  return new LocalAssetDeliveryService();
 }
 
 // =============================================================================
@@ -221,6 +292,39 @@ export const ASSET_PROVIDERS: Provider[] = [
   {
     provide: ASSET_TOKENS.APPLICATION_SERVICES.ASSET_STORAGE,
     useFactory: createAssetStorageProvider,
+  },
+
+  // ===========================================================================
+  // Asset Delivery
+  // ===========================================================================
+  //
+  // Application abstraction:
+  //
+  //     ASSET_TOKENS.APPLICATION_SERVICES.ASSET_DELIVERY
+  //
+  // Infrastructure implementation:
+  //
+  //     LocalAssetDeliveryService
+  //
+  // The concrete delivery adapter remains hidden behind AssetDeliveryPort.
+  //
+  // This provider is required by:
+  //
+  //     GetPublicAssetReferenceQueryHandler
+  //
+  // which depends on:
+  //
+  //     AssetDeliveryPort
+  //
+  // through:
+  //
+  //     ASSET_TOKENS.APPLICATION_SERVICES.ASSET_DELIVERY
+  //
+  // ---------------------------------------------------------------------------
+
+  {
+    provide: ASSET_TOKENS.APPLICATION_SERVICES.ASSET_DELIVERY,
+    useFactory: createAssetDeliveryProvider,
   },
 ];
 

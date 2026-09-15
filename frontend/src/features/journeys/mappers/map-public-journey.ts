@@ -1,28 +1,53 @@
 // src/features/journeys/mappers/map-public-journey.ts
+
 // -----------------------------------------------------------------------------
 // sisiMove — Public Journey Mapper
 // -----------------------------------------------------------------------------
 //
-// Maps the API representation of a publicly discoverable Journey into the
-// frontend PublicJourney model.
+// Maps the backend public Journey HTTP representation into the frontend
+// PublicJourney model.
+//
+// Architectural boundary
+// ----------------------
+//
+// The backend public Journey endpoint returns an already-composed public
+// Journey read model:
+//
+//   Journey
+//     ├── provider
+//     │     ├── traveller
+//     │     └── trust
+//     ├── route
+//     ├── schedule
+//     ├── vehicle
+//     ├── capacity
+//     ├── pricing
+//     ├── preferences
+//     └── assets
+//
+// Journey remains the primary domain object. Traveller and Trust do not own
+// the Journey and are not reconstructed here.
+//
+// This mapper only translates the external HTTP representation into the
+// frontend model consumed by the Journey feature.
 //
 // Responsibilities:
-// - normalize the external API representation;
-// - provide the frontend with its stable PublicJourney shape;
-// - keep API representation details out of UI components.
+// - define the API/frontend boundary;
+// - preserve the public Journey provider composition;
+// - normalize API values into the frontend model;
+// - prevent API response details from leaking into UI components.
 //
-// This mapper must remain intentionally thin.
-//
-// It does NOT:
+// This mapper does NOT:
 // - fetch Traveller Profile data;
 // - fetch Trust data;
 // - fetch Assets;
 // - compose Journey Demand;
 // - perform marketplace composition;
-// - contain business rules.
+// - reconstruct a provider from separate objects;
+// - apply business rules.
 //
-// Cross-domain enrichment belongs to the appropriate feature or to the
-// Marketplace read boundary.
+// The backend public read boundary is responsible for composing the public
+// Journey response. The frontend mapper must not duplicate that composition.
 //
 // -----------------------------------------------------------------------------
 
@@ -31,27 +56,85 @@ import type { PublicJourney } from '../models';
 // -----------------------------------------------------------------------------
 // API Representation
 // -----------------------------------------------------------------------------
-//
-// The public Journey endpoint currently returns the Journey representation
-// directly. Keep this type local to the mapper so API representation details
-// do not leak throughout the frontend.
-//
-// The shape intentionally mirrors the public Journey model.
-//
-// If the backend public DTO later changes independently from the frontend
-// model, this boundary is where that translation belongs.
-// -----------------------------------------------------------------------------
 
-type PublicJourneyApiResponse = PublicJourney;
+/**
+ * Public Journey HTTP response.
+ *
+ * Keep the API representation local to this mapper. This creates an explicit
+ * translation boundary between the backend contract and the frontend model.
+ *
+ * The backend controller currently flattens the Journey entity into the
+ * public HTTP response while retaining the composed provider:
+ *
+ * {
+ *   publicId,
+ *   provider: {
+ *     traveller,
+ *     trust,
+ *   },
+ *   route,
+ *   schedule,
+ *   vehicle,
+ *   capacity,
+ *   pricing,
+ *   preferences,
+ *   assets,
+ * }
+ *
+ * We intentionally describe the API shape structurally instead of aliasing
+ * it to PublicJourney. An alias would make the mapper a no-op and would
+ * remove the value of having this boundary.
+ */
+interface PublicJourneyApiResponse {
+  readonly publicId: string;
+
+  readonly provider: {
+    readonly traveller: PublicJourney['provider']['traveller'];
+    readonly trust: PublicJourney['provider']['trust'];
+  };
+
+  readonly route: PublicJourney['route'];
+  readonly schedule: PublicJourney['schedule'];
+  readonly vehicle: PublicJourney['vehicle'];
+  readonly capacity: PublicJourney['capacity'];
+  readonly pricing: PublicJourney['pricing'];
+  readonly preferences: PublicJourney['preferences'];
+  readonly assets: PublicJourney['assets'];
+}
 
 // -----------------------------------------------------------------------------
 // Mapper
 // -----------------------------------------------------------------------------
 
+/**
+ * Maps one public Journey API response into the frontend PublicJourney model.
+ *
+ * The provider composition is preserved exactly as supplied by the backend:
+ *
+ *   response.provider.traveller
+ *   response.provider.trust
+ *
+ * This is important because Journey owns the provider reference at the domain
+ * level, while the public marketplace read boundary enriches that reference
+ * with public Traveller and Trust information.
+ */
 export function mapPublicJourney(
   response: PublicJourneyApiResponse,
 ): PublicJourney {
   return {
-    ...response,
+    publicId: response.publicId,
+
+    provider: {
+      traveller: response.provider.traveller,
+      trust: response.provider.trust,
+    },
+
+    route: response.route,
+    schedule: response.schedule,
+    vehicle: response.vehicle,
+    capacity: response.capacity,
+    pricing: response.pricing,
+    preferences: response.preferences,
+    assets: response.assets,
   };
 }

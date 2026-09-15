@@ -83,6 +83,38 @@ import type { JourneyDemandParticipantPublicId } from '../value-objects/journey-
 import type { JourneyDemandParticipantStatusValueObject } from '../value-objects/journey-demand-participant-status.vo';
 
 // -----------------------------------------------------------------------------
+// Public Discovery Filters
+// -----------------------------------------------------------------------------
+
+/**
+ * Filters supported by the public Journey Demand marketplace.
+ *
+ * Public discovery is intentionally different from the internal/root
+ * JourneyDemand queries below.
+ *
+ * The absence of filters means:
+ *
+ *   "return all Journey Demands currently eligible for public discovery."
+ *
+ * The filter values remain primitive because they represent query criteria,
+ * not persisted domain state:
+ *
+ *   from   -> origin name/query
+ *   to     -> destination name/query
+ *   date   -> requested travel date
+ *
+ * Pagination is also a query concern and therefore remains outside the
+ * JourneyDemand aggregate.
+ */
+export interface PublicJourneyDemandFilters {
+  readonly from?: string;
+  readonly to?: string;
+  readonly date?: string;
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+// -----------------------------------------------------------------------------
 // Repository
 // -----------------------------------------------------------------------------
 
@@ -124,11 +156,11 @@ import type { JourneyDemandParticipantStatusValueObject } from '../value-objects
  *
  * Internal IDs and public IDs are deliberately kept distinct:
  *
- *   - Internal IDs  -> UniqueEntityId-derived value objects
- *   - Public IDs    -> strongly typed public identifier value objects
+ *   - Internal IDs -> UniqueEntityId-derived value objects
+ *   - Public IDs   -> strongly typed public identifier value objects
  *
- * Public discovery is deliberately represented by a dedicated repository
- * operation. A JourneyDemand may exist and be addressable by public ID while
+ * Public discovery is deliberately represented by dedicated repository
+ * operations. A JourneyDemand may exist and be addressable by public ID while
  * still not being eligible for anonymous/public discovery.
  */
 export interface JourneyDemandRepository {
@@ -168,7 +200,7 @@ export interface JourneyDemandRepository {
 
   /**
    * Find and fully rehydrate a JourneyDemand aggregate that is eligible for
-   * public discovery.
+   * public discovery by public ID.
    *
    * The infrastructure implementation must enforce the public visibility
    * rules of the JourneyDemand domain.
@@ -181,6 +213,39 @@ export interface JourneyDemandRepository {
   findPublicJourneyDemandByPublicId(
     publicId: JourneyDemandPublicId,
   ): Promise<JourneyDemandAggregate | null>;
+
+  /**
+   * Find and fully rehydrate all JourneyDemand aggregates eligible for
+   * anonymous/public marketplace discovery.
+   *
+   * This is the collection counterpart to
+   * findPublicJourneyDemandByPublicId().
+   *
+   * An omitted filters argument means:
+   *
+   *   "return all publicly discoverable Journey Demands."
+   *
+   * The implementation must enforce public visibility independently of the
+   * supplied filters. Filters narrow an already-public collection; they must
+   * never make a private/non-discoverable JourneyDemand public.
+   *
+   * The returned objects are aggregates rather than root entities because the
+   * public application query composes:
+   *
+   * - requester reference
+   * - route and waypoints
+   * - schedule
+   * - capacity
+   * - pricing
+   * - participants
+   *
+   * Infrastructure should perform this as efficiently as possible using its
+   * persistence capabilities rather than requiring one database query per
+   * aggregate component.
+   */
+  findPublicJourneyDemands(
+    filters?: PublicJourneyDemandFilters,
+  ): Promise<JourneyDemandAggregate[]>;
 
   /**
    * Delete a JourneyDemand aggregate.
@@ -223,7 +288,8 @@ export interface JourneyDemandRepository {
   /**
    * Find all JourneyDemand root entities.
    *
-   * This does not rehydrate the aggregate.
+   * This does not rehydrate the aggregate and is therefore not the public
+   * marketplace collection operation.
    */
   findJourneyDemands(): Promise<JourneyDemandEntity[]>;
 

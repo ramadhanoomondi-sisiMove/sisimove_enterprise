@@ -1,43 +1,117 @@
-// src/domains/trust/trust.module.ts
+// -----------------------------------------------------------------------------
+// sisiMove — Trust Module
+// -----------------------------------------------------------------------------
+//
+// The Trust bounded context owns:
+//
+// - Trust Profile;
+// - Trust Ratings;
+// - Trust Reviews;
+// - Trust Profile Badges;
+// - Trust Badge catalogue;
+// - Trust verification;
+// - Trust journey projections;
+// - Trust dispute projections.
+//
+// The public marketplace Trust representation is implemented as a dedicated
+// application query handler:
+//
+//     GetPublicTrustProfileByMemberQueryHandler
+//
+// That handler composes a reduced public Trust result and consumes Asset's
+// public-reference capability when a public Trust Badge has associated
+// artwork.
+//
+// -----------------------------------------------------------------------------
+//
+// CROSS-DOMAIN ASSET DEPENDENCY
+//
+// Trust does NOT access Asset infrastructure directly.
+//
+// Trust does NOT:
+//
+// - inject AssetStoragePort;
+// - inject AssetDeliveryPort;
+// - construct Asset URLs;
+// - access Asset storage;
+// - register Asset infrastructure providers;
+// - register GetPublicAssetReferenceQueryHandler locally.
+//
+// Instead, Trust imports AssetsModule and consumes the application capability
+// exported by that module:
+//
+//     ASSET_TOKENS.QUERY_HANDLERS.GET_PUBLIC_ASSET_REFERENCE
+//
+// The dependency therefore remains:
+//
+//     Trust
+//       │
+//       └── imports AssetsModule
+//                    │
+//                    └── exports public Asset-reference capability
+//
+// This keeps the bounded-context boundary explicit and prevents Trust from
+// depending on Asset infrastructure details.
+//
+// =============================================================================
+
+// =============================================================================
+// Framework
+// =============================================================================
 
 import { Module } from '@nestjs/common';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Domain Dependencies
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 import { IdentityModule } from '../identity/identity.module';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
+// Assets — Public Application Capability
+// =============================================================================
+//
+// Trust consumes the public Asset-reference query capability for Trust Badge
+// artwork.
+//
+// AssetsModule owns the provider and exports the corresponding application
+// token. Trust therefore imports the module rather than registering or
+// instantiating any Asset provider itself.
+//
+// =============================================================================
+
+import { AssetsModule } from '../assets/assets.module';
+
+// =============================================================================
 // Infrastructure
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 import { PrismaModule } from '../../infrastructure/database/prisma/prisma.module';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Presentation
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 import { TrustBadgeController } from './presentation/rest/controllers/trust-badge.controller';
 import { TrustProfileController } from './presentation/rest/controllers/trust-profile.controller';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Infrastructure — Dependency Injection
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 import { trustBadgeProviders } from './infrastructure/dependency-injection/trust-badge.providers';
 import { trustProfileProviders } from './infrastructure/dependency-injection/trust-profile.providers';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Application — Tokens
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 import { TRUST_BADGE_TOKENS } from './application/trust-badge.tokens';
 import { TRUST_PROFILE_TOKENS } from './application/trust-profile.tokens';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Application — Trust Badge Command Handlers
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 import {
   ActivateTrustBadgeHandler,
@@ -50,9 +124,9 @@ import {
   UpdateTrustBadgeHandler,
 } from './application/handlers/trust-badge';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Application — Trust Badge Query Handlers
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 import {
   GetActiveTrustBadgesQueryHandler,
@@ -62,9 +136,9 @@ import {
   GetTrustBadgeQueryHandler,
 } from './application/query-handlers/trust-badge';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Application — Trust Profile Command Handlers
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 import {
   ApplyJourneyCancelledHandler,
@@ -88,9 +162,9 @@ import {
   UpdateTrustReviewHandler,
 } from './application/handlers/trust-profile';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Application — Trust Profile Query Handlers
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 import {
   GetPublicTrustProfileByMemberQueryHandler,
@@ -107,34 +181,6 @@ import {
 
 // =============================================================================
 // Trust Module
-// =============================================================================
-//
-// The Trust bounded context owns:
-//
-// - Trust Profile;
-// - Trust Ratings;
-// - Trust Reviews;
-// - Trust Profile Badges;
-// - Trust Badge catalogue;
-// - Trust verification;
-// - Trust journey projections;
-// - Trust dispute projections.
-//
-// The public marketplace Trust representation is implemented as a dedicated
-// application query handler:
-//
-//     GetPublicTrustProfileByMemberQueryHandler
-//
-// It is intentionally registered under:
-//
-//     GET_PUBLIC_BY_MEMBER_PUBLIC_ID
-//
-// The handler composes a reduced public Trust result and may use Asset's public
-// asset-reference capability for badge artwork.
-//
-// The module therefore only needs to wire the handler to its existing token.
-// No separate public Trust module, projection module, or repository is needed.
-//
 // =============================================================================
 
 @Module({
@@ -156,6 +202,35 @@ import {
     // =========================================================================
 
     IdentityModule,
+
+    // =========================================================================
+    // Assets / Public Asset Reference
+    // =========================================================================
+    //
+    // Trust's public Trust-profile query may expose artwork for active Trust
+    // Badges.
+    //
+    // The Trust application handler consumes:
+    //
+    //   ASSET_TOKENS.QUERY_HANDLERS.GET_PUBLIC_ASSET_REFERENCE
+    //
+    // AssetsModule owns that provider and explicitly exports the token.
+    //
+    // Importing AssetsModule is therefore the correct Nest module boundary.
+    //
+    // We intentionally do NOT:
+    //
+    // - register GetPublicAssetReferenceQueryHandler here;
+    // - register AssetDeliveryPort here;
+    // - register AssetStoragePort here;
+    // - register LocalAssetDeliveryService here;
+    // - register BunnyAssetDeliveryService here.
+    //
+    // Assets remains responsible for its own infrastructure and public Asset
+    // delivery behavior.
+    // =========================================================================
+
+    AssetsModule,
 
     // =========================================================================
     // Prisma
@@ -430,9 +505,11 @@ import {
     // This is the reduced public Trust read capability consumed by anonymous
     // marketplace experiences.
     //
-    // The handler is intentionally separate from the broad Trust Profile query
-    // handler because the public contract has different exposure rules.
+    // The handler has its own exposure boundary and is therefore separate from
+    // the broader Trust Profile query.
     //
+    // The handler consumes AssetsModule's exported public Asset-reference
+    // capability for optional Trust Badge artwork.
     // =========================================================================
 
     {
@@ -585,9 +662,8 @@ import {
     // Public Marketplace Query Token
     // =========================================================================
     //
-    // Exported because other bounded contexts/read compositions may consume
-    // the public Trust query capability through the Trust module boundary.
-    //
+    // Exported so other bounded contexts/read compositions can consume the
+    // reduced public Trust capability through the Trust module boundary.
     // =========================================================================
 
     TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_PUBLIC_BY_MEMBER_PUBLIC_ID,
@@ -600,7 +676,6 @@ import {
 
     TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_BADGES,
     TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_BADGE,
-
     TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_EVENTS,
   ],
 })
