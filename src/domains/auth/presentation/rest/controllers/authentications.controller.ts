@@ -2,19 +2,42 @@
 // Authentication — HTTP Controller
 // -----------------------------------------------------------------------------
 //
-// REST controller for Authentication aggregate operations.
+// REST controller for Authentication aggregate operations and user
+// registration.
 //
-// Aggregate:
+// Authentication aggregate:
 //
 // AuthenticationAggregate
 // └── AuthenticationEntity
 //
-// Responsibilities:
+// Registration is different from an AuthenticationAggregate operation.
+//
+// Registration is a complete application workflow:
+//
+// RegisterUserResult
+// ├── IdentityAggregate
+// ├── VerificationAggregate
+// ├── TravellerProfileAggregate
+// ├── TrustProfileAggregate
+// └── AuthenticationAggregate
+//
+// Therefore:
+//
+//     POST /authentications/register
+//
+// is dispatched to RegisterUserHandler and is mapped by
+// RegisterUserResponseMapper.
+//
+// AuthenticationResponseMapper MUST NOT be used for registration.
+//
+// -----------------------------------------------------------------------------
+//
+// Controller responsibilities:
 //
 // - HTTP transport;
 // - DTO binding and validation;
-// - conversion from transport primitives to domain value objects;
-// - password hashing for password provisioning/change;
+// - conversion from transport primitives to domain value objects where the
+//   individual Authentication command contracts require them;
 // - dispatching application commands and queries;
 // - mapping application/domain results to transport responses;
 // - extracting technical request metadata required by login.
@@ -37,7 +60,58 @@
 //
 // -----------------------------------------------------------------------------
 //
-// Aggregate boundaries:
+// Registration boundary:
+//
+// The registration endpoint accepts:
+//
+//     travellerName
+//     countryCode
+//     email
+//     phoneNumber
+//     password
+//     termsAccepted
+//
+// The controller does NOT:
+//
+// - create Identity;
+// - activate Identity;
+// - create Verification;
+// - create TravellerProfile;
+// - create TravellerProfilePreferences;
+// - create TrustProfile;
+// - hash the registration password;
+// - create Authentication;
+// - activate Authentication;
+// - assign IdentityRole;
+// - grant MEMBER verification;
+// - create Session;
+// - create Device;
+// - generate access tokens;
+// - generate refresh tokens.
+//
+// RegisterUserHandler owns that application workflow.
+//
+// Password hashing for registration is therefore an application-service
+// concern inside RegisterUserHandler. The controller only passes the
+// registration command to the handler.
+//
+// -----------------------------------------------------------------------------
+//
+// Registration completion:
+//
+// Successful registration returns:
+//
+//     RegisterUserResponse
+//
+// with the next client action:
+//
+//     LOGIN
+//
+// Registration does NOT create a Session and does NOT authenticate the user.
+//
+// -----------------------------------------------------------------------------
+//
+// Authentication aggregate boundaries:
 //
 // Authentication
 // └── AuthenticationEntity
@@ -56,30 +130,13 @@
 //
 // These are independent aggregate boundaries.
 //
-// This controller does NOT:
-//
-// - validate credentials directly;
-// - compare passwords;
-// - implement password hashing algorithms;
-// - resolve Identity directly;
-// - create Devices directly;
-// - create Sessions directly;
-// - generate access tokens;
-// - generate refresh tokens;
-// - hash refresh tokens;
-// - persist refresh tokens;
-// - access Prisma;
-// - perform persistence directly;
-// - mutate Authentication state directly;
-// - orchestrate the complete login workflow;
-// - perform external side effects.
-//
 // -----------------------------------------------------------------------------
 //
 // Authentication security boundary:
 //
 // Public authentication operations:
 //
+// - register user;
 // - create authentication;
 // - activate authentication;
 // - login.
@@ -174,6 +231,8 @@
 //
 // Password provisioning:
 //
+// For the direct Authentication create endpoint:
+//
 // plaintext password
 //        │
 //        ▼
@@ -186,6 +245,21 @@
 // CreateAuthenticationCommand
 //
 // Plaintext passwords never enter CreateAuthenticationCommand.
+//
+// Registration is different:
+//
+// RegisterUserRequestDto
+//        │
+//        ▼
+// RegisterUserCommand
+//        │
+//        ▼
+// RegisterUserHandler
+//        │
+//        └── PasswordHasher.hash()
+//
+// The registration controller deliberately does not duplicate registration
+// orchestration or password hashing.
 //
 // -----------------------------------------------------------------------------
 //
@@ -354,6 +428,7 @@ import {
   DisableAuthenticationCommand,
   LockAuthenticationCommand,
   RecordAuthenticationFailureCommand,
+  RegisterUserCommand,
   UnlockAuthenticationCommand,
 } from '../../../application/commands';
 
@@ -362,6 +437,12 @@ import {
 // -----------------------------------------------------------------------------
 
 import type { AuthenticateLoginResult } from '../../../application/command-handlers/authenticate-login.handler';
+
+// -----------------------------------------------------------------------------
+// Application — Registration Result
+// -----------------------------------------------------------------------------
+
+import type { RegisterUserResult } from '../../../application/command-handlers/register-user.handler';
 
 // -----------------------------------------------------------------------------
 // Application — Queries
@@ -423,6 +504,7 @@ import {
   DisableAuthenticationRequestDto,
   LockAuthenticationRequestDto,
   RecordAuthenticationFailureRequestDto,
+  RegisterUserRequestDto,
 } from '../dto/request';
 
 // -----------------------------------------------------------------------------
@@ -435,17 +517,24 @@ import {
 } from '../queries';
 
 // -----------------------------------------------------------------------------
-// Presentation — Response Model
+// Presentation — Authentication Response
 // -----------------------------------------------------------------------------
 
 import type { AuthenticationResponse } from '../mappers/authentication.response.mapper';
 
 // -----------------------------------------------------------------------------
-// Presentation — Response Mapper
+// Presentation — Authentication Response Mapper
 // -----------------------------------------------------------------------------
 
 import { AuthenticationResponseMapper } from '../mappers/authentication.response.mapper';
 
+// -----------------------------------------------------------------------------
+// Presentation — Registration Response
+// -----------------------------------------------------------------------------
+
+import type { RegisterUserResponse } from '../../../application/mappers/register-user.response.mapper';
+
+import { RegisterUserResponseMapper } from '../../../application/mappers/register-user.response.mapper';
 // =============================================================================
 // Controller
 // =============================================================================
@@ -461,9 +550,35 @@ export class AuthenticationsController {
     // -------------------------------------------------------------------------
     // Security
     // -------------------------------------------------------------------------
+    //
+    // This PasswordHasher is used only by Authentication-specific operations
+    // that explicitly require password hashing at the HTTP/application
+    // boundary, such as direct authentication creation and password change.
+    //
+    // Registration has its own application workflow and therefore uses the
+    // PasswordHasher injected into RegisterUserHandler.
+    //
+    // -------------------------------------------------------------------------
 
     @Inject(SECURITY_PASSWORD_HASHER)
     private readonly passwordHasher: PasswordHasher,
+
+    // -------------------------------------------------------------------------
+    // User Registration
+    // -------------------------------------------------------------------------
+    //
+    // Registration is a composite application workflow.
+    //
+    // The controller does not orchestrate the individual aggregate creation
+    // handlers. RegisterUserHandler owns that orchestration.
+    //
+    // -------------------------------------------------------------------------
+
+    @Inject(AUTH_TOKENS.COMMAND_HANDLERS.REGISTER_USER)
+    private readonly registerUserHandler: CommandHandler<
+      RegisterUserCommand,
+      RegisterUserResult
+    >,
 
     // -------------------------------------------------------------------------
     // Authentication Command Handlers
@@ -541,6 +656,63 @@ export class AuthenticationsController {
       AuthenticationAggregate | null
     >,
   ) {}
+
+  // ===========================================================================
+  // User Registration
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Register User
+  // ---------------------------------------------------------------------------
+  //
+  // POST /authentications/register
+  //
+  // Registration creates the account and its required onboarding records.
+  //
+  // The controller only converts the validated HTTP DTO into the application
+  // command and dispatches it.
+  //
+  // RegisterUserHandler owns:
+  //
+  // - Identity creation and activation;
+  // - Verification creation;
+  // - TravellerProfile creation;
+  // - TravellerProfilePreferences creation;
+  // - TrustProfile creation;
+  // - password hashing;
+  // - Authentication creation;
+  // - Authentication activation.
+  //
+  // Registration does NOT:
+  //
+  // - assign IdentityRole;
+  // - grant MEMBER verification;
+  // - create Session;
+  // - create Device;
+  // - issue access tokens;
+  // - issue refresh tokens.
+  //
+  // Therefore successful registration proceeds to LOGIN.
+  //
+  // ---------------------------------------------------------------------------
+
+  @Post('register')
+  public async register(
+    @Body() dto: RegisterUserRequestDto,
+  ): Promise<RegisterUserResponse> {
+    const command = new RegisterUserCommand(
+      dto.travellerName,
+      dto.countryCode,
+      dto.email,
+      dto.phoneNumber,
+      dto.password,
+      dto.termsAccepted,
+    );
+
+    const result = await this.registerUserHandler.execute(command);
+
+    return RegisterUserResponseMapper.toResponse(result);
+  }
 
   // ===========================================================================
   // Authentication Queries

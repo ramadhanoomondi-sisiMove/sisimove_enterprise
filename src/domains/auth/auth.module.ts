@@ -12,6 +12,26 @@
 // - Recovery
 // - OTP Challenge
 //
+// Registration is also exposed as an application workflow through:
+//
+//     AUTH_TOKENS.COMMAND_HANDLERS.REGISTER_USER
+//
+// Registration coordinates multiple bounded contexts:
+//
+//     RegisterUserHandler
+//          │
+//          ├── Identity
+//          ├── Verification
+//          ├── TravellerProfile
+//          ├── TravellerProfilePreferences
+//          ├── TrustProfile
+//          └── Authentication
+//
+// The AuthModule owns the registration application handler because registration
+// is initiated through the Authentication/Account onboarding boundary.
+//
+// -----------------------------------------------------------------------------
+//
 // The module wires:
 //
 // - REST controllers;
@@ -57,6 +77,40 @@
 //
 // -----------------------------------------------------------------------------
 //
+// Registration boundary:
+//
+// RegisterUserHandler is an application-level orchestrator.
+//
+// It does NOT make the Identity, Verification, TravellerProfile, TrustProfile,
+// or Authentication aggregates part of one aggregate boundary.
+//
+// Instead, it coordinates their independent application commands.
+//
+//     RegisterUserCommand
+//             │
+//             ▼
+//     RegisterUserHandler
+//             │
+//             ├── CreateIdentityHandler
+//             ├── CreateVerificationHandler
+//             ├── CreateTravellerProfileHandler
+//             ├── CreateTravellerProfilePreferencesHandler
+//             ├── CreateTrustProfileHandler
+//             ├── PasswordHasher
+//             ├── CreateAuthenticationHandler
+//             └── ActivateAuthenticationHandler
+//
+// Registration does NOT:
+//
+// - assign IdentityRole;
+// - grant MEMBER verification;
+// - create Session;
+// - create Device;
+// - issue access tokens;
+// - issue refresh tokens.
+//
+// -----------------------------------------------------------------------------
+//
 // Cross-context dependency:
 //
 // Authentication does not own Identity.
@@ -86,6 +140,10 @@
 //     IDENTITY_TOKENS.REPOSITORIES.IDENTITY
 //
 // AuthModule consumes that exported token through AuthenticateHandler.
+//
+// Registration additionally consumes Identity application command handlers,
+// Verification handlers, TravellerProfile handlers, and TrustProfile handlers
+// through their respective module exports.
 //
 // -----------------------------------------------------------------------------
 //
@@ -151,7 +209,26 @@
 //
 // -----------------------------------------------------------------------------
 //
-// Security dependency bridge:
+// Registration password hashing:
+//
+// RegisterUserHandler depends on the Foundation PasswordHasher abstraction:
+//
+//     AUTH_TOKENS.APPLICATION_SERVICES.PASSWORD_HASHER
+//                         │
+//                         ▼
+//             SECURITY_PASSWORD_HASHER
+//                         │
+//                         ▼
+//             BcryptPasswordService
+//
+// The module therefore does not provide a second password-hasher implementation
+// specifically for registration.
+//
+// AUTH_PROVIDERS owns the infrastructure bridge.
+//
+// -----------------------------------------------------------------------------
+//
+// Security dependency bridges:
 //
 //     AUTH_TOKENS.APPLICATION_SERVICES.PASSWORD_HASHER
 //                         │
@@ -297,6 +374,18 @@ import { SecurityModule } from '../../infrastructure/security/security.module';
 import { IdentityModule } from '../identity/identity.module';
 
 // -----------------------------------------------------------------------------
+// Cross-Context — Traveller Profile
+// -----------------------------------------------------------------------------
+
+import { SocialModule } from '../social/social.module';
+
+// -----------------------------------------------------------------------------
+// Cross-Context — Trust
+// -----------------------------------------------------------------------------
+
+import { TrustModule } from '../trust/trust.module';
+
+// -----------------------------------------------------------------------------
 // Presentation — Controllers
 // -----------------------------------------------------------------------------
 
@@ -334,6 +423,9 @@ import {
   LockAuthenticationHandler,
   UnlockAuthenticationHandler,
   DisableAuthenticationHandler,
+
+  // User registration workflow.
+  RegisterUserHandler,
 
   // Low-level credential authentication.
   AuthenticateHandler,
@@ -425,8 +517,43 @@ import {
   // ===========================================================================
   // Imports
   // ===========================================================================
+  //
+  // IdentityModule:
+  //
+  // - supplies IdentityRepository to AuthenticateHandler;
+  // - supplies the Identity registration command handler required by
+  //   RegisterUserHandler.
+  //
+  // VerificationModule:
+  //
+  // - supplies CreateVerificationHandler to RegisterUserHandler.
+  //
+  // SocialModule:
+  //
+  // - supplies TravellerProfile creation handlers required by registration.
+  //
+  // TrustModule:
+  //
+  // - supplies CreateTrustProfileHandler required by registration.
+  //
+  // PrismaModule:
+  //
+  // - supplies PrismaService to Authentication infrastructure repositories.
+  //
+  // SecurityModule:
+  //
+  // - supplies concrete security implementations through infrastructure
+  //   security tokens consumed by AUTH_PROVIDERS.
+  //
+  // ===========================================================================
 
-  imports: [PrismaModule, SecurityModule, IdentityModule],
+  imports: [
+    PrismaModule,
+    SecurityModule,
+    IdentityModule,
+    SocialModule,
+    TrustModule,
+  ],
 
   // ===========================================================================
   // Controllers
@@ -478,6 +605,28 @@ import {
     {
       provide: AUTH_TOKENS.COMMAND_HANDLERS.DISABLE_AUTHENTICATION,
       useClass: DisableAuthenticationHandler,
+    },
+
+    // -------------------------------------------------------------------------
+    // User Registration Workflow
+    // -------------------------------------------------------------------------
+    //
+    // RegisterUserHandler is the application orchestrator for registration.
+    //
+    // It receives its cross-context command handlers through the exported
+    // application tokens of Identity, Verification, Social, and Trust modules.
+    //
+    // It receives PasswordHasher through:
+    //
+    //     AUTH_TOKENS.APPLICATION_SERVICES.PASSWORD_HASHER
+    //
+    // supplied by AUTH_PROVIDERS.
+    //
+    // -------------------------------------------------------------------------
+
+    {
+      provide: AUTH_TOKENS.COMMAND_HANDLERS.REGISTER_USER,
+      useClass: RegisterUserHandler,
     },
 
     // -------------------------------------------------------------------------
@@ -726,6 +875,9 @@ import {
     AUTH_TOKENS.COMMAND_HANDLERS.LOCK_AUTHENTICATION,
     AUTH_TOKENS.COMMAND_HANDLERS.UNLOCK_AUTHENTICATION,
     AUTH_TOKENS.COMMAND_HANDLERS.DISABLE_AUTHENTICATION,
+
+    // User registration workflow.
+    AUTH_TOKENS.COMMAND_HANDLERS.REGISTER_USER,
 
     // Low-level credential authentication.
     AUTH_TOKENS.COMMAND_HANDLERS.AUTHENTICATE,

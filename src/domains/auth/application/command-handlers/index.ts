@@ -31,6 +31,8 @@ export { ChangePasswordHandler } from './change-password.handler';
 
 export { AuthenticateLoginHandler } from './authenticate-login.handler';
 
+export { RegisterUserHandler } from './register-user.handler';
+
 // -----------------------------------------------------------------------------
 // Session
 // -----------------------------------------------------------------------------

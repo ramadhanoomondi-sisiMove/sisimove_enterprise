@@ -22,24 +22,80 @@
 // TravellerProfileAggregate.isPublic() before constructing public responses.
 //
 // -----------------------------------------------------------------------------
+//
+// IMPORTANT NestJS DI REQUIREMENT
+// -----------------------------------------------------------------------------
+//
+// This repository is instantiated by NestJS through the Traveller Profile
+// repository provider.
+//
+// The @Injectable() decorator is therefore required.
+//
+// Without @Injectable(), Nest may register the class token but fail to
+// construct it with PrismaService, resulting in:
+//
+//     this.repository === undefined
+//
+// inside CreateTravellerProfileHandler.
+//
+// -----------------------------------------------------------------------------
+//
+// Aggregate boundary:
+//
+// TravellerProfileAggregate
+// ├── TravellerProfileEntity
+// ├── TravellerProfilePreferencesEntity?
+// └── TravellerProfileCorridorEntity[]
+//
+// TravellerProfile owns its preferences and corridors.
+//
+// Cross-domain references such as memberPublicId remain opaque identifiers.
+// This repository must not introduce Prisma relations to Identity, Trust,
+// Journey, or other bounded contexts.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Injectable } from '@nestjs/common';
+
+// -----------------------------------------------------------------------------
+// Prisma
+// -----------------------------------------------------------------------------
 
 import type { Prisma } from '@prisma/client';
 
-import type { PrismaService } from '../../../../../../infrastructure/database/prisma/prisma.service';
+// -----------------------------------------------------------------------------
+// Infrastructure — Database
+// -----------------------------------------------------------------------------
+
+import { PrismaService } from '../../../../../../infrastructure/database/prisma/prisma.service';
+
+// -----------------------------------------------------------------------------
+// Domain — Aggregate
+// -----------------------------------------------------------------------------
+
+import { TravellerProfileAggregate } from '../../../../domain/aggregates/traveller-profile.aggregate';
+
+// -----------------------------------------------------------------------------
+// Domain — Repository Contract
+// -----------------------------------------------------------------------------
 
 import type { TravellerProfileRepository } from '../../../../domain/repositories/traveller-profile.repository';
 
-import { TravellerProfileAggregate } from '../../../../domain/aggregates/traveller-profile.aggregate';
+// -----------------------------------------------------------------------------
+// Domain — Entities
+// -----------------------------------------------------------------------------
 
 import type { TravellerProfileEntity } from '../../../../domain/entities/traveller-profile.entity';
 import type { TravellerProfilePreferencesEntity } from '../../../../domain/entities/traveller-profile-preferences.entity';
 import type { TravellerProfileCorridorEntity } from '../../../../domain/entities/traveller-profile-corridor.entity';
 
-import {
-  TravellerProfilePrismaMapper,
-  TravellerProfilePreferencesPrismaMapper,
-  TravellerProfileCorridorPrismaMapper,
-} from '../mappers';
+// -----------------------------------------------------------------------------
+// Domain — Value Objects
+// -----------------------------------------------------------------------------
 
 import type { TravellerProfileId } from '../../../../domain/value-objects/traveller-profile-id.vo';
 import type { TravellerProfilePublicId } from '../../../../domain/value-objects/traveller-profile-public-id.vo';
@@ -47,6 +103,16 @@ import type { MemberPublicId } from '../../../../domain/value-objects/member-pub
 import type { TravellerHandle } from '../../../../domain/value-objects/traveller-handle.vo';
 import type { TravellerProfileCorridorId } from '../../../../domain/value-objects/traveller-profile-corridor-id.vo';
 import type { CorridorKey } from '../../../../domain/value-objects/corridor-key.vo';
+
+// -----------------------------------------------------------------------------
+// Infrastructure — Prisma Mappers
+// -----------------------------------------------------------------------------
+
+import {
+  TravellerProfilePrismaMapper,
+  TravellerProfilePreferencesPrismaMapper,
+  TravellerProfileCorridorPrismaMapper,
+} from '../mappers';
 
 // -----------------------------------------------------------------------------
 // Prisma Payload
@@ -63,18 +129,19 @@ type TravellerProfileWithComponents = Prisma.TravellerProfileGetPayload<{
   };
 }>;
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Repository
-// -----------------------------------------------------------------------------
+// =============================================================================
 
+@Injectable()
 export class PrismaTravellerProfileRepository implements TravellerProfileRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  public constructor(private readonly prisma: PrismaService) {}
 
   // ===========================================================================
   // Aggregate Persistence
   // ===========================================================================
 
-  async save(aggregate: TravellerProfileAggregate): Promise<void> {
+  public async save(aggregate: TravellerProfileAggregate): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       const profile = aggregate.profile;
 
@@ -127,6 +194,7 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
 
       const corridorIds = corridors.map((corridor) => corridor.id.toString());
 
+      // Remove persisted corridors that no longer belong to the aggregate.
       await tx.travellerProfileCorridor.deleteMany({
         where: {
           profileId,
@@ -141,6 +209,7 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
         },
       });
 
+      // Persist the current aggregate corridor set.
       for (const corridor of corridors) {
         await tx.travellerProfileCorridor.upsert({
           where: {
@@ -159,7 +228,7 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
   // Aggregate Queries
   // ===========================================================================
 
-  async findById(
+  public async findById(
     id: TravellerProfileId,
   ): Promise<TravellerProfileAggregate | null> {
     const record = await this.prisma.travellerProfile.findUnique({
@@ -169,6 +238,7 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
 
       include: {
         preferences: true,
+
         corridors: {
           orderBy: {
             createdAt: 'asc',
@@ -177,20 +247,16 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
       },
     });
 
-    if (record === null) {
-      return null;
-    }
-
-    return this.toAggregate(record);
+    return record === null ? null : this.toAggregate(record);
   }
 
-  async findByPublicId(
+  public async findByPublicId(
     publicId: TravellerProfilePublicId,
   ): Promise<TravellerProfileAggregate | null> {
     return this.findAggregateByPublicId(publicId.value);
   }
 
-  async findByMemberPublicId(
+  public async findByMemberPublicId(
     memberPublicId: MemberPublicId,
   ): Promise<TravellerProfileAggregate | null> {
     const record = await this.prisma.travellerProfile.findUnique({
@@ -200,6 +266,7 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
 
       include: {
         preferences: true,
+
         corridors: {
           orderBy: {
             createdAt: 'asc',
@@ -208,23 +275,16 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
       },
     });
 
-    if (record === null) {
-      return null;
-    }
-
-    return this.toAggregate(record);
+    return record === null ? null : this.toAggregate(record);
   }
 
   /**
-   * Find the complete Traveller Profile aggregate by its public handle.
+   * Finds the complete Traveller Profile aggregate by public handle.
    *
-   * This method is intentionally distinct from findProfileByHandle().
-   *
-   * Public handle queries need the aggregate because the application layer
-   * must evaluate aggregate-owned state such as isPublic() before exposing
-   * the reduced public representation.
+   * This method intentionally returns the aggregate because callers may need
+   * aggregate-owned state such as isPublic().
    */
-  async findByHandle(
+  public async findByHandle(
     handle: TravellerHandle,
   ): Promise<TravellerProfileAggregate | null> {
     const record = await this.prisma.travellerProfile.findUnique({
@@ -234,6 +294,7 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
 
       include: {
         preferences: true,
+
         corridors: {
           orderBy: {
             createdAt: 'asc',
@@ -242,14 +303,14 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
       },
     });
 
-    if (record === null) {
-      return null;
-    }
-
-    return this.toAggregate(record);
+    return record === null ? null : this.toAggregate(record);
   }
 
-  async delete(id: TravellerProfileId): Promise<void> {
+  // ===========================================================================
+  // Delete / Exists
+  // ===========================================================================
+
+  public async delete(id: TravellerProfileId): Promise<void> {
     const profile = await this.prisma.travellerProfile.findUnique({
       where: {
         id: id.toString(),
@@ -271,7 +332,7 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
     });
   }
 
-  async exists(id: TravellerProfileId): Promise<boolean> {
+  public async exists(id: TravellerProfileId): Promise<boolean> {
     const count = await this.prisma.travellerProfile.count({
       where: {
         id: id.toString(),
@@ -281,7 +342,7 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
     return count > 0;
   }
 
-  async existsByMemberPublicId(
+  public async existsByMemberPublicId(
     memberPublicId: MemberPublicId,
   ): Promise<boolean> {
     const count = await this.prisma.travellerProfile.count({
@@ -293,7 +354,7 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
     return count > 0;
   }
 
-  async existsByHandle(handle: TravellerHandle): Promise<boolean> {
+  public async existsByHandle(handle: TravellerHandle): Promise<boolean> {
     const count = await this.prisma.travellerProfile.count({
       where: {
         handle: handle.value,
@@ -304,10 +365,10 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
   }
 
   // ===========================================================================
-  // Profile Queries
+  // Profile Entity Queries
   // ===========================================================================
 
-  async findProfileById(
+  public async findProfileById(
     id: TravellerProfileId,
   ): Promise<TravellerProfileEntity | null> {
     const record = await this.prisma.travellerProfile.findUnique({
@@ -316,14 +377,12 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
       },
     });
 
-    if (record === null) {
-      return null;
-    }
-
-    return TravellerProfilePrismaMapper.toDomain(record);
+    return record === null
+      ? null
+      : TravellerProfilePrismaMapper.toDomain(record);
   }
 
-  async findProfileByPublicId(
+  public async findProfileByPublicId(
     publicId: TravellerProfilePublicId,
   ): Promise<TravellerProfileEntity | null> {
     const record = await this.prisma.travellerProfile.findUnique({
@@ -332,14 +391,12 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
       },
     });
 
-    if (record === null) {
-      return null;
-    }
-
-    return TravellerProfilePrismaMapper.toDomain(record);
+    return record === null
+      ? null
+      : TravellerProfilePrismaMapper.toDomain(record);
   }
 
-  async findProfileByMemberPublicId(
+  public async findProfileByMemberPublicId(
     memberPublicId: MemberPublicId,
   ): Promise<TravellerProfileEntity | null> {
     const record = await this.prisma.travellerProfile.findUnique({
@@ -348,19 +405,17 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
       },
     });
 
-    if (record === null) {
-      return null;
-    }
-
-    return TravellerProfilePrismaMapper.toDomain(record);
+    return record === null
+      ? null
+      : TravellerProfilePrismaMapper.toDomain(record);
   }
 
   /**
-   * Find only the Traveller Profile entity by handle.
+   * Finds only the Traveller Profile entity by handle.
    *
    * Use findByHandle() when aggregate-owned behavior or state is required.
    */
-  async findProfileByHandle(
+  public async findProfileByHandle(
     handle: TravellerHandle,
   ): Promise<TravellerProfileEntity | null> {
     const record = await this.prisma.travellerProfile.findUnique({
@@ -369,18 +424,16 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
       },
     });
 
-    if (record === null) {
-      return null;
-    }
-
-    return TravellerProfilePrismaMapper.toDomain(record);
+    return record === null
+      ? null
+      : TravellerProfilePrismaMapper.toDomain(record);
   }
 
   // ===========================================================================
   // Preferences
   // ===========================================================================
 
-  async findPreferences(
+  public async findPreferences(
     profileId: TravellerProfileId,
   ): Promise<TravellerProfilePreferencesEntity | null> {
     const profile = await this.prisma.travellerProfile.findUnique({
@@ -403,18 +456,16 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
       },
     });
 
-    if (record === null) {
-      return null;
-    }
-
-    return TravellerProfilePreferencesPrismaMapper.toDomain(record);
+    return record === null
+      ? null
+      : TravellerProfilePreferencesPrismaMapper.toDomain(record);
   }
 
   // ===========================================================================
   // Corridors
   // ===========================================================================
 
-  async findCorridorById(
+  public async findCorridorById(
     corridorId: TravellerProfileCorridorId,
   ): Promise<TravellerProfileCorridorEntity | null> {
     const record = await this.prisma.travellerProfileCorridor.findUnique({
@@ -423,14 +474,12 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
       },
     });
 
-    if (record === null) {
-      return null;
-    }
-
-    return TravellerProfileCorridorPrismaMapper.toDomain(record);
+    return record === null
+      ? null
+      : TravellerProfileCorridorPrismaMapper.toDomain(record);
   }
 
-  async findCorridors(
+  public async findCorridors(
     profileId: TravellerProfileId,
   ): Promise<TravellerProfileCorridorEntity[]> {
     const profile = await this.prisma.travellerProfile.findUnique({
@@ -456,6 +505,7 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
         {
           isPrimary: 'desc',
         },
+
         {
           createdAt: 'asc',
         },
@@ -467,7 +517,7 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
     );
   }
 
-  async findPrimaryCorridor(
+  public async findPrimaryCorridor(
     profileId: TravellerProfileId,
   ): Promise<TravellerProfileCorridorEntity | null> {
     const profile = await this.prisma.travellerProfile.findUnique({
@@ -495,14 +545,12 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
       },
     });
 
-    if (record === null) {
-      return null;
-    }
-
-    return TravellerProfileCorridorPrismaMapper.toDomain(record);
+    return record === null
+      ? null
+      : TravellerProfileCorridorPrismaMapper.toDomain(record);
   }
 
-  async existsCorridorByKey(
+  public async existsCorridorByKey(
     profileId: TravellerProfileId,
     corridorKey: CorridorKey,
   ): Promise<boolean> {
@@ -535,11 +583,11 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
   }
 
   // ===========================================================================
-  // Internal Mapping
+  // Internal Aggregate Reconstruction
   // ===========================================================================
 
   /**
-   * Reconstruct a complete Traveller Profile aggregate from its public ID.
+   * Finds the complete Traveller Profile aggregate by public ID.
    */
   private async findAggregateByPublicId(
     publicId: string,
@@ -551,6 +599,7 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
 
       include: {
         preferences: true,
+
         corridors: {
           orderBy: {
             createdAt: 'asc',
@@ -559,19 +608,15 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
       },
     });
 
-    if (record === null) {
-      return null;
-    }
-
-    return this.toAggregate(record);
+    return record === null ? null : this.toAggregate(record);
   }
 
   /**
-   * Reconstruct the Traveller Profile aggregate from its persistence graph.
+   * Reconstructs the Traveller Profile aggregate from the persistence graph.
    *
-   * Prisma remains an infrastructure concern. Domain reconstruction is
-   * performed through the existing Prisma-to-domain mappers and the aggregate
-   * rehydration boundary.
+   * Prisma remains an infrastructure concern. The repository delegates
+   * persistence-to-domain conversion to the dedicated Prisma mappers and then
+   * crosses the aggregate rehydration boundary.
    */
   private toAggregate(
     record: TravellerProfileWithComponents,
@@ -590,3 +635,9 @@ export class PrismaTravellerProfileRepository implements TravellerProfileReposit
     return TravellerProfileAggregate.rehydrate(profile, preferences, corridors);
   }
 }
+
+// -----------------------------------------------------------------------------
+// Default Export
+// -----------------------------------------------------------------------------
+
+export default PrismaTravellerProfileRepository;

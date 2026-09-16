@@ -70,6 +70,44 @@
 // its application token.
 //
 // -----------------------------------------------------------------------------
+//
+// Cross-module application boundary:
+//
+// Other bounded contexts must consume Identity application capabilities
+// through the exported IDENTITY_TOKENS contracts.
+//
+// In particular, registration is orchestrated by Auth:
+//
+// RegisterUserHandler
+// ├── CreateIdentityHandler
+// └── CreateVerificationHandler
+//
+// Therefore the Identity module explicitly exports:
+//
+// - CREATE_IDENTITY
+// - CREATE_VERIFICATION
+//
+// These are application contracts, not concrete handler classes.
+//
+// The owning bounded context remains responsible for constructing the
+// handlers.
+//
+// -----------------------------------------------------------------------------
+//
+// IMPORTANT:
+//
+// Do not register CreateIdentityHandler or CreateVerificationHandler again
+// inside AuthModule.
+//
+// AuthModule should import IdentityModule and consume these exported tokens:
+//
+// IDENTITY_TOKENS.COMMAND_HANDLERS.CREATE_IDENTITY
+// IDENTITY_TOKENS.COMMAND_HANDLERS.CREATE_VERIFICATION
+//
+// This preserves the bounded-context ownership of Identity behavior and
+// prevents duplicate provider registrations.
+//
+// -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
 // NestJS
@@ -576,6 +614,20 @@ import {
     // -------------------------------------------------------------------------
 
     IDENTITY_TOKENS.REPOSITORIES.ROLE_PERMISSION,
+
+    // =========================================================================
+    // Cross-Bounded-Context Application Contracts
+    // =========================================================================
+    //
+    // These handlers are owned and constructed by IdentityModule but are
+    // intentionally exposed through their stable application tokens.
+    //
+    // RegisterUserHandler in AuthModule consumes these contracts during the
+    // registration orchestration.
+    //
+
+    IDENTITY_TOKENS.COMMAND_HANDLERS.CREATE_IDENTITY,
+    IDENTITY_TOKENS.COMMAND_HANDLERS.CREATE_VERIFICATION,
   ],
 })
 export class IdentityModule {}

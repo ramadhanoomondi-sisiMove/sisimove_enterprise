@@ -101,3 +101,5 @@ export { CreateOtpChallengeRequestDto } from './create-otp-challenge.request.dto
 export { VerifyOtpChallengeRequestDto } from './verify-otp-challenge.request.dto';
 
 export { CancelOtpChallengeRequestDto } from './cancel-otp-challenge.request.dto';
+
+export { RegisterUserRequestDto } from './register-user.request.dto';

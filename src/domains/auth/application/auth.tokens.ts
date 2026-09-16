@@ -102,6 +102,10 @@ export const AUTH_TOKENS = {
      *
      * Used when provisioning or changing authentication credentials.
      *
+     * The plaintext password is supplied only to the hashing boundary.
+     *
+     * The resulting hash is what crosses into the Authentication domain.
+     *
      * Concrete infrastructure implementation is supplied through DI.
      */
     PASSWORD_HASHER: Symbol('PasswordHasher'),
@@ -149,6 +153,49 @@ export const AUTH_TOKENS = {
 
   COMMAND_HANDLERS: {
     // =========================================================================
+    // Registration
+    // =========================================================================
+
+    /**
+     * -------------------------------------------------------------------------
+     * Complete User Registration
+     * -------------------------------------------------------------------------
+     *
+     * Higher-level registration orchestration.
+     *
+     * Responsibilities include coordinating:
+     *
+     *     Identity
+     *          │
+     *          ├── Verification
+     *          │
+     *          ├── TravellerProfile
+     *          │
+     *          ├── TravellerProfilePreferences
+     *          │
+     *          ├── TrustProfile
+     *          │
+     *          └── Authentication
+     *
+     * Registration provisions the account and its supporting marketplace
+     * identity records.
+     *
+     * Registration does NOT:
+     *
+     * - assign an IdentityRole;
+     * - authenticate the user;
+     * - create a Session;
+     * - create a Device;
+     * - create Recovery;
+     * - create an OTP Challenge;
+     * - issue access tokens;
+     * - issue refresh tokens.
+     *
+     * The user must subsequently sign in through the login workflow.
+     */
+    REGISTER_USER: Symbol('RegisterUserHandler'),
+
+    // =========================================================================
     // Authentication
     // =========================================================================
 
@@ -182,13 +229,14 @@ export const AUTH_TOKENS = {
      * Credential Authentication
      * -----------------------------------------------------------------------
      *
-     * Low-level authentication use case.
+     * Low-level credential authentication use case.
      *
      * Responsibilities:
      *
      * - resolve Identity;
      * - resolve Authentication;
      * - verify supplied credentials;
+     * - activate PENDING Authentication after successful verification;
      * - return the credential-authentication result.
      *
      * This handler does NOT:
