@@ -52,21 +52,41 @@
 //
 // The backend public read boundary remains authoritative for the information
 // available to anonymous visitors.
+//
+// -----------------------------------------------------------------------------
+// Asset boundary
+// -----------------------------------------------------------------------------
+//
+// PublicTravellerContent does not render Next.js Image directly.
+//
+// Public Asset rendering is delegated to PublicAssetImage:
+//
+//   PublicTravellerContent
+//       ↓
+//   PublicAssetImage
+//       ↓
+//   Next/Image
+//
+// This keeps Asset URL validation and Asset → image adaptation in one shared
+// presentation boundary.
+//
+// In particular, PublicAssetImage prevents an empty public Asset URL from
+// reaching the `src` attribute of Next/Image.
 // -----------------------------------------------------------------------------
 
 'use client';
-
-// -----------------------------------------------------------------------------
-// Next.js
-// -----------------------------------------------------------------------------
-
-import Image from 'next/image';
 
 // -----------------------------------------------------------------------------
 // Feature
 // -----------------------------------------------------------------------------
 
 import { useTravellerProfile } from '@/features/traveller-profile/hooks';
+
+// -----------------------------------------------------------------------------
+// Shared public Asset presentation
+// -----------------------------------------------------------------------------
+
+import { PublicAssetImage } from '@/components/landing/shared/assets';
 
 // -----------------------------------------------------------------------------
 // Props
@@ -79,12 +99,12 @@ export interface PublicTravellerContentProps {
    * The route layer is responsible for decoding the URL parameter before
    * passing it to this component.
    */
-  handle: string;
+  readonly handle: string;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Component
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function PublicTravellerContent({
   handle,
@@ -112,17 +132,34 @@ export function PublicTravellerContent({
         >
           <div className="animate-pulse space-y-8">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-              <div className="h-24 w-24 shrink-0 rounded-full bg-[var(--background-secondary)]" />
+              <div
+                aria-hidden="true"
+                className="h-24 w-24 shrink-0 rounded-full bg-[var(--background-muted)]"
+              />
 
               <div className="min-w-0 space-y-3">
-                <div className="h-7 w-48 rounded bg-[var(--background-secondary)]" />
-                <div className="h-4 w-24 rounded bg-[var(--background-secondary)]" />
+                <div
+                  aria-hidden="true"
+                  className="h-7 w-48 rounded bg-[var(--background-muted)]"
+                />
+
+                <div
+                  aria-hidden="true"
+                  className="h-4 w-24 rounded bg-[var(--background-muted)]"
+                />
               </div>
             </div>
 
             <div className="space-y-3">
-              <div className="h-4 w-20 rounded bg-[var(--background-secondary)]" />
-              <div className="h-20 w-full rounded-xl bg-[var(--background-secondary)]" />
+              <div
+                aria-hidden="true"
+                className="h-4 w-20 rounded bg-[var(--background-muted)]"
+              />
+
+              <div
+                aria-hidden="true"
+                className="h-20 w-full rounded-xl bg-[var(--background-muted)]"
+              />
             </div>
           </div>
         </section>
@@ -146,8 +183,9 @@ export function PublicTravellerContent({
           </h1>
 
           <p className="mt-2 max-w-md text-sm leading-6 text-[var(--foreground-muted)]">
-            {error.message ||
-              'Something went wrong while loading this public traveller profile.'}
+            {error instanceof Error && error.message
+              ? error.message
+              : 'Something went wrong while loading this public traveller profile.'}
           </p>
         </section>
       </div>
@@ -195,12 +233,10 @@ export function PublicTravellerContent({
 
           <div className="shrink-0">
             {traveller.avatar ? (
-              <Image
-                src={traveller.avatar.url}
-                alt={
-                  traveller.avatar.alt ??
-                  `${traveller.handle}'s profile photo`
-                }
+              <PublicAssetImage
+                asset={traveller.avatar}
+                alt={`${traveller.handle}'s profile photo`}
+                fallbackAlt={`${traveller.handle}'s profile photo`}
                 width={96}
                 height={96}
                 sizes="96px"
@@ -210,7 +246,7 @@ export function PublicTravellerContent({
             ) : (
               <div
                 aria-hidden="true"
-                className="flex h-24 w-24 items-center justify-center rounded-full bg-[var(--background-secondary)] text-2xl font-semibold text-[var(--foreground-secondary)]"
+                className="flex h-24 w-24 items-center justify-center rounded-full bg-[var(--background-muted)] text-2xl font-semibold text-[var(--foreground-secondary)]"
               >
                 {traveller.handle.charAt(0).toUpperCase()}
               </div>
@@ -245,7 +281,7 @@ export function PublicTravellerContent({
 
         <section
           aria-labelledby="public-traveller-about-title"
-          className="mt-8 rounded-xl border border-[var(--border)] bg-[var(--background)] p-5"
+          className="mt-8 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5"
         >
           <h2
             id="public-traveller-about-title"
@@ -270,4 +306,3 @@ export function PublicTravellerContent({
 }
 
 export default PublicTravellerContent;
-

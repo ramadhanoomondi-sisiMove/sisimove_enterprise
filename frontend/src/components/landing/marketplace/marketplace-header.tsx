@@ -2,103 +2,211 @@
 // sisiMove — Public Marketplace Header
 // -----------------------------------------------------------------------------
 //
-// Presentation component for the public marketplace section.
+// Compact presentation header for the public marketplace.
 //
-// The landing hero introduces the overall journey market. This component
-// intentionally does not repeat that introduction.
+// The landing hero introduces the journey market. This component does not
+// repeat that introduction.
 //
-// Its responsibility is narrower:
+// Its responsibility is to establish the marketplace discovery surface and
+// provide concise context for the marketplace stream currently selected.
 //
 //     MARKET
-//     Showing what is currently available.
+//     Browse the marketplace
+//     Browse available journeys and travel plans.
 //
-// The marketplace header sits immediately above the marketplace controls and
-// results. It provides a clear visual boundary between the landing introduction
-// and the actual marketplace.
+// The selected stream is supplied by the parent marketplace boundary.
 //
-// This component is intentionally presentation-only.
+// This component does NOT:
 //
-// It does NOT:
 // - fetch marketplace data;
 // - own marketplace query state;
+// - update URL state;
 // - perform filtering;
 // - perform sorting;
-// - determine whether items exist;
+// - determine whether marketplace items exist;
 // - contain Journey business logic;
 // - contain Journey Demand business logic;
-// - render marketplace results.
+// - render marketplace results;
+// - render marketplace tabs.
 //
-// Those responsibilities belong to the marketplace feature/read boundary and
-// the components composed around this header.
+// MarketplaceTabs owns the interactive stream selection control.
 //
-// -----------------------------------------------------------------------------
-//
-// Visual responsibility
-//
-// The public landing page now follows this hierarchy:
-//
-//     LandingHero
-//         THE JOURNEY MARKET
-//         See where people are going...
-//
-//     MarketplaceHeader
-//         MARKET
-//         Showing what's available
-//
-//     MarketplaceFilterBar
-//         All / Journeys / Demand
-//         From / To / Date / Filters
-//
-//     MarketplaceResults
-//         Journey and Demand cards
-//
-// Keeping the header intentionally compact prevents the marketplace section
-// from repeating the hero content and keeps the actual discovery surface
-// visually prominent.
 // -----------------------------------------------------------------------------
 
+import {
+  CarFront,
+  Store,
+  UsersRound,
+} from 'lucide-react';
+
+import type { PublicMarketplaceType } from '@/features/public-marketplace/models/public-marketplace-query';
+
+import { cn } from '@/foundation';
+
+// =============================================================================
+// Props
+// =============================================================================
 
 export interface MarketplaceHeaderProps {
   /**
-   * Optional additional classes applied to the header container.
+   * Currently selected marketplace stream.
    *
-   * The component does not interpret this value. It exists so the parent
-   * marketplace section can control layout without introducing another
-   * wrapper component.
+   * The parent marketplace boundary owns this state.
    */
-  className?: string;
+  readonly type: PublicMarketplaceType;
+
+  /**
+   * Optional additional classes applied to the header container.
+   */
+  readonly className?: string;
 }
 
+// =============================================================================
+// Presentation helpers
+// =============================================================================
 
+function getMarketplaceDescription(
+  type: PublicMarketplaceType,
+): string {
+  switch (type) {
+    case 'JOURNEY':
+      return 'Browse published journeys with available seats.';
+
+    case 'DEMAND':
+      return 'Browse travel plans looking for a match.';
+
+    case 'ALL':
+    default:
+      return 'Browse available journeys and travel plans.';
+  }
+}
+
+// =============================================================================
+// Marketplace Scope Icon
+// =============================================================================
+//
+// Keep this component stable outside MarketplaceHeader's render.
+//
+// Do not return a Lucide component from a render-time helper and then render
+// that returned component as <MarketplaceIcon />. React/compiler rules treat
+// that as creating a component during render.
+//
+// Instead, this stable component owns the switch and renders the appropriate
+// Lucide component directly.
 // -----------------------------------------------------------------------------
+
+function MarketplaceScopeIcon({
+  type,
+}: {
+  readonly type: PublicMarketplaceType;
+}) {
+  switch (type) {
+    case 'JOURNEY':
+      return (
+        <CarFront
+          aria-hidden="true"
+          className="h-3.5 w-3.5"
+        />
+      );
+
+    case 'DEMAND':
+      return (
+        <UsersRound
+          aria-hidden="true"
+          className="h-3.5 w-3.5"
+        />
+      );
+
+    case 'ALL':
+    default:
+      return (
+        <Store
+          aria-hidden="true"
+          className="h-3.5 w-3.5"
+        />
+      );
+  }
+}
+
+// =============================================================================
 // Marketplace Header
-// -----------------------------------------------------------------------------
-
+// =============================================================================
 
 export function MarketplaceHeader({
+  type,
   className,
 }: MarketplaceHeaderProps) {
+  const description = getMarketplaceDescription(type);
+
   return (
     <header
       aria-labelledby="marketplace-heading"
-      className={[
-        "flex min-w-0 flex-col gap-1",
+      className={cn(
+        'min-w-0',
         className,
-      ]
-        .filter(Boolean)
-        .join(" ")}
+      )}
     >
-      <h2
-        id="marketplace-heading"
-        className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--foreground)]"
-      >
-        Market
-      </h2>
+      {/* =====================================================================
+          Marketplace identity
 
-      <p className="text-sm leading-6 text-[var(--foreground-muted)]">
-        Showing what&apos;s available
-      </p>
+          The icon changes with the selected marketplace scope. The icon
+          itself is rendered by a stable component declared outside this
+          render function.
+      ===================================================================== */}
+
+      <div className="flex min-w-0 items-center gap-2">
+        <span
+          aria-hidden="true"
+          className={cn(
+            'flex h-6 w-6 shrink-0 items-center justify-center',
+            'rounded-[var(--radius-sm)]',
+            'bg-[var(--brand-soft)]',
+            'text-[var(--brand)]',
+          )}
+        >
+          <MarketplaceScopeIcon type={type} />
+        </span>
+
+        <p
+          className={cn(
+            'text-[9px] font-semibold uppercase',
+            'tracking-[0.16em]',
+            'text-[var(--brand)]',
+            'sm:text-[10px]',
+          )}
+        >
+          Market
+        </p>
+      </div>
+
+      {/* =====================================================================
+          Marketplace context
+      ===================================================================== */}
+
+      <div className="mt-1.5 min-w-0">
+        <h2
+          id="marketplace-heading"
+          className={cn(
+            'text-lg font-semibold',
+            'tracking-[-0.02em]',
+            'text-[var(--foreground)]',
+            'sm:text-xl',
+          )}
+        >
+          Browse the marketplace
+        </h2>
+
+        <p
+          className={cn(
+            'mt-0.5 max-w-2xl',
+            'text-xs leading-5',
+            'text-[var(--foreground-muted)]',
+            'sm:text-sm sm:leading-6',
+          )}
+        >
+          {description}
+        </p>
+      </div>
     </header>
   );
 }
-

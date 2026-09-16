@@ -4,7 +4,10 @@
 //
 // Navigation control for the public marketplace.
 //
-// The marketplace contains two independent discovery streams:
+// The marketplace contains three presentation scopes:
+//
+//     ALL
+//         Published Journeys and published Journey Demands.
 //
 //     JOURNEY
 //         Published travel supply.
@@ -12,9 +15,9 @@
 //     DEMAND
 //         Published travel demand.
 //
-// The ALL tab combines both streams.
+// This component only presents and selects the marketplace scope.
 //
-// This component only presents and selects the marketplace scope. It does not:
+// It does not:
 //
 // - fetch marketplace data;
 // - perform filtering;
@@ -27,8 +30,8 @@
 // The parent/application boundary owns the actual marketplace query state.
 //
 // -----------------------------------------------------------------------------
-//
-// Interaction
+// CONTROLLED INTERACTION
+// -----------------------------------------------------------------------------
 //
 //     MarketplaceTabs
 //          │
@@ -39,23 +42,52 @@
 //          ↓
 //     PublicMarketplaceQuery.type
 //
-// Keeping the component controlled makes it reusable for:
+// The component is intentionally controlled.
 //
-// - URL-backed marketplace state;
-// - server-provided initial state;
-// - client-side marketplace state;
-// - future navigation implementations.
+// -----------------------------------------------------------------------------
+// VISUAL BEHAVIOR
+// -----------------------------------------------------------------------------
+//
+// The selected marketplace stream is immediately recognizable.
+//
+// Active:
+//
+//     ┌────────────────┐
+//     │ ● Journeys     │
+//     └────────────────┘
+//
+// Inactive:
+//
+//     ┌─────────────┐
+//     │  Journeys   │
+//     └─────────────┘
+//
+// The active tab uses the sisiMove brand treatment.
+// Inactive tabs remain quiet until hovered.
+//
+// -----------------------------------------------------------------------------
+// RESPONSIVE BEHAVIOR
+// -----------------------------------------------------------------------------
+//
+// MarketplaceTabs is mobile-first.
+//
+// The tabs:
+//
+// - remain compact;
+// - wrap when necessary;
+// - never create horizontal page overflow;
+// - remain comfortably touchable;
+// - do not introduce horizontal scrolling.
 //
 // -----------------------------------------------------------------------------
 
+import type { PublicMarketplaceType } from '@/features/public-marketplace/models/public-marketplace-query';
 
-import type { PublicMarketplaceType } from "@/features/public-marketplace/models/public-marketplace-query";
+import { cn } from '@/foundation';
 
-
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
-
+// =============================================================================
 
 export interface MarketplaceTabsProps {
   /**
@@ -63,7 +95,7 @@ export interface MarketplaceTabsProps {
    *
    * The parent owns this state.
    */
-  value: PublicMarketplaceType;
+  readonly value: PublicMarketplaceType;
 
   /**
    * Called when the visitor selects another marketplace scope.
@@ -71,50 +103,47 @@ export interface MarketplaceTabsProps {
    * The component reports the requested scope but does not update application
    * state itself.
    */
-  onChange: (value: PublicMarketplaceType) => void;
+  readonly onChange: (
+    value: PublicMarketplaceType,
+  ) => void;
 
   /**
    * Optional additional classes applied to the tab navigation container.
    */
-  className?: string;
+  readonly className?: string;
 }
 
-
-// -----------------------------------------------------------------------------
-// Tab definition
-// -----------------------------------------------------------------------------
+// =============================================================================
+// Tab Definition
+// =============================================================================
 //
-// Keeping the labels in one local definition prevents the JSX from becoming
-// repetitive while keeping the actual marketplace vocabulary explicit.
+// Labels describe marketplace discovery scopes rather than domain lifecycle
+// states.
 //
-// These labels describe marketplace streams, not domain lifecycle states.
-//
+// The values intentionally use the actual PublicMarketplaceType values.
 // -----------------------------------------------------------------------------
-
 
 const MARKETPLACE_TABS: ReadonlyArray<{
-  value: PublicMarketplaceType;
-  label: string;
+  readonly value: PublicMarketplaceType;
+  readonly label: string;
 }> = [
   {
-    value: "ALL",
-    label: "All",
+    value: 'ALL',
+    label: 'All',
   },
   {
-    value: "JOURNEY",
-    label: "Journeys",
+    value: 'JOURNEY',
+    label: 'Journeys',
   },
   {
-    value: "DEMAND",
-    label: "Demand",
+    value: 'DEMAND',
+    label: 'Demand',
   },
 ];
 
-
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Marketplace Tabs
-// -----------------------------------------------------------------------------
-
+// =============================================================================
 
 export function MarketplaceTabs({
   value,
@@ -123,13 +152,12 @@ export function MarketplaceTabs({
 }: MarketplaceTabsProps) {
   return (
     <nav
-      aria-label="Marketplace"
-      className={[
-        "flex min-w-0 flex-wrap items-center gap-1",
+      aria-label="Marketplace scope"
+      className={cn(
+        'flex min-w-0 flex-wrap items-center',
+        'gap-1',
         className,
-      ]
-        .filter(Boolean)
-        .join(" ")}
+      )}
     >
       {MARKETPLACE_TABS.map((tab) => {
         const isActive = value === tab.value;
@@ -138,22 +166,68 @@ export function MarketplaceTabs({
           <button
             key={tab.value}
             type="button"
-            aria-current={isActive ? "page" : undefined}
+            aria-pressed={isActive}
             onClick={() => onChange(tab.value)}
-            className={[
-              "inline-flex min-h-10 items-center justify-center rounded-md px-4 py-2 text-sm font-medium",
-              "transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2",
+            className={cn(
+              // -----------------------------------------------------------------
+              // Base control
+              // -----------------------------------------------------------------
+
+              'inline-flex min-h-9 shrink-0',
+              'items-center justify-center gap-1.5',
+              'rounded-full',
+              'border',
+              'px-3 py-1.5',
+              'text-sm font-medium',
+              'leading-5',
+
+              // -----------------------------------------------------------------
+              // Interaction
+              // -----------------------------------------------------------------
+
+              'transition-all duration-150',
+              'focus-visible:outline-none',
+              'focus-visible:ring-2',
+              'focus-visible:ring-[var(--brand)]',
+              'focus-visible:ring-offset-2',
+              'focus-visible:ring-offset-[var(--background)]',
+
+              // -----------------------------------------------------------------
+              // Active / inactive state
+              // -----------------------------------------------------------------
+
               isActive
-                ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
-                : "text-[var(--foreground-secondary)] hover:bg-[var(--background-secondary)] hover:text-[var(--foreground)]",
-            ].join(" ")}
+                ? cn(
+                    'border-[var(--brand)]',
+                    'bg-[var(--brand)]',
+                    'text-[var(--brand-foreground)]',
+                    'shadow-[var(--shadow-sm)]',
+                  )
+                : cn(
+                    'border-transparent',
+                    'bg-transparent',
+                    'text-[var(--foreground-secondary)]',
+                    'hover:border-[var(--border)]',
+                    'hover:bg-[var(--background-subtle)]',
+                    'hover:text-[var(--foreground)]',
+                  ),
+            )}
           >
-            {tab.label}
+            {isActive && (
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'h-1.5 w-1.5 shrink-0',
+                  'rounded-full',
+                  'bg-[var(--brand-foreground)]',
+                )}
+              />
+            )}
+
+            <span>{tab.label}</span>
           </button>
         );
       })}
     </nav>
   );
 }
-

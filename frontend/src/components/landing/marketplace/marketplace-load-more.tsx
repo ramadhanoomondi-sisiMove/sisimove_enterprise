@@ -20,6 +20,7 @@
 // This component is intentionally presentation-only.
 //
 // It does NOT:
+//
 // - fetch marketplace data;
 // - construct pagination cursors;
 // - interpret continuation tokens;
@@ -85,9 +86,30 @@ export interface MarketplaceLoadMoreProps {
 
 
 // -----------------------------------------------------------------------------
-// Marketplace Load More
+// Presentation helpers
 // -----------------------------------------------------------------------------
 
+
+function LoadingSpinner() {
+  return (
+    <span
+      aria-hidden="true"
+      className="
+        h-4 w-4
+        animate-spin
+        rounded-full
+        border-2
+        border-[var(--border-strong)]
+        border-t-[var(--brand)]
+      "
+    />
+  );
+}
+
+
+// -----------------------------------------------------------------------------
+// Marketplace Load More
+// -----------------------------------------------------------------------------
 
 export function MarketplaceLoadMore({
   hasMore,
@@ -95,6 +117,10 @@ export function MarketplaceLoadMore({
   onLoadMore,
   className,
 }: MarketplaceLoadMoreProps) {
+  /**
+   * There is no useful action when the marketplace has reached its final
+   * page. Returning null keeps the result stream visually clean.
+   */
   if (!hasMore) {
     return null;
   }
@@ -102,26 +128,54 @@ export function MarketplaceLoadMore({
   return (
     <div
       className={[
-        "flex min-w-0 justify-center",
+        'flex min-w-0 justify-center',
+        'pt-1 sm:pt-2',
         className,
       ]
         .filter(Boolean)
-        .join(" ")}
+        .join(' ')}
     >
       <button
         type="button"
         onClick={onLoadMore}
         disabled={isLoading}
         aria-busy={isLoading}
-        className={[
-          "inline-flex min-h-10 items-center justify-center rounded-md border border-[var(--border)] px-5 py-2 text-sm font-medium",
-          "text-[var(--foreground)] transition-colors",
-          "hover:bg-[var(--background-secondary)]",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2",
-          "disabled:cursor-not-allowed disabled:opacity-60",
-        ].join(" ")}
+        className="
+          inline-flex
+          min-h-10
+          min-w-[120px]
+          items-center
+          justify-center
+          gap-2
+          rounded-lg
+          border border-[var(--border)]
+          bg-[var(--surface)]
+          px-4
+          py-2
+          text-sm
+          font-medium
+          text-[var(--foreground)]
+          shadow-[var(--shadow-sm)]
+          transition-colors
+          hover:bg-[var(--background-subtle)]
+          hover:border-[var(--border-strong)]
+          focus-visible:outline-none
+          focus-visible:ring-2
+          focus-visible:ring-[var(--brand)]
+          focus-visible:ring-offset-2
+          focus-visible:ring-offset-[var(--background)]
+          disabled:cursor-not-allowed
+          disabled:opacity-60
+        "
       >
-        {isLoading ? "Loading…" : "Load more"}
+        {isLoading ? (
+          <>
+            <LoadingSpinner />
+            <span>Loading…</span>
+          </>
+        ) : (
+          'Load more'
+        )}
       </button>
     </div>
   );

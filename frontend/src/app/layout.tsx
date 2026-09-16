@@ -8,6 +8,7 @@
 // - establish the HTML document boundary required by Next.js;
 // - load global application styles;
 // - provide application-wide metadata;
+// - establish application-wide infrastructure providers;
 // - render the active route tree.
 //
 // This layout intentionally does NOT:
@@ -17,21 +18,29 @@
 // - contain route-specific business logic;
 // - contain authentication or feature state.
 //
+// Infrastructure providers belong here because they must be available to
+// every route tree.
+//
 // Public presentation is provided by:
 //
 //   app/(public)/layout.tsx
 //
-// This separation keeps the root document infrastructure independent from the
+// This separation keeps root document infrastructure independent from the
 // public marketplace and from future authenticated application shells.
+//
 // -----------------------------------------------------------------------------
+
 
 import type { Metadata } from 'next';
 
 import './globals.css';
 
-// -----------------------------------------------------------------------------
+import { QueryProvider } from '@/query-provider';
+
+
+// =============================================================================
 // Application Metadata
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export const metadata: Metadata = {
   title: {
@@ -43,9 +52,10 @@ export const metadata: Metadata = {
     'Long-distance journeys shared by people travelling the same way.',
 };
 
-// -----------------------------------------------------------------------------
+
+// =============================================================================
 // Root Layout
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export default function RootLayout({
   children,
@@ -54,7 +64,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <QueryProvider>
+          {children}
+        </QueryProvider>
+      </body>
     </html>
   );
 }

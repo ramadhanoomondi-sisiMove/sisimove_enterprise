@@ -2,37 +2,112 @@
 // sisiMove — Journey Marketplace Card Provider
 // -----------------------------------------------------------------------------
 //
-// Presentation component for the provider portion of a public Journey
-// marketplace card.
+// Compact presentation component for the provider section of a public Journey
+// marketplace listing.
 //
-// The provider is the traveller offering the Journey.
+// MARKETPLACE ROLE
+// ----------------
 //
-// PublicJourneyProvider already contains the resolved public Traveller Profile
-// and public Trust Profile:
+// The Journey marketplace row communicates:
 //
-//     provider
-//     ├── traveller
-//     └── trust
+//   WHEN → WHO → WHERE → VEHICLE → PRICE/SEATS → ACTIONS
+//              ↑
+//           this block
 //
-// This component deliberately does not:
+// The provider is the public Traveller offering the Journey.
+//
+// PublicJourneyProvider already contains the composed public read models:
+//
+//   provider
+//   ├── traveller
+//   └── trust
+//
+// This component therefore presents those supplied read models directly.
+//
+// PRESENTATION BOUNDARY
+// ---------------------
+//
+// This component:
+//
+// - renders the public Traveller identity;
+// - renders the provider's public Trust summary;
+// - optionally links the Traveller to their public profile.
+//
+// It deliberately does not:
+//
 // - fetch provider data;
 // - resolve Identity references;
-// - construct API URLs;
-// - contain Journey marketplace logic;
-// - decide whether the Journey can be booked.
+// - reconstruct Traveller or Trust relationships;
+// - determine Journey ownership;
+// - determine booking eligibility;
+// - perform navigation programmatically;
+// - contain Journey or Booking business logic.
 //
-// Those responsibilities belong outside the presentation component.
+// TravellerSummary and TrustSummary remain the shared presentation boundary
+// for public Traveller and Trust information across Journey and Journey Demand
+// marketplace cards.
 //
-// The component composes the existing shared Traveller and Trust presentation
-// components so provider presentation remains visually consistent across
-// Journey and Journey Demand marketplace cards.
+// PROVIDER RELATIONSHIP
+// --------------------
+//
+// The Journey owns the provider relationship.
+//
+// This component does NOT imply:
+//
+//   Traveller → owns Journey
+//
+// or:
+//
+//   Trust → owns Journey
+//
+// The Journey read model supplies `PublicJourneyProvider`, which composes the
+// public Traveller and Trust information needed to represent the provider.
+//
+// The marketplace therefore consumes:
+//
+//   Journey
+//      ↓
+//   PublicJourneyProvider
+//      ├── Traveller
+//      └── Trust
+//
+// INTERNAL LAYOUT
+// --------------
+//
+// The provider remains vertically grouped:
+//
+//   [avatar]
+//   @handle
+//   ✓ Verified  ★ 4.9 (5) · 2 completed journeys
+//
+// The parent JourneyMarketplaceCard controls the provider column's:
+//
+// - width;
+// - position;
+// - outer padding;
+// - separator.
+//
+// This component controls only the internal composition and density.
+//
+// RESPONSIVE MARKETPLACE DENSITY
+// ------------------------------
+//
+// The provider column contracts with the rest of the marketplace row.
+//
+// This component therefore deliberately does NOT:
+//
+// - define a fixed width;
+// - use fixed desktop dimensions;
+// - add marketplace-level horizontal padding;
+// - add marketplace-level vertical padding.
+//
+// The internal gap progressively contracts on smaller screens.
 //
 // -----------------------------------------------------------------------------
 
-import type { PublicJourneyProvider } from '@/features/journeys/models/public-journey-provider';
-
 import { TravellerSummary } from '@/components/landing/shared/traveller';
 import { TrustSummary } from '@/components/landing/shared/trust';
+import type { PublicJourneyProvider } from '@/features/journeys/models/public-journey-provider';
 
 // -----------------------------------------------------------------------------
 // Props
@@ -42,30 +117,30 @@ export interface JourneyCardProviderProps {
   /**
    * Public Journey provider representation.
    *
-   * The model contains only public Traveller and Trust information. Internal
-   * Identity references are intentionally absent.
+   * The model already contains the public Traveller and Trust read models.
+   * Internal Identity references are intentionally not exposed here.
    */
-  provider: PublicJourneyProvider;
+  readonly provider: PublicJourneyProvider;
 
   /**
-   * Whether the traveller summary should link to the public traveller profile.
+   * Whether the Traveller identity should link to the public Traveller
+   * profile.
    *
-   * Enabled by default because the provider is a public marketplace identity
-   * and the profile provides useful context when evaluating a Journey.
+   * Enabled by default because the provider is a public marketplace identity.
    */
-  linkToProfile?: boolean;
+  readonly linkToProfile?: boolean;
 
   /**
-   * Whether public trust badges should be displayed.
+   * Whether public Trust badges should be displayed.
    *
    * Enabled by default because trust is important marketplace context.
    */
-  showTrustBadges?: boolean;
+  readonly showTrustBadges?: boolean;
 
   /**
    * Optional additional styling supplied by the parent marketplace card.
    */
-  className?: string;
+  readonly className?: string;
 }
 
 // -----------------------------------------------------------------------------
@@ -81,44 +156,77 @@ export function JourneyCardProvider({
   return (
     <div
       className={[
+        // -------------------------------------------------------------------
+        // Provider content boundary
+        // -------------------------------------------------------------------
+        //
+        // The parent marketplace column owns the column width, separator,
+        // and outer padding.
+        //
+        // This component only establishes the internal vertical composition.
+        //
         'flex',
         'min-w-0',
         'flex-col',
-        'gap-2',
+        'justify-center',
+
+        // -------------------------------------------------------------------
+        // Progressive internal density
+        // -------------------------------------------------------------------
+        //
+        // The identity and trust blocks remain vertically grouped while their
+        // spacing contracts with the marketplace density.
+        //
+        'gap-1',
+        'sm:gap-1.5',
+        'md:gap-2',
+
         className,
       ]
         .filter(Boolean)
         .join(' ')}
     >
       {/* ------------------------------------------------------------------- */}
-      {/* Traveller identity                                                  */}
+      {/* Traveller identity                                                   */}
       {/* ------------------------------------------------------------------- */}
       {/*
-        TravellerSummary owns the public traveller presentation:
-        avatar, handle, bio, and optional profile navigation.
+        TravellerSummary owns the public Traveller presentation:
         
-        The Journey card does not duplicate that presentation logic.
+          - avatar;
+          - public handle;
+          - optional profile navigation.
+        
+        The provider column deliberately requests vertical orientation.
+        
+        TravellerSummary remains a shared presentation component and does not
+        know that the Traveller is being displayed as a Journey provider.
       */}
-
       <TravellerSummary
         traveller={provider.traveller}
         linkToProfile={linkToProfile}
+        orientation="vertical"
+        className="w-full min-w-0"
       />
 
       {/* ------------------------------------------------------------------- */}
-      {/* Trust context                                                       */}
+      {/* Trust context                                                        */}
       {/* ------------------------------------------------------------------- */}
       {/*
-        TrustSummary presents the public trust information associated with
-        the Journey provider.
-
-        Trust is intentionally displayed as enrichment of the traveller,
-        rather than as a separate marketplace object.
+        TrustSummary owns compact public trust presentation:
+        
+          - verification;
+          - rating;
+          - completed journeys;
+          - optional public trust badges.
+        
+        Trust remains public enrichment supplied through the Journey provider
+        read model. It is not treated as an independent marketplace object or
+        Journey owner.
       */}
-
       <TrustSummary
         trust={provider.trust}
         showBadges={showTrustBadges}
+        className="w-full min-w-0"
       />
     </div>
   );

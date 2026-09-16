@@ -2,9 +2,9 @@
 // sisiMove — Public Marketplace Filter Bar
 // -----------------------------------------------------------------------------
 //
-// Composition component for the public marketplace controls.
+// Composition boundary for public marketplace discovery controls.
 //
-// The filter bar brings together:
+// The filter bar composes two presentation components:
 //
 //     MarketplaceFilters
 //         ├── origin
@@ -13,46 +13,65 @@
 //         └── secondary filters
 //
 //     MarketplaceTabs
-//         └── marketplace scope
+//         ├── All
+//         ├── Journeys
+//         └── Demand
 //
-// The marketplace remains browse-first.
+// The marketplace is intentionally browse-first.
 //
-// Visitors see the published marketplace first. These controls only refine
-// the currently visible marketplace and select which marketplace stream is
-// being viewed.
+// Published marketplace content is visible without requiring a search.
+// These controls refine the visible marketplace and select which marketplace
+// stream is currently being viewed.
 //
-// This component is intentionally presentation-only.
+// -----------------------------------------------------------------------------
+// Architectural boundary
+// -----------------------------------------------------------------------------
+//
+// This component is presentation-only.
 //
 // It does NOT:
 //
 // - fetch marketplace data;
 // - own marketplace query state;
-// - update URL state directly;
-// - perform filtering;
-// - perform sorting;
+// - update URL state;
+// - perform filtering or sorting;
 // - determine booking eligibility;
 // - contain Journey business rules;
 // - contain Journey Demand business rules.
 //
-// The parent owns the query state and supplies the callbacks required to
-// update that state.
+// The parent marketplace boundary owns query state and supplies the callbacks
+// used to update that state.
 //
 // -----------------------------------------------------------------------------
+// Responsive presentation
+// -----------------------------------------------------------------------------
 //
+// The marketplace filter surface is mobile-first and compact.
+//
+// The controls:
+//
+// - remain horizontally oriented;
+// - contract with the available viewport;
+// - keep stream tabs visually connected to the filters;
+// - avoid unnecessary hero-like whitespace;
+// - do not introduce horizontal page scrolling.
+//
+// The child presentation components remain responsible for the exact sizing
+// and behavior of their individual controls.
+//
+// -----------------------------------------------------------------------------
 // Visual structure
+// -----------------------------------------------------------------------------
 //
-// The filter bar follows the public marketplace design:
-//
-//     [ From ] [ To ] [ Date ] [ Filters ]
+//     [ From ] [ To ] [ Date ] [ Refine ]
 //
 //     [ All ] [ Journeys ] [ Demand ]
 //
-// Search/refinement controls are intentionally presented before marketplace
-// stream navigation. The visitor can therefore refine the visible market
-// without the interface feeling like a search-first experience.
+// Refinement remains above stream navigation because the visitor is already
+// inside the marketplace. The controls refine the market rather than acting
+// as a gate before the market is shown.
 //
 // -----------------------------------------------------------------------------
-
 
 import type { PublicMarketplaceFilter } from '@/features/public-marketplace/models/public-marketplace-filter';
 import type {
@@ -60,67 +79,67 @@ import type {
   PublicMarketplaceType,
 } from '@/features/public-marketplace/models/public-marketplace-query';
 
+import { cn } from '@/foundation';
+
 import { MarketplaceFilters } from './marketplace-filters';
 import { MarketplaceTabs } from './marketplace-tabs';
 
-
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
-
+// =============================================================================
 
 export interface MarketplaceFilterBarProps {
   /**
    * Current marketplace query state.
    *
-   * The filter bar reads this state but does not own or mutate it.
+   * The filter bar reads the state supplied by its parent but never owns it.
    */
-  query: PublicMarketplaceQuery;
+  readonly query: PublicMarketplaceQuery;
 
   /**
-   * Reports a changed marketplace scope.
+   * Reports a changed marketplace stream.
    */
-  onTypeChange: (value: PublicMarketplaceType) => void;
+  readonly onTypeChange: (value: PublicMarketplaceType) => void;
 
   /**
-   * Reports a changed origin value.
+   * Reports a changed origin filter.
    *
-   * null means that the origin filter has been cleared.
+   * null clears the origin filter.
    */
-  onFromChange: (value: string | null) => void;
+  readonly onFromChange: (value: string | null) => void;
 
   /**
-   * Reports a changed destination value.
+   * Reports a changed destination filter.
    *
-   * null means that the destination filter has been cleared.
+   * null clears the destination filter.
    */
-  onToChange: (value: string | null) => void;
+  readonly onToChange: (value: string | null) => void;
 
   /**
-   * Reports a changed travel date.
+   * Reports a changed travel-date filter.
    *
-   * null means that the date filter has been cleared.
+   * null clears the date filter.
    */
-  onDateChange: (value: string | null) => void;
+  readonly onDateChange: (value: string | null) => void;
 
   /**
    * Reports changed secondary marketplace filters.
    *
    * null means that no secondary filter is active.
    */
-  onFilterChange: (filter: PublicMarketplaceFilter | null) => void;
+  readonly onFilterChange: (
+    filter: PublicMarketplaceFilter | null,
+  ) => void;
 
   /**
-   * Optional additional classes applied to the filter bar.
+   * Optional additional classes applied to the composition boundary.
    */
-  className?: string;
+  readonly className?: string;
 }
 
-
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Marketplace Filter Bar
-// -----------------------------------------------------------------------------
-
+// =============================================================================
 
 export function MarketplaceFilterBar({
   query,
@@ -134,45 +153,45 @@ export function MarketplaceFilterBar({
   return (
     <section
       aria-label="Marketplace controls"
-      className={[
-        'flex min-w-0 flex-col gap-5',
+      className={cn(
+        'w-full min-w-0',
         className,
-      ]
-        .filter(Boolean)
-        .join(' ')}
+      )}
     >
-      {/* ------------------------------------------------------------------- */}
-      {/* Search and refinement controls                                      */}
-      {/* ------------------------------------------------------------------- */}
-      {/*
-       * These controls refine the marketplace currently visible to the
-       * visitor. They do not initiate marketplace creation or own query
-       * state.
-       */}
+      {/* =====================================================================
+          Marketplace refinement
 
-      <MarketplaceFilters
-        query={query}
-        onFromChange={onFromChange}
-        onToChange={onToChange}
-        onDateChange={onDateChange}
-        onFilterChange={onFilterChange}
-      />
+          The marketplace remains visible before these controls are used.
+          These controls therefore refine the existing marketplace rather than
+          acting as a search gate.
+      ===================================================================== */}
 
-      {/* ------------------------------------------------------------------- */}
-      {/* Marketplace stream navigation                                       */}
-      {/* ------------------------------------------------------------------- */}
-      {/*
-       * Stream selection is deliberately kept below the refinement controls
-       * to match the physical-market presentation:
-       *
-       *     refinement
-       *          ↓
-       *     market stream
-       *
-       * MarketplaceTabs remains controlled by the parent through query.type.
-       */}
+      <div className="w-full min-w-0">
+        <MarketplaceFilters
+          query={query}
+          onFromChange={onFromChange}
+          onToChange={onToChange}
+          onDateChange={onDateChange}
+          onFilterChange={onFilterChange}
+        />
+      </div>
 
-      <div className="flex min-w-0 items-center">
+      {/* =====================================================================
+          Marketplace stream navigation
+
+          Keep tabs close to the filters. They belong to the same discovery
+          surface and should not visually compete with the marketplace
+          results below.
+      ===================================================================== */}
+
+      <div
+        className={cn(
+          'mt-2',
+          'flex w-full min-w-0',
+          'items-center',
+          'sm:mt-2.5',
+        )}
+      >
         <MarketplaceTabs
           value={query.type}
           onChange={onTypeChange}

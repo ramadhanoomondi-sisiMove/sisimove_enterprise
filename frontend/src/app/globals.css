@@ -9,30 +9,53 @@
    ----------------------------------------------------------------------------- */
 
 :root {
-  /* Brand */
+  /* ---------------------------------------------------------------------------
+     Brand
+     --------------------------------------------------------------------------- */
+
   --brand: #2563eb;
   --brand-hover: #1d4ed8;
   --brand-soft: #eff6ff;
   --brand-foreground: #ffffff;
 
-  /* Backgrounds */
+  /*
+   * Very subtle brand-tinted page surface.
+   *
+   * Used for marketplace-opening surfaces where pure white would feel too flat,
+   * while keeping the overall sisiMove visual system light and restrained.
+   */
+  --background-brand: #f5f9ff;
+
+  /* ---------------------------------------------------------------------------
+     Backgrounds
+     --------------------------------------------------------------------------- */
+
   --background: #ffffff;
   --background-subtle: #f8fafc;
   --background-muted: #f1f5f9;
   --surface: #ffffff;
 
-  /* Foreground */
+  /* ---------------------------------------------------------------------------
+     Foreground
+     --------------------------------------------------------------------------- */
+
   --foreground: #0f172a;
   --foreground-secondary: #475569;
   --foreground-muted: #64748b;
   --foreground-subtle: #94a3b8;
 
-  /* Borders */
+  /* ---------------------------------------------------------------------------
+     Borders
+     --------------------------------------------------------------------------- */
+
   --border: #e2e8f0;
   --border-subtle: #f1f5f9;
   --border-strong: #cbd5e1;
 
-  /* Semantic */
+  /* ---------------------------------------------------------------------------
+     Semantic
+     --------------------------------------------------------------------------- */
+
   --success: #16a34a;
   --success-soft: #f0fdf4;
 
@@ -42,7 +65,10 @@
   --danger: #dc2626;
   --danger-soft: #fef2f2;
 
-  /* Radius */
+  /* ---------------------------------------------------------------------------
+     Radius
+     --------------------------------------------------------------------------- */
+
   --radius-sm: 0.5rem;
   --radius-md: 0.75rem;
   --radius-lg: 1rem;
@@ -50,7 +76,10 @@
   --radius-2xl: 1.5rem;
   --radius-full: 9999px;
 
-  /* Shadows */
+  /* ---------------------------------------------------------------------------
+     Shadows
+     --------------------------------------------------------------------------- */
+
   --shadow-sm:
     0 1px 2px 0 rgb(15 23 42 / 0.04);
 
@@ -253,6 +282,19 @@ ol {
   border-radius: var(--radius-xl);
 }
 
+/*
+ * Brand-tinted surface.
+ *
+ * Intended for lightweight marketplace sections, highlighted states, and
+ * visual transitions where the standard white surface needs slightly more
+ * identity without introducing another color family.
+ */
+.surface-brand {
+  background: var(--background-brand);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+}
+
 /* -----------------------------------------------------------------------------
    Accessibility
    ----------------------------------------------------------------------------- */
@@ -320,3 +362,4 @@ ol {
    deliberately at the component/design-system level rather than allowing
    browser preferences to partially recolor the product.
    ----------------------------------------------------------------------------- */
+

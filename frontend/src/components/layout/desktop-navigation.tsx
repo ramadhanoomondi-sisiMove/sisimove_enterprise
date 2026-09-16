@@ -2,46 +2,57 @@
 // sisiMove — Desktop Navigation
 // -----------------------------------------------------------------------------
 //
-// Desktop navigation for the sisiMove application shell.
+// Desktop navigation for the sisiMove public site shell.
 //
 // Responsibilities:
-// - Render primary public navigation
-// - Provide consistent desktop spacing and alignment
-// - Support active navigation state
-// - Remain presentation-focused
+// - Render primary public navigation.
+// - Provide consistent desktop spacing and alignment.
+// - Highlight the active route.
+// - Reuse the shared NavigationLink primitive.
 //
 // Architectural boundary:
-// - Presentation only
-// - No authentication or business logic
-// - No API calls
-// - No feature/domain dependencies
+//
+// - Presentation only.
+// - No authentication or business logic.
+// - No API calls.
+// - No feature/domain dependencies.
+//
+// Active-route detection belongs to this navigation component because it
+// requires Next.js router state. NavigationLink remains router-state agnostic
+// apart from receiving the presentation-level `active` value.
 //
 // -----------------------------------------------------------------------------
 
 'use client';
 
-import {
-  usePathname,
-} from 'next/navigation';
+import { usePathname } from 'next/navigation';
 
-import {
-  NavigationLink,
-} from './navigation-link';
+import { NavigationLink } from './navigation-link';
 
-// -----------------------------------------------------------------------------
+
+// =============================================================================
 // Types
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 interface NavigationItem {
-  href: string;
-  label: string;
+  readonly href: string;
+  readonly label: string;
 }
 
-// -----------------------------------------------------------------------------
+
+// =============================================================================
 // Navigation Items
+// =============================================================================
+//
+// Keep public navigation declarative.
+//
+// These destinations belong to the public site shell. Authenticated
+// application navigation should be introduced separately rather than making
+// this component aware of account/application state.
+//
 // -----------------------------------------------------------------------------
 
-const navigationItems: NavigationItem[] = [
+const navigationItems: readonly NavigationItem[] = [
   {
     href: '/',
     label: 'Explore',
@@ -52,10 +63,26 @@ const navigationItems: NavigationItem[] = [
   },
 ];
 
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
 
+// =============================================================================
+// Helpers
+// =============================================================================
+
+/**
+ * Determines whether a public navigation item represents the current route.
+ *
+ * The root route is handled separately because every pathname starts with
+ * `/`.
+ *
+ * Nested routes are considered active for both their exact path and their
+ * descendants:
+ *
+ *     /how-it-works
+ *     /how-it-works/example
+ *
+ * This keeps route interpretation inside the navigation layer rather than
+ * coupling the reusable NavigationLink primitive to pathname state.
+ */
 function isNavigationItemActive(
   pathname: string,
   href: string,
@@ -70,9 +97,10 @@ function isNavigationItemActive(
   );
 }
 
-// -----------------------------------------------------------------------------
+
+// =============================================================================
 // Desktop Navigation
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function DesktopNavigation() {
   const pathname = usePathname();
@@ -80,7 +108,13 @@ export function DesktopNavigation() {
   return (
     <nav
       aria-label="Primary navigation"
-      className="hidden items-center gap-1 md:flex"
+      className={[
+        'hidden',
+        'min-w-0',
+        'items-center',
+        'gap-1',
+        'md:flex',
+      ].join(' ')}
     >
       {navigationItems.map((item) => (
         <NavigationLink

@@ -1,32 +1,72 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Demand Marketplace Card Actions
+// sisiMove — Journey Demand Marketplace Actions
 // -----------------------------------------------------------------------------
 //
-// Presentation component for the actions portion of a public Journey Demand
-// marketplace card.
+// Navigation-only actions for a public Journey Demand marketplace card.
 //
-// The component exposes the two marketplace actions:
+// ARCHITECTURAL BOUNDARY
+// ----------------------
 //
-// - View demand
-// - Join
+// This component is presentation-only.
 //
-// Navigation targets are supplied by the parent. This keeps route construction
-// and marketplace navigation policy outside the presentation component.
+// It does NOT determine:
 //
-// The component deliberately does not:
-// - fetch Demand data;
-// - determine whether joining is allowed;
-// - perform authentication checks;
-// - perform booking or joining mutations;
-// - construct API URLs;
-// - contain Demand lifecycle logic.
+// - whether the visitor may join
+// - whether the Demand is joinable
+// - whether the Demand is fulfilled
+// - whether the visitor owns the Demand
+// - whether authentication is required
+// - whether the Demand is still accepting participants
 //
-// The Join action is optional because the parent may determine that a Join
-// action is not currently appropriate for the displayed Demand.
+// Those decisions belong to the marketplace/application layer.
+//
+// The application layer supplies:
+//
+// - viewHref
+// - joinHref
+// - viewDisabled
+// - joinDisabled
+//
+// This component simply renders those navigation affordances.
+//
+// RESPONSIVE MARKETPLACE RULE
+// ---------------------------
+//
+// The marketplace card remains a horizontal row at every viewport size.
+//
+// Therefore this action column must also:
+//
+// - remain horizontally contained within its allocated flex column
+// - have min-w-0
+// - never define a fixed desktop width
+// - never force horizontal scrolling
+// - contract its padding, gap, typography, and controls at smaller sizes
+//
+// The parent DemandMarketplaceCard owns the outer marketplace column
+// allocation. This component owns only the internal action presentation.
+//
+// -----------------------------------------------------------------------------
+// VERTICAL ALIGNMENT
+// ------------------
+//
+// DemandMarketplaceCard uses `items-stretch`, allowing each marketplace
+// section to occupy the natural height of the row.
+//
+// The action group therefore uses `justify-end`.
+//
+// This intentionally places View / Join toward the lower portion of the
+// marketplace row rather than vertically centering them.
+//
+// This is especially important when another marketplace section — such as
+// requester trust information or route information — determines the row's
+// natural height.
+//
+// No fixed height or min-height is introduced.
 //
 // -----------------------------------------------------------------------------
 
 import Link from 'next/link';
+import type { MouseEvent } from 'react';
 
 // -----------------------------------------------------------------------------
 // Props
@@ -34,21 +74,51 @@ import Link from 'next/link';
 
 export interface DemandCardActionsProps {
   /**
-   * Destination for the public Demand detail page.
+   * Public Demand detail URL.
    */
-  viewHref: string;
+  readonly viewHref: string;
 
   /**
-   * Optional destination for joining the Demand.
+   * Optional URL for joining the Demand.
    *
-   * When absent, the Join action is not rendered.
+   * Omit when the current marketplace/application state does not expose a
+   * Join action.
    */
-  joinHref?: string;
+  readonly joinHref?: string;
 
   /**
-   * Optional additional styling supplied by the parent marketplace card.
+   * Disable the View navigation.
    */
-  className?: string;
+  readonly viewDisabled?: boolean;
+
+  /**
+   * Disable the Join navigation.
+   */
+  readonly joinDisabled?: boolean;
+
+  /**
+   * Optional presentation class.
+   */
+  readonly className?: string;
+}
+
+// -----------------------------------------------------------------------------
+// Disabled navigation helper
+// -----------------------------------------------------------------------------
+//
+// Next.js <Link> does not have a native disabled state.
+//
+// When the application layer marks navigation as disabled, prevent the
+// navigation event here while also communicating the state through ARIA.
+//
+// This remains presentation behavior; the component does not decide WHY
+// navigation is disabled.
+// -----------------------------------------------------------------------------
+
+function handleDisabledClick(
+  event: MouseEvent<HTMLAnchorElement>,
+): void {
+  event.preventDefault();
 }
 
 // -----------------------------------------------------------------------------
@@ -58,93 +128,228 @@ export interface DemandCardActionsProps {
 export function DemandCardActions({
   viewHref,
   joinHref,
+  viewDisabled = false,
+  joinDisabled = false,
   className,
 }: DemandCardActionsProps) {
   return (
     <div
       className={[
+        // -------------------------------------------------------------------
+        // Layout
+        // -------------------------------------------------------------------
+        //
+        // Keep the action section vertically arranged internally while the
+        // marketplace card itself remains a horizontal row.
+        //
+        // `justify-end` deliberately anchors the action group toward the
+        // bottom of the natural marketplace row.
+        //
         'flex',
-        'items-center',
-        'gap-2',
+        'min-w-0',
+        'flex-col',
+        'justify-end',
+
+        // -------------------------------------------------------------------
+        // Proportional internal density
+        // -------------------------------------------------------------------
+        //
+        // The outer marketplace column already receives its responsive
+        // section padding from DemandMarketplaceCard.
+        //
+        // These values control only the spacing between the actions and the
+        // small internal separation from the upper edge of the action area.
+        //
+        'gap-1',
+        'sm:gap-1.5',
+        'md:gap-2',
+        'pt-1.5',
+        'sm:pt-2',
+        'md:pt-2.5',
+
         className,
       ]
         .filter(Boolean)
         .join(' ')}
     >
-      {/* ------------------------------------------------------------------- */}
-      {/* View Demand                                                         */}
-      {/* ------------------------------------------------------------------- */}
-      {/*
-        The detail action is always available because the marketplace card
-        represents a public Demand.
-      */}
+      {/* ------------------------------------------------------------------ */}
+      {/* View Demand                                                        */}
+      {/* ------------------------------------------------------------------ */}
 
       <Link
         href={viewHref}
+        aria-disabled={viewDisabled}
+        tabIndex={viewDisabled ? -1 : undefined}
+        onClick={viewDisabled ? handleDisabledClick : undefined}
         className={[
+          // ----------------------------------------------------------------
+          // Control geometry
+          // ----------------------------------------------------------------
+
           'inline-flex',
-          'min-h-10',
+          'min-h-8',
+          'sm:min-h-8',
+          'md:min-h-9',
+          'w-full',
+          'min-w-0',
           'items-center',
           'justify-center',
+
+          // ----------------------------------------------------------------
+          // Shape
+          // ----------------------------------------------------------------
+
           'rounded-[var(--radius-md)]',
           'border',
-          'border-[var(--border-strong)]',
-          'bg-transparent',
-          'px-4',
-          'text-sm',
+          'border-[var(--border)]',
+          'bg-[var(--background)]',
+
+          // ----------------------------------------------------------------
+          // Responsive control spacing
+          // ----------------------------------------------------------------
+
+          'px-2',
+          'py-1',
+          'sm:px-2.5',
+          'sm:py-1.5',
+          'md:px-3',
+          'md:py-1.5',
+
+          // ----------------------------------------------------------------
+          // Responsive typography
+          // ----------------------------------------------------------------
+
+          'text-[11px]',
+          'sm:text-xs',
+          'md:text-sm',
           'font-medium',
-          'whitespace-nowrap',
+          'leading-tight',
+
+          // ----------------------------------------------------------------
+          // Colour / interaction
+          // ----------------------------------------------------------------
+
           'text-[var(--foreground)]',
           'transition-colors',
-          'duration-150',
-          'ease-out',
-          'hover:border-[var(--foreground-subtle)]',
+          'hover:border-[var(--border-strong)]',
           'hover:bg-[var(--background-subtle)]',
-          'active:bg-[var(--background-muted)]',
-          'focus-visible:outline-2',
-          'focus-visible:outline-[var(--brand)]',
-          'focus-visible:outline-offset-2',
-        ].join(' ')}
+
+          // ----------------------------------------------------------------
+          // Accessibility / keyboard focus
+          // ----------------------------------------------------------------
+
+          'focus-visible:outline-none',
+          'focus-visible:ring-2',
+          'focus-visible:ring-[color:var(--brand)]',
+          'focus-visible:ring-offset-2',
+          'focus-visible:ring-offset-[color:var(--background)]',
+
+          // ----------------------------------------------------------------
+          // Disabled presentation
+          // ----------------------------------------------------------------
+
+          viewDisabled
+            ? [
+                'pointer-events-none',
+                'cursor-not-allowed',
+                'opacity-50',
+              ].join(' ')
+            : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
       >
-        View demand
+        View
       </Link>
 
-      {/* ------------------------------------------------------------------- */}
-      {/* Join Demand                                                         */}
-      {/* ------------------------------------------------------------------- */}
-      {/*
-        Join is rendered only when the parent supplies a destination.
-
-        This component does not decide whether a Demand is joinable. That
-        decision belongs to the application/marketplace layer.
-      */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Join Demand                                                        */}
+      {/* ------------------------------------------------------------------ */}
 
       {joinHref && (
         <Link
           href={joinHref}
+          aria-disabled={joinDisabled}
+          tabIndex={joinDisabled ? -1 : undefined}
+          onClick={joinDisabled ? handleDisabledClick : undefined}
           className={[
+            // ----------------------------------------------------------------
+            // Control geometry
+            // ----------------------------------------------------------------
+
             'inline-flex',
-            'min-h-10',
+            'min-h-8',
+            'sm:min-h-8',
+            'md:min-h-9',
+            'w-full',
+            'min-w-0',
             'items-center',
             'justify-center',
+
+            // ----------------------------------------------------------------
+            // Shape
+            // ----------------------------------------------------------------
+
             'rounded-[var(--radius-md)]',
-            'border',
-            'border-transparent',
             'bg-[var(--brand)]',
-            'px-4',
-            'text-sm',
+
+            // ----------------------------------------------------------------
+            // Responsive control spacing
+            // ----------------------------------------------------------------
+
+            'px-2',
+            'py-1',
+            'sm:px-2.5',
+            'sm:py-1.5',
+            'md:px-3',
+            'md:py-1.5',
+
+            // ----------------------------------------------------------------
+            // Responsive typography
+            // ----------------------------------------------------------------
+
+            'text-[11px]',
+            'sm:text-xs',
+            'md:text-sm',
             'font-medium',
-            'whitespace-nowrap',
-            'text-[var(--brand-foreground)]',
+            'leading-tight',
+
+            // ----------------------------------------------------------------
+            // Colour / interaction
+            // ----------------------------------------------------------------
+            //
+            // Explicit white keeps the primary action readable against the
+            // brand background without relying on another foreground token.
+            //
+
+            'text-white',
             'transition-colors',
-            'duration-150',
-            'ease-out',
             'hover:bg-[var(--brand-hover)]',
-            'active:bg-[var(--brand-hover)]',
-            'focus-visible:outline-2',
-            'focus-visible:outline-[var(--brand)]',
-            'focus-visible:outline-offset-2',
-          ].join(' ')}
+
+            // ----------------------------------------------------------------
+            // Accessibility / keyboard focus
+            // ----------------------------------------------------------------
+
+            'focus-visible:outline-none',
+            'focus-visible:ring-2',
+            'focus-visible:ring-[color:var(--brand)]',
+            'focus-visible:ring-offset-2',
+            'focus-visible:ring-offset-[color:var(--background)]',
+
+            // ----------------------------------------------------------------
+            // Disabled presentation
+            // ----------------------------------------------------------------
+
+            joinDisabled
+              ? [
+                  'pointer-events-none',
+                  'cursor-not-allowed',
+                  'opacity-50',
+                ].join(' ')
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
         >
           Join
         </Link>
@@ -152,4 +357,3 @@ export function DemandCardActions({
     </div>
   );
 }
-

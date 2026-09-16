@@ -5,10 +5,7 @@
 // Top-level composition component for the public sisiMove landing page.
 //
 // The landing page is the public entry point into the sisiMove journey market.
-// It presents the marketplace before the supporting calls to action and
-// explanatory content.
-//
-// The page follows the physical-market interaction model:
+// It follows the physical-market interaction model:
 //
 //     LANDING
 //         │
@@ -26,30 +23,27 @@
 //
 // Journey and Journey Demand remain independent feature domains.
 //
-// The landing page does not merge their domain logic. It composes the public
-// marketplace representation supplied by the application/read boundary and
-// presents the resulting marketplace alongside the surrounding landing-page
-// sections.
+// LandingPage composes their public marketplace representation but does not
+// merge, own, or implement either domain's business logic.
 //
 // -----------------------------------------------------------------------------
 //
 // Architectural responsibility
 // -----------------------------------------------------------------------------
 //
-// LandingPage is intentionally a composition boundary.
+// LandingPage is a pure page-composition boundary.
 //
 // It is responsible for:
 //
 // - establishing the order of public landing sections;
-// - composing the existing landing presentation components;
-// - passing the prepared marketplace presentation contract to
-//   MarketplaceSection.
+// - composing landing presentation components;
+// - passing the prepared marketplace contract to MarketplaceSection.
 //
 // It is NOT responsible for:
 //
 // - fetching marketplace data;
 // - owning marketplace query state;
-// - managing marketplace URL state;
+// - synchronizing marketplace URL state;
 // - filtering or sorting marketplace data;
 // - constructing API requests;
 // - implementing Journey business rules;
@@ -69,11 +63,10 @@
 //
 // The public route layout owns the document-level <main> element.
 //
-// LandingPage therefore renders only the page content and deliberately does
-// not introduce another <main> element. This prevents invalid nested <main>
-// landmarks when LandingPage is rendered inside the public layout.
+// LandingPage therefore renders page content only and deliberately does not
+// introduce another <main> element.
 //
-// The resulting structure is:
+// Result:
 //
 //     Public Layout
 //         ├── SiteHeader
@@ -91,13 +84,12 @@
 // Marketplace boundary
 // -----------------------------------------------------------------------------
 //
-// LandingPage deliberately does not know how the marketplace is retrieved or
-// how its query state is managed.
+// LandingPage receives the complete MarketplaceSectionProps contract from the
+// route/application/client orchestration boundary.
 //
-// It receives the complete MarketplaceSectionProps contract and passes that
-// contract directly to MarketplaceSection.
+// The contract is passed directly to MarketplaceSection.
 //
-// This keeps the landing composition independent from:
+// LandingPage therefore remains independent from:
 //
 // - marketplace transport;
 // - marketplace query orchestration;
@@ -106,17 +98,17 @@
 // - Journey discovery implementation;
 // - Journey Demand discovery implementation.
 //
-// The marketplace therefore remains a replaceable presentation boundary within
-// the larger landing page.
+// MarketplaceSection remains the replaceable marketplace presentation boundary
+// within the larger landing page.
 //
 // -----------------------------------------------------------------------------
 //
 // Visual composition
 // -----------------------------------------------------------------------------
 //
-// The global SiteHeader and SiteFooter are supplied by the public layout.
+// The public layout supplies SiteHeader and SiteFooter.
 //
-// LandingPage provides the page content between them:
+// LandingPage supplies the content between them:
 //
 //     LandingHero
 //         ↓
@@ -133,22 +125,8 @@
 // Visitors should see the actual market before being asked to read supporting
 // explanation or choose a participation path.
 //
-// MarketplaceSection owns the marketplace presentation hierarchy:
-//
-//     THE JOURNEY MARKET
-//     See where people are going...
-//
-//     [ From ] [ To ] [ Date ] [ Filters ]
-//
-//     MARKET
-//     [ All ] [ Journeys ] [ Demand ]
-//     Showing what's available
-//
-//     Journey / Demand results
-//
-// The landing page does not duplicate any of that marketplace structure.
-//
 // -----------------------------------------------------------------------------
+
 
 import { LandingHero } from '@/components/landing/hero';
 
@@ -164,111 +142,109 @@ import {
 
 import { HowItWorksSection } from '@/components/landing/how-it-works';
 
-// -----------------------------------------------------------------------------
+
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
+// =============================================================================
 //
-// MarketplaceSection is intentionally controlled.
+// Reuse MarketplaceSectionProps directly.
 //
-// Reusing MarketplaceSectionProps prevents LandingPage from maintaining a
-// second marketplace contract that could drift from the actual marketplace
-// presentation boundary.
+// This prevents LandingPage from creating a second marketplace contract that
+// could drift from the actual marketplace presentation boundary.
 //
 // The route/application/client boundary prepares this contract and supplies it
 // to LandingPage.
 //
-// -----------------------------------------------------------------------------
 
 export interface LandingPageProps {
   marketplace: MarketplaceSectionProps;
 }
 
-// -----------------------------------------------------------------------------
+
+// =============================================================================
 // Landing Page
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function LandingPage({
   marketplace,
 }: LandingPageProps) {
   return (
     <div className="w-full min-w-0">
-      {/* ------------------------------------------------------------------- */}
-      {/* Journey Market introduction                                         */}
-      {/* ------------------------------------------------------------------- */}
+
+      {/* =====================================================================
+          1. Marketplace introduction
+      ===================================================================== */}
       {/*
-       * LandingHero establishes the public marketplace proposition.
+       * Establishes the marketplace proposition before the visitor reaches
+       * the actual inventory.
        *
-       * It does not fetch marketplace data or own marketplace state.
+       * LandingHero is presentation-only and does not own marketplace state.
        */}
 
       <LandingHero />
 
-      {/* ------------------------------------------------------------------- */}
-      {/* Primary marketplace discovery surface                               */}
-      {/* ------------------------------------------------------------------- */}
+
+      {/* =====================================================================
+          2. Primary marketplace
+      ===================================================================== */}
       {/*
-       * MarketplaceSection is the primary interaction surface of the
-       * landing page.
+       * This is the primary interaction surface of the landing page.
        *
-       * The complete controlled marketplace presentation contract is passed
-       * through unchanged. LandingPage does not interpret marketplace state
-       * or implement marketplace behavior.
+       * LandingPage passes the prepared marketplace contract through unchanged.
        *
-       * MarketplaceSection owns the presentation of:
+       * MarketplaceSection owns:
        *
-       * - refinement controls;
-       * - marketplace stream navigation;
+       * - marketplace refinement controls;
+       * - marketplace stream selection;
        * - loading state;
        * - error state;
        * - empty state;
        * - Journey results;
        * - Journey Demand results.
        *
-       * Marketplace pagination is intentionally not part of this contract.
-       * The current marketplace composition is based on independent Journey
-       * and Journey Demand collections and does not expose a unified
-       * pagination model.
+       * LandingPage does not interpret any of those concerns.
        */}
 
       <MarketplaceSection {...marketplace} />
 
-      {/* ------------------------------------------------------------------- */}
-      {/* Demand-side marketplace participation                               */}
-      {/* ------------------------------------------------------------------- */}
+
+      {/* =====================================================================
+          3. Demand-side participation
+      ===================================================================== */}
       {/*
-       * Provides the visitor with a path forward when the Journey they need
-       * is not currently available.
+       * Gives visitors a path forward when the Journey they need is not
+       * currently available.
        *
-       * The CTA does not alter marketplace state itself. Its destination and
-       * interaction behavior belong to the surrounding route/application
-       * layer.
+       * CreateDemandSection owns the presentation of this participation path.
+       * Its destination and application behavior remain outside LandingPage.
        */}
 
       <CreateDemandSection />
 
-      {/* ------------------------------------------------------------------- */}
-      {/* Supply-side marketplace participation                               */}
-      {/* ------------------------------------------------------------------- */}
+
+      {/* =====================================================================
+          4. Supply-side participation
+      ===================================================================== */}
       {/*
-       * Provides the visitor with a path to publish available seats after
-       * seeing the existing marketplace.
+       * Gives visitors a path to publish a Journey they are already making
+       * and expose its available seats to the marketplace.
        */}
 
       <PublishJourneySection />
 
-      {/* ------------------------------------------------------------------- */}
-      {/* How It Works                                                         */}
-      {/* ------------------------------------------------------------------- */}
+
+      {/* =====================================================================
+          5. Supporting explanation
+      ===================================================================== */}
       {/*
-       * Supporting explanation intentionally follows the marketplace and
-       * participation CTAs.
+       * Explanation intentionally follows discovery and participation.
        *
-       * The visitor first sees what is available, then sees how they can
-       * participate, and only then receives the explanatory workflow.
+       * The visitor first sees what is available, then sees how to participate,
+       * and finally receives the broader workflow explanation.
        */}
 
       <HowItWorksSection />
+
     </div>
   );
 }
-

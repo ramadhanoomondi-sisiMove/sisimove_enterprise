@@ -2,30 +2,117 @@
 // sisiMove — Journey Marketplace Card Route
 // -----------------------------------------------------------------------------
 //
-// Presentation component for the route portion of a public Journey
-// marketplace card.
+// Compact presentation component for the route section of a public Journey
+// marketplace listing.
 //
-// The route establishes where the provider is travelling:
+// MARKETPLACE ROLE
+// ----------------
 //
-//     Origin → Destination
+// The Journey marketplace row communicates:
 //
-// A Journey may also contain intermediate waypoints. The marketplace card
-// keeps those locations compact so the route remains easy to scan without
-// turning the card into a full route-detail view.
+//   WHEN → WHO → WHERE → VEHICLE → PRICE/SEATS → ACTIONS
+//                       ↑
+//                    this block
 //
-// This component deliberately does not:
+// This component owns the `WHERE` portion:
+//
+//   From
+//   Nairobi
+//      ↓
+//   To
+//   Mombasa
+//
+// If the Journey contains intermediate waypoints, they are presented as
+// secondary route context:
+//
+//   Via Voi · Mtito Andei
+//
+// The route remains intentionally compact. It is not a complete Journey
+// itinerary or route-detail component.
+//
+// PRESENTATION BOUNDARY
+// ---------------------
+//
+// This component:
+//
+// - renders the already-resolved public route;
+// - displays origin and destination;
+// - displays genuine intermediate waypoints;
+// - keeps route information compact and scannable.
+//
+// It deliberately does not:
+//
 // - fetch route data;
-// - resolve location references;
+// - resolve location IDs;
 // - calculate distances;
-// - determine travel duration;
-// - format departure or arrival times;
-// - display vehicle information;
-// - display seat availability;
-// - display pricing;
-// - contain booking logic.
+// - calculate duration;
+// - determine departure or arrival times;
+// - render vehicle information;
+// - render pricing;
+// - render seat availability;
+// - determine booking eligibility;
+// - contain Journey business logic.
 //
-// Those responsibilities belong to the appropriate Journey card components
-// or to the domain/application layer.
+// WAYPOINT BOUNDARY
+// -----------------
+//
+// The public route representation already exposes origin and destination.
+//
+// Some API representations may additionally contain ORIGIN and DESTINATION
+// entries inside `waypoints`.
+//
+// Those entries are filtered out here so the marketplace never renders:
+//
+//   Nairobi → Mombasa
+//   Via Nairobi · Voi
+//
+// Instead, only genuine intermediate locations are displayed.
+//
+// The supplied waypoint sequence is used to keep the Via presentation
+// deterministic.
+//
+// RESPONSIVE MARKETPLACE DENSITY
+// ------------------------------
+//
+// The parent JourneyMarketplaceCard owns:
+//
+// - the route column width;
+// - the route column position;
+// - the marketplace column padding;
+// - the column separator.
+//
+// This component therefore deliberately does NOT:
+//
+// - define a fixed width;
+// - define a minimum desktop width;
+// - use horizontal scrolling;
+// - add marketplace-level horizontal padding;
+// - add marketplace-level vertical padding.
+//
+// The marketplace row remains horizontal at every breakpoint.
+//
+// The route content itself remains vertically composed:
+//
+//   From
+//   Nairobi
+//     ↓
+//   To
+//   Mombasa
+//   Via Voi
+//
+// Internal typography and spacing progressively contract on smaller screens.
+//
+// DESIGN-SYSTEM BOUNDARY
+// ----------------------
+//
+// Uses only sisiMove global design tokens:
+//
+//   --foreground
+//   --foreground-secondary
+//   --foreground-muted
+//   --foreground-subtle
+//
+// No generic or nonexistent tokens are introduced.
 //
 // -----------------------------------------------------------------------------
 
@@ -39,15 +126,15 @@ export interface JourneyCardRouteProps {
   /**
    * Public Journey route representation.
    *
-   * The route already contains resolved public location information. The
-   * presentation component therefore only renders the supplied values.
+   * Location information is expected to already be resolved by the public
+   * Journey read model.
    */
-  route: PublicJourneyRoute;
+  readonly route: PublicJourneyRoute;
 
   /**
    * Optional additional styling supplied by the parent marketplace card.
    */
-  className?: string;
+  readonly className?: string;
 }
 
 // -----------------------------------------------------------------------------
@@ -57,19 +144,20 @@ export interface JourneyCardRouteProps {
 /**
  * Returns only genuine intermediate waypoints.
  *
- * The public route model already exposes origin and destination separately.
- * Some API representations may also include ORIGIN and DESTINATION entries
- * inside the waypoint collection, so those entries must not be presented as
- * additional stops on the marketplace card.
+ * Origin and destination are already represented by `route.origin` and
+ * `route.destination`, so they should not be repeated in the Via line.
+ *
+ * Sorting by sequence keeps the presentation deterministic if the public API
+ * does not return the waypoint collection in sequence order.
  */
-function getIntermediateWaypoints(
-  route: PublicJourneyRoute,
-) {
-  return route.waypoints.filter(
-    (waypoint) =>
-      waypoint.type !== 'ORIGIN' &&
-      waypoint.type !== 'DESTINATION',
-  );
+function getIntermediateWaypoints(route: PublicJourneyRoute) {
+  return route.waypoints
+    .filter(
+      (waypoint) =>
+        waypoint.type !== 'ORIGIN' &&
+        waypoint.type !== 'DESTINATION',
+    )
+    .sort((a, b) => a.sequence - b.sequence);
 }
 
 // -----------------------------------------------------------------------------
@@ -82,10 +170,27 @@ export function JourneyCardRoute({
 }: JourneyCardRouteProps) {
   const intermediateWaypoints = getIntermediateWaypoints(route);
 
+  const viaLabel = intermediateWaypoints
+    .map((waypoint) => waypoint.name)
+    .filter(Boolean)
+    .join(' · ');
+
   return (
     <div
       className={[
+        // -------------------------------------------------------------------
+        // Route content boundary
+        // -------------------------------------------------------------------
+        //
+        // The parent marketplace column owns width, separator, and outer
+        // padding. This component only establishes the internal route
+        // composition.
+        //
+        'flex',
         'min-w-0',
+        'flex-col',
+        'justify-center',
+
         className,
       ]
         .filter(Boolean)
@@ -93,56 +198,129 @@ export function JourneyCardRoute({
       aria-label={`Route from ${route.origin.name} to ${route.destination.name}`}
     >
       {/* ------------------------------------------------------------------- */}
-      {/* Origin → Destination                                                */}
+      {/* Origin                                                              */}
+      {/* ------------------------------------------------------------------- */}
+
+      <div className="min-w-0">
+        <p
+          className={[
+            'text-[9px]',
+            'sm:text-[10px]',
+            'md:text-xs',
+            'font-medium',
+            'uppercase',
+            'tracking-[0.05em]',
+            'sm:tracking-[0.06em]',
+            'leading-none',
+            'text-[var(--foreground-muted)]',
+          ].join(' ')}
+        >
+          From
+        </p>
+
+        <p
+          className={[
+            'mt-0.5',
+            'min-w-0',
+            'truncate',
+            'text-[11px]',
+            'sm:text-xs',
+            'md:text-sm',
+            'font-semibold',
+            'leading-tight',
+            'text-[var(--foreground)]',
+          ].join(' ')}
+          title={route.origin.name}
+        >
+          {route.origin.name}
+        </p>
+      </div>
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Direction                                                           */}
       {/* ------------------------------------------------------------------- */}
       {/*
-        Origin and destination are the primary route information and are
-        therefore always visible.
+        The route is intentionally vertically composed. The arrow therefore
+        communicates direction without consuming meaningful horizontal space.
       */}
+      <div
+        aria-hidden="true"
+        className={[
+          'my-0.5',
+          'sm:my-1',
+          'text-[11px]',
+          'sm:text-xs',
+          'md:text-sm',
+          'font-medium',
+          'leading-none',
+          'text-[var(--foreground-subtle)]',
+        ].join(' ')}
+      >
+        ↓
+      </div>
 
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-[var(--foreground-secondary)]">
-            From
-          </p>
+      {/* ------------------------------------------------------------------- */}
+      {/* Destination                                                         */}
+      {/* ------------------------------------------------------------------- */}
 
-          <p className="truncate text-base font-semibold text-[var(--foreground)]">
-            {route.origin.name}
-          </p>
-        </div>
-
-        <span
-          aria-hidden="true"
-          className="shrink-0 text-lg text-[var(--foreground-subtle)]"
+      <div className="min-w-0">
+        <p
+          className={[
+            'text-[9px]',
+            'sm:text-[10px]',
+            'md:text-xs',
+            'font-medium',
+            'uppercase',
+            'tracking-[0.05em]',
+            'sm:tracking-[0.06em]',
+            'leading-none',
+            'text-[var(--foreground-muted)]',
+          ].join(' ')}
         >
-          →
-        </span>
+          To
+        </p>
 
-        <div className="min-w-0 flex-1 text-right">
-          <p className="text-xs font-medium text-[var(--foreground-secondary)]">
-            To
-          </p>
-
-          <p className="truncate text-base font-semibold text-[var(--foreground)]">
-            {route.destination.name}
-          </p>
-        </div>
+        <p
+          className={[
+            'mt-0.5',
+            'min-w-0',
+            'truncate',
+            'text-[11px]',
+            'sm:text-xs',
+            'md:text-sm',
+            'font-semibold',
+            'leading-tight',
+            'text-[var(--foreground)]',
+          ].join(' ')}
+          title={route.destination.name}
+        >
+          {route.destination.name}
+        </p>
       </div>
 
       {/* ------------------------------------------------------------------- */}
       {/* Intermediate Waypoints                                              */}
       {/* ------------------------------------------------------------------- */}
-      {/*
-        Intermediate locations are secondary route context. Keep them compact
-        rather than rendering a second full route structure inside the card.
-      */}
-
-      {intermediateWaypoints.length > 0 && (
-        <p className="mt-2 truncate text-sm text-[var(--foreground-secondary)]">
-          Via{' '}
-          {intermediateWaypoints
-            .map((waypoint) => waypoint.name)
-            .join(' · ')}
+      {viaLabel && (
+        <p
+          className={[
+            'mt-1',
+            'sm:mt-1.5',
+            'md:mt-2',
+            'min-w-0',
+            'truncate',
+            'text-[9px]',
+            'sm:text-[10px]',
+            'md:text-xs',
+            'leading-tight',
+            'text-[var(--foreground-muted)]',
+          ].join(' ')}
+          title={`Via ${viaLabel}`}
+        >
+          <span className="font-medium text-[var(--foreground-secondary)]">
+            Via
+          </span>{' '}
+          {viaLabel}
         </p>
       )}
     </div>

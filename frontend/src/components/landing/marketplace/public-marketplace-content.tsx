@@ -26,7 +26,9 @@
 // - create marketplace server-state semantics;
 // - render Journey or Demand cards.
 //
-// Architecture:
+// -----------------------------------------------------------------------------
+// ARCHITECTURE
+// -----------------------------------------------------------------------------
 //
 //   Public Route
 //       │
@@ -49,8 +51,18 @@
 //       │
 //       ▼
 //   MarketplaceSection
+//       │
+//       ├── MarketplaceHeader
+//       ├── MarketplaceFilters
+//       ├── MarketplaceTabs
+//       └── MarketplaceResults
 //
-// IMPORTANT:
+// PublicMarketplaceContent is therefore the client/application orchestration
+// boundary between the marketplace read model and the landing presentation.
+//
+// -----------------------------------------------------------------------------
+// IMPORTANT — CURRENT MARKETPLACE CONTRACT
+// -----------------------------------------------------------------------------
 //
 // The current Public Marketplace hook intentionally exposes:
 //
@@ -65,10 +77,33 @@
 //   limit
 //   nextCursor
 //   hasMore
+//   page
+//   refetch
 //
-// Unified marketplace pagination belongs to a future marketplace read
-// boundary when the underlying Journey and Journey Demand pagination contracts
-// can be composed truthfully.
+// Unified marketplace pagination belongs to a future canonical marketplace
+// read boundary when the independent Journey and Journey Demand pagination
+// contracts can be composed truthfully.
+//
+// -----------------------------------------------------------------------------
+// BROWSE-FIRST BEHAVIOR
+// -----------------------------------------------------------------------------
+//
+// The initial query deliberately contains no route or date restrictions:
+//
+//   type: ALL
+//   from: null
+//   to: null
+//   date: null
+//
+// This means the public landing page initially asks:
+//
+//     "What is available?"
+//
+// rather than:
+//
+//     "What are you searching for?"
+//
+// Filters subsequently refine the marketplace snapshot.
 // -----------------------------------------------------------------------------
 
 'use client';
@@ -78,9 +113,7 @@ import {
   useState,
 } from 'react';
 
-import {
-  LandingPage,
-} from '@/components/landing/landing-page';
+import { LandingPage } from '@/components/landing/landing-page';
 
 import {
   usePublicMarketplace,
@@ -100,10 +133,10 @@ import type {
 /**
  * Default public marketplace query.
  *
- * An empty discovery scope is intentional.
+ * The public marketplace starts unfiltered so visitors can immediately browse
+ * the currently available Journey and Journey Demand inventory.
  *
- * The public landing page starts by showing what is currently available in
- * the marketplace. Route, date, and other filters refine that initial stream.
+ * Query controls subsequently refine this initial marketplace snapshot.
  */
 const INITIAL_MARKETPLACE_QUERY: PublicMarketplaceQuery = {
   type: 'ALL',
@@ -122,23 +155,37 @@ const INITIAL_MARKETPLACE_QUERY: PublicMarketplaceQuery = {
 /**
  * Client orchestration boundary for the public marketplace.
  *
- * This component is deliberately thin.
+ * This component intentionally remains thin.
  *
- * The marketplace feature hook owns composition of Journey and Journey Demand.
- * The landing components own presentation.
+ * Responsibilities are split as follows:
  *
- * This component connects those two boundaries.
+ * PublicMarketplaceContent
+ *   → owns query state, hook consumption, and public route construction.
+ *
+ * usePublicMarketplace
+ *   → composes Journey and Journey Demand public read models.
+ *
+ * LandingPage / MarketplaceSection
+ *   → owns marketplace presentation.
+ *
+ * JourneyMarketplaceCard / DemandMarketplaceCard
+ *   → own feature-specific presentation.
  */
 export function PublicMarketplaceContent() {
   // ---------------------------------------------------------------------------
   // Marketplace query state
   // ---------------------------------------------------------------------------
   //
-  // Query state belongs here rather than inside MarketplaceSection because
-  // MarketplaceSection is a presentation component.
+  // Query state belongs to the client/application boundary rather than inside
+  // MarketplaceSection.
+  //
+  // MarketplaceSection remains a controlled presentation component.
   // ---------------------------------------------------------------------------
 
-  const [query, setQuery] = useState<PublicMarketplaceQuery>(
+  const [
+    query,
+    setQuery,
+  ] = useState<PublicMarketplaceQuery>(
     INITIAL_MARKETPLACE_QUERY,
   );
 
@@ -147,8 +194,10 @@ export function PublicMarketplaceContent() {
   // Marketplace read state
   // ---------------------------------------------------------------------------
   //
-  // The marketplace hook is the sole composition point for the public Journey
-  // and Journey Demand streams.
+  // usePublicMarketplace() is the sole marketplace composition point exposed
+  // to this component.
+  //
+  // This boundary does not independently call Journey or Journey Demand hooks.
   // ---------------------------------------------------------------------------
 
   const {
@@ -160,6 +209,12 @@ export function PublicMarketplaceContent() {
 
   // ---------------------------------------------------------------------------
   // Query interaction
+  // ---------------------------------------------------------------------------
+  //
+  // Each handler updates only its corresponding controlled query property.
+  //
+  // The existing query object is preserved so future query properties can be
+  // added without changing every handler.
   // ---------------------------------------------------------------------------
 
   const handleTypeChange = useCallback(
@@ -207,7 +262,9 @@ export function PublicMarketplaceContent() {
 
 
   const handleFilterChange = useCallback(
-    (filter: PublicMarketplaceFilter | null) => {
+    (
+      filter: PublicMarketplaceFilter | null,
+    ) => {
       setQuery((current) => ({
         ...current,
         filter,
@@ -221,20 +278,25 @@ export function PublicMarketplaceContent() {
   // Public Journey routes
   // ---------------------------------------------------------------------------
   //
-  // Route construction belongs at the application/presentation boundary.
+  // Marketplace presentation components do not know the application's route
+  // structure.
   //
-  // Marketplace presentation components receive already-resolved hrefs rather
-  // than knowing the application's route structure.
+  // They receive already-resolved public hrefs from this application boundary.
+  //
+  // These callbacks are memoized because they are passed through several
+  // presentation boundaries and do not need to be recreated on every render.
   // ---------------------------------------------------------------------------
 
   const getJourneyViewHref = useCallback(
-    (publicId: string) => `/journeys/${publicId}`,
+    (publicId: string) =>
+      `/journeys/${publicId}`,
     [],
   );
 
 
   const getJourneyBookHref = useCallback(
-    (publicId: string) => `/journeys/${publicId}?action=book`,
+    (publicId: string) =>
+      `/journeys/${publicId}?action=book`,
     [],
   );
 
@@ -244,29 +306,28 @@ export function PublicMarketplaceContent() {
   // ---------------------------------------------------------------------------
 
   const getDemandViewHref = useCallback(
-    (publicId: string) => `/demands/${publicId}`,
+    (publicId: string) =>
+      `/demands/${publicId}`,
     [],
   );
 
 
   const getDemandJoinHref = useCallback(
-    (publicId: string) => `/demands/${publicId}?action=join`,
+    (publicId: string) =>
+      `/demands/${publicId}?action=join`,
     [],
   );
 
 
   // ---------------------------------------------------------------------------
-  // Presentation
+  // Presentation boundary
   // ---------------------------------------------------------------------------
   //
-  // IMPORTANT:
+  // The marketplace read result is passed through without adding another
+  // client-side representation or pagination model.
   //
-  // `items` is passed through from usePublicMarketplace() without inventing a
-  // marketplace pagination model.
-  //
-  // The presentation layer should therefore consume the actual marketplace
-  // composition result rather than expecting server pagination that does not
-  // currently exist.
+  // LandingPage receives the controlled marketplace contract and remains
+  // responsible for rendering the marketplace presentation tree.
   // ---------------------------------------------------------------------------
 
   return (
@@ -278,30 +339,51 @@ export function PublicMarketplaceContent() {
 
         isLoading,
 
-        isError: error !== null,
+        isError:
+          error !== null,
 
-        onTypeChange: handleTypeChange,
-        onFromChange: handleFromChange,
-        onToChange: handleToChange,
-        onDateChange: handleDateChange,
+        onTypeChange:
+          handleTypeChange,
 
-        onFilterChange: handleFilterChange,
+        onFromChange:
+          handleFromChange,
+
+        onToChange:
+          handleToChange,
+
+        onDateChange:
+          handleDateChange,
+
+        onFilterChange:
+          handleFilterChange,
 
         getJourneyViewHref,
+
         getJourneyBookHref,
 
         getDemandViewHref,
+
         getDemandJoinHref,
 
-        linkJourneyProviderToProfile: true,
-        showJourneyProviderTrustBadges: true,
+        linkJourneyProviderToProfile:
+          true,
 
-        linkDemandRequesterToProfile: true,
-        showDemandRequesterTrustBadges: true,
+        showJourneyProviderTrustBadges:
+          true,
+
+        linkDemandRequesterToProfile:
+          true,
+
+        showDemandRequesterTrustBadges:
+          true,
       }}
     />
   );
 }
 
+
+// =============================================================================
+// Default Export
+// =============================================================================
 
 export default PublicMarketplaceContent;

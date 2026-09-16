@@ -4,19 +4,20 @@
 //
 // Client-side presentation boundary for the public Journey detail page.
 //
-// PublicJourney is already the composed public read model. It contains the
+// `PublicJourney` is already the composed public read model. It contains the
 // public Traveller, Trust, Route, Schedule, Vehicle, Capacity, Pricing,
 // Preferences, and Asset information required by this page.
 //
 // This component therefore does not perform additional domain composition or
-// fetch related public resources independently.
+// independently fetch related public resources.
 //
 // Responsibilities:
 //
-// - resolve one public Journey through usePublicJourney();
+// - resolve one public Journey through `usePublicJourney()`;
 // - handle loading, error, and not-found states;
 // - present the public Journey information;
-// - link the Journey provider to their public Traveller Profile;
+// - present the Journey provider using shared Traveller / Trust presentation;
+// - render public assets through the shared `PublicAssetImage` boundary;
 // - provide the public booking entry point.
 //
 // It deliberately does not:
@@ -26,17 +27,37 @@
 // - fetch Traveller Profile or Trust independently;
 // - fetch Asset records independently;
 // - construct storage URLs;
+// - validate storage/provider-specific asset URLs;
 // - perform Journey business logic.
 //
-// Public assets are already represented by safe renderable URLs in the
-// PublicJourney read model and are rendered with next/image.
+// Asset rendering is intentionally delegated to `PublicAssetImage`.
+//
+// The Journey page should know that an asset exists, but it should not know
+// how that asset is stored, transformed, or made renderable by Next Image.
+//
+// -----------------------------------------------------------------------------
+//
+// Architectural boundary:
+//
+// PublicJourney
+//      │
+//      ├── provider.traveller ──> TravellerSummary
+//      ├── provider.trust ──────> TrustSummary
+//      ├── vehicle.asset ───────> PublicAssetImage
+//      ├── journey.assets[] ────> PublicAssetImage
+//      └── badge.asset ─────────> PublicAssetImage
+//
+// This keeps the public Journey page a presentation consumer of the public
+// read model rather than another public-data composition layer.
 // -----------------------------------------------------------------------------
 
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
 
+import { PublicAssetImage } from '@/components/landing/shared/assets';
+import {TravellerSummary } from '@/components/landing/shared/traveller';
+import { TrustSummary,} from '@/components/landing/shared/trust';
 import { usePublicJourney } from '@/features/journeys/hooks/public-use-journey';
 import type {
   PublicJourney,
@@ -69,7 +90,7 @@ function formatJourneyDate(
     return value;
   }
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat('en-KE', {
     dateStyle: 'medium',
     timeStyle: 'short',
     timeZone: timezone,
@@ -80,7 +101,7 @@ function formatPrice(
   amount: number,
   currency: string,
 ): string {
-  return new Intl.NumberFormat(undefined, {
+  return new Intl.NumberFormat('en-KE', {
     style: 'currency',
     currency,
     maximumFractionDigits: 0,
@@ -92,25 +113,6 @@ function formatEnumLabel(value: string): string {
     .toLowerCase()
     .replaceAll('_', ' ')
     .replace(/\b\w/g, (character) => character.toUpperCase());
-}
-
-function formatVerificationLevel(
-  level: PublicJourney['provider']['trust']['verificationLevel'],
-): string {
-  switch (level) {
-    case 'HIGHLY_VERIFIED':
-      return 'Highly verified';
-
-    case 'VERIFIED':
-      return 'Verified';
-
-    case 'BASIC':
-      return 'Basic verification';
-
-    case 'NONE':
-    default:
-      return 'Not verified';
-  }
 }
 
 // =============================================================================
@@ -125,18 +127,18 @@ function PublicJourneyLoadingState() {
     >
       <div className="page-container">
         <div className="surface animate-pulse space-y-6 p-6 sm:p-8">
-          <div className="h-4 w-24 rounded bg-muted" />
+          <div className="h-4 w-24 rounded bg-[var(--background-muted)]" />
 
           <div className="space-y-3">
-            <div className="h-8 w-2/3 rounded bg-muted" />
-            <div className="h-5 w-1/2 rounded bg-muted" />
+            <div className="h-8 w-2/3 rounded bg-[var(--background-muted)]" />
+            <div className="h-5 w-1/2 rounded bg-[var(--background-muted)]" />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {Array.from({ length: 4 }).map((_, index) => (
               <div
                 key={index}
-                className="h-24 rounded bg-muted"
+                className="h-24 rounded bg-[var(--background-muted)]"
               />
             ))}
           </div>
@@ -157,6 +159,10 @@ interface PublicJourneyErrorStateProps {
 function PublicJourneyErrorState({
   error,
 }: PublicJourneyErrorStateProps) {
+  const message =
+    error.message?.trim() ||
+    'An unexpected error occurred while loading this Journey.';
+
   return (
     <section className="section">
       <div className="page-container">
@@ -164,17 +170,28 @@ function PublicJourneyErrorState({
           role="alert"
           className="surface p-6 sm:p-8"
         >
-          <p className="text-sm font-semibold text-destructive">
+          <p className="text-sm font-semibold text-[var(--danger)]">
             We could not load this Journey.
           </p>
 
-          <p className="mt-2 text-sm text-muted-foreground">
-            {error.message}
+          <p className="mt-2 text-sm text-[var(--foreground-secondary)]">
+            {message}
           </p>
 
           <Link
             href="/"
-            className="mt-6 inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium transition hover:bg-muted"
+            className={[
+              'mt-6 inline-flex items-center rounded-[var(--radius-md)]',
+              'border border-[var(--border)]',
+              'px-4 py-2 text-sm font-medium',
+              'text-[var(--foreground)]',
+              'transition-colors',
+              'hover:bg-[var(--background-subtle)]',
+              'focus:outline-none',
+              'focus-visible:ring-2',
+              'focus-visible:ring-[var(--brand)]',
+              'focus-visible:ring-offset-2',
+            ].join(' ')}
           >
             Explore journeys
           </Link>
@@ -193,18 +210,29 @@ function PublicJourneyNotFoundState() {
     <section className="section">
       <div className="page-container">
         <div className="surface p-6 sm:p-8">
-          <h1 className="text-xl font-semibold">
+          <h1 className="text-xl font-semibold text-[var(--foreground)]">
             Journey not found
           </h1>
 
-          <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+          <p className="mt-2 max-w-xl text-sm text-[var(--foreground-secondary)]">
             This Journey may no longer be publicly available, or the link may
             no longer be valid.
           </p>
 
           <Link
             href="/"
-            className="mt-6 inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium transition hover:bg-muted"
+            className={[
+              'mt-6 inline-flex items-center rounded-[var(--radius-md)]',
+              'border border-[var(--border)]',
+              'px-4 py-2 text-sm font-medium',
+              'text-[var(--foreground)]',
+              'transition-colors',
+              'hover:bg-[var(--background-subtle)]',
+              'focus:outline-none',
+              'focus-visible:ring-2',
+              'focus-visible:ring-[var(--brand)]',
+              'focus-visible:ring-offset-2',
+            ].join(' ')}
           >
             Explore journeys
           </Link>
@@ -227,103 +255,39 @@ function JourneyProvider({
 }: JourneyProviderProps) {
   const { traveller, trust } = journey.provider;
 
-  const profileHref = `/travellers/${encodeURIComponent(
-    traveller.handle,
-  )}`;
-
   return (
     <section
       aria-labelledby="journey-provider-heading"
       className="surface p-6"
     >
-      <Link
-        href={profileHref}
-        aria-label={`View @${traveller.handle}'s profile`}
-        className="group block rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-      >
-        <div className="flex items-start gap-4">
-          {traveller.avatar ? (
-            <Image
-              src={traveller.avatar.url}
-              alt={traveller.avatar.alt ?? traveller.handle}
-              width={56}
-              height={56}
-              className="h-14 w-14 shrink-0 rounded-full object-cover transition group-hover:opacity-90"
-            />
-          ) : (
-            <div
-              aria-hidden="true"
-              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-muted text-lg font-semibold transition group-hover:bg-muted/80"
-            >
-              {traveller.handle.charAt(0).toUpperCase()}
-            </div>
+      <div className="flex min-w-0 items-start gap-4">
+        <div className="min-w-0 flex-1">
+          <h2
+            id="journey-provider-heading"
+            className="sr-only"
+          >
+            Journey provider
+          </h2>
+
+          <TravellerSummary
+            traveller={traveller}
+            linkToProfile
+          />
+
+          {traveller.bio && (
+            <p className="mt-4 text-sm leading-6 text-[var(--foreground-secondary)]">
+              {traveller.bio}
+            </p>
           )}
-
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2
-                id="journey-provider-heading"
-                className="font-semibold group-hover:underline"
-              >
-                @{traveller.handle}
-              </h2>
-
-              {trust.verificationLevel !== 'NONE' && (
-                <span className="rounded-full border px-2 py-0.5 text-xs font-medium">
-                  {formatVerificationLevel(
-                    trust.verificationLevel,
-                  )}
-                </span>
-              )}
-            </div>
-
-            {traveller.bio && (
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                {traveller.bio}
-              </p>
-            )}
-
-            <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
-              <span>
-                ★ {trust.ratingAverage.toFixed(1)}
-                {trust.ratingCount > 0 &&
-                  ` (${trust.ratingCount})`}
-              </span>
-
-              <span>
-                {trust.completedJourneys}{' '}
-                {trust.completedJourneys === 1
-                  ? 'completed journey'
-                  : 'completed journeys'}
-              </span>
-            </div>
-          </div>
         </div>
-      </Link>
+      </div>
 
-      {trust.badges.length > 0 && (
-        <div className="mt-5 flex flex-wrap gap-2">
-          {trust.badges.map((badge) => (
-            <div
-              key={badge.publicId}
-              title={badge.description ?? badge.name}
-              className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium"
-            >
-              {badge.asset && (
-                <Image
-                  src={badge.asset.url}
-                  alt={badge.asset.alt ?? ''}
-                  width={16}
-                  height={16}
-                  className="h-4 w-4 object-contain"
-                />
-              )}
-
-              <span>{badge.name}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="mt-5 border-t border-[var(--border-subtle)] pt-5">
+        <TrustSummary
+          trust={trust}
+          showBadges
+        />
+      </div>
     </section>
   );
 }
@@ -347,7 +311,10 @@ function JourneyRoute({
 
   const intermediateWaypoints = waypoints
     .slice()
-    .sort((left, right) => left.sequence - right.sequence)
+    .sort(
+      (left, right) =>
+        left.sequence - right.sequence,
+    )
     .filter(
       (waypoint) =>
         waypoint.type !== 'ORIGIN' &&
@@ -361,7 +328,7 @@ function JourneyRoute({
     >
       <h2
         id="journey-route-heading"
-        className="text-lg font-semibold"
+        className="text-lg font-semibold text-[var(--foreground)]"
       >
         Journey route
       </h2>
@@ -370,15 +337,15 @@ function JourneyRoute({
         <div className="flex gap-4">
           <div
             aria-hidden="true"
-            className="mt-1 h-3 w-3 shrink-0 rounded-full border-2"
+            className="mt-1 h-3 w-3 shrink-0 rounded-full border-2 border-[var(--brand)]"
           />
 
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <div className="min-w-0">
+            <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
               From
             </p>
 
-            <p className="mt-1 font-medium">
+            <p className="mt-1 font-medium text-[var(--foreground)]">
               {origin.name}
             </p>
           </div>
@@ -391,15 +358,15 @@ function JourneyRoute({
           >
             <div
               aria-hidden="true"
-              className="mt-1 h-3 w-3 shrink-0 rounded-full border"
+              className="mt-1 h-3 w-3 shrink-0 rounded-full border border-[var(--border-strong)]"
             />
 
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
                 {formatEnumLabel(waypoint.type)}
               </p>
 
-              <p className="mt-1 font-medium">
+              <p className="mt-1 font-medium text-[var(--foreground)]">
                 {waypoint.name}
               </p>
             </div>
@@ -409,15 +376,15 @@ function JourneyRoute({
         <div className="flex gap-4">
           <div
             aria-hidden="true"
-            className="mt-1 h-3 w-3 shrink-0 rounded-full border-2"
+            className="mt-1 h-3 w-3 shrink-0 rounded-full border-2 border-[var(--brand)]"
           />
 
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <div className="min-w-0">
+            <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
               To
             </p>
 
-            <p className="mt-1 font-medium">
+            <p className="mt-1 font-medium text-[var(--foreground)]">
               {destination.name}
             </p>
           </div>
@@ -451,12 +418,12 @@ function JourneySummary({
       className="surface p-6"
     >
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
             Departure
           </p>
 
-          <p className="mt-1 font-semibold">
+          <p className="mt-1 font-semibold text-[var(--foreground)]">
             {formatJourneyDate(
               schedule.departureAt,
               schedule.timezone,
@@ -464,47 +431,47 @@ function JourneySummary({
           </p>
         </div>
 
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
             Price
           </p>
 
-          <p className="mt-1 text-xl font-bold">
+          <p className="mt-1 text-xl font-bold text-[var(--foreground)]">
             {formatPrice(
               pricing.amount,
               pricing.currency,
             )}
           </p>
 
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-[var(--foreground-muted)]">
             per seat
           </p>
         </div>
 
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
             Availability
           </p>
 
-          <p className="mt-1 font-semibold">
+          <p className="mt-1 font-semibold text-[var(--foreground)]">
             {capacity.availableSeats} available
           </p>
 
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-[var(--foreground-muted)]">
             of {capacity.totalSeats} seats
           </p>
         </div>
 
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
             Vehicle
           </p>
 
-          <p className="mt-1 font-semibold">
+          <p className="mt-1 font-semibold text-[var(--foreground)]">
             {vehicle.make} {vehicle.model}
           </p>
 
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-[var(--foreground-muted)]">
             {vehicle.year ?? 'Year unavailable'}
             {vehicle.color ? ` · ${vehicle.color}` : ''}
           </p>
@@ -533,12 +500,13 @@ function JourneyVehicle({
       className="surface overflow-hidden"
     >
       {vehicle.asset && (
-        <Image
-          src={vehicle.asset.url}
+        <PublicAssetImage
+          asset={vehicle.asset}
           alt={
             vehicle.asset.alt ??
             `${vehicle.make} ${vehicle.model}`
           }
+          fallbackAlt={`${vehicle.make} ${vehicle.model}`}
           width={1280}
           height={720}
           sizes="(min-width: 1024px) 60vw, 100vw"
@@ -549,16 +517,16 @@ function JourneyVehicle({
       <div className="p-6">
         <h2
           id="journey-vehicle-heading"
-          className="text-lg font-semibold"
+          className="text-lg font-semibold text-[var(--foreground)]"
         >
           Vehicle
         </h2>
 
-        <p className="mt-2 font-medium">
+        <p className="mt-2 font-medium text-[var(--foreground)]">
           {vehicle.make} {vehicle.model}
         </p>
 
-        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm text-[var(--foreground-secondary)]">
           {vehicle.year !== null && (
             <span>{vehicle.year}</span>
           )}
@@ -602,7 +570,7 @@ function JourneyPreferences({
     >
       <h2
         id="journey-preferences-heading"
-        className="text-lg font-semibold"
+        className="text-lg font-semibold text-[var(--foreground)]"
       >
         Journey preferences
       </h2>
@@ -610,11 +578,11 @@ function JourneyPreferences({
       <dl className="mt-5 grid gap-4 sm:grid-cols-2">
         {entries.map(([label, value]) => (
           <div key={label}>
-            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <dt className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
               {label}
             </dt>
 
-            <dd className="mt-1 text-sm font-medium">
+            <dd className="mt-1 text-sm font-medium text-[var(--foreground)]">
               {formatEnumLabel(value)}
             </dd>
           </div>
@@ -653,17 +621,18 @@ function JourneyAssets({
     >
       <h2
         id="journey-assets-heading"
-        className="text-lg font-semibold"
+        className="text-lg font-semibold text-[var(--foreground)]"
       >
         Journey photos
       </h2>
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
         {sortedAssets.map(({ publicId, asset }) => (
-          <Image
+          <PublicAssetImage
             key={publicId}
-            src={asset.url}
+            asset={asset}
             alt={asset.alt ?? 'Journey photo'}
+            fallbackAlt="Journey photo"
             width={800}
             height={600}
             sizes="(min-width: 640px) 50vw, 100vw"
@@ -695,18 +664,18 @@ function JourneyBookingAction({
 
   return (
     <section className="surface p-6">
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-[var(--foreground-secondary)]">
         Price per seat
       </p>
 
-      <p className="mt-1 text-3xl font-bold">
+      <p className="mt-1 text-3xl font-bold text-[var(--foreground)]">
         {formatPrice(
           pricing.amount,
           pricing.currency,
         )}
       </p>
 
-      <p className="mt-2 text-sm text-muted-foreground">
+      <p className="mt-2 text-sm text-[var(--foreground-secondary)]">
         {isAvailable
           ? `${capacity.availableSeats} ${
               capacity.availableSeats === 1
@@ -719,14 +688,34 @@ function JourneyBookingAction({
       {isAvailable ? (
         <Link
           href={`/journeys/${encodeURIComponent(journey.publicId)}/book`}
-          className="mt-6 flex w-full items-center justify-center rounded-md bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
+          className={[
+            'mt-6 flex w-full items-center justify-center',
+            'rounded-[var(--radius-md)]',
+            'bg-[var(--brand)]',
+            'px-4 py-3',
+            'text-sm font-semibold',
+            'text-[var(--brand-foreground)]',
+            'transition-colors',
+            'hover:bg-[var(--brand-hover)]',
+            'focus:outline-none',
+            'focus-visible:ring-2',
+            'focus-visible:ring-[var(--brand)]',
+            'focus-visible:ring-offset-2',
+          ].join(' ')}
         >
           Book this journey
         </Link>
       ) : (
         <div
           aria-disabled="true"
-          className="mt-6 flex w-full items-center justify-center rounded-md border px-4 py-3 text-sm font-medium text-muted-foreground"
+          className={[
+            'mt-6 flex w-full items-center justify-center',
+            'rounded-[var(--radius-md)]',
+            'border border-[var(--border)]',
+            'px-4 py-3',
+            'text-sm font-medium',
+            'text-[var(--foreground-muted)]',
+          ].join(' ')}
         >
           Fully booked
         </div>
@@ -757,21 +746,30 @@ function PublicJourneyView({
         <div>
           <Link
             href="/"
-            className="text-sm font-medium text-muted-foreground transition hover:text-foreground"
+            className={[
+              'text-sm font-medium',
+              'text-[var(--foreground-secondary)]',
+              'transition-colors',
+              'hover:text-[var(--foreground)]',
+              'focus:outline-none',
+              'focus-visible:ring-2',
+              'focus-visible:ring-[var(--brand)]',
+              'focus-visible:ring-offset-2',
+            ].join(' ')}
           >
             ← Back to journeys
           </Link>
 
           <div className="mt-6">
-            <p className="text-sm font-medium text-muted-foreground">
+            <p className="text-sm font-medium text-[var(--foreground-muted)]">
               Journey
             </p>
 
-            <h1 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">
+            <h1 className="mt-1 text-3xl font-bold tracking-tight text-[var(--foreground)] sm:text-4xl">
               {origin.name} → {destination.name}
             </h1>
 
-            <p className="mt-2 text-sm text-muted-foreground">
+            <p className="mt-2 text-sm text-[var(--foreground-secondary)]">
               {formatJourneyDate(
                 journey.schedule.departureAt,
                 journey.schedule.timezone,
@@ -785,8 +783,11 @@ function PublicJourneyView({
         <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,1fr)]">
           <div className="min-w-0 space-y-6">
             <JourneyRoute journey={journey} />
+
             <JourneyAssets assets={journey.assets} />
+
             <JourneyVehicle journey={journey} />
+
             <JourneyPreferences
               preferences={journey.preferences}
             />
@@ -794,6 +795,7 @@ function PublicJourneyView({
 
           <aside className="min-w-0 space-y-6 lg:sticky lg:top-6 lg:self-start">
             <JourneyProvider journey={journey} />
+
             <JourneyBookingAction journey={journey} />
           </aside>
         </div>
@@ -820,7 +822,15 @@ export function PublicJourneyContent({
   }
 
   if (error) {
-    return <PublicJourneyErrorState error={error} />;
+    return (
+      <PublicJourneyErrorState
+        error={
+          error instanceof Error
+            ? error
+            : new Error('An unexpected error occurred.')
+        }
+      />
+    );
   }
 
   if (!journey) {
@@ -829,4 +839,3 @@ export function PublicJourneyContent({
 
   return <PublicJourneyView journey={journey} />;
 }
-

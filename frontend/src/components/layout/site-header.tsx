@@ -7,15 +7,32 @@
 // Responsibilities:
 // - Render the sisiMove brand.
 // - Compose desktop and mobile navigation.
-// - Provide authentication entry points.
+// - Provide public authentication entry points.
 // - Remain independent of authentication implementation details.
 //
 // Architectural boundary:
 //
-// - Sibling components are imported directly.
+// - SiteHeader is a public-shell composition component.
+// - It does not access authentication state.
+// - It does not perform authentication.
+// - It does not call APIs.
+// - It does not contain marketplace/domain logic.
+//
+// Import boundary:
+//
+// - Sibling layout components are imported directly.
+// - Shared account-action primitives are imported from their shared boundary.
 // - This component must not import from './index'.
 // - The layout barrel is intended for consumers outside this module.
-// - Direct sibling imports prevent a circular dependency through the barrel.
+//
+// Account actions:
+//
+// - SignIn owns the presentation of the sign-in action.
+// - JoinSisiMove owns the presentation of the registration action.
+// - SiteHeader only composes those actions.
+//
+// Authentication state, session handling, authorization, and registration
+// behavior remain outside this component.
 //
 // -----------------------------------------------------------------------------
 
@@ -23,177 +40,114 @@
 
 import Link from 'next/link';
 
+import { cn } from '@/foundation';
+
 import { Container } from '../ui';
+
+import {
+  JoinSisiMove,
+  SignIn,
+} from '../landing/shared/account-actions';
 
 import { DesktopNavigation } from './desktop-navigation';
 import { MobileNavigation } from './mobile-navigation';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Site Header
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function SiteHeader() {
   return (
     <header
-      className={[
-        'sticky',
-        'top-0',
-        'z-40',
-        'border-b',
-        'border-[var(--border)]',
+      className={cn(
+        'sticky top-0 z-40',
+        'w-full min-w-0',
+        'border-b border-[var(--border)]',
         'bg-[var(--surface)]/95',
         'backdrop-blur',
-      ].join(' ')}
+      )}
     >
       <Container
         size="xl"
-        className={[
-          'flex',
-          'min-h-16',
+        className={cn(
+          'flex min-w-0',
+          'min-h-14',
           'items-center',
           'justify-between',
-          'gap-4',
-        ].join(' ')}
+          'gap-3',
+          'sm:min-h-16 sm:gap-4',
+        )}
       >
-        {/* ----------------------------------------------------------------- */}
-        {/* Brand                                                             */}
-        {/* ----------------------------------------------------------------- */}
+        {/* ===================================================================
+            Brand
+        =================================================================== */}
 
         <Link
           href="/"
           aria-label="sisiMove home"
-          className={[
+          className={cn(
             'shrink-0',
-            'rounded-[var(--radius-sm)]',
-            'text-2xl',
-            'font-bold',
-            'tracking-tight',
+            'rounded-[var(--radius-md)]',
+            'text-xl font-bold tracking-tight',
             'text-[var(--foreground)]',
             'outline-none',
-            'transition-colors',
-            'duration-150',
-            'ease-out',
+            'transition-colors duration-150 ease-out',
             'hover:text-[var(--brand)]',
             'focus-visible:ring-2',
-            'focus-visible:ring-[var(--brand)]/30',
+            'focus-visible:ring-[var(--brand)]',
             'focus-visible:ring-offset-2',
-          ].join(' ')}
+            'focus-visible:ring-offset-[var(--surface)]',
+            'sm:text-2xl',
+          )}
         >
-          sisi<span className="text-[var(--brand)]">Move</span>
+          sisi
+          <span className="text-[var(--brand)]">Move</span>
         </Link>
 
-        {/* ----------------------------------------------------------------- */}
-        {/* Desktop Navigation                                                */}
-        {/* ----------------------------------------------------------------- */}
+        {/* ===================================================================
+            Desktop Navigation
+        =================================================================== */}
 
-        <div className="hidden min-w-0 flex-1 justify-center md:flex">
+        <div
+          className={cn(
+            'hidden min-w-0 flex-1',
+            'justify-center',
+            'md:flex',
+          )}
+        >
           <DesktopNavigation />
         </div>
 
-        {/* ----------------------------------------------------------------- */}
-        {/* Desktop Actions                                                   */}
-        {/* ----------------------------------------------------------------- */}
+        {/* ===================================================================
+            Desktop Account Actions
+        =================================================================== */}
 
-        <div className="hidden shrink-0 items-center gap-1.5 md:flex">
-          {/* ---------------------------------------------------------------- */}
-          {/* Log In                                                           */}
-          {/* ---------------------------------------------------------------- */}
+        <div
+          className={cn(
+            'hidden shrink-0',
+            'items-center gap-1.5',
+            'md:flex',
+          )}
+        >
+          <SignIn compact />
 
-          <Link
-            href="/login"
-            className={[
-              'inline-flex',
-              'min-h-10',
-              'items-center',
-              'justify-center',
-              'rounded-[var(--radius-md)]',
-              'px-3',
-              'text-sm',
-              'font-medium',
-              'leading-5',
-              'text-[var(--foreground-secondary)]',
-              'outline-none',
-              'transition-colors',
-              'duration-150',
-              'ease-out',
-              'hover:bg-[var(--background-muted)]',
-              'hover:text-[var(--foreground)]',
-              'focus-visible:ring-2',
-              'focus-visible:ring-[var(--brand)]/30',
-              'focus-visible:ring-offset-2',
-            ].join(' ')}
-          >
-            Log in
-          </Link>
-
-          {/* ---------------------------------------------------------------- */}
-          {/* Join sisiMove                                                    */}
-          {/* ---------------------------------------------------------------- */}
-
-          <Link
-            href="/register"
-            className={[
-              'inline-flex',
-              'min-h-10',
-              'shrink-0',
-              'items-center',
-              'justify-center',
-              'rounded-[var(--radius-md)]',
-              'border',
-              'border-transparent',
-              'bg-[var(--brand)]',
-              'px-4',
-              'text-sm',
-              'font-semibold',
-              'leading-5',
-              '!text-white',
-              'whitespace-nowrap',
-              'select-none',
-              'shadow-[var(--shadow-sm)]',
-              'outline-none',
-              'transition-colors',
-              'duration-150',
-              'ease-out',
-              'hover:bg-[var(--brand-hover)]',
-              'hover:shadow-[var(--shadow-md)]',
-              'active:bg-[var(--brand-hover)]',
-              'focus-visible:ring-2',
-              'focus-visible:ring-[var(--brand)]/30',
-              'focus-visible:ring-offset-2',
-            ].join(' ')}
-          >
-            Join sisiMove
-          </Link>
+          <JoinSisiMove compact />
         </div>
 
-        {/* ----------------------------------------------------------------- */}
-        {/* Mobile Navigation                                                 */}
-        {/* ----------------------------------------------------------------- */}
+        {/* ===================================================================
+            Mobile Navigation
+        =================================================================== */}
 
-        <div className="flex min-w-0 items-center gap-3 md:hidden">
+        <div
+          className={cn(
+            'flex min-w-0 shrink-0',
+            'items-center gap-1.5',
+            'md:hidden',
+          )}
+        >
           <MobileNavigation />
 
-          <Link
-            href="/login"
-            className={[
-              'shrink-0',
-              'rounded-[var(--radius-sm)]',
-              'text-sm',
-              'font-medium',
-              'leading-5',
-              'text-[var(--foreground-secondary)]',
-              'outline-none',
-              'transition-colors',
-              'duration-150',
-              'ease-out',
-              'hover:text-[var(--foreground)]',
-              'focus-visible:ring-2',
-              'focus-visible:ring-[var(--brand)]/30',
-              'focus-visible:ring-offset-2',
-            ].join(' ')}
-          >
-            Log in
-          </Link>
+          <SignIn compact />
         </div>
       </Container>
     </header>

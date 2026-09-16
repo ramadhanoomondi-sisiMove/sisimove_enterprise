@@ -2,57 +2,106 @@
 // sisiMove — Publish Journey Section
 // -----------------------------------------------------------------------------
 //
-// Landing-page call-to-action for people who can provide a journey.
+// Landing-page call-to-action for people who can provide a Journey.
 //
-// The marketplace model is:
+// -----------------------------------------------------------------------------
+// MARKETPLACE ROLE
+// -----------------------------------------------------------------------------
 //
-//     Existing travel opportunity
-//              │
-//              ▼
-//        Publish Journey
-//              │
-//              ▼
-//       Available seats
-//              │
-//              ▼
-//            MARKET
+// A Journey represents existing travel supply.
 //
-// This component is presentation-only.
+// Someone is already planning to travel and may have available seats. By
+// publishing that Journey, they make the opportunity visible in the
+// marketplace so travellers looking for that route can discover it.
 //
-// It does not:
-// - create or publish a Journey;
+// The marketplace relationship is:
+//
+//     Existing travel plan
+//            │
+//            ▼
+//     Publish Journey
+//            │
+//            ▼
+//     Available seats become discoverable
+//            │
+//            ▼
+//     Travellers can find and book
+//
+// Publishing a Journey does NOT mean that this component itself creates,
+// publishes, validates, or matches anything.
+//
+// -----------------------------------------------------------------------------
+// ARCHITECTURE
+// -----------------------------------------------------------------------------
+//
+// Presentation-only.
+//
+// This component does NOT:
+//
+// - create a Journey;
+// - publish a Journey;
 // - call an API;
 // - access authentication state;
-// - own permission logic.
+// - determine permissions;
+// - resolve provider eligibility;
+// - perform booking or matching logic.
 //
-// The action is exposed through an href so the application can handle the
-// appropriate authenticated/unauthenticated flow.
+// The CTA receives an `href` from the surrounding application.
+//
+// -----------------------------------------------------------------------------
+// NAVIGATION
+// -----------------------------------------------------------------------------
+//
+// The CTA is a Next.js Link because its purpose is navigation.
+//
+// -----------------------------------------------------------------------------
+// VISUAL ROLE
+// -----------------------------------------------------------------------------
+//
+// This section complements CreateDemandSection:
+//
+//     CREATE DEMAND
+//     "I need a journey."
+//
+//     PUBLISH JOURNEY
+//     "I am already travelling."
+//
+// The CTA remains secondary. The marketplace inventory remains the primary
+// product surface.
 //
 // -----------------------------------------------------------------------------
 
 import Link from 'next/link';
 
-// -----------------------------------------------------------------------------
+import {
+  ArrowRight,
+  CarFront,
+  Route,
+} from 'lucide-react';
+
+import { cn } from '@/foundation';
+
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export interface PublishJourneySectionProps {
   /**
    * Destination used by the CTA.
    *
-   * Defaults to the journey creation route.
+   * Defaults to the Journey creation route.
    */
-  href?: string;
+  readonly href?: string;
 
   /**
    * Optional additional class name.
    */
-  className?: string;
+  readonly className?: string;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Component
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function PublishJourneySection({
   href = '/journeys/create',
@@ -61,110 +110,183 @@ export function PublishJourneySection({
   return (
     <section
       aria-labelledby="publish-journey-heading"
-      className={[
-        'px-6',
-        'py-16',
+      className={cn(
+        'w-full min-w-0',
+        'border-t border-[var(--border-subtle)]',
+        'bg-[var(--background)]',
         className,
-      ]
-        .filter(Boolean)
-        .join(' ')}
+      )}
     >
-      <div className="mx-auto max-w-3xl text-center">
-        {/* ----------------------------------------------------------------- */}
-        {/* Eyebrow                                                          */}
-        {/* ----------------------------------------------------------------- */}
-
-        <p
-          className={[
-            'text-sm',
-            'font-semibold',
-            'uppercase',
-            'tracking-[0.12em]',
-            'text-[var(--foreground-secondary)]',
-          ].join(' ')}
+      <div
+        className={cn(
+          'mx-auto w-full max-w-7xl',
+          'px-1 py-6',
+          'sm:px-1.5 sm:py-7',
+          'md:px-2 md:py-8',
+          'lg:px-3 lg:py-9',
+        )}
+      >
+        <div
+          className={cn(
+            'relative mx-auto w-full max-w-4xl',
+            'overflow-hidden',
+            'rounded-[var(--radius-xl)]',
+            'border border-[var(--border)]',
+            'bg-[var(--surface)]',
+            'shadow-[var(--shadow-sm)]',
+          )}
         >
-          Can you make the journey?
-        </p>
+          {/* =================================================================
+              Decorative journey treatment
+          ================================================================= */}
 
-        {/* ----------------------------------------------------------------- */}
-        {/* Heading                                                          */}
-        {/* ----------------------------------------------------------------- */}
+          <div
+            aria-hidden="true"
+            className={cn(
+              'pointer-events-none absolute -right-16 -top-20',
+              'h-48 w-48 rounded-full',
+              'bg-[var(--brand-soft)]',
+              'blur-3xl',
+            )}
+          />
 
-        <h2
-          id="publish-journey-heading"
-          className={[
-            'mt-3',
-            'text-2xl',
-            'font-semibold',
-            'tracking-tight',
-            'text-[var(--foreground)]',
-            'sm:text-3xl',
-          ].join(' ')}
-        >
-          Turn your available seats into new travel.
-        </h2>
+          <div
+            aria-hidden="true"
+            className={cn(
+              'pointer-events-none absolute -bottom-20 -left-16',
+              'h-40 w-40 rounded-full',
+              'bg-[var(--success-soft)]',
+              'blur-3xl',
+            )}
+          />
 
-        {/* ----------------------------------------------------------------- */}
-        {/* Description                                                      */}
-        {/* ----------------------------------------------------------------- */}
-
-        <p
-          className={[
-            'mx-auto',
-            'mt-4',
-            'max-w-2xl',
-            'text-base',
-            'leading-7',
-            'text-[var(--foreground-secondary)]',
-          ].join(' ')}
-        >
-          See where people are already looking to travel. Publish a journey
-          and make your available seats discoverable.
-        </p>
-
-        {/* ----------------------------------------------------------------- */}
-        {/* Action                                                           */}
-        {/* ----------------------------------------------------------------- */}
-
-        <div className="mt-7">
-          <Link
-            href={href}
-            className={[
-              // Button base
-              'inline-flex',
-              'items-center',
-              'justify-center',
-              'gap-2',
-              'font-medium',
-              'whitespace-nowrap',
-              'select-none',
-              'transition-colors',
-              'duration-150',
-              'ease-out',
-
-              // Button focus
-              'focus-visible:outline-2',
-              'focus-visible:outline-[var(--brand)]',
-              'focus-visible:outline-offset-2',
-
-              // Button outline variant
-              'bg-transparent',
-              'text-[var(--foreground)]',
-              'border',
-              'border-[var(--border-strong)]',
-              'hover:bg-[var(--background-subtle)]',
-              'hover:border-[var(--foreground-subtle)]',
-              'active:bg-[var(--background-muted)]',
-
-              // Button lg size
-              'min-h-12',
-              'px-5',
-              'text-base',
-              'rounded-[var(--radius-lg)]',
-            ].join(' ')}
+          <div
+            className={cn(
+              'relative grid min-w-0',
+              'gap-6',
+              'px-4 py-5',
+              'sm:px-6 sm:py-6',
+              'md:grid-cols-[auto_minmax(0,1fr)_auto]',
+              'md:items-center md:gap-6',
+              'lg:px-7',
+            )}
           >
-            Publish a journey
-          </Link>
+            {/* ===============================================================
+                Journey identity
+            =============================================================== */}
+
+            <div
+              className={cn(
+                'flex shrink-0 items-center justify-center',
+                'md:self-center',
+              )}
+            >
+              <div
+                className={cn(
+                  'flex h-12 w-12 items-center justify-center',
+                  'rounded-[var(--radius-lg)]',
+                  'bg-[var(--brand-soft)]',
+                  'text-[var(--brand)]',
+                  'ring-1 ring-[var(--brand)]/10',
+                )}
+              >
+                <CarFront
+                  aria-hidden="true"
+                  className="h-5 w-5"
+                />
+              </div>
+            </div>
+
+            {/* ===============================================================
+                Message
+            =============================================================== */}
+
+            <div className="min-w-0">
+              <div
+                className={cn(
+                  'inline-flex items-center gap-2',
+                  'text-[10px] font-semibold uppercase',
+                  'tracking-[0.16em]',
+                  'text-[var(--brand)]',
+                )}
+              >
+                <Route
+                  aria-hidden="true"
+                  className="h-3.5 w-3.5"
+                />
+
+                <span>Already travelling?</span>
+              </div>
+
+              <h2
+                id="publish-journey-heading"
+                className={cn(
+                  'mt-1.5',
+                  'text-xl font-semibold',
+                  'leading-tight tracking-[-0.025em]',
+                  'text-[var(--foreground)]',
+                  'sm:text-2xl',
+                )}
+              >
+                Make your available seats discoverable.
+              </h2>
+
+              <p
+                className={cn(
+                  'mt-2 max-w-2xl',
+                  'text-sm leading-6',
+                  'text-[var(--foreground-secondary)]',
+                  'sm:text-base sm:leading-7',
+                )}
+              >
+                Publish the Journey you are already making and let travellers
+                looking for the same route discover the available seats.
+              </p>
+            </div>
+
+            {/* ===============================================================
+                CTA
+            =============================================================== */}
+
+            <div className="shrink-0 md:justify-self-end">
+              <Link
+                href={href}
+                className={cn(
+                  'group inline-flex min-h-10 w-full',
+                  'items-center justify-center gap-2',
+                  'rounded-[var(--radius-md)]',
+                  'border border-[var(--brand)]',
+                  'bg-[var(--surface)]',
+                  'px-4 py-2',
+                  'text-sm font-semibold',
+                  'text-[var(--brand)]',
+                  'shadow-[var(--shadow-sm)]',
+                  'transition-all duration-150',
+                  'hover:border-[var(--brand-hover)]',
+                  'hover:bg-[var(--brand-soft)]',
+                  'hover:text-[var(--brand-hover)]',
+                  'hover:shadow-[var(--shadow-md)]',
+                  'focus-visible:outline-none',
+                  'focus-visible:ring-2',
+                  'focus-visible:ring-[var(--brand)]',
+                  'focus-visible:ring-offset-2',
+                  'focus-visible:ring-offset-[var(--surface)]',
+                  'sm:w-auto',
+                )}
+              >
+                <span>Publish a journey</span>
+
+                <ArrowRight
+                  aria-hidden="true"
+                  className={cn(
+                    'h-4 w-4',
+                    'transition-transform duration-150',
+                    'group-hover:translate-x-0.5',
+                  )}
+                />
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
     </section>

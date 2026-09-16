@@ -75,7 +75,7 @@ export interface MarketplaceEmptyStateProps {
 
 export function MarketplaceEmptyState({
   title = "Nothing matches this view yet",
-  description = "Try adjusting your search or filters, or browse another marketplace stream.",
+  description = "Create a Demand to let member/drivers aware of the Demand or Join available demand, you will be notified when a Match is availble.",
   action,
   className,
 }: MarketplaceEmptyStateProps) {

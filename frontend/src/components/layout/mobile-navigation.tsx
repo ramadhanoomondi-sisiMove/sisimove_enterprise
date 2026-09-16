@@ -2,19 +2,25 @@
 // sisiMove — Mobile Navigation
 // -----------------------------------------------------------------------------
 //
-// Primary navigation for compact/mobile layouts.
+// Primary public navigation for compact/mobile layouts.
 //
 // Responsibilities:
-// - Render public navigation links on small screens
-// - Highlight the active route
-// - Remain presentation-only
-// - Reuse the shared NavigationLink primitive
+// - Render public navigation links on small screens.
+// - Highlight the active route.
+// - Reuse the shared NavigationLink primitive.
+// - Remain independent of feature/domain implementations.
 //
 // Architectural boundary:
-// - Presentation only
-// - No authentication or business logic
-// - No API calls
-// - No feature/domain dependencies
+//
+// - Presentation only.
+// - No authentication or business logic.
+// - No API calls.
+// - No feature/domain dependencies.
+// - Does not own navigation destinations outside this public navigation list.
+//
+// Active-route detection is intentionally kept here rather than inside
+// NavigationLink. NavigationLink remains a reusable presentation primitive,
+// while this component owns the router-specific pathname interpretation.
 //
 // -----------------------------------------------------------------------------
 
@@ -24,20 +30,29 @@ import { usePathname } from 'next/navigation';
 
 import { NavigationLink } from './navigation-link';
 
-// -----------------------------------------------------------------------------
+
+// =============================================================================
 // Types
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 interface NavigationItem {
-  href: string;
-  label: string;
+  readonly href: string;
+  readonly label: string;
 }
 
-// -----------------------------------------------------------------------------
+
+// =============================================================================
 // Navigation Items
+// =============================================================================
+//
+// Keep this list declarative.
+//
+// These are public site-navigation destinations, not authenticated application
+// routes.
+//
 // -----------------------------------------------------------------------------
 
-const navigationItems: NavigationItem[] = [
+const navigationItems: readonly NavigationItem[] = [
   {
     href: '/',
     label: 'Explore',
@@ -48,10 +63,25 @@ const navigationItems: NavigationItem[] = [
   },
 ];
 
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
 
+// =============================================================================
+// Helpers
+// =============================================================================
+
+/**
+ * Determines whether a navigation item represents the current route.
+ *
+ * Root is treated specially because every pathname begins with `/`.
+ *
+ * For nested public routes, both the exact route and descendants are treated
+ * as active:
+ *
+ *     /how-it-works
+ *     /how-it-works/example
+ *
+ * This keeps active-state calculation local to the navigation layer and
+ * prevents NavigationLink from becoming coupled to Next.js routing state.
+ */
 function isNavigationItemActive(
   pathname: string,
   href: string,
@@ -66,9 +96,10 @@ function isNavigationItemActive(
   );
 }
 
-// -----------------------------------------------------------------------------
+
+// =============================================================================
 // Mobile Navigation
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function MobileNavigation() {
   const pathname = usePathname();
@@ -76,7 +107,13 @@ export function MobileNavigation() {
   return (
     <nav
       aria-label="Mobile navigation"
-      className="flex items-center gap-1 md:hidden"
+      className={[
+        'flex',
+        'min-w-0',
+        'items-center',
+        'gap-1',
+        'md:hidden',
+      ].join(' ')}
     >
       {navigationItems.map((item) => (
         <NavigationLink

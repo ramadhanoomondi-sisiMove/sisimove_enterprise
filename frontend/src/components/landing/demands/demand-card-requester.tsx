@@ -1,36 +1,84 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Demand Marketplace Card Requester
+// sisiMove — Journey Demand Requester
 // -----------------------------------------------------------------------------
 //
-// Presentation component for the requester portion of a public Journey Demand
-// marketplace card.
+// Compact WHO column for a public Journey Demand.
 //
-// The requester is the traveller who created the Demand.
+// The requester is the Traveller who CREATED the Demand.
 //
-// PublicJourneyDemandRequester already contains the resolved public Traveller
-// Profile and public Trust Profile:
+// PublicJourneyDemandRequester already represents the public read-side
+// composition:
 //
 //     requester
 //     ├── traveller
 //     └── trust
 //
-// This component deliberately does not:
-// - fetch requester data;
-// - resolve Identity references;
-// - construct API URLs;
-// - contain marketplace logic;
-// - decide whether the Demand can be joined.
+// This component renders those supplied public read models directly.
 //
-// The component composes the existing shared Traveller and Trust presentation
-// components so requester presentation remains consistent across Journey and
-// Journey Demand marketplace cards.
+// PRESENTATION BOUNDARY
+// ---------------------
+//
+// This component does NOT:
+//
+// - fetch requester data;
+// - resolve Identity IDs;
+// - reconstruct Traveller or Trust relationships;
+// - determine Demand ownership;
+// - determine participation eligibility;
+// - contain Journey Demand business logic.
+//
+// It receives an already-composed public requester representation and renders
+// it.
+//
+// REQUESTER RELATIONSHIP
+// ----------------------
+//
+// The Journey Demand owns the requester relationship.
+//
+// This component does NOT imply:
+//
+//     Traveller → owns Demand
+//
+// or:
+//
+//     Trust → owns Demand
+//
+// Instead:
+//
+//     JourneyDemand
+//          ↓
+//     requesterPublicId
+//          ↓
+//     PublicJourneyDemandRequester
+//          ├── Traveller
+//          └── Trust
+//
+// INTERNAL LAYOUT
+// --------------
+//
+// The requester identity remains vertically grouped:
+//
+//     [avatar]
+//     @handle
+//     ✓ Verified  ★ 4.9 (5)
+//     · 2 completed journeys
+//
+// The parent DemandMarketplaceCard controls the requester's horizontal
+// marketplace allocation:
+//
+//     Date | Requester | Route | Summary | Actions
+//
+// This component therefore does NOT define:
+//
+// - a fixed width;
+// - shrink behavior;
+// - marketplace column padding.
 //
 // -----------------------------------------------------------------------------
 
-import type { PublicJourneyDemandRequester } from '@/features/journey-demands/models/public-journey-demand-requester';
-
 import { TravellerSummary } from '@/components/landing/shared/traveller';
 import { TrustSummary } from '@/components/landing/shared/trust';
+import type { PublicJourneyDemandRequester } from '@/features/journey-demands/models';
 
 // -----------------------------------------------------------------------------
 // Props
@@ -38,32 +86,28 @@ import { TrustSummary } from '@/components/landing/shared/trust';
 
 export interface DemandCardRequesterProps {
   /**
-   * Public requester representation.
+   * Public requester representation supplied by the marketplace read model.
    *
-   * The model contains only public Traveller and Trust information. Internal
-   * Identity references are intentionally absent.
+   * The representation already contains the public Traveller and Trust
+   * information required by this presentation component.
    */
-  requester: PublicJourneyDemandRequester;
+  readonly requester: PublicJourneyDemandRequester;
 
   /**
-   * Whether the traveller summary should link to the public traveller profile.
-   *
-   * Enabled by default because the requester is a public marketplace identity
-   * and the profile provides useful context when evaluating a Demand.
+   * Whether the public Traveller identity should link to the Traveller
+   * profile.
    */
-  linkToProfile?: boolean;
+  readonly linkToProfile?: boolean;
 
   /**
-   * Whether public trust badges should be displayed.
-   *
-   * Enabled by default because trust is important marketplace context.
+   * Whether public Trust badges should be displayed.
    */
-  showTrustBadges?: boolean;
+  readonly showTrustBadges?: boolean;
 
   /**
-   * Optional additional styling supplied by the parent marketplace card.
+   * Optional additional presentation styling supplied by the parent card.
    */
-  className?: string;
+  readonly className?: string;
 }
 
 // -----------------------------------------------------------------------------
@@ -79,10 +123,33 @@ export function DemandCardRequester({
   return (
     <div
       className={[
+        // -------------------------------------------------------------------
+        // Requester content boundary
+        // -------------------------------------------------------------------
+        //
+        // The parent DemandMarketplaceCard owns the outer responsive section
+        // padding and the horizontal flex allocation.
+        //
+        // Keep this component min-w-0 so the identity and Trust content can
+        // contract with the marketplace column rather than forcing overflow.
+        //
         'flex',
         'min-w-0',
         'flex-col',
-        'gap-2',
+        'justify-center',
+
+        // -------------------------------------------------------------------
+        // Internal proportional density
+        // -------------------------------------------------------------------
+        //
+        // This spacing is deliberately smaller than the parent section
+        // padding. It controls only the relationship between TravellerSummary
+        // and TrustSummary.
+        //
+        'gap-1',
+        'sm:gap-1.5',
+        'md:gap-2',
+
         className,
       ]
         .filter(Boolean)
@@ -92,28 +159,35 @@ export function DemandCardRequester({
       {/* Traveller identity                                                  */}
       {/* ------------------------------------------------------------------- */}
       {/*
-        TravellerSummary owns the public traveller presentation:
-        avatar, handle, bio, and optional profile navigation.
-
-        The Demand card does not duplicate that presentation logic.
+        TravellerSummary owns public Traveller presentation:
+        
+          - avatar;
+          - public handle;
+          - optional profile navigation.
+        
+        Vertical orientation keeps the requester identity visually grouped
+        within the WHO column.
       */}
-
       <TravellerSummary
         traveller={requester.traveller}
         linkToProfile={linkToProfile}
+        orientation="vertical"
       />
 
       {/* ------------------------------------------------------------------- */}
-      {/* Trust context                                                       */}
+      {/* Trust context                                                        */}
       {/* ------------------------------------------------------------------- */}
       {/*
-        TrustSummary presents the public trust information associated with
-        the requester.
-
-        Trust is enrichment of the traveller rather than a separate
-        marketplace object.
+        TrustSummary owns compact public Trust presentation:
+        
+          - verification;
+          - rating;
+          - completed journeys;
+          - optional public Trust badges.
+        
+        Trust remains enrichment of the requester Traveller. It is not treated
+        as an independent Demand or marketplace object.
       */}
-
       <TrustSummary
         trust={requester.trust}
         showBadges={showTrustBadges}
