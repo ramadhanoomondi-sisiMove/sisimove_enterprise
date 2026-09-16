@@ -8,7 +8,8 @@
 // Responsibilities:
 //
 // - Resolve the TravellerProfileRepository through the application DI token.
-// - Enforce application-level uniqueness before creation.
+// - Enforce member ownership uniqueness.
+// - Enforce public handle uniqueness.
 // - Convert command primitives into Traveller Profile domain value objects.
 // - Construct the TravellerProfileEntity through its domain factory.
 // - Construct the TravellerProfileAggregate.
@@ -18,7 +19,7 @@
 // This handler does NOT:
 //
 // - Mutate TravellerProfileEntity directly.
-// - Generate handles outside the TravellerHandle value object.
+// - Generate handles.
 // - Determine domain lifecycle rules.
 // - Manage journey statistics after creation.
 // - Create profile preferences.
@@ -39,62 +40,48 @@
 //
 //     CreateTravellerProfileCommand
 //                │
-//                ▼
-//     MemberPublicId
+//                ├── MemberPublicId
 //                │
-//                ▼
-//     repository.existsByMemberPublicId()
-//                │
-//                ├── exists → throw
-//                │
-//                ▼
-//     TravellerProfileEntity.create()
-//                │
-//                ▼
-//     TravellerProfileAggregate.create()
-//                │
-//                ▼
-//     repository.save()
-//                │
-//                ▼
-//     TravellerProfileAggregate
+//                └── TravellerHandle
+//                         │
+//                         ▼
+//              existsByMemberPublicId()
+//                         │
+//                  ┌──────┴──────┐
+//                  │             │
+//               exists         available
+//                  │             │
+//                  ▼             ▼
+//             throw         existsByHandle()
+//                                │
+//                         ┌──────┴──────┐
+//                         │             │
+//                      exists        available
+//                         │             │
+//                         ▼             ▼
+//                       throw      create entity
+//                                      │
+//                                      ▼
+//                                create aggregate
+//                                      │
+//                                      ▼
+//                                  repository.save()
 //
 // -----------------------------------------------------------------------------
 //
-// Dependency Injection:
+// Handle ownership:
 //
-//     CreateTravellerProfileHandler
-//                │
-//                ▼
-//     TRAVELLER_PROFILE_TOKENS.REPOSITORY
-//                │
-//                ▼
-//     TravellerProfileRepository
+// The TravellerProfile aggregate owns the traveller handle.
 //
-// The repository is an application/domain interface and therefore cannot be
-// used directly as a NestJS runtime injection token. The explicit token keeps
-// the application layer independent of the Prisma infrastructure adapter.
+// The handler does NOT derive a handle from travellerName and does NOT invent
+// an alternative handle when the requested handle is unavailable.
 //
-// -----------------------------------------------------------------------------
+// A caller must explicitly provide the desired handle.
 //
-// Domain boundary:
+// TravellerHandle is responsible for normalization and domain validation.
+// The repository existence check uses the normalized TravellerHandle value.
 //
-// The command contains transport/application primitives.
-//
-// Therefore this handler is the application boundary responsible for
-// translating those primitives into TravellerProfile domain value objects:
-//
-//     string
-//       │
-//       ├── MemberPublicId
-//       ├── TravellerHandle
-//       ├── TravellerBio
-//       ├── AvatarAssetPublicId
-//       ├── CountryCode
-//       ├── TravellerProfileStatusValueObject
-//       └── TravellerProfileVisibilityValueObject
-//
-// Domain validation remains inside those value objects and the aggregate.
+// The database unique constraint remains the final concurrency safeguard.
 //
 // -----------------------------------------------------------------------------
 
@@ -144,7 +131,10 @@ import type { TravellerProfileRepository } from '../../domain/repositories/trave
 // Domain — Exceptions
 // -----------------------------------------------------------------------------
 
-import { TravellerProfileAlreadyExistsException } from '../../domain/exceptions';
+import {
+  TravellerProfileAlreadyExistsException,
+  TravellerProfileHandleAlreadyExistsException,
+} from '../../domain/exceptions';
 
 // -----------------------------------------------------------------------------
 // Domain — Value Objects
@@ -172,23 +162,17 @@ import {
  *
  *     Command
  *       │
- *       ▼
- *     Convert primitives to domain VOs
+ *       ├── Convert member identifier
+ *       ├── Convert handle
  *       │
- *       ▼
- *     Check uniqueness
+ *       ├── Check member uniqueness
+ *       ├── Check handle uniqueness
  *       │
- *       ▼
- *     Create entity
+ *       ├── Create entity
+ *       ├── Create aggregate
+ *       ├── Persist aggregate
  *       │
- *       ▼
- *     Create aggregate
- *       │
- *       ▼
- *     Persist aggregate
- *       │
- *       ▼
- *     Return aggregate
+ *       └── Return aggregate
  *
  * TravellerProfile domain rules remain inside the domain model.
  */
@@ -242,14 +226,35 @@ export class CreateTravellerProfileHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     //
     // TravellerProfile stores the Identity reference as an opaque
-    // memberPublicId. The value object validates and normalizes the domain
-    // representation.
+    // memberPublicId.
+    //
+    // The MemberPublicId value object validates the supplied identifier at the
+    // application/domain boundary.
     // -------------------------------------------------------------------------
 
     const memberPublicId = new MemberPublicId(command.memberPublicId);
 
     // -------------------------------------------------------------------------
-    // 3. Enforce member uniqueness
+    // 3. Convert traveller handle
+    // -------------------------------------------------------------------------
+    //
+    // The handle is explicitly supplied by the caller.
+    //
+    // TravellerHandle is responsible for:
+    //
+    // - trimming surrounding whitespace;
+    // - normalizing to lowercase;
+    // - validating the 3–30 character domain format.
+    //
+    // The normalized VO is retained and reused throughout the operation so
+    // that validation, uniqueness checking, and persistence all operate on
+    // exactly the same domain value.
+    // -------------------------------------------------------------------------
+
+    const handle = new TravellerHandle(command.handle);
+
+    // -------------------------------------------------------------------------
+    // 4. Enforce member uniqueness
     // -------------------------------------------------------------------------
     //
     // A member can own only one TravellerProfile.
@@ -264,7 +269,27 @@ export class CreateTravellerProfileHandler implements CommandHandler<
     }
 
     // -------------------------------------------------------------------------
-    // 4. Convert command values into domain value objects
+    // 5. Enforce handle uniqueness
+    // -------------------------------------------------------------------------
+    //
+    // Handles are globally unique within TravellerProfile.
+    //
+    // This explicit application-level check allows the caller to receive a
+    // meaningful domain/application error before attempting persistence.
+    //
+    // The database @unique(handle) constraint remains necessary because this
+    // existence check cannot by itself eliminate a race between two concurrent
+    // creation requests.
+    //
+    // No alternative handle is generated here.
+    // -------------------------------------------------------------------------
+
+    if (await this.repository.existsByHandle(handle)) {
+      throw new TravellerProfileHandleAlreadyExistsException(handle.value);
+    }
+
+    // -------------------------------------------------------------------------
+    // 6. Convert remaining command values into domain value objects
     // -------------------------------------------------------------------------
     //
     // The handler is the application boundary between primitive command
@@ -285,8 +310,11 @@ export class CreateTravellerProfileHandler implements CommandHandler<
       // -----------------------------------------------------------------------
       // Traveller identity
       // -----------------------------------------------------------------------
+      //
+      // Use the already-normalized and validated TravellerHandle instance.
+      // -----------------------------------------------------------------------
 
-      handle: new TravellerHandle(command.handle),
+      handle,
 
       bio: new TravellerBio(command.bio),
 
@@ -315,8 +343,8 @@ export class CreateTravellerProfileHandler implements CommandHandler<
       //
       // A newly-created traveller has no journey history.
       //
-      // These are initialized here because they are owned/materialized by the
-      // TravellerProfile domain model and subsequently updated by the
+      // These values are initialized here because they are owned/materialized
+      // by the TravellerProfile domain model and subsequently updated by the
       // appropriate journey lifecycle operations.
       // -----------------------------------------------------------------------
 
@@ -332,16 +360,13 @@ export class CreateTravellerProfileHandler implements CommandHandler<
       // -----------------------------------------------------------------------
       // Audit timestamps
       // -----------------------------------------------------------------------
-      //
-      // Initial creation timestamps belong to the creation operation.
-      // -----------------------------------------------------------------------
 
       createdAt: new Date(),
       updatedAt: new Date(),
     });
 
     // -------------------------------------------------------------------------
-    // 5. Create aggregate
+    // 7. Create aggregate
     // -------------------------------------------------------------------------
     //
     // TravellerProfileAggregate becomes the application-level unit that is
@@ -351,19 +376,20 @@ export class CreateTravellerProfileHandler implements CommandHandler<
     const aggregate = TravellerProfileAggregate.create(profile);
 
     // -------------------------------------------------------------------------
-    // 6. Persist aggregate
+    // 8. Persist aggregate
     // -------------------------------------------------------------------------
     //
     // Persistence remains behind the TravellerProfileRepository abstraction.
     //
-    // The handler does not know whether the implementation is Prisma,
-    // another database adapter, or an in-memory implementation.
+    // When this handler executes inside RegisterUserHandler's UnitOfWork,
+    // repository.save() participates in the same Prisma transaction as the
+    // Identity, Verification, Preferences, Trust, and Authentication writes.
     // -------------------------------------------------------------------------
 
     await this.repository.save(aggregate);
 
     // -------------------------------------------------------------------------
-    // 7. Return aggregate
+    // 9. Return aggregate
     // -------------------------------------------------------------------------
 
     return aggregate;

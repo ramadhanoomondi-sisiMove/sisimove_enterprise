@@ -85,6 +85,38 @@
 //
 // -----------------------------------------------------------------------------
 //
+// TRANSACTION BOUNDARY
+//
+// The complete registration workflow executes inside one UnitOfWork boundary.
+//
+//     RegisterUserHandler
+//             │
+//             ▼
+//     UnitOfWork.execute()
+//             │
+//             ├── Identity
+//             ├── Verification
+//             ├── TravellerProfile
+//             ├── Preferences
+//             ├── TrustProfile
+//             ├── Authentication
+//             └── Authentication activation
+//             │
+//             ▼
+//          COMMIT
+//
+// If any operation throws, the UnitOfWork implementation rolls back the
+// database transaction.
+//
+// Repository transaction participation is provided by the infrastructure
+// PrismaTransactionContext. Repositories must therefore resolve their Prisma
+// client through that context rather than directly using the root
+// PrismaService.
+//
+// The handler itself remains persistence-technology agnostic.
+//
+// -----------------------------------------------------------------------------
+//
 // IDENTITY
 //
 // Registration delegates Identity creation to CreateIdentityHandler.
@@ -93,14 +125,14 @@
 //
 //     Create Identity
 //          ↓
-//     PENDING
+//       PENDING
 //          ↓
 //     ActivateIdentityHandler
 //          ↓
-//     ACTIVE
+//        ACTIVE
 //
-// Therefore this handler MUST NOT separately invoke
-// ActivateIdentityHandler for Identity.
+// Therefore this handler MUST NOT separately invoke ActivateIdentityHandler
+// for Identity.
 //
 // -----------------------------------------------------------------------------
 //
@@ -282,48 +314,12 @@
 //
 // -----------------------------------------------------------------------------
 //
-// TRANSACTION BOUNDARY
-//
-// This handler does NOT claim atomic registration across all aggregates.
-//
-// The currently supplied repositories do not expose transaction propagation,
-// and the UnitOfWork abstraction has not been integrated into these handlers.
-//
-// Consequently:
-//
-//     Identity
-//     Verification
-//     TravellerProfile
-//     Preferences
-//     TrustProfile
-//     Authentication
-//
-// are persisted through their respective existing application handlers.
-//
-// A transaction/UoW boundary can be introduced later when repository
-// transaction propagation is explicitly supported.
-//
-// -----------------------------------------------------------------------------
-//
-// REGISTRATION RESULT
-//
-// Successful registration returns the authoritative aggregates created by
-// the workflow:
-//
-//     identity
-//     verification
-//     travellerProfile
-//     trustProfile
-//     authentication
-//
-// The result contains no Session or token because registration does not
-// authenticate the user.
-//
-// -----------------------------------------------------------------------------
-//
 // APPLICATION FLOW
 //
 //     RegisterUserCommand
+//             │
+//             ▼
+//       UnitOfWork.execute()
 //             │
 //             ├──────────────────────────────┐
 //             │                              │
@@ -357,8 +353,18 @@
 //                                            ▼
 //                                      Account Created
 //                                            │
+//                                      transaction commit
+//                                            │
 //                                            ▼
 //                                         Sign In
+//
+// If any step fails:
+//
+//                         ┌───────────────┐
+//                         │    ROLLBACK   │
+//                         └───────────────┘
+//
+// No partial registration is committed.
 //
 // -----------------------------------------------------------------------------
 
@@ -379,6 +385,13 @@ import { Inject, Injectable } from '@nestjs/common';
 // -----------------------------------------------------------------------------
 
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
+
+// -----------------------------------------------------------------------------
+// Foundation — Persistence
+// -----------------------------------------------------------------------------
+
+import { UNIT_OF_WORK } from '../../../../foundation/persistence/unit-of-work.token';
+import type { UnitOfWork } from '../../../../foundation/persistence/unit-of-work.interface';
 
 // -----------------------------------------------------------------------------
 // Foundation — Security
@@ -561,8 +574,10 @@ export interface RegisterUserResult {
 /**
  * Orchestrates complete user registration.
  *
- * This handler coordinates bounded-context application handlers while keeping
+ * The handler coordinates bounded-context application handlers while keeping
  * aggregate/domain responsibilities inside their respective domains.
+ *
+ * The entire workflow executes inside one UnitOfWork transaction boundary.
  */
 @Injectable()
 export class RegisterUserHandler implements CommandHandler<
@@ -574,6 +589,19 @@ export class RegisterUserHandler implements CommandHandler<
   // ===========================================================================
 
   public constructor(
+    // -------------------------------------------------------------------------
+    // Unit of Work
+    // -------------------------------------------------------------------------
+    //
+    // The application layer depends on the UnitOfWork port.
+    //
+    // Infrastructure binds UNIT_OF_WORK to PrismaUnitOfWork.
+    //
+    // -------------------------------------------------------------------------
+
+    @Inject(UNIT_OF_WORK)
+    private readonly unitOfWork: UnitOfWork,
+
     // -------------------------------------------------------------------------
     // Identity
     // -------------------------------------------------------------------------
@@ -639,10 +667,16 @@ export class RegisterUserHandler implements CommandHandler<
   // ===========================================================================
 
   /**
-   * Executes complete user registration.
+   * Executes complete user registration atomically.
    *
-   * The handler deliberately keeps each aggregate creation operation inside
-   * its owning application handler.
+   * All database-backed registration operations execute inside one UnitOfWork
+   * transaction.
+   *
+   * If any operation throws, the UnitOfWork implementation is responsible for
+   * rolling back the transaction.
+   *
+   * The handler itself does not know whether the UnitOfWork is implemented by
+   * Prisma, another relational database, or another transactional mechanism.
    */
   public async execute(
     command: RegisterUserCommand,
@@ -663,7 +697,8 @@ export class RegisterUserHandler implements CommandHandler<
     //
     // Registration requires explicit acceptance of the applicable terms.
     //
-    // This is an application-level registration precondition.
+    // This is an application-level registration precondition and therefore
+    // occurs before opening the database transaction.
     // -------------------------------------------------------------------------
 
     if (command.termsAccepted !== true) {
@@ -679,270 +714,293 @@ export class RegisterUserHandler implements CommandHandler<
     // Identity owns email and phone-number semantics.
     //
     // Registration does not manually reproduce those validation rules.
+    //
+    // These values are validated before the transaction begins because they
+    // contain no persistence side effects.
     // -------------------------------------------------------------------------
 
     const email = IdentityEmail.create(command.email);
     const phoneNumber = IdentityPhoneNumber.create(command.phoneNumber);
 
     // -------------------------------------------------------------------------
-    // 3. Create Identity
+    // 3. Execute complete registration inside one UnitOfWork
     // -------------------------------------------------------------------------
     //
-    // CreateIdentityHandler owns:
+    // Everything below this boundary participates in the same transaction.
     //
-    //     uniqueness
-    //     IdentityAggregate.create()
-    //     persistence
-    //     PENDING → ACTIVE
+    // The repositories used by the child application handlers resolve their
+    // Prisma client through PrismaTransactionContext.
     //
-    // Registration therefore does not call ActivateIdentityHandler separately.
+    // Consequently, an exception from any later operation causes the entire
+    // registration transaction to roll back.
     // -------------------------------------------------------------------------
 
-    const identityCorrelationId = randomUUID();
+    return this.unitOfWork.execute(async () => {
+      // -----------------------------------------------------------------------
+      // 3.1 Create Identity
+      // -----------------------------------------------------------------------
+      //
+      // CreateIdentityHandler owns:
+      //
+      //     uniqueness
+      //     IdentityAggregate.create()
+      //     persistence
+      //     PENDING → ACTIVE
+      //
+      // Registration therefore does not call ActivateIdentityHandler separately.
+      // -----------------------------------------------------------------------
 
-    const createIdentityCommand = new CreateIdentityCommand(
-      email,
-      phoneNumber,
-      identityCorrelationId,
-    );
+      const identityCorrelationId = randomUUID();
 
-    const identity = await this.createIdentityHandler.execute(
-      createIdentityCommand,
-    );
-
-    // -------------------------------------------------------------------------
-    // 4. Create Verification
-    // -------------------------------------------------------------------------
-    //
-    // Verification starts as:
-    //
-    //     PENDING / NONE
-    //
-    // No verification request is created here.
-    // -------------------------------------------------------------------------
-
-    const verificationCorrelationId = randomUUID();
-
-    const createVerificationCommand = new CreateVerificationCommand(
-      identity.publicId,
-      verificationCorrelationId,
-    );
-
-    const verification = await this.createVerificationHandler.execute(
-      createVerificationCommand,
-    );
-
-    // -------------------------------------------------------------------------
-    // 5. Derive initial TravellerProfile handle
-    // -------------------------------------------------------------------------
-    //
-    // Persisted form:
-    //
-    //     ramadhan_omondi
-    //
-    // Display form:
-    //
-    //     @ramadhan_omondi
-    //
-    // The '@' prefix is not persisted.
-    //
-    // TravellerHandle performs final domain validation.
-    // -------------------------------------------------------------------------
-
-    const handle = command.travellerName
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, '_');
-
-    // -------------------------------------------------------------------------
-    // 6. Create TravellerProfile
-    // -------------------------------------------------------------------------
-    //
-    // memberPublicId is the opaque public reference to Identity.
-    // -------------------------------------------------------------------------
-
-    const travellerProfileCorrelationId = randomUUID();
-
-    const createTravellerProfileCommand = new CreateTravellerProfileCommand(
-      identity.publicId.value,
-      handle,
-      null,
-      null,
-      command.countryCode,
-      undefined,
-      undefined,
-      travellerProfileCorrelationId,
-    );
-
-    const travellerProfile = await this.createTravellerProfileHandler.execute(
-      createTravellerProfileCommand,
-    );
-
-    // -------------------------------------------------------------------------
-    // 7. Create TravellerProfile preferences
-    // -------------------------------------------------------------------------
-    //
-    // The preferences handler requires the TravellerProfile aggregate ID,
-    // which is obtained from the aggregate created above.
-    //
-    // Registration uses the established defaults:
-    //
-    //     showJourneyHistory    = true
-    //     showJourneyStatistics = true
-    //     allowJourneyInvites   = true
-    // -------------------------------------------------------------------------
-
-    const preferencesCorrelationId = randomUUID();
-
-    const createPreferencesCommand =
-      new CreateTravellerProfilePreferencesCommand(
-        travellerProfile.aggregateId.toString(),
-        true,
-        true,
-        true,
-        preferencesCorrelationId,
+      const createIdentityCommand = new CreateIdentityCommand(
+        email,
+        phoneNumber,
+        identityCorrelationId,
       );
 
-    await this.createTravellerProfilePreferencesHandler.execute(
-      createPreferencesCommand,
-    );
-
-    // -------------------------------------------------------------------------
-    // 8. Create TrustProfile
-    // -------------------------------------------------------------------------
-    //
-    // TrustProfile starts as:
-    //
-    //     ACTIVE / NONE
-    //
-    // Its statistics are initialized by CreateTrustProfileHandler.
-    //
-    // Registration does not grant verification or award badges.
-    // -------------------------------------------------------------------------
-
-    const trustProfileCorrelationId = randomUUID();
-
-    const createTrustProfileCommand = new CreateTrustProfileCommand(
-      identity.publicId.value,
-      undefined,
-      undefined,
-      trustProfileCorrelationId,
-    );
-
-    const trustProfile = await this.createTrustProfileHandler.execute(
-      createTrustProfileCommand,
-    );
-
-    // -------------------------------------------------------------------------
-    // 9. Hash registration password
-    // -------------------------------------------------------------------------
-    //
-    // Plaintext password handling stops at the PasswordHasher boundary.
-    //
-    // The password is never passed to the Authentication domain.
-    //
-    // The concrete implementation may be BCrypt or another infrastructure
-    // implementation selected by the application's DI configuration.
-    // -------------------------------------------------------------------------
-
-    const passwordHashValue = await this.passwordHasher.hash(command.password);
-
-    // -------------------------------------------------------------------------
-    // 10. Convert password hash into Authentication value object
-    // -------------------------------------------------------------------------
-    //
-    // PasswordHasher intentionally returns a primitive string because it is a
-    // Foundation Security abstraction.
-    //
-    // Authentication owns the domain-specific AuthenticationPasswordHash
-    // value object.
-    // -------------------------------------------------------------------------
-
-    const passwordHash = AuthenticationPasswordHash.create(passwordHashValue);
-
-    // -------------------------------------------------------------------------
-    // 11. Construct Authentication Identity reference
-    // -------------------------------------------------------------------------
-    //
-    // Authentication stores an opaque Identity public reference rather than
-    // the Identity aggregate's internal persistence ID.
-    // -------------------------------------------------------------------------
-
-    const authenticationIdentityPublicId = new AuthenticationIdentityPublicId(
-      identity.publicId.value,
-    );
-
-    // -------------------------------------------------------------------------
-    // 12. Create Authentication
-    // -------------------------------------------------------------------------
-    //
-    // CreateAuthenticationHandler owns:
-    //
-    //     Authentication uniqueness
-    //     AuthenticationEntity.create()
-    //     AuthenticationAggregate.create()
-    //     AuthenticationCreatedEvent
-    //     persistence
-    //
-    // Its domain state initially becomes:
-    //
-    //     PENDING
-    // -------------------------------------------------------------------------
-
-    const authenticationCorrelationId = randomUUID();
-
-    const createAuthenticationCommand = new CreateAuthenticationCommand(
-      authenticationIdentityPublicId,
-      authenticationCorrelationId,
-      passwordHash,
-    );
-
-    const pendingAuthentication =
-      await this.createAuthenticationHandler.execute(
-        createAuthenticationCommand,
+      const identity = await this.createIdentityHandler.execute(
+        createIdentityCommand,
       );
 
-    // -------------------------------------------------------------------------
-    // 13. Activate Authentication
-    // -------------------------------------------------------------------------
-    //
-    // Registration has successfully provisioned the credential.
-    //
-    // Unlike login, registration does not need to prove possession of the
-    // password through AuthenticateHandler because the plaintext password is
-    // already being provisioned through the trusted registration workflow.
-    //
-    // The dedicated lifecycle handler owns:
-    //
-    //     PENDING → ACTIVE
-    // -------------------------------------------------------------------------
+      // -----------------------------------------------------------------------
+      // 3.2 Create Verification
+      // -----------------------------------------------------------------------
+      //
+      // Verification starts as:
+      //
+      //     PENDING / NONE
+      //
+      // No verification request is created here.
+      // -----------------------------------------------------------------------
 
-    const activateAuthenticationCommand = new ActivateAuthenticationCommand(
-      pendingAuthentication.publicId,
-      authenticationCorrelationId,
-    );
+      const verificationCorrelationId = randomUUID();
 
-    const authentication = await this.activateAuthenticationHandler.execute(
-      activateAuthenticationCommand,
-    );
+      const createVerificationCommand = new CreateVerificationCommand(
+        identity.publicId,
+        verificationCorrelationId,
+      );
 
-    // -------------------------------------------------------------------------
-    // 14. Return complete registration result
-    // -------------------------------------------------------------------------
-    //
-    // The caller receives the authoritative aggregates produced by the
-    // registration workflow.
-    //
-    // No Session or authentication token is returned.
-    // -------------------------------------------------------------------------
+      const verification = await this.createVerificationHandler.execute(
+        createVerificationCommand,
+      );
 
-    return {
-      identity,
-      verification,
-      travellerProfile,
-      trustProfile,
-      authentication,
-    };
+      // -----------------------------------------------------------------------
+      // 3.3 Derive initial TravellerProfile handle
+      // -----------------------------------------------------------------------
+      //
+      // Persisted form:
+      //
+      //     ramadhan_omondi
+      //
+      // Display form:
+      //
+      //     @ramadhan_omondi
+      //
+      // The '@' prefix is not persisted.
+      //
+      // TravellerHandle performs final domain validation.
+      // -----------------------------------------------------------------------
+
+      const handle = command.travellerName
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '_');
+
+      // -----------------------------------------------------------------------
+      // 3.4 Create TravellerProfile
+      // -----------------------------------------------------------------------
+      //
+      // memberPublicId is the opaque public reference to Identity.
+      // -----------------------------------------------------------------------
+
+      const travellerProfileCorrelationId = randomUUID();
+
+      const createTravellerProfileCommand = new CreateTravellerProfileCommand(
+        identity.publicId.value,
+        handle,
+        null,
+        null,
+        command.countryCode,
+        undefined,
+        undefined,
+        travellerProfileCorrelationId,
+      );
+
+      const travellerProfile = await this.createTravellerProfileHandler.execute(
+        createTravellerProfileCommand,
+      );
+
+      // -----------------------------------------------------------------------
+      // 3.5 Create TravellerProfile preferences
+      // -----------------------------------------------------------------------
+      //
+      // The preferences handler requires the TravellerProfile aggregate ID,
+      // which is obtained from the aggregate created above.
+      //
+      // Registration uses the established defaults:
+      //
+      //     showJourneyHistory    = true
+      //     showJourneyStatistics = true
+      //     allowJourneyInvites   = true
+      // -----------------------------------------------------------------------
+
+      const preferencesCorrelationId = randomUUID();
+
+      const createPreferencesCommand =
+        new CreateTravellerProfilePreferencesCommand(
+          travellerProfile.aggregateId.toString(),
+          true,
+          true,
+          true,
+          preferencesCorrelationId,
+        );
+
+      await this.createTravellerProfilePreferencesHandler.execute(
+        createPreferencesCommand,
+      );
+
+      // -----------------------------------------------------------------------
+      // 3.6 Create TrustProfile
+      // -----------------------------------------------------------------------
+      //
+      // TrustProfile starts as:
+      //
+      //     ACTIVE / NONE
+      //
+      // Its statistics are initialized by CreateTrustProfileHandler.
+      //
+      // Registration does not grant verification or award badges.
+      // -----------------------------------------------------------------------
+
+      const trustProfileCorrelationId = randomUUID();
+
+      const createTrustProfileCommand = new CreateTrustProfileCommand(
+        identity.publicId.value,
+        undefined,
+        undefined,
+        trustProfileCorrelationId,
+      );
+
+      const trustProfile = await this.createTrustProfileHandler.execute(
+        createTrustProfileCommand,
+      );
+
+      // -----------------------------------------------------------------------
+      // 3.7 Hash registration password
+      // -----------------------------------------------------------------------
+      //
+      // Plaintext password handling stops at the PasswordHasher boundary.
+      //
+      // The password is never passed to the Authentication domain.
+      //
+      // The concrete implementation may be BCrypt or another infrastructure
+      // implementation selected by the application's DI configuration.
+      //
+      // This operation remains inside the transaction so that no registration
+      // persistence can commit independently of the complete workflow.
+      // -----------------------------------------------------------------------
+
+      const passwordHashValue = await this.passwordHasher.hash(
+        command.password,
+      );
+
+      // -----------------------------------------------------------------------
+      // 3.8 Convert password hash into Authentication value object
+      // -----------------------------------------------------------------------
+      //
+      // PasswordHasher intentionally returns a primitive string because it is a
+      // Foundation Security abstraction.
+      //
+      // Authentication owns the domain-specific AuthenticationPasswordHash
+      // value object.
+      // -----------------------------------------------------------------------
+
+      const passwordHash = AuthenticationPasswordHash.create(passwordHashValue);
+
+      // -----------------------------------------------------------------------
+      // 3.9 Construct Authentication Identity reference
+      // -----------------------------------------------------------------------
+      //
+      // Authentication stores an opaque Identity public reference rather than
+      // the Identity aggregate's internal persistence ID.
+      // -----------------------------------------------------------------------
+
+      const authenticationIdentityPublicId = new AuthenticationIdentityPublicId(
+        identity.publicId.value,
+      );
+
+      // -----------------------------------------------------------------------
+      // 3.10 Create Authentication
+      // -----------------------------------------------------------------------
+      //
+      // CreateAuthenticationHandler owns:
+      //
+      //     Authentication uniqueness
+      //     AuthenticationEntity.create()
+      //     AuthenticationAggregate.create()
+      //     AuthenticationCreatedEvent
+      //     persistence
+      //
+      // Its domain state initially becomes:
+      //
+      //     PENDING
+      // -----------------------------------------------------------------------
+
+      const authenticationCorrelationId = randomUUID();
+
+      const createAuthenticationCommand = new CreateAuthenticationCommand(
+        authenticationIdentityPublicId,
+        authenticationCorrelationId,
+        passwordHash,
+      );
+
+      const pendingAuthentication =
+        await this.createAuthenticationHandler.execute(
+          createAuthenticationCommand,
+        );
+
+      // -----------------------------------------------------------------------
+      // 3.11 Activate Authentication
+      // -----------------------------------------------------------------------
+      //
+      // Registration has successfully provisioned the credential.
+      //
+      // Unlike login, registration does not need to prove possession of the
+      // password through AuthenticateHandler because the plaintext password is
+      // already being provisioned through the trusted registration workflow.
+      //
+      // The dedicated lifecycle handler owns:
+      //
+      //     PENDING → ACTIVE
+      // -----------------------------------------------------------------------
+
+      const activateAuthenticationCommand = new ActivateAuthenticationCommand(
+        pendingAuthentication.publicId,
+        authenticationCorrelationId,
+      );
+
+      const authentication = await this.activateAuthenticationHandler.execute(
+        activateAuthenticationCommand,
+      );
+
+      // -----------------------------------------------------------------------
+      // 3.12 Return complete registration result
+      // -----------------------------------------------------------------------
+      //
+      // Returning from the UnitOfWork callback allows the UnitOfWork
+      // implementation to commit the transaction.
+      //
+      // No Session or authentication token is returned.
+      // -----------------------------------------------------------------------
+
+      return {
+        identity,
+        verification,
+        travellerProfile,
+        trustProfile,
+        authentication,
+      };
+    });
   }
 }
 

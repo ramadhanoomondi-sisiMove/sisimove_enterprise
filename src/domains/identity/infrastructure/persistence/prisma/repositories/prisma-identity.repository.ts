@@ -18,8 +18,6 @@
 // IdentityRole is aggregate-owned and therefore persisted and rehydrated
 // together with Identity.
 //
-// Role is a separate aggregate and is never persisted through this repository.
-//
 // -----------------------------------------------------------------------------
 //
 // Responsibilities:
@@ -78,6 +76,39 @@
 //
 // -----------------------------------------------------------------------------
 //
+// TRANSACTION PARTICIPATION:
+//
+// This repository does NOT create its own Prisma transactions.
+//
+// Instead, PrismaTransactionContext determines which Prisma client is
+// currently active:
+//
+//     UnitOfWork
+//         │
+//         ▼
+//     PrismaUnitOfWork
+//         │
+//         ▼
+//     Prisma $transaction(tx)
+//         │
+//         ▼
+//     PrismaTransactionContext
+//         │
+//         ▼
+//     PrismaIdentityRepository
+//
+// When called inside a UnitOfWork, all persistence operations use the same
+// transaction-scoped Prisma client.
+//
+// When called outside a UnitOfWork, the context falls back to the root
+// PrismaService.
+//
+// This allows the repository to participate in larger application-level
+// transactions without leaking Prisma transaction concerns into the
+// repository contract or application layer.
+//
+// -----------------------------------------------------------------------------
+//
 // Persistence error boundary:
 //
 // - Prisma/database errors remain infrastructure concerns.
@@ -100,10 +131,13 @@ import { Injectable } from '@nestjs/common';
 import { $Enums, Prisma } from '@prisma/client';
 
 // -----------------------------------------------------------------------------
-// Foundation
+// Prisma Infrastructure
 // -----------------------------------------------------------------------------
 
-import { PrismaService } from '../../../../../../infrastructure/database/prisma/prisma.service';
+import {
+  PrismaTransactionContext,
+  type PrismaClientLike,
+} from '../../../../../../infrastructure/database/prisma/prisma-transaction.context';
 
 // -----------------------------------------------------------------------------
 // Aggregate
@@ -172,7 +206,36 @@ export class PrismaIdentityRepository implements IdentityRepository {
   // Constructor
   // ===========================================================================
 
-  public constructor(private readonly prisma: PrismaService) {}
+  /**
+   * The repository does not inject PrismaService directly.
+   *
+   * PrismaTransactionContext resolves:
+   *
+   * - the root PrismaService when no transaction is active;
+   * - the transaction-scoped Prisma client when a UnitOfWork is active.
+   *
+   * This is what allows Identity persistence to participate in the same
+   * transaction as Verification, TravellerProfile, TrustProfile,
+   * Authentication, and other registration repositories.
+   */
+  public constructor(
+    private readonly transactionContext: PrismaTransactionContext,
+  ) {}
+
+  // ===========================================================================
+  // Current Prisma Client
+  // ===========================================================================
+
+  /**
+   * Returns the Prisma client appropriate for the current execution context.
+   *
+   * This deliberately remains an infrastructure concern.
+   *
+   * No Prisma client is exposed through the IdentityRepository contract.
+   */
+  private get prisma(): PrismaClientLike {
+    return this.transactionContext.getClient();
+  }
 
   // ===========================================================================
   // Prisma Enum Boundary
@@ -301,57 +364,63 @@ export class PrismaIdentityRepository implements IdentityRepository {
   // ===========================================================================
 
   /**
-   * Persists a brand-new Identity aggregate atomically.
+   * Persists a brand-new Identity aggregate.
    *
-   * The aggregate root and all aggregate-owned IdentityRole children are
-   * created within the same transaction.
+   * IMPORTANT:
+   *
+   * This method deliberately does NOT open a Prisma transaction.
+   *
+   * If the caller is executing inside UnitOfWork.execute(), all operations
+   * below use the transaction-scoped Prisma client supplied by
+   * PrismaTransactionContext.
+   *
+   * Identity and its aggregate-owned IdentityRole children therefore
+   * participate in the caller's transaction boundary.
    */
   public async create(aggregate: IdentityAggregate): Promise<void> {
     try {
       const persistence = IdentityPrismaMapper.toPersistence(aggregate);
 
-      await this.prisma.$transaction(async (tx) => {
-        // ---------------------------------------------------------------------
-        // Identity Root
-        // ---------------------------------------------------------------------
+      // -----------------------------------------------------------------------
+      // Identity Root
+      // -----------------------------------------------------------------------
 
-        await tx.identity.create({
-          data: {
-            id: persistence.identity.id,
+      await this.prisma.identity.create({
+        data: {
+          id: persistence.identity.id,
 
-            publicId: persistence.identity.publicId,
+          publicId: persistence.identity.publicId,
 
-            email: persistence.identity.email,
+          email: persistence.identity.email,
 
-            phoneNumber: persistence.identity.phoneNumber,
+          phoneNumber: persistence.identity.phoneNumber,
 
-            status: this.toPrismaIdentityStatus(persistence.identity.status),
+          status: this.toPrismaIdentityStatus(persistence.identity.status),
 
-            activatedAt: persistence.identity.activatedAt,
+          activatedAt: persistence.identity.activatedAt,
 
-            suspendedAt: persistence.identity.suspendedAt,
+          suspendedAt: persistence.identity.suspendedAt,
 
-            closedAt: persistence.identity.closedAt,
+          closedAt: persistence.identity.closedAt,
 
-            createdAt: persistence.identity.createdAt,
+          createdAt: persistence.identity.createdAt,
 
-            updatedAt: persistence.identity.updatedAt,
-          },
-        });
-
-        // ---------------------------------------------------------------------
-        // Aggregate-Owned IdentityRole Children
-        // ---------------------------------------------------------------------
-
-        for (const identityRole of persistence.identityRoles) {
-          await this.createIdentityRole(
-            tx,
-            persistence.identity.id,
-            persistence.identity.publicId,
-            identityRole,
-          );
-        }
+          updatedAt: persistence.identity.updatedAt,
+        },
       });
+
+      // -----------------------------------------------------------------------
+      // Aggregate-Owned IdentityRole Children
+      // -----------------------------------------------------------------------
+
+      for (const identityRole of persistence.identityRoles) {
+        await this.createIdentityRole(
+          this.prisma,
+          persistence.identity.id,
+          persistence.identity.publicId,
+          identityRole,
+        );
+      }
     } catch (error: unknown) {
       throw this.translatePersistenceError(error);
     }
@@ -365,117 +434,117 @@ export class PrismaIdentityRepository implements IdentityRepository {
    * Persists the complete current state of an existing Identity aggregate.
    *
    * The aggregate root and its aggregate-owned IdentityRole collection are
-   * synchronized atomically.
+   * synchronized using the current Prisma execution context.
    *
-   * IdentityRole children that no longer exist in the aggregate are removed
-   * from persistence.
+   * No repository-owned transaction is created here.
+   *
+   * When called through UnitOfWork, every operation remains part of the
+   * surrounding transaction.
    */
   public async save(aggregate: IdentityAggregate): Promise<void> {
     try {
       const persistence = IdentityPrismaMapper.toPersistence(aggregate);
 
-      await this.prisma.$transaction(async (tx) => {
-        // ---------------------------------------------------------------------
-        // Verify Aggregate Root Exists
-        // ---------------------------------------------------------------------
+      // -----------------------------------------------------------------------
+      // Verify Aggregate Root Exists
+      // -----------------------------------------------------------------------
 
-        const identity = await tx.identity.findUnique({
-          where: {
-            id: persistence.identity.id,
-          },
+      const identity = await this.prisma.identity.findUnique({
+        where: {
+          id: persistence.identity.id,
+        },
 
-          select: {
-            id: true,
-            publicId: true,
-          },
-        });
-
-        if (identity === null) {
-          throw new Error(
-            `Cannot save Identity "${persistence.identity.publicId}": ` +
-              `aggregate root "${persistence.identity.id}" was not found.`,
-          );
-        }
-
-        // ---------------------------------------------------------------------
-        // Verify Persistence Identity Ownership
-        // ---------------------------------------------------------------------
-
-        if (identity.publicId !== persistence.identity.publicId) {
-          throw new Error(
-            `Cannot save Identity "${persistence.identity.publicId}": ` +
-              `persistence identity "${persistence.identity.id}" belongs to ` +
-              `public Identity "${identity.publicId}".`,
-          );
-        }
-
-        // ---------------------------------------------------------------------
-        // Update Aggregate Root
-        // ---------------------------------------------------------------------
-
-        await tx.identity.update({
-          where: {
-            id: persistence.identity.id,
-          },
-
-          data: {
-            publicId: persistence.identity.publicId,
-
-            email: persistence.identity.email,
-
-            phoneNumber: persistence.identity.phoneNumber,
-
-            status: this.toPrismaIdentityStatus(persistence.identity.status),
-
-            activatedAt: persistence.identity.activatedAt,
-
-            suspendedAt: persistence.identity.suspendedAt,
-
-            closedAt: persistence.identity.closedAt,
-
-            updatedAt: persistence.identity.updatedAt,
-          },
-        });
-
-        // ---------------------------------------------------------------------
-        // Reconcile Aggregate-Owned IdentityRole Children
-        // ---------------------------------------------------------------------
-
-        const persistedRoleIds = persistence.identityRoles.map(
-          (identityRole) => identityRole.id,
-        );
-
-        if (persistedRoleIds.length === 0) {
-          await tx.identityRole.deleteMany({
-            where: {
-              identityId: identity.id,
-            },
-          });
-        } else {
-          await tx.identityRole.deleteMany({
-            where: {
-              identityId: identity.id,
-
-              id: {
-                notIn: persistedRoleIds,
-              },
-            },
-          });
-        }
-
-        // ---------------------------------------------------------------------
-        // Persist Current IdentityRole Children
-        // ---------------------------------------------------------------------
-
-        for (const identityRole of persistence.identityRoles) {
-          await this.upsertIdentityRole(
-            tx,
-            identity.id,
-            identity.publicId,
-            identityRole,
-          );
-        }
+        select: {
+          id: true,
+          publicId: true,
+        },
       });
+
+      if (identity === null) {
+        throw new Error(
+          `Cannot save Identity "${persistence.identity.publicId}": ` +
+            `aggregate root "${persistence.identity.id}" was not found.`,
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // Verify Persistence Identity Ownership
+      // -----------------------------------------------------------------------
+
+      if (identity.publicId !== persistence.identity.publicId) {
+        throw new Error(
+          `Cannot save Identity "${persistence.identity.publicId}": ` +
+            `persistence identity "${persistence.identity.id}" belongs to ` +
+            `public Identity "${identity.publicId}".`,
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // Update Aggregate Root
+      // -----------------------------------------------------------------------
+
+      await this.prisma.identity.update({
+        where: {
+          id: persistence.identity.id,
+        },
+
+        data: {
+          publicId: persistence.identity.publicId,
+
+          email: persistence.identity.email,
+
+          phoneNumber: persistence.identity.phoneNumber,
+
+          status: this.toPrismaIdentityStatus(persistence.identity.status),
+
+          activatedAt: persistence.identity.activatedAt,
+
+          suspendedAt: persistence.identity.suspendedAt,
+
+          closedAt: persistence.identity.closedAt,
+
+          updatedAt: persistence.identity.updatedAt,
+        },
+      });
+
+      // -----------------------------------------------------------------------
+      // Reconcile Aggregate-Owned IdentityRole Children
+      // -----------------------------------------------------------------------
+
+      const persistedRoleIds = persistence.identityRoles.map(
+        (identityRole) => identityRole.id,
+      );
+
+      if (persistedRoleIds.length === 0) {
+        await this.prisma.identityRole.deleteMany({
+          where: {
+            identityId: identity.id,
+          },
+        });
+      } else {
+        await this.prisma.identityRole.deleteMany({
+          where: {
+            identityId: identity.id,
+
+            id: {
+              notIn: persistedRoleIds,
+            },
+          },
+        });
+      }
+
+      // -----------------------------------------------------------------------
+      // Persist Current IdentityRole Children
+      // -----------------------------------------------------------------------
+
+      for (const identityRole of persistence.identityRoles) {
+        await this.upsertIdentityRole(
+          this.prisma,
+          identity.id,
+          identity.publicId,
+          identityRole,
+        );
+      }
     } catch (error: unknown) {
       throw this.translatePersistenceError(error);
     }
@@ -526,21 +595,24 @@ export class PrismaIdentityRepository implements IdentityRepository {
    *
    * IdentityRole is aggregate-owned and is explicitly removed before deleting
    * the aggregate root.
+   *
+   * No repository-owned transaction is created.
+   *
+   * If this operation is invoked through UnitOfWork, the caller's transaction
+   * provides the atomic boundary.
    */
   public async delete(id: string): Promise<void> {
     try {
-      await this.prisma.$transaction(async (tx) => {
-        await tx.identityRole.deleteMany({
-          where: {
-            identityId: id,
-          },
-        });
+      await this.prisma.identityRole.deleteMany({
+        where: {
+          identityId: id,
+        },
+      });
 
-        await tx.identity.delete({
-          where: {
-            id,
-          },
-        });
+      await this.prisma.identity.delete({
+        where: {
+          id,
+        },
       });
     } catch (error: unknown) {
       throw this.translatePersistenceError(error);
@@ -1154,7 +1226,7 @@ export class PrismaIdentityRepository implements IdentityRepository {
    * resolved to internal Prisma IDs here.
    */
   private async createIdentityRole(
-    tx: Prisma.TransactionClient,
+    prisma: PrismaClientLike,
     identityId: string,
     aggregateIdentityPublicId: string,
     identityRole: IdentityRolePersistence,
@@ -1166,26 +1238,26 @@ export class PrismaIdentityRepository implements IdentityRepository {
     );
 
     const roleId = await this.resolveRoleId(
-      tx,
+      prisma,
       identityRole.publicId,
       identityRole.rolePublicId,
     );
 
     const assignedById = await this.resolveIdentityId(
-      tx,
+      prisma,
       identityRole.publicId,
       'assigning',
       identityRole.assignedByPublicId,
     );
 
     const revokedById = await this.resolveIdentityId(
-      tx,
+      prisma,
       identityRole.publicId,
       'revoking',
       identityRole.revokedByPublicId,
     );
 
-    await tx.identityRole.create({
+    await prisma.identityRole.create({
       data: {
         id: identityRole.id,
 
@@ -1219,7 +1291,7 @@ export class PrismaIdentityRepository implements IdentityRepository {
    * already exists.
    */
   private async upsertIdentityRole(
-    tx: Prisma.TransactionClient,
+    prisma: PrismaClientLike,
     identityId: string,
     aggregateIdentityPublicId: string,
     identityRole: IdentityRolePersistence,
@@ -1231,26 +1303,26 @@ export class PrismaIdentityRepository implements IdentityRepository {
     );
 
     const roleId = await this.resolveRoleId(
-      tx,
+      prisma,
       identityRole.publicId,
       identityRole.rolePublicId,
     );
 
     const assignedById = await this.resolveIdentityId(
-      tx,
+      prisma,
       identityRole.publicId,
       'assigning',
       identityRole.assignedByPublicId,
     );
 
     const revokedById = await this.resolveIdentityId(
-      tx,
+      prisma,
       identityRole.publicId,
       'revoking',
       identityRole.revokedByPublicId,
     );
 
-    await tx.identityRole.upsert({
+    await prisma.identityRole.upsert({
       where: {
         id: identityRole.id,
       },
@@ -1312,11 +1384,11 @@ export class PrismaIdentityRepository implements IdentityRepository {
    * through this repository.
    */
   private async resolveRoleId(
-    tx: Prisma.TransactionClient,
+    prisma: PrismaClientLike,
     identityRolePublicId: string,
     rolePublicId: string,
   ): Promise<string> {
-    const role = await tx.role.findUnique({
+    const role = await prisma.role.findUnique({
       where: {
         publicId: rolePublicId,
       },
@@ -1342,7 +1414,7 @@ export class PrismaIdentityRepository implements IdentityRepository {
    * Used exclusively for aggregate-owned IdentityRole audit actors.
    */
   private async resolveIdentityId(
-    tx: Prisma.TransactionClient,
+    prisma: PrismaClientLike,
     identityRolePublicId: string,
     actorDescription: 'assigning' | 'revoking',
     publicId: string | null,
@@ -1351,7 +1423,7 @@ export class PrismaIdentityRepository implements IdentityRepository {
       return null;
     }
 
-    const identity = await tx.identity.findUnique({
+    const identity = await prisma.identity.findUnique({
       where: {
         publicId,
       },

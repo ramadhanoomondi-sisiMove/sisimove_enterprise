@@ -1,4 +1,3 @@
-//src/infrastructure/persistence/prisma-unit-of-work.ts
 // -----------------------------------------------------------------------------
 // Infrastructure — Prisma Unit of Work
 // -----------------------------------------------------------------------------
@@ -8,6 +7,8 @@
 // Responsibilities:
 //
 // - establish a Prisma transaction;
+// - establish the transaction-scoped Prisma client in the current execution
+//   context;
 // - execute application work inside that transaction;
 // - commit when the work succeeds;
 // - rollback when the work throws.
@@ -22,24 +23,48 @@
 //
 // -----------------------------------------------------------------------------
 //
+// Transaction flow:
+//
+//     UnitOfWork.execute()
+//             │
+//             ▼
+//     prisma.$transaction()
+//             │
+//             │ tx
+//             ▼
+//     PrismaTransactionContext.run(tx)
+//             │
+//             ▼
+//     application work
+//             │
+//       ┌─────┼─────────────────────┐
+//       ▼     ▼                     ▼
+//   Identity Verification ... Authentication
+//       │     │                     │
+//       └─────┴─────────────────────┘
+//             │
+//             ▼
+//          commit
+//
+// If any operation throws, Prisma rolls the entire transaction back.
+//
+// -----------------------------------------------------------------------------
+//
 // Important:
 //
-// Prisma's `$transaction()` provides a transaction-scoped Prisma client (`tx`).
+// Repositories must resolve their Prisma client through
+// PrismaTransactionContext.
 //
-// Repository implementations that participate in this Unit of Work must use
-// that transaction-scoped client when performing database operations.
-//
-// Merely wrapping work in `$transaction()` is NOT enough if repositories
-// continue using the root PrismaService internally.
-//
-// The repository/transaction integration is therefore an infrastructure
-// concern and can be introduced without changing the Foundation contract.
+// Merely wrapping the handler in `$transaction()` is insufficient if a
+// repository continues writing through the root PrismaService.
 //
 // -----------------------------------------------------------------------------
 
 import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../database/prisma/prisma.service';
+
+import { PrismaTransactionContext } from '../database/prisma/prisma-transaction.context';
 
 import type { UnitOfWork } from '../../foundation/persistence/unit-of-work.interface';
 
@@ -53,7 +78,10 @@ export class PrismaUnitOfWork implements UnitOfWork {
   // Constructor
   // ---------------------------------------------------------------------------
 
-  public constructor(private readonly prisma: PrismaService) {}
+  public constructor(
+    private readonly prisma: PrismaService,
+    private readonly transactionContext: PrismaTransactionContext,
+  ) {}
 
   // ---------------------------------------------------------------------------
   // Execute
@@ -66,11 +94,14 @@ export class PrismaUnitOfWork implements UnitOfWork {
   // - commits when `work` resolves successfully;
   // - rolls back when `work` throws.
   //
+  // The transaction-scoped client is registered in the transaction context
+  // before application work begins.
+  //
   // ---------------------------------------------------------------------------
 
   public async execute<T>(work: () => Promise<T>): Promise<T> {
-    return this.prisma.$transaction(async () => {
-      return work();
+    return this.prisma.$transaction(async (tx) => {
+      return this.transactionContext.run(tx, work);
     });
   }
 }

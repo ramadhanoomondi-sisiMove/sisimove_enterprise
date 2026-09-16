@@ -89,6 +89,48 @@
 // inside this infrastructure repository.
 //
 // -----------------------------------------------------------------------------
+//
+// TRANSACTION PARTICIPATION:
+//
+// This repository does NOT create its own Prisma transactions.
+//
+// PrismaTransactionContext determines which Prisma client is currently
+// available:
+//
+//     UnitOfWork
+//         │
+//         ▼
+//     PrismaUnitOfWork
+//         │
+//         ▼
+//     Prisma $transaction(tx)
+//         │
+//         ▼
+//     PrismaTransactionContext
+//         │
+//         ▼
+//     PrismaVerificationRepository
+//
+// When called inside a UnitOfWork, all operations use the transaction-scoped
+// Prisma client.
+//
+// When called outside a UnitOfWork, the context falls back to the root
+// PrismaService.
+//
+// This allows Verification persistence to participate in the same application
+// transaction as Identity, TravellerProfile, TrustProfile, Authentication,
+// and other registration operations.
+//
+// -----------------------------------------------------------------------------
+//
+// Persistence error boundary:
+//
+// - Prisma/database errors remain infrastructure concerns.
+// - Domain/invariant failures remain VerificationInvariantException.
+// - The repository does not swallow transaction failures.
+// - The UnitOfWork owns the transaction boundary.
+//
+// -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
 // NestJS
@@ -103,10 +145,13 @@ import { Injectable } from '@nestjs/common';
 import { $Enums, Prisma } from '@prisma/client';
 
 // -----------------------------------------------------------------------------
-// Foundation
+// Prisma Infrastructure
 // -----------------------------------------------------------------------------
 
-import { PrismaService } from '../../../../../../infrastructure/database/prisma/prisma.service';
+import {
+  PrismaTransactionContext,
+  type PrismaClientLike,
+} from '../../../../../../infrastructure/database/prisma/prisma-transaction.context';
 
 // -----------------------------------------------------------------------------
 // Aggregate
@@ -225,7 +270,37 @@ export class PrismaVerificationRepository implements VerificationRepository {
   // Constructor
   // ===========================================================================
 
-  public constructor(private readonly prisma: PrismaService) {}
+  /**
+   * Resolves the Prisma client through the ambient transaction context.
+   *
+   * The repository therefore participates automatically in the transaction
+   * created by PrismaUnitOfWork when one is active.
+   */
+  public constructor(
+    private readonly transactionContext: PrismaTransactionContext,
+  ) {}
+
+  // ===========================================================================
+  // Current Prisma Client
+  // ===========================================================================
+
+  /**
+   * Returns the Prisma client appropriate for the current execution context.
+   *
+   * Inside UnitOfWork:
+   *
+   *     Prisma.TransactionClient
+   *
+   * Outside UnitOfWork:
+   *
+   *     PrismaService
+   *
+   * The distinction is intentionally hidden behind the infrastructure
+   * repository.
+   */
+  private get prisma(): PrismaClientLike {
+    return this.transactionContext.getClient();
+  }
 
   // ===========================================================================
   // Prisma Enum Boundary
@@ -320,250 +395,259 @@ export class PrismaVerificationRepository implements VerificationRepository {
   // Create
   // ===========================================================================
 
+  /**
+   * Persists a brand-new Verification aggregate.
+   *
+   * No repository-owned transaction is created.
+   *
+   * The Verification root and all aggregate-owned VerificationRequest
+   * children therefore participate in the caller's transaction when this
+   * method is executed through UnitOfWork.
+   */
   public async create(aggregate: VerificationAggregate): Promise<void> {
     this.assertAggregate(aggregate);
 
     const persistence = VerificationPrismaMapper.toPersistence(aggregate);
 
-    await this.prisma.$transaction(async (tx) => {
-      // -----------------------------------------------------------------------
-      // Verification.identityId is a required Prisma foreign key.
-      //
-      // The domain carries IdentityPublicId.
-      // Prisma Verification.identityId references Identity.id.
-      //
-      // Resolve the public identity to the internal persistence identity
-      // before writing the Verification row.
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Verification.identityId is a required Prisma foreign key.
+    //
+    // The domain carries IdentityPublicId.
+    // Prisma Verification.identityId references Identity.id.
+    //
+    // Resolve the public identity to the internal persistence identity
+    // before writing the Verification row.
+    // -------------------------------------------------------------------------
 
-      const identityId = await this.resolveOwningIdentityId(
-        tx,
-        persistence.verification.publicId,
-        persistence.verification.identityPublicId,
-      );
+    const identityId = await this.resolveOwningIdentityId(
+      this.prisma,
+      persistence.verification.publicId,
+      persistence.verification.identityPublicId,
+    );
 
-      // -----------------------------------------------------------------------
-      // Verification.reviewedById is optional.
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Verification.reviewedById is optional.
+    // -------------------------------------------------------------------------
 
-      const reviewedById = await this.resolveOptionalIdentityId(
-        tx,
-        'Verification',
-        persistence.verification.publicId,
-        persistence.verification.reviewedByPublicId,
-      );
+    const reviewedById = await this.resolveOptionalIdentityId(
+      this.prisma,
+      'Verification',
+      persistence.verification.publicId,
+      persistence.verification.reviewedByPublicId,
+    );
 
-      const verification = await tx.verification.create({
-        data: {
-          id: persistence.verification.id,
+    const verification = await this.prisma.verification.create({
+      data: {
+        id: persistence.verification.id,
 
-          publicId: persistence.verification.publicId,
+        publicId: persistence.verification.publicId,
 
-          identityId,
+        identityId,
 
-          status: this.toPrismaVerificationStatus(
-            persistence.verification.status,
-          ),
+        status: this.toPrismaVerificationStatus(
+          persistence.verification.status,
+        ),
 
-          level: this.toPrismaVerificationLevel(persistence.verification.level),
+        level: this.toPrismaVerificationLevel(persistence.verification.level),
 
-          profilePhotoVerified: persistence.verification.profilePhotoVerified,
+        profilePhotoVerified: persistence.verification.profilePhotoVerified,
 
-          governmentIdVerified: persistence.verification.governmentIdVerified,
+        governmentIdVerified: persistence.verification.governmentIdVerified,
 
-          driverLicenseVerified: persistence.verification.driverLicenseVerified,
+        driverLicenseVerified: persistence.verification.driverLicenseVerified,
 
-          verifiedAt: persistence.verification.verifiedAt,
+        verifiedAt: persistence.verification.verifiedAt,
 
-          expiresAt: persistence.verification.expiresAt,
+        expiresAt: persistence.verification.expiresAt,
 
-          memberVerifiedAt: persistence.verification.memberVerifiedAt,
+        memberVerifiedAt: persistence.verification.memberVerifiedAt,
 
-          driverVerifiedAt: persistence.verification.driverVerifiedAt,
+        driverVerifiedAt: persistence.verification.driverVerifiedAt,
 
-          profilePhotoVerifiedAt:
-            persistence.verification.profilePhotoVerifiedAt,
+        profilePhotoVerifiedAt: persistence.verification.profilePhotoVerifiedAt,
 
-          governmentIdVerifiedAt:
-            persistence.verification.governmentIdVerifiedAt,
+        governmentIdVerifiedAt: persistence.verification.governmentIdVerifiedAt,
 
-          driverLicenseVerifiedAt:
-            persistence.verification.driverLicenseVerifiedAt,
+        driverLicenseVerifiedAt:
+          persistence.verification.driverLicenseVerifiedAt,
 
-          reviewedById,
+        reviewedById,
 
-          rejectionReason: persistence.verification.rejectionReason,
+        rejectionReason: persistence.verification.rejectionReason,
 
-          lastReviewedAt: persistence.verification.lastReviewedAt,
+        lastReviewedAt: persistence.verification.lastReviewedAt,
 
-          createdAt: persistence.verification.createdAt,
+        createdAt: persistence.verification.createdAt,
 
-          updatedAt: persistence.verification.updatedAt,
-        },
+        updatedAt: persistence.verification.updatedAt,
+      },
 
-        select: {
-          id: true,
-          publicId: true,
-        },
-      });
-
-      // -----------------------------------------------------------------------
-      // Persist aggregate-owned VerificationRequest children.
-      // -----------------------------------------------------------------------
-
-      for (const request of persistence.requests) {
-        await this.createVerificationRequest(
-          tx,
-          verification.id,
-          verification.publicId,
-          request,
-        );
-      }
+      select: {
+        id: true,
+        publicId: true,
+      },
     });
+
+    // -------------------------------------------------------------------------
+    // Persist aggregate-owned VerificationRequest children.
+    // -------------------------------------------------------------------------
+
+    for (const request of persistence.requests) {
+      await this.createVerificationRequest(
+        this.prisma,
+        verification.id,
+        verification.publicId,
+        request,
+      );
+    }
   }
 
   // ===========================================================================
   // Save
   // ===========================================================================
 
+  /**
+   * Persists the complete current state of an existing Verification aggregate.
+   *
+   * The root and aggregate-owned request collection are synchronized using
+   * the current Prisma execution context.
+   *
+   * No repository-owned transaction is created.
+   */
   public async save(aggregate: VerificationAggregate): Promise<void> {
     this.assertAggregate(aggregate);
 
     const persistence = VerificationPrismaMapper.toPersistence(aggregate);
 
-    await this.prisma.$transaction(async (tx) => {
-      const verification = await tx.verification.findUnique({
-        where: {
-          id: persistence.verification.id,
-        },
+    const verification = await this.prisma.verification.findUnique({
+      where: {
+        id: persistence.verification.id,
+      },
 
-        select: {
-          id: true,
-          publicId: true,
-        },
-      });
-
-      if (verification === null) {
-        throw new VerificationInvariantException(
-          `Cannot save Verification "${persistence.verification.publicId}": aggregate root "${persistence.verification.id}" was not found.`,
-        );
-      }
-
-      if (verification.publicId !== persistence.verification.publicId) {
-        throw new VerificationInvariantException(
-          `Cannot save Verification "${persistence.verification.publicId}": persistence identity "${persistence.verification.id}" belongs to public Verification "${verification.publicId}".`,
-        );
-      }
-
-      // -----------------------------------------------------------------------
-      // Verification.identityId is required.
-      // -----------------------------------------------------------------------
-
-      const identityId = await this.resolveOwningIdentityId(
-        tx,
-        persistence.verification.publicId,
-        persistence.verification.identityPublicId,
-      );
-
-      // -----------------------------------------------------------------------
-      // Verification.reviewedById is optional.
-      // -----------------------------------------------------------------------
-
-      const reviewedById = await this.resolveOptionalIdentityId(
-        tx,
-        'Verification',
-        persistence.verification.publicId,
-        persistence.verification.reviewedByPublicId,
-      );
-
-      await tx.verification.update({
-        where: {
-          id: verification.id,
-        },
-
-        data: {
-          publicId: persistence.verification.publicId,
-
-          identityId,
-
-          status: this.toPrismaVerificationStatus(
-            persistence.verification.status,
-          ),
-
-          level: this.toPrismaVerificationLevel(persistence.verification.level),
-
-          profilePhotoVerified: persistence.verification.profilePhotoVerified,
-
-          governmentIdVerified: persistence.verification.governmentIdVerified,
-
-          driverLicenseVerified: persistence.verification.driverLicenseVerified,
-
-          verifiedAt: persistence.verification.verifiedAt,
-
-          expiresAt: persistence.verification.expiresAt,
-
-          memberVerifiedAt: persistence.verification.memberVerifiedAt,
-
-          driverVerifiedAt: persistence.verification.driverVerifiedAt,
-
-          profilePhotoVerifiedAt:
-            persistence.verification.profilePhotoVerifiedAt,
-
-          governmentIdVerifiedAt:
-            persistence.verification.governmentIdVerifiedAt,
-
-          driverLicenseVerifiedAt:
-            persistence.verification.driverLicenseVerifiedAt,
-
-          reviewedById,
-
-          rejectionReason: persistence.verification.rejectionReason,
-
-          lastReviewedAt: persistence.verification.lastReviewedAt,
-
-          updatedAt: persistence.verification.updatedAt,
-        },
-      });
-
-      // -----------------------------------------------------------------------
-      // Reconcile aggregate-owned VerificationRequest children.
-      // -----------------------------------------------------------------------
-
-      const persistedRequestIds = persistence.requests.map(
-        (request) => request.id,
-      );
-
-      if (persistedRequestIds.length === 0) {
-        await tx.verificationRequest.deleteMany({
-          where: {
-            verificationId: verification.id,
-          },
-        });
-      } else {
-        await tx.verificationRequest.deleteMany({
-          where: {
-            verificationId: verification.id,
-
-            id: {
-              notIn: persistedRequestIds,
-            },
-          },
-        });
-      }
-
-      // -----------------------------------------------------------------------
-      // Persist current aggregate-owned requests.
-      // -----------------------------------------------------------------------
-
-      for (const request of persistence.requests) {
-        await this.upsertVerificationRequest(
-          tx,
-          verification.id,
-          verification.publicId,
-          request,
-        );
-      }
+      select: {
+        id: true,
+        publicId: true,
+      },
     });
+
+    if (verification === null) {
+      throw new VerificationInvariantException(
+        `Cannot save Verification "${persistence.verification.publicId}": aggregate root "${persistence.verification.id}" was not found.`,
+      );
+    }
+
+    if (verification.publicId !== persistence.verification.publicId) {
+      throw new VerificationInvariantException(
+        `Cannot save Verification "${persistence.verification.publicId}": persistence identity "${persistence.verification.id}" belongs to public Verification "${verification.publicId}".`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Verification.identityId is required.
+    // -------------------------------------------------------------------------
+
+    const identityId = await this.resolveOwningIdentityId(
+      this.prisma,
+      persistence.verification.publicId,
+      persistence.verification.identityPublicId,
+    );
+
+    // -------------------------------------------------------------------------
+    // Verification.reviewedById is optional.
+    // -------------------------------------------------------------------------
+
+    const reviewedById = await this.resolveOptionalIdentityId(
+      this.prisma,
+      'Verification',
+      persistence.verification.publicId,
+      persistence.verification.reviewedByPublicId,
+    );
+
+    await this.prisma.verification.update({
+      where: {
+        id: verification.id,
+      },
+
+      data: {
+        publicId: persistence.verification.publicId,
+
+        identityId,
+
+        status: this.toPrismaVerificationStatus(
+          persistence.verification.status,
+        ),
+
+        level: this.toPrismaVerificationLevel(persistence.verification.level),
+
+        profilePhotoVerified: persistence.verification.profilePhotoVerified,
+
+        governmentIdVerified: persistence.verification.governmentIdVerified,
+
+        driverLicenseVerified: persistence.verification.driverLicenseVerified,
+
+        verifiedAt: persistence.verification.verifiedAt,
+
+        expiresAt: persistence.verification.expiresAt,
+
+        memberVerifiedAt: persistence.verification.memberVerifiedAt,
+
+        driverVerifiedAt: persistence.verification.driverVerifiedAt,
+
+        profilePhotoVerifiedAt: persistence.verification.profilePhotoVerifiedAt,
+
+        governmentIdVerifiedAt: persistence.verification.governmentIdVerifiedAt,
+
+        driverLicenseVerifiedAt:
+          persistence.verification.driverLicenseVerifiedAt,
+
+        reviewedById,
+
+        rejectionReason: persistence.verification.rejectionReason,
+
+        lastReviewedAt: persistence.verification.lastReviewedAt,
+
+        updatedAt: persistence.verification.updatedAt,
+      },
+    });
+
+    // -------------------------------------------------------------------------
+    // Reconcile aggregate-owned VerificationRequest children.
+    // -------------------------------------------------------------------------
+
+    const persistedRequestIds = persistence.requests.map(
+      (request) => request.id,
+    );
+
+    if (persistedRequestIds.length === 0) {
+      await this.prisma.verificationRequest.deleteMany({
+        where: {
+          verificationId: verification.id,
+        },
+      });
+    } else {
+      await this.prisma.verificationRequest.deleteMany({
+        where: {
+          verificationId: verification.id,
+
+          id: {
+            notIn: persistedRequestIds,
+          },
+        },
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // Persist current aggregate-owned requests.
+    // -------------------------------------------------------------------------
+
+    for (const request of persistence.requests) {
+      await this.upsertVerificationRequest(
+        this.prisma,
+        verification.id,
+        verification.publicId,
+        request,
+      );
+    }
   }
 
   // ===========================================================================
@@ -727,23 +811,9 @@ export class PrismaVerificationRepository implements VerificationRepository {
   ): Promise<VerificationAggregate[]> {
     this.assertVerificationRequestStatus(status);
 
-    const records = await this.prisma.verification.findMany({
-      where: {
-        requests: {
-          some: {
-            status: this.toPrismaVerificationRequestStatus(status.value),
-          },
-        },
-      },
-
-      include: verificationAggregateInclude,
-
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-
-    return records.map((record) => this.toAggregate(record));
+    return this.findByRequestStatusValue(
+      this.toPrismaVerificationRequestStatus(status.value),
+    );
   }
 
   public async findWithPendingRequests(): Promise<VerificationAggregate[]> {
@@ -844,23 +914,29 @@ export class PrismaVerificationRepository implements VerificationRepository {
   // Delete
   // ===========================================================================
 
+  /**
+   * Deletes the Verification aggregate and its aggregate-owned requests.
+   *
+   * No repository-owned transaction is created.
+   *
+   * When executed through UnitOfWork, both deletes are part of the same
+   * surrounding transaction.
+   */
   public async delete(aggregate: VerificationAggregate): Promise<void> {
     this.assertAggregate(aggregate);
 
     const verificationId = aggregate.id.value;
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.verificationRequest.deleteMany({
-        where: {
-          verificationId,
-        },
-      });
+    await this.prisma.verificationRequest.deleteMany({
+      where: {
+        verificationId,
+      },
+    });
 
-      await tx.verification.delete({
-        where: {
-          id: verificationId,
-        },
-      });
+    await this.prisma.verification.delete({
+      where: {
+        id: verificationId,
+      },
     });
   }
 
@@ -869,7 +945,7 @@ export class PrismaVerificationRepository implements VerificationRepository {
   // ===========================================================================
 
   private async createVerificationRequest(
-    tx: Prisma.TransactionClient,
+    prisma: PrismaClientLike,
     verificationId: string,
     aggregateVerificationPublicId: string,
     request: VerificationRequestPersistence,
@@ -881,19 +957,19 @@ export class PrismaVerificationRepository implements VerificationRepository {
     );
 
     const assetId = await this.resolveAssetId(
-      tx,
+      prisma,
       request.publicId,
       request.assetPublicId,
     );
 
     const reviewedById = await this.resolveOptionalIdentityId(
-      tx,
+      prisma,
       'VerificationRequest',
       request.publicId,
       request.reviewedByPublicId,
     );
 
-    await tx.verificationRequest.create({
+    await prisma.verificationRequest.create({
       data: {
         id: request.id,
 
@@ -925,7 +1001,7 @@ export class PrismaVerificationRepository implements VerificationRepository {
   }
 
   private async upsertVerificationRequest(
-    tx: Prisma.TransactionClient,
+    prisma: PrismaClientLike,
     verificationId: string,
     aggregateVerificationPublicId: string,
     request: VerificationRequestPersistence,
@@ -936,7 +1012,7 @@ export class PrismaVerificationRepository implements VerificationRepository {
       request.verificationPublicId,
     );
 
-    const existing = await tx.verificationRequest.findUnique({
+    const existing = await prisma.verificationRequest.findUnique({
       where: {
         id: request.id,
       },
@@ -955,19 +1031,19 @@ export class PrismaVerificationRepository implements VerificationRepository {
     }
 
     const assetId = await this.resolveAssetId(
-      tx,
+      prisma,
       request.publicId,
       request.assetPublicId,
     );
 
     const reviewedById = await this.resolveOptionalIdentityId(
-      tx,
+      prisma,
       'VerificationRequest',
       request.publicId,
       request.reviewedByPublicId,
     );
 
-    await tx.verificationRequest.upsert({
+    await prisma.verificationRequest.upsert({
       where: {
         id: request.id,
       },
@@ -1088,7 +1164,7 @@ export class PrismaVerificationRepository implements VerificationRepository {
    * Resolves the required owning Identity public ID into its Prisma internal
    * persistence ID.
    *
-   * Verification.identityId is required by the frozen Prisma schema:
+   * Verification.identityId is required by the Prisma schema:
    *
    *     identityId String @unique
    *
@@ -1098,11 +1174,11 @@ export class PrismaVerificationRepository implements VerificationRepository {
    * Promise<string | null>.
    */
   private async resolveOwningIdentityId(
-    tx: Prisma.TransactionClient,
+    prisma: PrismaClientLike,
     verificationPublicId: string,
     identityPublicId: string,
   ): Promise<string> {
-    const identity = await tx.identity.findUnique({
+    const identity = await prisma.identity.findUnique({
       where: {
         publicId: identityPublicId,
       },
@@ -1126,12 +1202,12 @@ export class PrismaVerificationRepository implements VerificationRepository {
    * persistence ID.
    *
    * Both Verification.reviewedById and VerificationRequest.reviewedById are
-   * nullable in the frozen Prisma schema.
+   * nullable in the Prisma schema.
    *
    * Therefore this method intentionally returns Promise<string | null>.
    */
   private async resolveOptionalIdentityId(
-    tx: Prisma.TransactionClient,
+    prisma: PrismaClientLike,
     ownerDescription: 'Verification' | 'VerificationRequest',
     ownerPublicId: string,
     identityPublicId: string | null,
@@ -1140,7 +1216,7 @@ export class PrismaVerificationRepository implements VerificationRepository {
       return null;
     }
 
-    const identity = await tx.identity.findUnique({
+    const identity = await prisma.identity.findUnique({
       where: {
         publicId: identityPublicId,
       },
@@ -1185,11 +1261,11 @@ export class PrismaVerificationRepository implements VerificationRepository {
   // ===========================================================================
 
   private async resolveAssetId(
-    tx: Prisma.TransactionClient,
+    prisma: PrismaClientLike,
     verificationRequestPublicId: string,
     assetPublicId: string,
   ): Promise<string> {
-    const asset = await tx.asset.findUnique({
+    const asset = await prisma.asset.findUnique({
       where: {
         publicId: assetPublicId,
       },

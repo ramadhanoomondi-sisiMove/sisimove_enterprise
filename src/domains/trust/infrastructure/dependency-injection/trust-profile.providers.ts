@@ -7,10 +7,10 @@
 import { TRUST_PROFILE_TOKENS } from '../../application/trust-profile.tokens';
 
 // -----------------------------------------------------------------------------
-// Infrastructure
+// Infrastructure — Prisma Transaction Context
 // -----------------------------------------------------------------------------
 
-import { PrismaService } from '../../../../infrastructure/database/prisma/prisma.service';
+import { PrismaTransactionContext } from '../../../../infrastructure/database/prisma/prisma-transaction.context';
 
 // -----------------------------------------------------------------------------
 // Repository
@@ -25,10 +25,12 @@ import { PrismaTrustProfileRepository } from '../persistence/prisma/repositories
 export const trustProfileRepositoryProvider = {
   provide: TRUST_PROFILE_TOKENS.REPOSITORY,
 
-  inject: [PrismaService],
+  inject: [PrismaTransactionContext],
 
-  useFactory: (prisma: PrismaService): PrismaTrustProfileRepository =>
-    new PrismaTrustProfileRepository(prisma),
+  useFactory: (
+    transactionContext: PrismaTransactionContext,
+  ): PrismaTrustProfileRepository =>
+    new PrismaTrustProfileRepository(transactionContext),
 };
 
 // -----------------------------------------------------------------------------

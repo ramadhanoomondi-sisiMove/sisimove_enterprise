@@ -3,10 +3,26 @@
 // -----------------------------------------------------------------------------
 // Prisma
 // -----------------------------------------------------------------------------
+//
+// IMPORTANT:
+// This repository does not own database transactions.
+//
+// The active Prisma transaction is supplied by PrismaTransactionContext when
+// the repository is executed inside a UnitOfWork. Outside a transaction,
+// PrismaTransactionContext falls back to the application's root PrismaService.
+//
+// This keeps the repository compatible with both:
+//
+//   1. normal repository usage
+//   2. larger application workflows that require atomic persistence
+//
+// The repository therefore never calls prisma.$transaction() itself.
+// -----------------------------------------------------------------------------
 
 import type { Prisma } from '@prisma/client';
 
-import type { PrismaService } from '../../../../../../infrastructure/database/prisma/prisma.service';
+import type { PrismaTransactionContext } from '../../../../../../infrastructure/database/prisma/prisma-transaction.context';
+import { type PrismaClientLike } from '../../../../../../infrastructure/database/prisma/prisma-transaction.context';
 
 // -----------------------------------------------------------------------------
 // Domain Repository
@@ -101,193 +117,189 @@ type TrustProfileWithComponents = Prisma.TrustProfileGetPayload<{
 // -----------------------------------------------------------------------------
 
 export class PrismaTrustProfileRepository implements TrustProfileRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  // ===========================================================================
+  // Construction
+  // ===========================================================================
+
+  public constructor(
+    private readonly transactionContext: PrismaTransactionContext,
+  ) {}
+
+  // ===========================================================================
+  // Prisma Client Resolution
+  // ===========================================================================
+
+  private get prisma(): PrismaClientLike {
+    return this.transactionContext.getClient();
+  }
 
   // ===========================================================================
   // Aggregate Persistence
   // ===========================================================================
 
   async save(aggregate: TrustProfileAggregate): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      const profile = aggregate.profile;
-      const profileId = profile.id.toString();
+    const profile = aggregate.profile;
+    const profileId = profile.id.toString();
 
-      // -----------------------------------------------------------------------
-      // Trust Profile
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Trust Profile
+    // -------------------------------------------------------------------------
 
-      await tx.trustProfile.upsert({
-        where: {
-          id: profileId,
-        },
+    await this.prisma.trustProfile.upsert({
+      where: {
+        id: profileId,
+      },
 
-        create: TrustProfilePrismaMapper.toPersistence(profile),
+      create: TrustProfilePrismaMapper.toPersistence(profile),
 
-        update: TrustProfilePrismaMapper.toUpdate(profile),
-      });
-
-      // -----------------------------------------------------------------------
-      // Ratings
-      // -----------------------------------------------------------------------
-      //
-      // Ratings are owned by the TrustProfile aggregate.
-      // -----------------------------------------------------------------------
-
-      const ratings = aggregate.ratings;
-
-      const ratingIds = ratings.map((rating) => rating.id.toString());
-
-      await tx.trustRating.deleteMany({
-        where: {
-          profileId,
-
-          ...(ratingIds.length > 0
-            ? {
-                id: {
-                  notIn: ratingIds,
-                },
-              }
-            : {}),
-        },
-      });
-
-      for (const rating of ratings) {
-        await tx.trustRating.upsert({
-          where: {
-            id: rating.id.toString(),
-          },
-
-          create: TrustRatingPrismaMapper.toPersistence(rating, profileId),
-
-          update: TrustRatingPrismaMapper.toUpdate(rating),
-        });
-      }
-
-      // -----------------------------------------------------------------------
-      // Reviews
-      // -----------------------------------------------------------------------
-      //
-      // Reviews are children of ratings and therefore belong to the same
-      // aggregate persistence boundary.
-      // -----------------------------------------------------------------------
-
-      const reviews = aggregate.reviews;
-
-      const reviewIds = reviews.map((review) => review.id.toString());
-
-      if (reviewIds.length === 0) {
-        await tx.trustReview.deleteMany({
-          where: {
-            rating: {
-              profileId,
-            },
-          },
-        });
-      } else {
-        await tx.trustReview.deleteMany({
-          where: {
-            rating: {
-              profileId,
-            },
-
-            id: {
-              notIn: reviewIds,
-            },
-          },
-        });
-      }
-
-      for (const review of reviews) {
-        await tx.trustReview.upsert({
-          where: {
-            id: review.id.toString(),
-          },
-
-          create: TrustReviewPrismaMapper.toPersistence(review),
-
-          update: TrustReviewPrismaMapper.toUpdate(review),
-        });
-      }
-
-      // -----------------------------------------------------------------------
-      // Profile Badges
-      // -----------------------------------------------------------------------
-      //
-      // TrustBadge is the badge definition/master entity.
-      // TrustProfileBadge is the aggregate-owned assignment.
-      //
-      // Therefore the aggregate persists profileBadges, not badge definitions.
-      // -----------------------------------------------------------------------
-
-      const profileBadges = aggregate.profileBadges;
-
-      const profileBadgeIds = profileBadges.map((profileBadge) =>
-        profileBadge.id.toString(),
-      );
-
-      await tx.trustProfileBadge.deleteMany({
-        where: {
-          profileId,
-
-          ...(profileBadgeIds.length > 0
-            ? {
-                id: {
-                  notIn: profileBadgeIds,
-                },
-              }
-            : {}),
-        },
-      });
-
-      for (const profileBadge of profileBadges) {
-        await tx.trustProfileBadge.upsert({
-          where: {
-            id: profileBadge.id.toString(),
-          },
-
-          create: TrustProfileBadgePrismaMapper.toPersistence(profileBadge),
-
-          update: TrustProfileBadgePrismaMapper.toUpdate(profileBadge),
-        });
-      }
-
-      // -----------------------------------------------------------------------
-      // Trust Events
-      // -----------------------------------------------------------------------
-      //
-      // TrustEvent history is owned by the TrustProfile aggregate.
-      // -----------------------------------------------------------------------
-
-      const events = aggregate.events;
-
-      const eventIds = events.map((event) => event.id.toString());
-
-      await tx.trustEvent.deleteMany({
-        where: {
-          profileId,
-
-          ...(eventIds.length > 0
-            ? {
-                id: {
-                  notIn: eventIds,
-                },
-              }
-            : {}),
-        },
-      });
-
-      for (const event of events) {
-        await tx.trustEvent.upsert({
-          where: {
-            id: event.id.toString(),
-          },
-
-          create: TrustEventPrismaMapper.toPersistence(event, profileId),
-
-          update: TrustEventPrismaMapper.toUpdate(event),
-        });
-      }
+      update: TrustProfilePrismaMapper.toUpdate(profile),
     });
+
+    // -------------------------------------------------------------------------
+    // Ratings
+    // -------------------------------------------------------------------------
+
+    const ratings = aggregate.ratings;
+
+    const ratingIds = ratings.map((rating) => rating.id.toString());
+
+    await this.prisma.trustRating.deleteMany({
+      where: {
+        profileId,
+
+        ...(ratingIds.length > 0
+          ? {
+              id: {
+                notIn: ratingIds,
+              },
+            }
+          : {}),
+      },
+    });
+
+    for (const rating of ratings) {
+      await this.prisma.trustRating.upsert({
+        where: {
+          id: rating.id.toString(),
+        },
+
+        create: TrustRatingPrismaMapper.toPersistence(rating, profileId),
+
+        update: TrustRatingPrismaMapper.toUpdate(rating),
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // Reviews
+    // -------------------------------------------------------------------------
+
+    const reviews = aggregate.reviews;
+
+    const reviewIds = reviews.map((review) => review.id.toString());
+
+    if (reviewIds.length === 0) {
+      await this.prisma.trustReview.deleteMany({
+        where: {
+          rating: {
+            profileId,
+          },
+        },
+      });
+    } else {
+      await this.prisma.trustReview.deleteMany({
+        where: {
+          rating: {
+            profileId,
+          },
+
+          id: {
+            notIn: reviewIds,
+          },
+        },
+      });
+    }
+
+    for (const review of reviews) {
+      await this.prisma.trustReview.upsert({
+        where: {
+          id: review.id.toString(),
+        },
+
+        create: TrustReviewPrismaMapper.toPersistence(review),
+
+        update: TrustReviewPrismaMapper.toUpdate(review),
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // Profile Badges
+    // -------------------------------------------------------------------------
+
+    const profileBadges = aggregate.profileBadges;
+
+    const profileBadgeIds = profileBadges.map((profileBadge) =>
+      profileBadge.id.toString(),
+    );
+
+    await this.prisma.trustProfileBadge.deleteMany({
+      where: {
+        profileId,
+
+        ...(profileBadgeIds.length > 0
+          ? {
+              id: {
+                notIn: profileBadgeIds,
+              },
+            }
+          : {}),
+      },
+    });
+
+    for (const profileBadge of profileBadges) {
+      await this.prisma.trustProfileBadge.upsert({
+        where: {
+          id: profileBadge.id.toString(),
+        },
+
+        create: TrustProfileBadgePrismaMapper.toPersistence(profileBadge),
+
+        update: TrustProfileBadgePrismaMapper.toUpdate(profileBadge),
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // Trust Events
+    // -------------------------------------------------------------------------
+
+    const events = aggregate.events;
+
+    const eventIds = events.map((event) => event.id.toString());
+
+    await this.prisma.trustEvent.deleteMany({
+      where: {
+        profileId,
+
+        ...(eventIds.length > 0
+          ? {
+              id: {
+                notIn: eventIds,
+              },
+            }
+          : {}),
+      },
+    });
+
+    for (const event of events) {
+      await this.prisma.trustEvent.upsert({
+        where: {
+          id: event.id.toString(),
+        },
+
+        create: TrustEventPrismaMapper.toPersistence(event, profileId),
+
+        update: TrustEventPrismaMapper.toUpdate(event),
+      });
+    }
   }
 
   // ===========================================================================
