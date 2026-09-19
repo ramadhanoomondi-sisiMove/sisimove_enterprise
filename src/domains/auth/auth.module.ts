@@ -25,6 +25,7 @@
 //          ├── TravellerProfile
 //          ├── TravellerProfilePreferences
 //          ├── TrustProfile
+//          ├── FinancialAccount
 //          └── Authentication
 //
 // The AuthModule owns the registration application handler because registration
@@ -81,8 +82,9 @@
 //
 // RegisterUserHandler is an application-level orchestrator.
 //
-// It does NOT make the Identity, Verification, TravellerProfile, TrustProfile,
-// or Authentication aggregates part of one aggregate boundary.
+// It does NOT make the Identity, Verification, TravellerProfile,
+// TravellerProfilePreferences, TrustProfile, Authentication, or
+// FinancialAccount aggregates part of one aggregate boundary.
 //
 // Instead, it coordinates their independent application commands.
 //
@@ -96,6 +98,7 @@
 //             ├── CreateTravellerProfileHandler
 //             ├── CreateTravellerProfilePreferencesHandler
 //             ├── CreateTrustProfileHandler
+//             ├── CreateFinancialAccountHandler
 //             ├── PasswordHasher
 //             ├── CreateAuthenticationHandler
 //             └── ActivateAuthenticationHandler
@@ -107,7 +110,15 @@
 // - create Session;
 // - create Device;
 // - issue access tokens;
-// - issue refresh tokens.
+// - issue refresh tokens;
+// - create FinancialTransaction records;
+// - create Payment records;
+// - create Settlement records;
+// - create Disbursement records.
+//
+// Registration only initializes the user's FinancialAccount and its initial
+// zero balance. Financial activity begins later through the Financial
+// bounded context's transaction/payment workflows.
 //
 // -----------------------------------------------------------------------------
 //
@@ -142,8 +153,9 @@
 // AuthModule consumes that exported token through AuthenticateHandler.
 //
 // Registration additionally consumes Identity application command handlers,
-// Verification handlers, TravellerProfile handlers, and TrustProfile handlers
-// through their respective module exports.
+// Verification handlers, TravellerProfile handlers, TrustProfile handlers,
+// and the Financial Account creation handler through their respective
+// module exports.
 //
 // -----------------------------------------------------------------------------
 //
@@ -340,6 +352,42 @@
 //
 // -----------------------------------------------------------------------------
 //
+// FinancialModule:
+//
+// FinancialModule owns the Financial bounded context.
+//
+// AuthModule does not own or instantiate CreateFinancialAccountHandler.
+//
+// Instead:
+//
+//     AuthModule
+//          │
+//          │ imports
+//          ▼
+//     FinancialModule
+//          │
+//          │ exports
+//          ▼
+//     FINANCIAL_ACCOUNT_TOKENS.COMMAND_HANDLERS.CREATE
+//          │
+//          ▼
+//     CreateFinancialAccountHandler
+//
+// RegisterUserHandler consumes this exported application capability during
+// registration so that every successfully registered user receives their
+// foundational FinancialAccount.
+//
+// FinancialModule remains responsible for:
+//
+// - FinancialAccount aggregate creation;
+// - FinancialAccount status;
+// - initial FinancialAccountBalance;
+// - Financial repository persistence.
+//
+// Registration does not create financial transactions or accounting activity.
+//
+// -----------------------------------------------------------------------------
+//
 // Module boundary:
 //
 // AuthModule exposes application-facing repository and handler tokens.
@@ -372,6 +420,20 @@ import { SecurityModule } from '../../infrastructure/security/security.module';
 // -----------------------------------------------------------------------------
 
 import { IdentityModule } from '../identity/identity.module';
+
+// -----------------------------------------------------------------------------
+// Cross-Context — Financial
+// -----------------------------------------------------------------------------
+//
+// Financial owns the FinancialAccount aggregate and exposes the specific
+// application command capability required by registration:
+//
+//     FINANCIAL_ACCOUNT_TOKENS.COMMAND_HANDLERS.CREATE
+//
+// AuthModule consumes that capability through RegisterUserHandler.
+//
+
+import { FinancialModule } from '../financial/financial.module';
 
 // -----------------------------------------------------------------------------
 // Cross-Context — Traveller Profile
@@ -524,6 +586,11 @@ import {
   // - supplies the Identity registration command handler required by
   //   RegisterUserHandler.
   //
+  // FinancialModule:
+  //
+  // - supplies the Financial Account creation command handler required by
+  //   RegisterUserHandler.
+  //
   // VerificationModule:
   //
   // - supplies CreateVerificationHandler to RegisterUserHandler.
@@ -551,6 +618,7 @@ import {
     PrismaModule,
     SecurityModule,
     IdentityModule,
+    FinancialModule,
     SocialModule,
     TrustModule,
   ],
@@ -614,7 +682,12 @@ import {
     // RegisterUserHandler is the application orchestrator for registration.
     //
     // It receives its cross-context command handlers through the exported
-    // application tokens of Identity, Verification, Social, and Trust modules.
+    // application tokens of Identity, Verification, Social, Trust, and
+    // Financial modules.
+    //
+    // Financial Account creation is intentionally consumed through the
+    // FinancialModule's exported application token rather than registering
+    // the Financial handler inside AuthModule.
     //
     // It receives PasswordHasher through:
     //

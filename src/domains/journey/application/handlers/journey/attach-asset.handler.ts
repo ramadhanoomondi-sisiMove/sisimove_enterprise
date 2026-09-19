@@ -1,6 +1,36 @@
 // src/domains/journey/application/handlers/journey/attach-asset.handler.ts
 
 // -----------------------------------------------------------------------------
+// sisiMove — Attach Journey Asset Command Handler
+// -----------------------------------------------------------------------------
+//
+// Application-layer command handler for attaching an existing Journey Asset
+// to a Journey aggregate.
+//
+// Responsibilities:
+// - resolve the Journey aggregate;
+// - resolve the existing Journey Asset through the Journey aggregate boundary;
+// - delegate the attachment mutation to the Journey aggregate;
+// - persist the mutated aggregate.
+//
+// The handler does NOT:
+// - access Prisma directly;
+// - perform HTTP concerns;
+// - mutate persistence models;
+// - implement Journey business rules.
+//
+// Journey owns the attachment relationship, while the asset itself remains
+// resolved through the Journey repository boundary.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
+
+// -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
@@ -10,7 +40,7 @@ import type { CommandHandler } from '../../../../../foundation/kernel/applicatio
 // Command
 // -----------------------------------------------------------------------------
 
-import type { AttachJourneyAssetCommand } from '../../commands/journey/';
+import type { AttachJourneyAssetCommand } from '../../commands/journey/attach-journey-asset.command';
 
 // -----------------------------------------------------------------------------
 // Exceptions
@@ -28,16 +58,34 @@ import {
 import type { JourneyRepository } from '../../../domain/repositories/journey.repository';
 
 // -----------------------------------------------------------------------------
+// Application Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_TOKENS } from '../../journey.tokens';
+
+// -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
+@Injectable()
 export class AttachAssetHandler implements CommandHandler<
   AttachJourneyAssetCommand,
   void
 > {
-  constructor(private readonly journeyRepository: JourneyRepository) {}
+  // ===========================================================================
+  // Constructor
+  // ===========================================================================
 
-  async execute(command: AttachJourneyAssetCommand): Promise<void> {
+  public constructor(
+    @Inject(JOURNEY_TOKENS.REPOSITORY)
+    private readonly journeyRepository: JourneyRepository,
+  ) {}
+
+  // ===========================================================================
+  // Execute
+  // ===========================================================================
+
+  public async execute(command: AttachJourneyAssetCommand): Promise<void> {
     // -------------------------------------------------------------------------
     // Resolve Journey Aggregate
     // -------------------------------------------------------------------------
@@ -54,9 +102,10 @@ export class AttachAssetHandler implements CommandHandler<
     // Resolve Journey Asset
     // -------------------------------------------------------------------------
     //
-    // The command carries the asset public reference, not the internal
-    // JourneyAssetId. Resolve the asset using the public reference.
-    // -------------------------------------------------------------------------
+    // The command carries the asset public reference rather than the internal
+    // JourneyAssetId. The repository resolves the asset within the Journey
+    // aggregate boundary.
+    //
 
     const asset = await this.journeyRepository.findAssetByReference(
       aggregate.journeyId,
@@ -73,6 +122,10 @@ export class AttachAssetHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     // Aggregate Mutation
     // -------------------------------------------------------------------------
+    //
+    // The Journey aggregate owns the business rules governing asset
+    // attachment.
+    //
 
     aggregate.attachAsset(asset);
 

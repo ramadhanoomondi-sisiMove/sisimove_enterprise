@@ -31,6 +31,37 @@
 // provider can discover it.
 //
 // -----------------------------------------------------------------------------
+// LANDING-PAGE ACCESS RULE
+// -----------------------------------------------------------------------------
+//
+// This component is used on the public landing marketplace.
+//
+// An unauthenticated visitor may:
+//
+// - view published Journeys;
+// - view Journey Demands.
+//
+// An unauthenticated visitor may NOT:
+//
+// - create a Journey Demand;
+// - publish a Journey;
+// - book a Journey;
+// - join a Journey Demand.
+//
+// Therefore:
+//
+//     Create travel demand
+//              │
+//              ▼
+//          Sign in
+//
+// Authentication is the first access boundary. Verification is handled
+// later by the authenticated marketplace when the user attempts to perform
+// the protected action.
+//
+// This component does not perform that access check itself.
+//
+// -----------------------------------------------------------------------------
 // ARCHITECTURE
 // -----------------------------------------------------------------------------
 //
@@ -43,17 +74,28 @@
 // - access authentication state;
 // - own authentication logic;
 // - determine permissions;
+// - determine verification status;
 // - resolve marketplace matching;
-// - resolve the destination route.
+// - resolve authentication state;
+// - determine the final post-login destination.
 //
 // Navigation is expressed through `href` so the surrounding application can
 // decide how authenticated and unauthenticated visitors should be handled.
+//
+// The public landing page supplies the sign-in destination for this CTA.
 //
 // -----------------------------------------------------------------------------
 // NAVIGATION
 // -----------------------------------------------------------------------------
 //
 // The CTA is a Next.js Link because its purpose is navigation.
+//
+// For the public landing marketplace, the default destination is the
+// canonical authentication route:
+//
+//     /login
+//
+// The actual Demand creation flow remains an authenticated concern.
 //
 // -----------------------------------------------------------------------------
 // VISUAL ROLE
@@ -66,6 +108,30 @@
 // This section acts as a useful fallback:
 //
 //     "I don't see what I need → make the need visible."
+//
+// The CTA still communicates the intended user action:
+//
+//     Create travel demand
+//
+// but the landing page routes the unauthenticated visitor through sign-in
+// before they can create the Demand.
+//
+// -----------------------------------------------------------------------------
+// FUTURE AUTHENTICATED MARKETPLACE
+// -----------------------------------------------------------------------------
+//
+// The authenticated marketplace may reuse this presentation component with
+// an authenticated destination or action boundary.
+//
+// That future composition must apply:
+//
+//     Authenticated
+//          │
+//          └── Create Demand
+//                  │
+//                  └── Verification guidance when required
+//
+// Authentication and verification therefore remain outside this component.
 //
 // -----------------------------------------------------------------------------
 
@@ -87,7 +153,12 @@ export interface CreateDemandSectionProps {
   /**
    * Destination used by the CTA.
    *
-   * Defaults to the public Demand creation route.
+   * The public landing marketplace defaults to the canonical sign-in route
+   * because Demand creation is an authenticated marketplace action.
+   *
+   * The destination remains configurable so the surrounding composition
+   * boundary can provide the appropriate route when this presentation
+   * component is reused elsewhere.
    */
   readonly href?: string;
 
@@ -102,7 +173,7 @@ export interface CreateDemandSectionProps {
 // =============================================================================
 
 export function CreateDemandSection({
-  href = '/demands/create',
+  href = '/login',
   className,
 }: CreateDemandSectionProps) {
   return (

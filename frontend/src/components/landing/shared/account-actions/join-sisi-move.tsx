@@ -13,9 +13,18 @@
 //
 // The authentication boundary owns the actual registration flow.
 //
+// Routing:
+// - The default destination comes from the canonical authentication routing
+//   boundary.
+// - Consumers may override the destination when composing the component in a
+//   different navigation context.
+//
 // -----------------------------------------------------------------------------
 
 import Link from 'next/link';
+
+import { AUTHENTICATION_ROUTES } from '@/foundation/routing';
+
 
 // =============================================================================
 // Props
@@ -24,6 +33,8 @@ import Link from 'next/link';
 export interface JoinSisiMoveProps {
   /**
    * Registration destination.
+   *
+   * Defaults to the canonical public registration route.
    */
   readonly href?: string;
 
@@ -38,12 +49,13 @@ export interface JoinSisiMoveProps {
   readonly compact?: boolean;
 }
 
+
 // =============================================================================
 // Component
 // =============================================================================
 
 export function JoinSisiMove({
-  href = '/register',
+  href = AUTHENTICATION_ROUTES.REGISTER,
   className,
   compact = false,
 }: JoinSisiMoveProps) {
@@ -72,8 +84,8 @@ export function JoinSisiMove({
         //
         // The header should remain visually light.
         //
-        // Join sisiMove is still the stronger account action, but it no
-        // longer competes with the page's primary blue CTA.
+        // Join sisiMove is still the stronger account action, but it does not
+        // compete with the page's primary blue CTA.
         //
 
         'border-[color:var(--brand)]',
@@ -87,10 +99,6 @@ export function JoinSisiMove({
         // ---------------------------------------------------------------------
         // Hover
         // ---------------------------------------------------------------------
-        //
-        // A very light brand surface gives the action feedback without
-        // turning the header button into a heavy solid block.
-        //
 
         'hover:bg-[color:var(--brand-soft)]',
         'hover:border-[color:var(--brand-hover)]',
@@ -140,3 +148,5 @@ export function JoinSisiMove({
     </Link>
   );
 }
+
+export default JoinSisiMove;

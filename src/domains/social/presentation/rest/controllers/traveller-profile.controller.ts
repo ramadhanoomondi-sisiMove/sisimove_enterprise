@@ -15,9 +15,11 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 import {
+  CurrentIdentity,
   JwtAuthGuard,
   PermissionsGuard,
   RequirePermissions,
+  type AuthenticatedIdentity,
 } from '../../../../../foundation/security/auth';
 
 // -----------------------------------------------------------------------------
@@ -116,35 +118,51 @@ import {
 // Traveller Profile HTTP Controller
 // =============================================================================
 //
-// This controller exposes two categories of Traveller Profile operations:
+// This controller exposes three logical categories of Traveller Profile
+// operations:
 //
 // 1. PUBLIC PROFILE DISCOVERY
 //
-//    These endpoints support the public SisiMove experience, including:
+//    Anonymous endpoints used by the public SisiMove experience.
 //
-//    - landing-page traveller discovery;
-//    - reduced public traveller profiles;
-//    - public traveller profile pages;
-//    - profile lookup by handle;
-//    - profile lookup by public identity;
-//    - public route/corridor presentation.
+// 2. AUTHENTICATED CURRENT-PROFILE READ
 //
-//    These endpoints do NOT require authentication.
+//    The authenticated traveller can retrieve their own Traveller Profile
+//    through:
 //
-// 2. AUTHENTICATED PROFILE MANAGEMENT
+//        GET /traveller-profiles/me
 //
-//    These endpoints modify Traveller Profile state or expose private/profile-
-//    management information. They require:
+//    This endpoint does NOT accept a Traveller Profile ID, member public ID,
+//    or handle from the client.
+//
+//    The authenticated Identity is resolved from the access token:
 //
 //        Access Token
 //             ↓
 //        JwtAuthGuard
 //             ↓
-//        PermissionsGuard
+//        CurrentIdentity
 //             ↓
-//        Required traveller-profile permission
+//        identityPublicId
 //             ↓
-//        Application Command / Query Handler
+//        GetTravellerProfileByMemberPublicIdQuery
+//             ↓
+//        TravellerProfileAggregate
+//             ↓
+//        TravellerProfileResponseMapper
+//
+//    TravellerProfile.memberPublicId is the opaque cross-domain reference
+//    established between Identity and TravellerProfile during registration.
+//
+//    The existing GetTravellerProfileByMemberPublicIdQuery is therefore the
+//    correct application query for the current-profile read boundary.
+//
+//    No separate GetMyTravellerProfileQuery is required.
+//
+// 3. AUTHENTICATED PROFILE MANAGEMENT
+//
+//    Commands and private profile queries require the appropriate access
+//    token and traveller-profile permission.
 //
 // Responsibilities:
 //
@@ -485,6 +503,64 @@ export class TravellerProfileController {
     const aggregate =
       await this.getTravellerProfileByHandleQueryHandler.execute(
         new GetTravellerProfileByHandleQuery(handle),
+      );
+
+    return aggregate === null
+      ? null
+      : TravellerProfileResponseMapper.fromAggregate(aggregate);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Get Current Authenticated Traveller Profile
+  // ---------------------------------------------------------------------------
+  //
+  // Authenticated self-read boundary.
+  //
+  // The client does not provide:
+  //
+  // - travellerProfileId;
+  // - memberPublicId;
+  // - handle.
+  //
+  // Instead, the authenticated Identity is obtained from the validated access
+  // token through CurrentIdentity.
+  //
+  // TravellerProfile.memberPublicId is the opaque cross-domain reference to
+  // Identity.publicId established when the Traveller Profile is created.
+  //
+  // Therefore the existing member-public-ID query is reused rather than
+  // introducing a separate "my profile" query or repository method.
+  //
+  // Resolution:
+  //
+  //     Access Token
+  //          ↓
+  //     JwtAuthGuard
+  //          ↓
+  //     CurrentIdentity
+  //          ↓
+  //     identityPublicId
+  //          ↓
+  //     GetTravellerProfileByMemberPublicIdQuery
+  //          ↓
+  //     TravellerProfileAggregate
+  //          ↓
+  //     TravellerProfileResponseMapper
+  //
+  // This endpoint is intentionally placed before the parameterized
+  // `/:travellerProfileId` route.
+  //
+  // ---------------------------------------------------------------------------
+
+  @Get('me')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard)
+  public async getCurrentTravellerProfile(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+  ): Promise<TravellerProfileResponse | null> {
+    const aggregate =
+      await this.getTravellerProfileByMemberPublicIdQueryHandler.execute(
+        new GetTravellerProfileByMemberPublicIdQuery(identity.identityPublicId),
       );
 
     return aggregate === null

@@ -124,12 +124,12 @@ import { FinancialAccountBalancePublicId } from '../value-objects/financial-acco
  * The aggregate owns the creation of:
  *
  * - internal entity identity;
-// * public account identity;
-// * public balance identity;
-// * lifecycle status;
-// * timestamps;
-// * initial balance;
-// * initial balance version.
+ * - public account identity;
+ * - public balance identity;
+ * - lifecycle status;
+ * - timestamps;
+ * - initial balance;
+ * - initial balance version.
  */
 export interface CreateFinancialAccountAggregateProps {
   /**
@@ -200,7 +200,11 @@ export class FinancialAccountAggregate extends AggregateRoot<FinancialAccountAgg
    * - available  = 0
    * - pending    = 0
    * - held       = 0
-   * - version    = 0
+   * - version    = 1
+   *
+   * The monetary balance starts at zero, while the optimistic-concurrency
+   * version starts at one because version zero is not a valid persisted
+   * Financial Account Balance version.
    *
    * Creation invariants are validated before the creation event is recorded.
    */
@@ -283,10 +287,22 @@ export class FinancialAccountAggregate extends AggregateRoot<FinancialAccountAgg
     //
     // The balance is created as part of the Financial Account aggregate.
     //
-    // It starts at zero and version zero.
+    // The initial monetary state is zero:
+    //
+    // - available = 0
+    // - pending   = 0
+    // - held      = 0
+    //
+    // The balance version is deliberately initialized to 1.
+    //
+    // Version 1 represents the first valid persisted state of the balance.
+    // Version 0 is invalid according to FinancialAccountBalanceVersion and
+    // therefore must never be constructed by the aggregate.
     //
     // The balance's accountId is derived from the newly-created account.
     // -------------------------------------------------------------------------
+
+    const initialBalanceVersion = FinancialAccountBalanceVersion.create(1);
 
     const balance = FinancialAccountBalanceEntity.create({
       accountId: account.id,
@@ -301,7 +317,7 @@ export class FinancialAccountAggregate extends AggregateRoot<FinancialAccountAgg
 
       currency: props.currency,
 
-      version: FinancialAccountBalanceVersion.create(0),
+      version: initialBalanceVersion,
 
       createdAt,
 
@@ -922,6 +938,7 @@ export class FinancialAccountAggregate extends AggregateRoot<FinancialAccountAgg
    * - available >= 0;
    * - pending >= 0;
    * - held >= 0;
+   * - balance version >= 1;
    * - account currency == balance currency;
    * - balance belongs to this account.
    */
@@ -931,6 +948,7 @@ export class FinancialAccountAggregate extends AggregateRoot<FinancialAccountAgg
       this.availableAmount >= 0 &&
       this.pendingAmount >= 0 &&
       this.heldAmount >= 0 &&
+      this.balance.version.value >= 1 &&
       this.balance.currency.equals(this.currency)
     );
   }
@@ -959,7 +977,8 @@ export class FinancialAccountAggregate extends AggregateRoot<FinancialAccountAgg
    * - account.currency == balance.currency;
    * - available >= 0;
    * - pending >= 0;
-   * - held >= 0.
+   * - held >= 0;
+   * - balance version >= 1.
    */
   private ensureAggregateConsistency(): void {
     // -------------------------------------------------------------------------

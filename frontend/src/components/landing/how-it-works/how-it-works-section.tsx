@@ -38,7 +38,34 @@
 // - resolve marketplace matches;
 // - manage Journey or Demand lifecycle state.
 //
+// IMPORTANT PUBLIC-MARKETPLACE RULE:
+//
+// This section is rendered on the public landing page.
+//
+// Therefore the participation CTAs must NOT navigate directly to protected
+// creation routes.
+//
+// Public visitor:
+//
+//     Publish a journey  → Sign in
+//     Create demand      → Sign in
+//
+// After authentication, the authenticated marketplace/application boundary
+// determines whether the user can continue or must complete verification.
+//
+// Route ownership remains in the routing foundation. This component consumes
+// the authentication route rather than hardcoding `/login`.
+//
 // Links are navigation destinations supplied through props.
+//
+// -----------------------------------------------------------------------------
+// BRANDING
+// -----------------------------------------------------------------------------
+//
+// Visible sisiMove wordmarks use:
+//
+//     sisi → foreground / black
+//     Move → brand / blue
 //
 // -----------------------------------------------------------------------------
 
@@ -56,6 +83,7 @@ import {
 } from 'lucide-react';
 
 import { cn } from '@/foundation';
+import { AUTHENTICATION_ROUTES } from '@/foundation/routing';
 
 // =============================================================================
 // Props
@@ -64,11 +92,19 @@ import { cn } from '@/foundation';
 export interface HowItWorksSectionProps {
   /**
    * Destination for creating a Journey Demand.
+   *
+   * On the public landing page this defaults to the authentication boundary.
+   * An authenticated marketplace can provide its own destination/orchestration
+   * when this presentation component is reused.
    */
   readonly createDemandHref?: string;
 
   /**
    * Destination for publishing a Journey.
+   *
+   * On the public landing page this defaults to the authentication boundary.
+   * An authenticated marketplace can provide its own destination/orchestration
+   * when this presentation component is reused.
    */
   readonly publishJourneyHref?: string;
 
@@ -83,8 +119,8 @@ export interface HowItWorksSectionProps {
 // =============================================================================
 
 export function HowItWorksSection({
-  createDemandHref = '/demands/create',
-  publishJourneyHref = '/journeys/create',
+  createDemandHref = AUTHENTICATION_ROUTES.LOGIN,
+  publishJourneyHref = AUTHENTICATION_ROUTES.LOGIN,
   className,
 }: HowItWorksSectionProps) {
   return (
@@ -123,7 +159,14 @@ export function HowItWorksSection({
               className="h-3.5 w-3.5"
             />
 
-            <span>How sisiMove works</span>
+            <span>
+              How{' '}
+              <span aria-label="sisiMove">
+                <span className="text-[var(--foreground)]">sisi</span>
+                <span className="text-[var(--brand)]">Move</span>
+              </span>{' '}
+              works
+            </span>
           </div>
 
           <h2

@@ -1,6 +1,38 @@
 // src/domains/journey-demand/application/handlers/find-journey-demands-by-corridor.handler.ts
 
 // -----------------------------------------------------------------------------
+// sisiMove — Find Journey Demands By Corridor Query Handler
+// -----------------------------------------------------------------------------
+//
+// Application-layer query handler for retrieving Journey Demands belonging to
+// a specific corridor.
+//
+// Responsibilities:
+// - validate pagination parameters;
+// - delegate the corridor-based read operation to the
+//   JourneyDemandRepository application port;
+// - apply offset and limit pagination;
+// - return the JourneyDemandEntity collection.
+//
+// This handler deliberately does NOT:
+// - access Prisma directly;
+// - perform HTTP concerns;
+// - perform authentication;
+// - perform authorization;
+// - instantiate a repository;
+// - expose Prisma models.
+//
+// Dependency injection is resolved through Journey Demand application tokens.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
+
+// -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
@@ -20,9 +52,16 @@ import type { JourneyDemandEntity } from '../../domain/entities/journey-demand.e
 import type { JourneyDemandRepository } from '../../domain/repositories/journey-demand.repository';
 
 // -----------------------------------------------------------------------------
+// Journey Demand Application
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_DEMAND_TOKENS } from '../journey-demand.tokens';
+
+// -----------------------------------------------------------------------------
 // Query Handler
 // -----------------------------------------------------------------------------
 
+@Injectable()
 export class FindJourneyDemandsByCorridorQueryHandler implements QueryHandler<
   FindJourneyDemandsByCorridorQuery,
   JourneyDemandEntity[]
@@ -31,7 +70,10 @@ export class FindJourneyDemandsByCorridorQueryHandler implements QueryHandler<
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly repository: JourneyDemandRepository) {}
+  public constructor(
+    @Inject(JOURNEY_DEMAND_TOKENS.REPOSITORY)
+    private readonly repository: JourneyDemandRepository,
+  ) {}
 
   // ===========================================================================
   // Execute

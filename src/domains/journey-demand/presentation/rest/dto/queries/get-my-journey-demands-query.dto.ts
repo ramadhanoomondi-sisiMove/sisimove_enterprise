@@ -1,48 +1,53 @@
 // src/domains/journey-demand/presentation/rest/dto/queries/get-my-journey-demands-query.dto.ts
 
 // -----------------------------------------------------------------------------
-// Get My Journey Demands — Query DTO
+// sisiMove — Get My Journey Demands — Query DTO
+// -----------------------------------------------------------------------------
+//
+// HTTP query DTO for retrieving the authenticated requester's Journey Demands.
+//
+// IMPORTANT:
+// - requesterPublicId MUST NOT be supplied by the client.
+// - Ownership is derived from the authenticated JWT identity by the controller.
+// - Therefore this DTO contains pagination only.
+//
+// Request flow:
+//
+//   GET /journey-demands/me
+//          |
+//          v
+//   JwtAuthGuard
+//          |
+//          v
+//   CurrentIdentity.identityPublicId
+//          |
+//          v
+//   GetMyJourneyDemandsQuery
+//          |
+//          v
+//   JourneyDemandRepository
+//
+// This prevents a client from selecting another requester's public ID through
+// the /me endpoint.
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
 // NestJS / Swagger
 // -----------------------------------------------------------------------------
 
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 // -----------------------------------------------------------------------------
 // Validation
 // -----------------------------------------------------------------------------
 
-import {
-  IsInt,
-  IsOptional,
-  IsString,
-  Max,
-  MaxLength,
-  Min,
-  MinLength,
-} from 'class-validator';
+import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
 // -----------------------------------------------------------------------------
 // DTO
 // -----------------------------------------------------------------------------
 
 export class GetMyJourneyDemandsQueryDto {
-  // ===========================================================================
-  // Requester Identity
-  // ===========================================================================
-
-  @ApiProperty({
-    description:
-      'Public identifier of the requester whose Journey Demands are being retrieved.',
-    example: 'IDN-ABC12345',
-  })
-  @IsString()
-  @MinLength(3)
-  @MaxLength(100)
-  requesterPublicId!: string;
-
   // ===========================================================================
   // Pagination
   // ===========================================================================

@@ -15,7 +15,8 @@
 // ├── VerificationAggregate
 // ├── TravellerProfileAggregate
 // ├── TrustProfileAggregate
-// └── AuthenticationAggregate
+// ├── AuthenticationAggregate
+// └── FinancialAccountAggregate
 //
 // Therefore AuthenticationResponseMapper MUST NOT be reused for registration.
 //
@@ -61,6 +62,8 @@
 // - grant MEMBER verification;
 // - expose passwordHash;
 // - expose Authentication security/audit state;
+// - expose financial account state;
+// - expose financial balances;
 // - expose internal persistence identifiers;
 // - evaluate business rules.
 //
@@ -68,7 +71,11 @@
 //
 // Registration completion:
 //
-// Registration successfully creates the account and its onboarding records.
+// Registration successfully creates the account and its required onboarding
+// records, including the user's foundational FinancialAccount.
+//
+// The FinancialAccount is an internal consequence of successful account
+// registration. It is not part of the registration HTTP response contract.
 //
 // Authentication is explicitly activated by the registration workflow, but
 // registration does NOT create a Session and does NOT authenticate the user.
@@ -104,7 +111,10 @@ import type { RegisterUserResult } from '../command-handlers/register-user.handl
 // This is intentionally a registration-specific transport contract.
 //
 // It does not mirror RegisterUserResult and does not expose the internal
-// structure of the five aggregates involved in registration.
+// structure of the aggregates involved in registration.
+//
+// In particular, FinancialAccountAggregate remains an internal application
+// result and is deliberately not serialized into this response.
 //
 // =============================================================================
 
@@ -150,7 +160,10 @@ export class RegisterUserResponseMapper {
    * registration response.
    *
    * RegisterUserResult contains multiple aggregates because registration
-   * coordinates multiple bounded-context records.
+   * coordinates the records required to establish a usable user account.
+   *
+   * The FinancialAccount is part of that internal workflow result because
+   * every registered Identity receives its foundational financial account.
    *
    * The HTTP response deliberately does not mirror that internal orchestration
    * structure.
@@ -181,7 +194,7 @@ export class RegisterUserResponseMapper {
       // -----------------------------------------------------------------------
       //
       // TravellerProfileAggregate exposes the TravellerHandle through its
-      // handle accessor and the underlying profile through profile.
+      // handle accessor.
       //
       // TravellerHandle.value is the normalized persisted/domain value.
       // The '@' prefix remains a UI presentation concern.
@@ -198,6 +211,9 @@ export class RegisterUserResponseMapper {
       // - Device
       // - access token
       // - refresh token
+      //
+      // The FinancialAccount created during registration is also not relevant
+      // to the immediate client transition.
       //
       // Therefore the client must continue to the login flow.
       //

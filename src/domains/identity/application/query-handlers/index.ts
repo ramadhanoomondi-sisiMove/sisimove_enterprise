@@ -17,6 +17,7 @@
 //
 // -----------------------------------------------------------------------------
 
+
 // =============================================================================
 // IDENTITY
 // =============================================================================
@@ -29,15 +30,35 @@ export { GetIdentityByPhoneNumberHandler } from './get-identity-by-phone-number.
 
 export { GetIdentityRolesHandler } from './get-identity-roles.handler';
 
+
 // =============================================================================
 // VERIFICATION
 // =============================================================================
+//
+// Verification has two distinct aggregate lookup boundaries:
+//
+// GetVerificationHandler
+//     IdentityPublicId
+//          ↓
+//     findByIdentityPublicId()
+//
+// GetVerificationByPublicIdHandler
+//     VerificationPublicId
+//          ↓
+//     findByPublicId()
+//
+// The handlers remain separate because the queries serve different application
+// boundaries.
+//
 
 export { GetVerificationHandler } from './get-verification.handler';
+
+export { GetVerificationByPublicIdHandler } from './get-verification-by-public-id.handler';
 
 export { GetVerificationRequestsHandler } from './get-verification-requests.handler';
 
 export { GetVerificationRequestHandler } from './get-verification-request.handler';
+
 
 // =============================================================================
 // ROLE
@@ -47,6 +68,7 @@ export { GetRoleHandler } from './get-role.handler';
 
 export { GetRolesHandler } from './get-roles.handler';
 
+
 // =============================================================================
 // PERMISSION
 // =============================================================================
@@ -54,6 +76,7 @@ export { GetRolesHandler } from './get-roles.handler';
 export { GetPermissionHandler } from './get-permission.handler';
 
 export { GetPermissionsHandler } from './get-permissions.handler';
+
 
 // =============================================================================
 // ROLE PERMISSION

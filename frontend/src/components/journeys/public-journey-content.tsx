@@ -8,9 +8,6 @@
 // public Traveller, Trust, Route, Schedule, Vehicle, Capacity, Pricing,
 // Preferences, and Asset information required by this page.
 //
-// This component therefore does not perform additional domain composition or
-// independently fetch related public resources.
-//
 // Responsibilities:
 //
 // - resolve one public Journey through `usePublicJourney()`;
@@ -18,37 +15,60 @@
 // - present the public Journey information;
 // - present the Journey provider using shared Traveller / Trust presentation;
 // - render public assets through the shared `PublicAssetImage` boundary;
-// - provide the public booking entry point.
+// - provide the public booking intent entry point.
 //
-// It deliberately does not:
+// This component deliberately does not:
 //
 // - access Prisma or backend persistence models;
 // - expose internal Journey or Identity identifiers;
 // - fetch Traveller Profile or Trust independently;
 // - fetch Asset records independently;
 // - construct storage URLs;
-// - validate storage/provider-specific asset URLs;
-// - perform Journey business logic.
+// - perform Journey business logic;
+// - authorize booking;
+// - create a Booking.
 //
-// Asset rendering is intentionally delegated to `PublicAssetImage`.
+// The public Journey page remains publicly viewable.
 //
-// The Journey page should know that an asset exists, but it should not know
-// how that asset is stored, transformed, or made renderable by Next Image.
+// Booking is expressed as:
 //
+//     /journeys/[publicId]?action=book
+//
+// The action parameter is intent only. Authentication, verification, and
+// booking authorization belong to the appropriate application boundary.
 // -----------------------------------------------------------------------------
 //
-// Architectural boundary:
+// Responsive layout:
 //
-// PublicJourney
-//      │
-//      ├── provider.traveller ──> TravellerSummary
-//      ├── provider.trust ──────> TrustSummary
-//      ├── vehicle.asset ───────> PublicAssetImage
-//      ├── journey.assets[] ────> PublicAssetImage
-//      └── badge.asset ─────────> PublicAssetImage
+// Mobile
+//   ┌───────────────────────────┐
+//   │ Journey header            │
+//   │ Summary                   │
+//   │ Route                     │
+//   │ Photos                    │
+//   │ Vehicle                   │
+//   │ Preferences               │
+//   │ Provider                  │
+//   │ Booking                   │
+//   └───────────────────────────┘
 //
-// This keeps the public Journey page a presentation consumer of the public
-// read model rather than another public-data composition layer.
+// Tablet
+//   ┌─────────────────────────────────────┐
+//   │ Journey header                      │
+//   │ Summary                             │
+//   │ Main Journey content                │
+//   │ Provider / Booking                  │
+//   └─────────────────────────────────────┘
+//
+// Desktop
+//   ┌──────────────────────────────┬───────────────┐
+//   │ Main Journey content         │ Provider      │
+//   │                              │ Booking       │
+//   └──────────────────────────────┴───────────────┘
+//
+// The two-column desktop layout intentionally begins at `xl` rather than
+// `lg`. This keeps tablet widths comfortable and prevents the sidebar from
+// squeezing the primary Journey content.
 // -----------------------------------------------------------------------------
 
 'use client';
@@ -56,14 +76,18 @@
 import Link from 'next/link';
 
 import { PublicAssetImage } from '@/components/landing/shared/assets';
-import {TravellerSummary } from '@/components/landing/shared/traveller';
-import { TrustSummary,} from '@/components/landing/shared/trust';
+import { TravellerSummary } from '@/components/landing/shared/traveller';
+import { TrustSummary } from '@/components/landing/shared/trust';
 import { usePublicJourney } from '@/features/journeys/hooks/public-use-journey';
 import type {
   PublicJourney,
   PublicJourneyAsset,
   PublicJourneyPreferences,
 } from '@/features/journeys/models';
+
+import { useState } from 'react';
+
+import { LoginRequiredModal } from '@/components/authentication/login-required-modal';
 
 // =============================================================================
 // Types
@@ -126,15 +150,15 @@ function PublicJourneyLoadingState() {
       className="section"
     >
       <div className="page-container">
-        <div className="surface animate-pulse space-y-6 p-6 sm:p-8">
+        <div className="surface animate-pulse space-y-6 p-4 sm:p-6 lg:p-8">
           <div className="h-4 w-24 rounded bg-[var(--background-muted)]" />
 
           <div className="space-y-3">
-            <div className="h-8 w-2/3 rounded bg-[var(--background-muted)]" />
-            <div className="h-5 w-1/2 rounded bg-[var(--background-muted)]" />
+            <div className="h-8 w-full max-w-2xl rounded bg-[var(--background-muted)]" />
+            <div className="h-5 w-full max-w-md rounded bg-[var(--background-muted)]" />
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {Array.from({ length: 4 }).map((_, index) => (
               <div
                 key={index}
@@ -168,13 +192,13 @@ function PublicJourneyErrorState({
       <div className="page-container">
         <div
           role="alert"
-          className="surface p-6 sm:p-8"
+          className="surface p-4 sm:p-6 lg:p-8"
         >
           <p className="text-sm font-semibold text-[var(--danger)]">
             We could not load this Journey.
           </p>
 
-          <p className="mt-2 text-sm text-[var(--foreground-secondary)]">
+          <p className="mt-2 max-w-2xl break-words text-sm leading-6 text-[var(--foreground-secondary)]">
             {message}
           </p>
 
@@ -209,12 +233,12 @@ function PublicJourneyNotFoundState() {
   return (
     <section className="section">
       <div className="page-container">
-        <div className="surface p-6 sm:p-8">
+        <div className="surface p-4 sm:p-6 lg:p-8">
           <h1 className="text-xl font-semibold text-[var(--foreground)]">
             Journey not found
           </h1>
 
-          <p className="mt-2 max-w-xl text-sm text-[var(--foreground-secondary)]">
+          <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--foreground-secondary)]">
             This Journey may no longer be publicly available, or the link may
             no longer be valid.
           </p>
@@ -258,28 +282,26 @@ function JourneyProvider({
   return (
     <section
       aria-labelledby="journey-provider-heading"
-      className="surface p-6"
+      className="surface p-4 sm:p-6"
     >
-      <div className="flex min-w-0 items-start gap-4">
-        <div className="min-w-0 flex-1">
-          <h2
-            id="journey-provider-heading"
-            className="sr-only"
-          >
-            Journey provider
-          </h2>
+      <div className="min-w-0">
+        <h2
+          id="journey-provider-heading"
+          className="sr-only"
+        >
+          Journey provider
+        </h2>
 
-          <TravellerSummary
-            traveller={traveller}
-            linkToProfile
-          />
+        <TravellerSummary
+          traveller={traveller}
+          linkToProfile
+        />
 
-          {traveller.bio && (
-            <p className="mt-4 text-sm leading-6 text-[var(--foreground-secondary)]">
-              {traveller.bio}
-            </p>
-          )}
-        </div>
+        {traveller.bio && (
+          <p className="mt-4 break-words text-sm leading-6 text-[var(--foreground-secondary)]">
+            {traveller.bio}
+          </p>
+        )}
       </div>
 
       <div className="mt-5 border-t border-[var(--border-subtle)] pt-5">
@@ -324,7 +346,7 @@ function JourneyRoute({
   return (
     <section
       aria-labelledby="journey-route-heading"
-      className="surface p-6"
+      className="surface p-4 sm:p-6"
     >
       <h2
         id="journey-route-heading"
@@ -334,18 +356,18 @@ function JourneyRoute({
       </h2>
 
       <div className="mt-6 space-y-5">
-        <div className="flex gap-4">
+        <div className="flex min-w-0 gap-3 sm:gap-4">
           <div
             aria-hidden="true"
             className="mt-1 h-3 w-3 shrink-0 rounded-full border-2 border-[var(--brand)]"
           />
 
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
               From
             </p>
 
-            <p className="mt-1 font-medium text-[var(--foreground)]">
+            <p className="mt-1 break-words font-medium text-[var(--foreground)]">
               {origin.name}
             </p>
           </div>
@@ -354,37 +376,37 @@ function JourneyRoute({
         {intermediateWaypoints.map((waypoint) => (
           <div
             key={waypoint.publicId}
-            className="flex gap-4"
+            className="flex min-w-0 gap-3 sm:gap-4"
           >
             <div
               aria-hidden="true"
               className="mt-1 h-3 w-3 shrink-0 rounded-full border border-[var(--border-strong)]"
             />
 
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
                 {formatEnumLabel(waypoint.type)}
               </p>
 
-              <p className="mt-1 font-medium text-[var(--foreground)]">
+              <p className="mt-1 break-words font-medium text-[var(--foreground)]">
                 {waypoint.name}
               </p>
             </div>
           </div>
         ))}
 
-        <div className="flex gap-4">
+        <div className="flex min-w-0 gap-3 sm:gap-4">
           <div
             aria-hidden="true"
             className="mt-1 h-3 w-3 shrink-0 rounded-full border-2 border-[var(--brand)]"
           />
 
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
               To
             </p>
 
-            <p className="mt-1 font-medium text-[var(--foreground)]">
+            <p className="mt-1 break-words font-medium text-[var(--foreground)]">
               {destination.name}
             </p>
           </div>
@@ -415,15 +437,15 @@ function JourneySummary({
   return (
     <section
       aria-label="Journey summary"
-      className="surface p-6"
+      className="surface p-4 sm:p-6"
     >
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
         <div className="min-w-0">
           <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
             Departure
           </p>
 
-          <p className="mt-1 font-semibold text-[var(--foreground)]">
+          <p className="mt-1 break-words font-semibold text-[var(--foreground)]">
             {formatJourneyDate(
               schedule.departureAt,
               schedule.timezone,
@@ -467,11 +489,11 @@ function JourneySummary({
             Vehicle
           </p>
 
-          <p className="mt-1 font-semibold text-[var(--foreground)]">
+          <p className="mt-1 break-words font-semibold text-[var(--foreground)]">
             {vehicle.make} {vehicle.model}
           </p>
 
-          <p className="text-xs text-[var(--foreground-muted)]">
+          <p className="break-words text-xs text-[var(--foreground-muted)]">
             {vehicle.year ?? 'Year unavailable'}
             {vehicle.color ? ` · ${vehicle.color}` : ''}
           </p>
@@ -509,12 +531,12 @@ function JourneyVehicle({
           fallbackAlt={`${vehicle.make} ${vehicle.model}`}
           width={1280}
           height={720}
-          sizes="(min-width: 1024px) 60vw, 100vw"
+          sizes="(min-width: 1280px) 65vw, 100vw"
           className="aspect-[16/9] w-full object-cover"
         />
       )}
 
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <h2
           id="journey-vehicle-heading"
           className="text-lg font-semibold text-[var(--foreground)]"
@@ -522,7 +544,7 @@ function JourneyVehicle({
           Vehicle
         </h2>
 
-        <p className="mt-2 font-medium text-[var(--foreground)]">
+        <p className="mt-2 break-words font-medium text-[var(--foreground)]">
           {vehicle.make} {vehicle.model}
         </p>
 
@@ -536,7 +558,9 @@ function JourneyVehicle({
           )}
 
           {vehicle.registration && (
-            <span>{vehicle.registration}</span>
+            <span className="break-all">
+              {vehicle.registration}
+            </span>
           )}
         </div>
       </div>
@@ -566,7 +590,7 @@ function JourneyPreferences({
   return (
     <section
       aria-labelledby="journey-preferences-heading"
-      className="surface p-6"
+      className="surface p-4 sm:p-6"
     >
       <h2
         id="journey-preferences-heading"
@@ -577,12 +601,15 @@ function JourneyPreferences({
 
       <dl className="mt-5 grid gap-4 sm:grid-cols-2">
         {entries.map(([label, value]) => (
-          <div key={label}>
+          <div
+            key={label}
+            className="min-w-0"
+          >
             <dt className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
               {label}
             </dt>
 
-            <dd className="mt-1 text-sm font-medium text-[var(--foreground)]">
+            <dd className="mt-1 break-words text-sm font-medium text-[var(--foreground)]">
               {formatEnumLabel(value)}
             </dd>
           </div>
@@ -617,7 +644,7 @@ function JourneyAssets({
   return (
     <section
       aria-labelledby="journey-assets-heading"
-      className="surface p-6"
+      className="surface p-4 sm:p-6"
     >
       <h2
         id="journey-assets-heading"
@@ -647,6 +674,22 @@ function JourneyAssets({
 // =============================================================================
 // Booking Action
 // =============================================================================
+//
+// Public Journey detail remains publicly viewable.
+//
+// For the public marketplace, attempting to book opens the login-required
+// presentation. Authentication itself is handled by the authentication route.
+//
+// The important distinction:
+//
+//     Click Book
+//          ↓
+//     LoginRequiredModal
+//          ↓
+//     Sign in / Join sisiMove
+//
+// This component does not perform authentication, verification, or booking.
+// =============================================================================
 
 interface JourneyBookingActionProps {
   readonly journey: PublicJourney;
@@ -660,69 +703,80 @@ function JourneyBookingAction({
     pricing,
   } = journey;
 
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
+
   const isAvailable = capacity.availableSeats > 0;
 
   return (
-    <section className="surface p-6">
-      <p className="text-sm text-[var(--foreground-secondary)]">
-        Price per seat
-      </p>
+    <>
+      <section className="surface p-4 sm:p-6">
+        <p className="text-sm text-[var(--foreground-secondary)]">
+          Price per seat
+        </p>
 
-      <p className="mt-1 text-3xl font-bold text-[var(--foreground)]">
-        {formatPrice(
-          pricing.amount,
-          pricing.currency,
+        <p className="mt-1 text-2xl font-bold text-[var(--foreground)] sm:text-3xl">
+          {formatPrice(
+            pricing.amount,
+            pricing.currency,
+          )}
+        </p>
+
+        <p className="mt-2 text-sm text-[var(--foreground-secondary)]">
+          {isAvailable
+            ? `${capacity.availableSeats} ${
+                capacity.availableSeats === 1
+                  ? 'seat'
+                  : 'seats'
+              } available`
+            : 'No seats currently available'}
+        </p>
+
+        {isAvailable ? (
+          <button
+            type="button"
+            onClick={() => setLoginModalOpen(true)}
+            className={[
+              'mt-6 flex w-full items-center justify-center',
+              'rounded-[var(--radius-md)]',
+              'bg-[var(--brand)]',
+              'px-4 py-3',
+              'text-sm font-semibold',
+              'text-[var(--brand-foreground)]',
+              'transition-colors',
+              'hover:bg-[var(--brand-hover)]',
+              'focus:outline-none',
+              'focus-visible:ring-2',
+              'focus-visible:ring-[var(--brand)]',
+              'focus-visible:ring-offset-2',
+            ].join(' ')}
+          >
+            Book this journey
+          </button>
+        ) : (
+          <div
+            aria-disabled="true"
+            className={[
+              'mt-6 flex w-full items-center justify-center',
+              'rounded-[var(--radius-md)]',
+              'border border-[var(--border)]',
+              'px-4 py-3',
+              'text-sm font-medium',
+              'text-[var(--foreground-muted)]',
+            ].join(' ')}
+          >
+            Fully booked
+          </div>
         )}
-      </p>
+      </section>
 
-      <p className="mt-2 text-sm text-[var(--foreground-secondary)]">
-        {isAvailable
-          ? `${capacity.availableSeats} ${
-              capacity.availableSeats === 1
-                ? 'seat'
-                : 'seats'
-            } available`
-          : 'No seats currently available'}
-      </p>
-
-      {isAvailable ? (
-        <Link
-          href={`/journeys/${encodeURIComponent(journey.publicId)}/book`}
-          className={[
-            'mt-6 flex w-full items-center justify-center',
-            'rounded-[var(--radius-md)]',
-            'bg-[var(--brand)]',
-            'px-4 py-3',
-            'text-sm font-semibold',
-            'text-[var(--brand-foreground)]',
-            'transition-colors',
-            'hover:bg-[var(--brand-hover)]',
-            'focus:outline-none',
-            'focus-visible:ring-2',
-            'focus-visible:ring-[var(--brand)]',
-            'focus-visible:ring-offset-2',
-          ].join(' ')}
-        >
-          Book this journey
-        </Link>
-      ) : (
-        <div
-          aria-disabled="true"
-          className={[
-            'mt-6 flex w-full items-center justify-center',
-            'rounded-[var(--radius-md)]',
-            'border border-[var(--border)]',
-            'px-4 py-3',
-            'text-sm font-medium',
-            'text-[var(--foreground-muted)]',
-          ].join(' ')}
-        >
-          Fully booked
-        </div>
-      )}
-    </section>
+      <LoginRequiredModal
+        open={loginModalOpen}
+        onClose={() => setLoginModalOpen(false)}
+      />
+    </>
   );
 }
+
 
 // =============================================================================
 // Main Presentation
@@ -742,11 +796,16 @@ function PublicJourneyView({
 
   return (
     <div className="section">
-      <div className="page-container space-y-6">
-        <div>
+      <div className="page-container min-w-0 space-y-5 sm:space-y-6">
+        {/* ----------------------------------------------------------------- */}
+        {/* Page header                                                       */}
+        {/* ----------------------------------------------------------------- */}
+
+        <header className="min-w-0">
           <Link
             href="/"
             className={[
+              'inline-flex max-w-full items-center',
               'text-sm font-medium',
               'text-[var(--foreground-secondary)]',
               'transition-colors',
@@ -760,28 +819,50 @@ function PublicJourneyView({
             ← Back to journeys
           </Link>
 
-          <div className="mt-6">
+          <div className="mt-5 min-w-0 sm:mt-6">
             <p className="text-sm font-medium text-[var(--foreground-muted)]">
               Journey
             </p>
 
-            <h1 className="mt-1 text-3xl font-bold tracking-tight text-[var(--foreground)] sm:text-4xl">
+            <h1 className="mt-1 max-w-full break-words text-2xl font-bold tracking-tight text-[var(--foreground)] sm:text-3xl lg:text-4xl">
               {origin.name} → {destination.name}
             </h1>
 
-            <p className="mt-2 text-sm text-[var(--foreground-secondary)]">
+            <p className="mt-2 break-words text-sm text-[var(--foreground-secondary)]">
               {formatJourneyDate(
                 journey.schedule.departureAt,
                 journey.schedule.timezone,
               )}
             </p>
           </div>
-        </div>
+        </header>
+
+        {/* ----------------------------------------------------------------- */}
+        {/* Summary                                                           */}
+        {/* ----------------------------------------------------------------- */}
 
         <JourneySummary journey={journey} />
 
-        <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,1fr)]">
-          <div className="min-w-0 space-y-6">
+        {/* ----------------------------------------------------------------- */}
+        {/* Responsive content layout                                         */}
+        {/* ----------------------------------------------------------------- */}
+        {/*
+         * Tablet remains single-column.
+         *
+         * The desktop sidebar begins only at `xl`, giving the main Journey
+         * content enough horizontal room at tablet and small-laptop widths.
+         *
+         * `min-w-0` is important here because CSS Grid children otherwise
+         * retain their intrinsic minimum width and can cause horizontal
+         * overflow when long content is present.
+         */}
+
+        <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start xl:gap-6">
+          {/* ---------------------------------------------------------------- */}
+          {/* Main Journey content                                             */}
+          {/* ---------------------------------------------------------------- */}
+
+          <main className="min-w-0 space-y-5 sm:space-y-6">
             <JourneyRoute journey={journey} />
 
             <JourneyAssets assets={journey.assets} />
@@ -791,9 +872,13 @@ function PublicJourneyView({
             <JourneyPreferences
               preferences={journey.preferences}
             />
-          </div>
+          </main>
 
-          <aside className="min-w-0 space-y-6 lg:sticky lg:top-6 lg:self-start">
+          {/* ---------------------------------------------------------------- */}
+          {/* Provider + booking                                               */}
+          {/* ---------------------------------------------------------------- */}
+
+          <aside className="min-w-0 space-y-5 sm:space-y-6 xl:sticky xl:top-6">
             <JourneyProvider journey={journey} />
 
             <JourneyBookingAction journey={journey} />
@@ -839,3 +924,4 @@ export function PublicJourneyContent({
 
   return <PublicJourneyView journey={journey} />;
 }
+

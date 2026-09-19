@@ -1,23 +1,24 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Public Trust API
+// sisiMove — Trust API Exports
 // -----------------------------------------------------------------------------
 //
-// Public API barrel for the frontend Trust feature.
+// Public API boundary for the Trust feature's HTTP adapters.
 //
-// Consumers should import Trust API operations through this barrel rather than
-// depending on individual implementation files.
+// Public marketplace reads:
+//   getPublicTravellerTrust()
+//   getPublicTrustProfile()
 //
-// Example:
+// Authenticated Trust reads:
+//   getTravellerTrust()
 //
-//   import {
-//     getTravellerTrust,
-//     getPublicTrustProfile,
-//   } from '@/features/trust/api';
-//
+// Keeping these exports explicit prevents consumers from importing individual
+// API implementation files and makes the public/authenticated boundary clear.
 // -----------------------------------------------------------------------------
 
 export {
-  getTravellerTrust,
   getPublicTrustProfile,
-} from './public-trust-api';
+} from './public-trust.api';
 
+export {
+  getTravellerTrust,
+} from './trust.api';

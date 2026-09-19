@@ -1,6 +1,7 @@
 // src/features/journeys/models/index.ts
+
 // -----------------------------------------------------------------------------
-// sisiMove — Public Journey Models
+// sisiMove — Journey Models
 // -----------------------------------------------------------------------------
 //
 // Public barrel for Journey frontend models.
@@ -12,8 +13,12 @@
 //
 // import type {
 //   PublicJourney,
-//   PublicJourneyQuery,
-// } from "@/features/journeys";
+//   MyJourney,
+// } from '@/features/journeys';
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Public Journey
 // -----------------------------------------------------------------------------
 
 export type {
@@ -65,3 +70,35 @@ export type {
   PublicJourneyAsset,
   PublicJourneyAssetType,
 } from './public-journey-asset';
+
+// -----------------------------------------------------------------------------
+// Authenticated My Journey
+// -----------------------------------------------------------------------------
+//
+// MyJourney is intentionally separate from PublicJourney.
+//
+// PublicJourney:
+//   - marketplace discovery
+//   - publicly discoverable
+//   - publication-ready
+//
+// MyJourney:
+//   - authenticated owner's Journey
+//   - may be incomplete/draft
+//   - includes lifecycle information
+//   - components may be null
+//
+// -----------------------------------------------------------------------------
+
+export type {
+  MyJourney,
+  MyJourneyAsset,
+  MyJourneyCapacity,
+  MyJourneyCorridor,
+  MyJourneyLocation,
+  MyJourneyPreferences,
+  MyJourneyPricing,
+  MyJourneySchedule,
+  MyJourneyVehicle,
+  MyJourneyWaypoint,
+} from './my-journey';

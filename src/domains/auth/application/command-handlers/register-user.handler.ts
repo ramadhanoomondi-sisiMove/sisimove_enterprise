@@ -27,20 +27,50 @@
 //     Authentication
 //       └── ACTIVE
 //
-// The registration workflow deliberately does NOT create:
+//     FinancialAccount
+//       ├── USER / ACTIVE / KES
+//       └── FinancialAccountBalance
+//           ├── available = 0
+//           ├── pending   = 0
+//           ├── held      = 0
+//           └── version   = 1
+//
+// The Financial Account is foundational account infrastructure. It is created
+// through the Financial domain's application contract and is NOT constructed
+// directly by this handler.
+//
+// Registration deliberately does NOT create:
 //
 //     - IdentityRole;
 //     - Session;
 //     - Device;
 //     - Recovery;
 //     - OtpChallenge;
+//     - VerificationRequest;
 //     - Asset;
 //     - Journey;
 //     - Booking;
-//     - FinancialAccount.
+//     - FinancialTransaction;
+//     - FinancialTransactionEntry;
+//     - FinancialPayment;
+//     - FinancialPaymentMethod;
+//     - FinancialPaymentAttempt;
+//     - FinancialAccountHold;
+//     - FinancialAccountWithdrawal;
+//     - FinancialSettlement;
+//     - FinancialSettlementItem;
+//     - FinancialSettlementAllocation;
+//     - FinancialDisbursement;
+//     - FinancialDisbursementAttempt;
+//     - FinancialDisbursementDestination;
+//     - AccountingAccount;
+//     - AccountingPeriod;
+//     - AccountingJournal;
+//     - AccountingJournalEntry;
+//     - AccountingJournalLine.
 //
-// Registration establishes an account and its supporting marketplace
-// identity/trust/authentication records.
+// Registration establishes an account and its supporting marketplace,
+// trust, authentication, and foundational financial infrastructure.
 //
 // The user is NOT signed in by registration.
 //
@@ -69,6 +99,7 @@
 //     Social / TravellerProfile
 //     Trust
 //     Authentication
+//     Financial
 //
 // It does NOT:
 //
@@ -79,7 +110,8 @@
 //     - implement domain lifecycle rules;
 //     - assign Identity roles;
 //     - authenticate the newly registered user;
-//     - create a Session.
+//     - create a Session;
+//     - construct a FinancialAccountAggregate directly.
 //
 // Each aggregate remains responsible for its own domain behavior.
 //
@@ -95,6 +127,7 @@
 //     UnitOfWork.execute()
 //             │
 //             ├── Identity
+//             ├── Financial Account
 //             ├── Verification
 //             ├── TravellerProfile
 //             ├── Preferences
@@ -133,6 +166,53 @@
 //
 // Therefore this handler MUST NOT separately invoke ActivateIdentityHandler
 // for Identity.
+//
+// The resulting Identity public ID becomes the opaque owner reference used
+// when creating the user's Financial Account.
+//
+// -----------------------------------------------------------------------------
+//
+// FINANCIAL ACCOUNT
+//
+// Registration creates exactly one foundational Financial Account for the
+// newly created Identity.
+//
+// The Financial Account is created through:
+//
+//     CreateFinancialAccountCommand
+//             ↓
+//     CreateFinancialAccountHandler
+//             ↓
+//     FinancialAccountAggregate.create()
+//             ↓
+//     FinancialAccount
+//     FinancialAccountBalance
+//
+// Registration supplies only the domain inputs required by the Financial
+// Account creation contract:
+//
+//     ownerPublicId = identity.publicId
+//     type          = USER
+//     currency      = KES
+//
+// The Financial domain owns:
+//
+//     - FinancialAccount public ID;
+//     - FinancialAccountBalance;
+//     - initial ACTIVE status;
+//     - zero opening balance;
+//     - balance version;
+//
+// Therefore registration does NOT construct any of those values directly.
+//
+// The Identity public ID is passed as an opaque
+// FinancialAccountOwnerPublicId. The Financial domain does not establish a
+// persistence relation to Identity.
+//
+// Creating the account does NOT create financial activity.
+//
+// No transaction, payment, hold, withdrawal, settlement, disbursement, or
+// accounting journal is created during registration.
 //
 // -----------------------------------------------------------------------------
 //
@@ -294,6 +374,11 @@
 //
 //     new AuthenticationIdentityPublicId(...)
 //
+// The Financial domain independently receives the same Identity public ID
+// through:
+//
+//     FinancialAccountOwnerPublicId.create(identity.publicId.value)
+//
 // -----------------------------------------------------------------------------
 //
 // CORRELATION / CAUSATION
@@ -328,15 +413,19 @@
 //             │                              │
 //             ▼                              ▼
 //         Identity ACTIVE             password hash
-//             │                              │
-//             ├──► Verification               │
-//             │                              │
-//             ├──► TravellerProfile           │
-//             │         │                    │
-//             │         └──► Preferences     │
-//             │                              │
-//             ├──► TrustProfile              │
-//             │                              │
+//             │
+//             ├──► FinancialAccount
+//             │         │
+//             │         └──► Balance = 0
+//             │
+//             ├──► Verification
+//             │
+//             ├──► TravellerProfile
+//             │         │
+//             │         └──► Preferences
+//             │
+//             ├──► TrustProfile
+//             │
 //             └──────────────────────────────┤
 //                                            ▼
 //                                  CreateAuthenticationHandler
@@ -546,6 +635,40 @@ import { CreateTrustProfileHandler } from '../../../trust/application/handlers/t
 
 import { TrustProfileAggregate } from '../../../trust/domain/aggregates/trust-profile.aggregate';
 
+// -----------------------------------------------------------------------------
+// Financial Account — Application Tokens
+// -----------------------------------------------------------------------------
+
+import { FINANCIAL_ACCOUNT_TOKENS } from '../../../financial/application/financial-account.tokens';
+
+// -----------------------------------------------------------------------------
+// Financial Account — Command
+// -----------------------------------------------------------------------------
+
+import { CreateFinancialAccountCommand } from '../../../financial/application/commands/create-financial-account.command';
+
+// -----------------------------------------------------------------------------
+// Financial Account — Handler
+// -----------------------------------------------------------------------------
+
+import { CreateFinancialAccountHandler } from '../../../financial/application/command-handlers/create-financial-account.handler';
+
+// -----------------------------------------------------------------------------
+// Financial Account — Aggregate
+// -----------------------------------------------------------------------------
+
+import { FinancialAccountAggregate } from '../../../financial/domain/aggregates/financial-account.aggregate';
+
+// -----------------------------------------------------------------------------
+// Financial Account — Value Objects
+// -----------------------------------------------------------------------------
+
+import {
+  Currency,
+  FinancialAccountOwnerPublicId,
+  FinancialAccountType,
+} from '../../../financial/domain/value-objects';
+
 // =============================================================================
 // Result
 // =============================================================================
@@ -554,7 +677,7 @@ import { TrustProfileAggregate } from '../../../trust/domain/aggregates/trust-pr
  * Authoritative result returned after successful user registration.
  *
  * Registration establishes account, marketplace identity, trust, verification,
- * and authentication state.
+ * authentication, and foundational financial account state.
  *
  * Session and token state are intentionally absent because registration does
  * not authenticate the user.
@@ -565,6 +688,7 @@ export interface RegisterUserResult {
   readonly travellerProfile: TravellerProfileAggregate;
   readonly trustProfile: TrustProfileAggregate;
   readonly authentication: AuthenticationAggregate;
+  readonly financialAccount: FinancialAccountAggregate;
 }
 
 // =============================================================================
@@ -591,12 +715,6 @@ export class RegisterUserHandler implements CommandHandler<
   public constructor(
     // -------------------------------------------------------------------------
     // Unit of Work
-    // -------------------------------------------------------------------------
-    //
-    // The application layer depends on the UnitOfWork port.
-    //
-    // Infrastructure binds UNIT_OF_WORK to PrismaUnitOfWork.
-    //
     // -------------------------------------------------------------------------
 
     @Inject(UNIT_OF_WORK)
@@ -648,14 +766,14 @@ export class RegisterUserHandler implements CommandHandler<
     private readonly activateAuthenticationHandler: ActivateAuthenticationHandler,
 
     // -------------------------------------------------------------------------
-    // Password Hasher
+    // Financial Account
     // -------------------------------------------------------------------------
-    //
-    // The Authentication application boundary exposes PasswordHasher through
-    // its application-service DI token.
-    //
-    // The concrete BCrypt implementation remains infrastructure-owned.
-    //
+
+    @Inject(FINANCIAL_ACCOUNT_TOKENS.COMMAND_HANDLERS.CREATE)
+    private readonly createFinancialAccountHandler: CreateFinancialAccountHandler,
+
+    // -------------------------------------------------------------------------
+    // Password Hasher
     // -------------------------------------------------------------------------
 
     @Inject(AUTH_TOKENS.APPLICATION_SERVICES.PASSWORD_HASHER)
@@ -694,12 +812,6 @@ export class RegisterUserHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     // Terms acceptance
     // -------------------------------------------------------------------------
-    //
-    // Registration requires explicit acceptance of the applicable terms.
-    //
-    // This is an application-level registration precondition and therefore
-    // occurs before opening the database transaction.
-    // -------------------------------------------------------------------------
 
     if (command.termsAccepted !== true) {
       throw new IdentityInvariantException(
@@ -710,14 +822,6 @@ export class RegisterUserHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     // 2. Construct Identity value objects
     // -------------------------------------------------------------------------
-    //
-    // Identity owns email and phone-number semantics.
-    //
-    // Registration does not manually reproduce those validation rules.
-    //
-    // These values are validated before the transaction begins because they
-    // contain no persistence side effects.
-    // -------------------------------------------------------------------------
 
     const email = IdentityEmail.create(command.email);
     const phoneNumber = IdentityPhoneNumber.create(command.phoneNumber);
@@ -725,29 +829,10 @@ export class RegisterUserHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     // 3. Execute complete registration inside one UnitOfWork
     // -------------------------------------------------------------------------
-    //
-    // Everything below this boundary participates in the same transaction.
-    //
-    // The repositories used by the child application handlers resolve their
-    // Prisma client through PrismaTransactionContext.
-    //
-    // Consequently, an exception from any later operation causes the entire
-    // registration transaction to roll back.
-    // -------------------------------------------------------------------------
 
     return this.unitOfWork.execute(async () => {
       // -----------------------------------------------------------------------
       // 3.1 Create Identity
-      // -----------------------------------------------------------------------
-      //
-      // CreateIdentityHandler owns:
-      //
-      //     uniqueness
-      //     IdentityAggregate.create()
-      //     persistence
-      //     PENDING → ACTIVE
-      //
-      // Registration therefore does not call ActivateIdentityHandler separately.
       // -----------------------------------------------------------------------
 
       const identityCorrelationId = randomUUID();
@@ -763,7 +848,46 @@ export class RegisterUserHandler implements CommandHandler<
       );
 
       // -----------------------------------------------------------------------
-      // 3.2 Create Verification
+      // 3.2 Create Financial Account
+      // -----------------------------------------------------------------------
+      //
+      // The Identity now exists and therefore provides the opaque owner public
+      // ID required by the Financial domain.
+      //
+      // Registration creates one USER financial account denominated in KES.
+      //
+      // The Financial Account aggregate owns:
+      //
+      //     - account public ID;
+      //     - ACTIVE lifecycle state;
+      //     - initial zero balance;
+      //     - balance version.
+      //
+      // Registration deliberately does not construct those values.
+      // -----------------------------------------------------------------------
+
+      const financialAccountCorrelationId = randomUUID();
+
+      const financialAccountOwnerPublicId =
+        FinancialAccountOwnerPublicId.create(identity.publicId.value);
+
+      const financialAccountType = FinancialAccountType.create('USER');
+
+      const financialAccountCurrency = Currency.create('KES');
+
+      const createFinancialAccountCommand = new CreateFinancialAccountCommand(
+        financialAccountOwnerPublicId,
+        financialAccountType,
+        financialAccountCurrency,
+        financialAccountCorrelationId,
+      );
+
+      const financialAccount = await this.createFinancialAccountHandler.execute(
+        createFinancialAccountCommand,
+      );
+
+      // -----------------------------------------------------------------------
+      // 3.3 Create Verification
       // -----------------------------------------------------------------------
       //
       // Verification starts as:
@@ -785,20 +909,7 @@ export class RegisterUserHandler implements CommandHandler<
       );
 
       // -----------------------------------------------------------------------
-      // 3.3 Derive initial TravellerProfile handle
-      // -----------------------------------------------------------------------
-      //
-      // Persisted form:
-      //
-      //     ramadhan_omondi
-      //
-      // Display form:
-      //
-      //     @ramadhan_omondi
-      //
-      // The '@' prefix is not persisted.
-      //
-      // TravellerHandle performs final domain validation.
+      // 3.4 Derive initial TravellerProfile handle
       // -----------------------------------------------------------------------
 
       const handle = command.travellerName
@@ -807,10 +918,7 @@ export class RegisterUserHandler implements CommandHandler<
         .replace(/\s+/g, '_');
 
       // -----------------------------------------------------------------------
-      // 3.4 Create TravellerProfile
-      // -----------------------------------------------------------------------
-      //
-      // memberPublicId is the opaque public reference to Identity.
+      // 3.5 Create TravellerProfile
       // -----------------------------------------------------------------------
 
       const travellerProfileCorrelationId = randomUUID();
@@ -831,17 +939,7 @@ export class RegisterUserHandler implements CommandHandler<
       );
 
       // -----------------------------------------------------------------------
-      // 3.5 Create TravellerProfile preferences
-      // -----------------------------------------------------------------------
-      //
-      // The preferences handler requires the TravellerProfile aggregate ID,
-      // which is obtained from the aggregate created above.
-      //
-      // Registration uses the established defaults:
-      //
-      //     showJourneyHistory    = true
-      //     showJourneyStatistics = true
-      //     allowJourneyInvites   = true
+      // 3.6 Create TravellerProfile preferences
       // -----------------------------------------------------------------------
 
       const preferencesCorrelationId = randomUUID();
@@ -860,7 +958,7 @@ export class RegisterUserHandler implements CommandHandler<
       );
 
       // -----------------------------------------------------------------------
-      // 3.6 Create TrustProfile
+      // 3.7 Create TrustProfile
       // -----------------------------------------------------------------------
       //
       // TrustProfile starts as:
@@ -868,8 +966,6 @@ export class RegisterUserHandler implements CommandHandler<
       //     ACTIVE / NONE
       //
       // Its statistics are initialized by CreateTrustProfileHandler.
-      //
-      // Registration does not grant verification or award badges.
       // -----------------------------------------------------------------------
 
       const trustProfileCorrelationId = randomUUID();
@@ -886,18 +982,7 @@ export class RegisterUserHandler implements CommandHandler<
       );
 
       // -----------------------------------------------------------------------
-      // 3.7 Hash registration password
-      // -----------------------------------------------------------------------
-      //
-      // Plaintext password handling stops at the PasswordHasher boundary.
-      //
-      // The password is never passed to the Authentication domain.
-      //
-      // The concrete implementation may be BCrypt or another infrastructure
-      // implementation selected by the application's DI configuration.
-      //
-      // This operation remains inside the transaction so that no registration
-      // persistence can commit independently of the complete workflow.
+      // 3.8 Hash registration password
       // -----------------------------------------------------------------------
 
       const passwordHashValue = await this.passwordHasher.hash(
@@ -905,24 +990,13 @@ export class RegisterUserHandler implements CommandHandler<
       );
 
       // -----------------------------------------------------------------------
-      // 3.8 Convert password hash into Authentication value object
-      // -----------------------------------------------------------------------
-      //
-      // PasswordHasher intentionally returns a primitive string because it is a
-      // Foundation Security abstraction.
-      //
-      // Authentication owns the domain-specific AuthenticationPasswordHash
-      // value object.
+      // 3.9 Convert password hash into Authentication value object
       // -----------------------------------------------------------------------
 
       const passwordHash = AuthenticationPasswordHash.create(passwordHashValue);
 
       // -----------------------------------------------------------------------
-      // 3.9 Construct Authentication Identity reference
-      // -----------------------------------------------------------------------
-      //
-      // Authentication stores an opaque Identity public reference rather than
-      // the Identity aggregate's internal persistence ID.
+      // 3.10 Construct Authentication Identity reference
       // -----------------------------------------------------------------------
 
       const authenticationIdentityPublicId = new AuthenticationIdentityPublicId(
@@ -930,20 +1004,7 @@ export class RegisterUserHandler implements CommandHandler<
       );
 
       // -----------------------------------------------------------------------
-      // 3.10 Create Authentication
-      // -----------------------------------------------------------------------
-      //
-      // CreateAuthenticationHandler owns:
-      //
-      //     Authentication uniqueness
-      //     AuthenticationEntity.create()
-      //     AuthenticationAggregate.create()
-      //     AuthenticationCreatedEvent
-      //     persistence
-      //
-      // Its domain state initially becomes:
-      //
-      //     PENDING
+      // 3.11 Create Authentication
       // -----------------------------------------------------------------------
 
       const authenticationCorrelationId = randomUUID();
@@ -960,18 +1021,7 @@ export class RegisterUserHandler implements CommandHandler<
         );
 
       // -----------------------------------------------------------------------
-      // 3.11 Activate Authentication
-      // -----------------------------------------------------------------------
-      //
-      // Registration has successfully provisioned the credential.
-      //
-      // Unlike login, registration does not need to prove possession of the
-      // password through AuthenticateHandler because the plaintext password is
-      // already being provisioned through the trusted registration workflow.
-      //
-      // The dedicated lifecycle handler owns:
-      //
-      //     PENDING → ACTIVE
+      // 3.12 Activate Authentication
       // -----------------------------------------------------------------------
 
       const activateAuthenticationCommand = new ActivateAuthenticationCommand(
@@ -984,7 +1034,7 @@ export class RegisterUserHandler implements CommandHandler<
       );
 
       // -----------------------------------------------------------------------
-      // 3.12 Return complete registration result
+      // 3.13 Return complete registration result
       // -----------------------------------------------------------------------
       //
       // Returning from the UnitOfWork callback allows the UnitOfWork
@@ -999,6 +1049,7 @@ export class RegisterUserHandler implements CommandHandler<
         travellerProfile,
         trustProfile,
         authentication,
+        financialAccount,
       };
     });
   }

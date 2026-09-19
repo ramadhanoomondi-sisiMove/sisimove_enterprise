@@ -2,6 +2,7 @@
 // Foundation
 // -----------------------------------------------------------------------------
 
+import { Inject, Injectable } from '@nestjs/common';
 import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
 
 // -----------------------------------------------------------------------------
@@ -21,14 +22,24 @@ import { JourneyProviderPublicId } from '../../../domain/value-objects/journey-p
 import { JourneyStatusValueObject } from '../../../domain/value-objects/journey-status.vo';
 
 // -----------------------------------------------------------------------------
+// Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_TOKENS } from '../../journey.tokens';
+
+// -----------------------------------------------------------------------------
 // Query Handler
 // -----------------------------------------------------------------------------
 
+@Injectable()
 export class GetJourneysByProviderAndStatusQueryHandler implements QueryHandler<
   GetJourneysByProviderAndStatusQuery,
   JourneyEntity[]
 > {
-  constructor(private readonly repository: JourneyRepository) {}
+  constructor(
+    @Inject(JOURNEY_TOKENS.REPOSITORY)
+    private readonly repository: JourneyRepository,
+  ) {}
 
   async execute(
     query: GetJourneysByProviderAndStatusQuery,

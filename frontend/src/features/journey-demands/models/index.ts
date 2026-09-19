@@ -1,8 +1,8 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Public Journey Demand Models
+// sisiMove — Journey Demand Models
 // -----------------------------------------------------------------------------
 //
-// Public barrel for Journey Demand frontend models.
+// Public and authenticated Journey Demand frontend models.
 //
 // Consumers should normally import these models through the Journey Demand
 // feature boundary.
@@ -11,7 +11,20 @@
 //
 // import type {
 //   PublicJourneyDemand,
-// } from "@/features/journey-demands";
+//   MyJourneyDemand,
+// } from '@/features/journey-demands';
+//
+// Public models represent anonymous marketplace discovery.
+//
+// My Journey Demand models represent the authenticated requester's own
+// Journey Demand management projection.
+//
+// These two representations remain intentionally separate because they serve
+// different application boundaries.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Public Journey Demand
 // -----------------------------------------------------------------------------
 
 export type {
@@ -50,4 +63,28 @@ export type {
 export type {
   PublicJourneyDemandQuery,
 } from './public-journey-demand-query';
+
+// -----------------------------------------------------------------------------
+// My Journey Demand
+// -----------------------------------------------------------------------------
+//
+// Authenticated owner projection.
+//
+// All My Journey Demand nested models currently live in:
+//
+//     ./my-journey-demand
+//
+// They are therefore exported from the single model module rather than being
+// artificially split into separate files.
+// -----------------------------------------------------------------------------
+
+export type {
+  MyJourneyDemand,
+  MyJourneyDemandWaypoint,
+  MyJourneyDemandCorridor,
+  MyJourneyDemandSchedule,
+  MyJourneyDemandCapacity,
+  MyJourneyDemandPricing,
+  MyJourneyDemandParticipant,
+} from './my-journey-demand';
 

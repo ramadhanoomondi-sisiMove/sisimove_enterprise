@@ -28,7 +28,7 @@
 //
 // Traveller Profile and Trust Profile do NOT own the Journey.
 //
-// The public marketplace composition is:
+// Public marketplace composition:
 //
 // Journey
 //   └── providerPublicId
@@ -36,8 +36,6 @@
 //          └── Trust Profile public read model
 //
 // GetPublicJourneysQueryHandler owns this public-read composition.
-//
-// The handler returns the COMPLETE public marketplace Journey projection.
 //
 // The controller MUST NOT:
 //
@@ -51,6 +49,55 @@
 //
 // The public application query is therefore the single source of truth for
 // the public marketplace Journey representation.
+//
+//
+// AUTHENTICATED "MY JOURNEYS" READ
+// --------------------------------
+//
+// The authenticated My Journeys boundary is:
+//
+//     GET /journeys/me
+//
+// The provider identity is derived from the authenticated JWT through
+// CurrentIdentity. The client MUST NOT supply providerPublicId for this
+// endpoint.
+//
+// Flow:
+//
+//     JWT
+//       │
+//       ▼
+//     AuthenticatedIdentity.identityPublicId
+//       │
+//       ▼
+//     GetJourneysByProviderQuery
+//       │
+//       ▼
+//     JourneyAggregate[]
+//       │
+//       ▼
+//     MyJourneyMapper
+//       │
+//       ▼
+//     MyJourneyResponse[]
+//
+// The existing GetJourneysByProviderQueryHandler is reused.
+//
+// No new repository method is introduced.
+//
+// The controller is responsible only for HTTP transport and application
+// response mapping. Domain aggregates are not exposed directly through the
+// authenticated HTTP contract.
+//
+// Route ordering is intentional:
+//
+//     GET /journeys/me
+//
+// appears before:
+//
+//     GET /journeys/:journeyPublicId
+//
+// so "me" cannot be interpreted as a Journey public ID.
 //
 // -----------------------------------------------------------------------------
 
@@ -92,12 +139,16 @@ import {
 // -----------------------------------------------------------------------------
 // Authentication / Authorization
 // -----------------------------------------------------------------------------
+//
+// CurrentIdentity exposes the already-authenticated identity established by
+// JwtAuthGuard.
+//
+// AuthenticatedIdentity is the application-facing authenticated identity
+// contract.
+//
+// -----------------------------------------------------------------------------
 
-import {
-  JwtAuthGuard,
-  PermissionsGuard,
-  RequirePermissions,
-} from '../../../../../foundation/security/auth';
+import * as auth from '../../../../../foundation/security/auth';
 
 // -----------------------------------------------------------------------------
 // Foundation — Application Contracts
@@ -167,30 +218,13 @@ import {
 // Journey — Public Query Response
 // -----------------------------------------------------------------------------
 //
-// IMPORTANT:
-//
-// GetPublicJourneysQueryHandler returns the COMPLETE public marketplace
+// GetPublicJourneysQueryHandler returns the complete public marketplace
 // projection.
 //
 // PublicJourneyResponse is NOT a wrapper around JourneyEntity.
 //
-// It is the application read model consumed by the public marketplace:
+// It is the application read model consumed by the public marketplace.
 //
-//     publicId
-//     provider
-//       ├── traveller
-//       └── trust
-//     route
-//     schedule
-//     vehicle
-//     capacity
-//     pricing
-//     preferences
-//     assets
-//
-// The controller therefore returns PublicJourneyResponse directly.
-//
-// No HTTP-level reconstruction is required.
 // -----------------------------------------------------------------------------
 
 import type { PublicJourneyResponse } from '../../../application/query-handlers/journey/get-public-journeys.query-handler';
@@ -251,13 +285,38 @@ import {
 // JourneyResponseMapper remains the mapper for the existing internal Journey
 // HTTP representation.
 //
-// It is intentionally NOT used by the public marketplace endpoints.
+// It is intentionally NOT used by:
 //
-// Public marketplace responses are already projected by the application
-// public-read query handler.
+//     GET /journeys/public
+//
+// or:
+//
+//     GET /journeys/:journeyPublicId
+//
+// Those endpoints consume the application public-read projection directly.
+//
 // -----------------------------------------------------------------------------
 
 import { JourneyResponseMapper } from '../mappers/journey-response.mapper';
+
+// -----------------------------------------------------------------------------
+// Journey — Authenticated Response Mapper
+// -----------------------------------------------------------------------------
+//
+// MyJourneyMapper converts an owned JourneyAggregate into the stable
+// authenticated HTTP representation.
+//
+// The domain aggregate therefore never crosses the HTTP boundary.
+//
+// -----------------------------------------------------------------------------
+
+import { MyJourneyMapper } from '../../../application/mappers/my-journey.mapper';
+
+// -----------------------------------------------------------------------------
+// Journey — Authenticated Response
+// -----------------------------------------------------------------------------
+
+import type { MyJourneyResponse } from '../../../application/responses/my-journey.response';
 
 // -----------------------------------------------------------------------------
 // Journey — Domain Value Objects
@@ -281,12 +340,11 @@ import {
 // -----------------------------------------------------------------------------
 //
 // This response type belongs only to endpoints that intentionally expose the
-// existing Journey REST representation.
+// existing internal Journey REST representation.
 //
-// The public marketplace does NOT use this type.
+// The public marketplace and authenticated "my journeys" boundaries use their
+// own explicit application-facing contracts.
 //
-// Keeping the type derived from JourneyResponseMapper prevents duplication of
-// the internal Journey HTTP contract.
 // -----------------------------------------------------------------------------
 
 type JourneyEntityResponse = ReturnType<
@@ -413,6 +471,15 @@ export class JourneyController {
     // =========================================================================
     // Authenticated Journey Queries
     // =========================================================================
+    //
+    // GET /journeys/me uses the current authenticated identity as the provider
+    // reference.
+    //
+    // No providerPublicId is accepted from the client.
+    //
+    // The repository/query boundary remains unchanged.
+    //
+    // =========================================================================
 
     @Inject(JOURNEY_TOKENS.QUERY_HANDLERS.GET_BY_PROVIDER)
     private readonly getJourneysByProviderQueryHandler: QueryHandler<
@@ -452,11 +519,6 @@ export class JourneyController {
     //
     //     new GetPublicJourneysQuery(publicId)
     //
-    // Both use the same application public-read boundary.
-    //
-    // The query handler returns the complete PublicJourneyResponse projection.
-    //
-    // It does NOT return JourneyEntity[].
     // =========================================================================
 
     @Inject(JOURNEY_TOKENS.QUERY_HANDLERS.GET_PUBLIC_MANY)
@@ -565,36 +627,6 @@ export class JourneyController {
   // ---------------------------------------------------------------------------
   // Get Public Journeys
   // ---------------------------------------------------------------------------
-  //
-  // Primary Journey marketplace endpoint.
-  //
-  // No filters:
-  //
-  //     GET /journeys/public
-  //
-  //     -> all publicly discoverable Journeys
-  //
-  // Filtered:
-  //
-  //     GET /journeys/public?from=Nairobi&to=Kisumu&date=2026-09-18
-  //
-  // The application query handler owns:
-  //
-  // - public visibility;
-  // - Journey public projection;
-  // - provider Traveller composition;
-  // - provider Trust composition.
-  //
-  // The controller only transports the application result to HTTP.
-  //
-  // IMPORTANT:
-  //
-  // This endpoint MUST return the complete PublicJourneyResponse.
-  //
-  // It must NOT convert the response through JourneyResponseMapper because
-  // JourneyResponseMapper represents the internal Journey HTTP contract and
-  // intentionally does not represent the marketplace read model.
-  // ---------------------------------------------------------------------------
 
   @ApiOperation({
     summary: 'Get public journeys',
@@ -635,16 +667,6 @@ export class JourneyController {
 
   // ---------------------------------------------------------------------------
   // Search Published Journeys
-  // ---------------------------------------------------------------------------
-  //
-  // This remains the existing Journey search contract.
-  //
-  // It is intentionally separate from the marketplace public-read projection.
-  // The marketplace landing page uses /public so that all published journeys
-  // can be displayed before filtering.
-  //
-  // This endpoint continues to expose the established internal Journey HTTP
-  // representation through JourneyResponseMapper.
   // ---------------------------------------------------------------------------
 
   @ApiOperation({
@@ -691,6 +713,52 @@ export class JourneyController {
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
+  // Get My Journeys
+  // ---------------------------------------------------------------------------
+  //
+  // Authenticated Journey-management boundary.
+  //
+  //     GET /journeys/me
+  //
+  // Ownership:
+  //
+  //     JWT
+  //       ↓
+  //     AuthenticatedIdentity.identityPublicId
+  //       ↓
+  //     GetJourneysByProviderQuery
+  //
+  // The client cannot choose providerPublicId.
+  //
+  // The query handler still returns JourneyAggregate[] because that is the
+  // existing application query contract.
+  //
+  // The controller then converts those aggregates into MyJourneyResponse
+  // objects before crossing the HTTP boundary.
+  //
+  // This prevents the domain aggregate from becoming an accidental REST
+  // contract.
+  // ---------------------------------------------------------------------------
+
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get my journeys',
+    description:
+      'Returns journeys belonging to the currently authenticated journey provider.',
+  })
+  @Get('me')
+  @UseGuards(auth.JwtAuthGuard)
+  public async getMyJourneys(
+    @auth.CurrentIdentity() identity: auth.AuthenticatedIdentity,
+  ): Promise<readonly MyJourneyResponse[]> {
+    const journeys = await this.getJourneysByProviderQueryHandler.execute(
+      new GetJourneysByProviderQuery(identity.identityPublicId),
+    );
+
+    return journeys.map((journey) => MyJourneyMapper.fromAggregate(journey));
+  }
+
+  // ---------------------------------------------------------------------------
   // Get Journeys By Provider And Status
   // ---------------------------------------------------------------------------
 
@@ -714,8 +782,8 @@ export class JourneyController {
     example: 'PUBLISHED',
   })
   @Get('provider/:providerPublicId/status/:status')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:read')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:read')
   public async getByProviderAndStatus(
     @Param('providerPublicId') providerPublicId: string,
     @Param('status') status: string,
@@ -745,8 +813,8 @@ export class JourneyController {
     description: 'Public ID of the journey provider.',
   })
   @Get('provider/:providerPublicId')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:read')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:read')
   public async getByProvider(
     @Param('providerPublicId') providerPublicId: string,
   ): Promise<readonly JourneyAggregate[]> {
@@ -761,26 +829,6 @@ export class JourneyController {
 
   // ---------------------------------------------------------------------------
   // Get Public Journey
-  // ---------------------------------------------------------------------------
-  //
-  // There is deliberately NO:
-  //
-  //     GetPublicJourneyQuery
-  //
-  // Detail retrieval remains part of GetPublicJourneysQuery.
-  //
-  //     GET /journeys/:journeyPublicId
-  //
-  // is therefore:
-  //
-  //     new GetPublicJourneysQuery(journeyPublicId)
-  //
-  // The application query handler returns a one-element collection when the
-  // Journey exists and is publicly discoverable.
-  //
-  // The controller returns that public projection directly.
-  //
-  // No domain entity mapping occurs here.
   // ---------------------------------------------------------------------------
 
   @ApiOperation({
@@ -820,8 +868,8 @@ export class JourneyController {
     description: 'Creates a new journey for an authenticated provider.',
   })
   @Post()
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:create')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:create')
   public async create(
     @Body() dto: CreateJourneyDto,
   ): Promise<JourneyAggregate> {
@@ -846,8 +894,8 @@ export class JourneyController {
     description: 'Public ID of the Journey.',
   })
   @Post(':journeyPublicId/publish')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:publish')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:publish')
   public async publish(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: PublishJourneyDto,
@@ -878,8 +926,8 @@ export class JourneyController {
     description: 'Public ID of the Journey.',
   })
   @Post(':journeyPublicId/start')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:start')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:start')
   public async start(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: StartJourneyDto,
@@ -910,8 +958,8 @@ export class JourneyController {
     description: 'Public ID of the Journey.',
   })
   @Post(':journeyPublicId/complete')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:complete')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:complete')
   public async complete(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: CompleteJourneyDto,
@@ -942,8 +990,8 @@ export class JourneyController {
     description: 'Public ID of the Journey.',
   })
   @Post(':journeyPublicId/cancel')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:cancel')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:cancel')
   public async cancel(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: CancelJourneyDto,
@@ -975,8 +1023,8 @@ export class JourneyController {
     description: 'Public ID of the Journey.',
   })
   @Post(':journeyPublicId/expire')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:expire')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:expire')
   public async expire(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: ExpireJourneyDto,
@@ -994,10 +1042,6 @@ export class JourneyController {
   // ===========================================================================
   // CORRIDOR
   // ===========================================================================
-
-  // ---------------------------------------------------------------------------
-  // Get Public Corridor
-  // ---------------------------------------------------------------------------
 
   @ApiOperation({
     summary: 'Get public journey corridor',
@@ -1018,10 +1062,6 @@ export class JourneyController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Attach Corridor
-  // ---------------------------------------------------------------------------
-
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Attach corridor',
@@ -1034,8 +1074,8 @@ export class JourneyController {
     description: 'Public ID of the Journey.',
   })
   @Post(':journeyPublicId/corridor')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:corridor:attach')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:corridor:attach')
   public async attachCorridor(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: AttachCorridorDto,
@@ -1049,10 +1089,6 @@ export class JourneyController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Remove Corridor
-  // ---------------------------------------------------------------------------
-
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Remove corridor',
@@ -1065,8 +1101,8 @@ export class JourneyController {
     description: 'Public ID of the Journey.',
   })
   @Delete(':journeyPublicId/corridor')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:corridor:remove')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:corridor:remove')
   public async removeCorridor(
     @Param('journeyPublicId') journeyPublicId: string,
   ): Promise<void> {
@@ -1141,8 +1177,8 @@ export class JourneyController {
     description: 'Public ID of the Journey.',
   })
   @Post(':journeyPublicId/waypoints')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:waypoint:add')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:waypoint:add')
   public async addWaypoint(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: AddWaypointDto,
@@ -1174,8 +1210,8 @@ export class JourneyController {
     description: 'Public ID of the Waypoint.',
   })
   @Delete(':journeyPublicId/waypoints/:waypointPublicId')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:waypoint:remove')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:waypoint:remove')
   public async removeWaypoint(
     @Param('journeyPublicId') journeyPublicId: string,
     @Param('waypointPublicId') waypointPublicId: string,
@@ -1212,10 +1248,6 @@ export class JourneyController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Attach Journey Schedule
-  // ---------------------------------------------------------------------------
-
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Attach journey schedule',
@@ -1228,8 +1260,8 @@ export class JourneyController {
     description: 'Public ID of the Journey.',
   })
   @Post(':journeyPublicId/schedule')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:schedule:attach')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:schedule:attach')
   public async attachSchedule(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: AttachScheduleDto,
@@ -1243,10 +1275,6 @@ export class JourneyController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Remove Journey Schedule
-  // ---------------------------------------------------------------------------
-
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Remove journey schedule',
@@ -1259,8 +1287,8 @@ export class JourneyController {
     description: 'Public ID of the Journey.',
   })
   @Delete(':journeyPublicId/schedule')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:schedule:remove')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:schedule:remove')
   public async removeSchedule(
     @Param('journeyPublicId') journeyPublicId: string,
   ): Promise<void> {
@@ -1295,10 +1323,6 @@ export class JourneyController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Attach Journey Vehicle
-  // ---------------------------------------------------------------------------
-
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Attach journey vehicle',
@@ -1311,8 +1335,8 @@ export class JourneyController {
     description: 'Public ID of the Journey.',
   })
   @Post(':journeyPublicId/vehicle')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:vehicle:attach')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:vehicle:attach')
   public async attachVehicle(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: AttachVehicleDto,
@@ -1326,13 +1350,9 @@ export class JourneyController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Remove Journey Vehicle
-  // ---------------------------------------------------------------------------
-
   @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Remove journey vehicle',
+    summary: 'Remove vehicle',
     description: 'Removes the vehicle from a journey.',
   })
   @ApiParam({
@@ -1342,8 +1362,8 @@ export class JourneyController {
     description: 'Public ID of the Journey.',
   })
   @Delete(':journeyPublicId/vehicle')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:vehicle:remove')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:vehicle:remove')
   public async removeVehicle(
     @Param('journeyPublicId') journeyPublicId: string,
   ): Promise<void> {
@@ -1378,10 +1398,6 @@ export class JourneyController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Attach Journey Capacity
-  // ---------------------------------------------------------------------------
-
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Attach journey capacity',
@@ -1394,8 +1410,8 @@ export class JourneyController {
     description: 'Public ID of the Journey.',
   })
   @Post(':journeyPublicId/capacity')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:capacity:attach')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:capacity:attach')
   public async attachCapacity(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: AttachCapacityDto,
@@ -1409,10 +1425,6 @@ export class JourneyController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Remove Journey Capacity
-  // ---------------------------------------------------------------------------
-
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Remove journey capacity',
@@ -1425,8 +1437,8 @@ export class JourneyController {
     description: 'Public ID of the Journey.',
   })
   @Delete(':journeyPublicId/capacity')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:capacity:remove')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:capacity:remove')
   public async removeCapacity(
     @Param('journeyPublicId') journeyPublicId: string,
   ): Promise<void> {
@@ -1458,10 +1470,6 @@ export class JourneyController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Attach Journey Pricing
-  // ---------------------------------------------------------------------------
-
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Attach journey pricing',
@@ -1474,8 +1482,8 @@ export class JourneyController {
     description: 'Public ID of the Journey.',
   })
   @Post(':journeyPublicId/pricing')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:pricing:attach')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:pricing:attach')
   public async attachPricing(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: AttachPricingDto,
@@ -1489,10 +1497,6 @@ export class JourneyController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Remove Journey Pricing
-  // ---------------------------------------------------------------------------
-
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Remove journey pricing',
@@ -1505,8 +1509,8 @@ export class JourneyController {
     description: 'Public ID of the Journey.',
   })
   @Delete(':journeyPublicId/pricing')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:pricing:remove')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:pricing:remove')
   public async removePricing(
     @Param('journeyPublicId') journeyPublicId: string,
   ): Promise<void> {
@@ -1538,10 +1542,6 @@ export class JourneyController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Attach Journey Preferences
-  // ---------------------------------------------------------------------------
-
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Attach journey preferences',
@@ -1554,8 +1554,8 @@ export class JourneyController {
     description: 'Public ID of the Journey.',
   })
   @Post(':journeyPublicId/preferences')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:preferences:attach')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:preferences:attach')
   public async attachPreferences(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: AttachPreferencesDto,
@@ -1569,10 +1569,6 @@ export class JourneyController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Remove Journey Preferences
-  // ---------------------------------------------------------------------------
-
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Remove journey preferences',
@@ -1585,8 +1581,8 @@ export class JourneyController {
     description: 'Public ID of the Journey.',
   })
   @Delete(':journeyPublicId/preferences')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:preferences:remove')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:preferences:remove')
   public async removePreferences(
     @Param('journeyPublicId') journeyPublicId: string,
   ): Promise<void> {
@@ -1621,10 +1617,6 @@ export class JourneyController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Get Public Journey Asset
-  // ---------------------------------------------------------------------------
-
   @ApiOperation({
     summary: 'Get public journey asset',
     description:
@@ -1655,10 +1647,6 @@ export class JourneyController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Attach Journey Asset
-  // ---------------------------------------------------------------------------
-
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Attach journey asset',
@@ -1671,8 +1659,8 @@ export class JourneyController {
     description: 'Public ID of the Journey.',
   })
   @Post(':journeyPublicId/assets')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:asset:attach')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:asset:attach')
   public async attachAsset(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: AttachAssetDto,
@@ -1685,10 +1673,6 @@ export class JourneyController {
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Remove Journey Asset
-  // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -1708,8 +1692,8 @@ export class JourneyController {
     description: 'Public ID of the Journey asset.',
   })
   @Delete(':journeyPublicId/assets/:assetPublicId')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey:asset:remove')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:asset:remove')
   public async removeAsset(
     @Param('journeyPublicId') journeyPublicId: string,
     @Param('assetPublicId') assetPublicId: string,
@@ -1729,12 +1713,6 @@ export class JourneyController {
 
   // ---------------------------------------------------------------------------
   // Parse Journey Status
-  // ---------------------------------------------------------------------------
-  //
-  // The controller performs only transport-level normalization here.
-  //
-  // The resulting enum is passed into the application query and does not
-  // become part of the public marketplace read model.
   // ---------------------------------------------------------------------------
 
   private parseJourneyStatus(value: string): JourneyStatus {

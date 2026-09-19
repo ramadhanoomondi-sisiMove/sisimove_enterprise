@@ -83,14 +83,14 @@ export interface UseTravellerProfileOptions {
    * When supplied, the hook loads the profile directly by its public profile
    * identifier.
    */
-  publicId?: string;
+  readonly publicId?: string;
 
   /**
    * Member public identifier.
    *
    * When supplied, the hook resolves the associated public Traveller Profile.
    */
-  memberPublicId?: string;
+  readonly memberPublicId?: string;
 
   /**
    * Public Traveller handle.
@@ -102,7 +102,7 @@ export interface UseTravellerProfileOptions {
    *
    *   /travellers/:handle
    */
-  handle?: string;
+  readonly handle?: string;
 
   /**
    * Controls whether the query is allowed to execute.
@@ -110,8 +110,18 @@ export interface UseTravellerProfileOptions {
    * This can be used by parent components when the identifier becomes
    * available asynchronously.
    */
-  enabled?: boolean;
+  readonly enabled?: boolean;
 }
+
+
+// -----------------------------------------------------------------------------
+// Lookup Type
+// -----------------------------------------------------------------------------
+
+type TravellerProfileLookupType =
+  | 'public-id'
+  | 'member-public-id'
+  | 'handle';
 
 
 // -----------------------------------------------------------------------------
@@ -131,13 +141,14 @@ export interface UseTravellerProfileOptions {
  *
  *   publicId → memberPublicId → handle
  *
- * This keeps the query selection deterministic while allowing callers to
- * provide whichever public reference is available in their read model.
+ * This keeps query selection deterministic while allowing callers to provide
+ * whichever public reference is available in their read model.
  */
 export function useTravellerProfile(
   options: UseTravellerProfileOptions,
 ) {
-  const normalizedPublicId = options.publicId?.trim() ?? '';
+  const normalizedPublicId =
+    options.publicId?.trim() ?? '';
 
   const normalizedMemberPublicId =
     options.memberPublicId?.trim() ?? '';
@@ -145,7 +156,8 @@ export function useTravellerProfile(
   const normalizedHandle =
     options.handle?.trim() ?? '';
 
-  const hasPublicId = normalizedPublicId.length > 0;
+  const hasPublicId =
+    normalizedPublicId.length > 0;
 
   const hasMemberPublicId =
     normalizedMemberPublicId.length > 0;
@@ -153,28 +165,71 @@ export function useTravellerProfile(
   const hasHandle =
     normalizedHandle.length > 0;
 
-  const lookupType = hasPublicId
-    ? 'public-id'
-    : hasMemberPublicId
-      ? 'member-public-id'
-      : 'handle';
+  // ---------------------------------------------------------------------------
+  // Deterministic lookup selection
+  // ---------------------------------------------------------------------------
+  //
+  // Public profile ID has highest precedence, followed by member public ID,
+  // followed by handle.
+  //
+  // `lookupType` and `lookupValue` are derived together so the query key and
+  // query function always describe the same lookup operation.
+  //
+  // ---------------------------------------------------------------------------
 
-  const lookupValue = hasPublicId
-    ? normalizedPublicId
-    : hasMemberPublicId
-      ? normalizedMemberPublicId
-      : normalizedHandle;
+  const lookupType: TravellerProfileLookupType | null =
+    hasPublicId
+      ? 'public-id'
+      : hasMemberPublicId
+        ? 'member-public-id'
+        : hasHandle
+          ? 'handle'
+          : null;
+
+  const lookupValue =
+    hasPublicId
+      ? normalizedPublicId
+      : hasMemberPublicId
+        ? normalizedMemberPublicId
+        : normalizedHandle;
 
   const enabled =
     options.enabled !== false &&
+    lookupType !== null &&
     lookupValue.length > 0;
 
   return useQuery<PublicTraveller | null, Error>({
+    // -------------------------------------------------------------------------
+    // Query key
+    // -------------------------------------------------------------------------
+    //
+    // The lookup type is part of the key intentionally.
+    //
+    // These are different server queries:
+    //
+    //   ['traveller-profile', 'handle', 'ramadhan']
+    //   ['traveller-profile', 'member-public-id', 'MEM-123']
+    //
+    // Even if they ultimately resolve to the same Traveller Profile, TanStack
+    // Query should not be forced to treat the two lookup boundaries as the
+    // same request.
+    //
+    // -------------------------------------------------------------------------
+
     queryKey: [
       TRAVELLER_PROFILE_QUERY_KEY,
       lookupType,
       lookupValue,
     ],
+
+    // -------------------------------------------------------------------------
+    // Query function
+    // -------------------------------------------------------------------------
+    //
+    // The API layer owns transport details and response mapping. The hook only
+    // selects the appropriate public API operation.
+    //
+    // -------------------------------------------------------------------------
 
     queryFn: () => {
       if (hasPublicId) {
@@ -202,4 +257,3 @@ export function useTravellerProfile(
 
 
 export default useTravellerProfile;
-

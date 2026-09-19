@@ -4,6 +4,7 @@
 // Foundation
 // -----------------------------------------------------------------------------
 
+import { Inject, Injectable } from '@nestjs/common';
 import type { CommandHandler } from '../../../../../foundation/kernel/application/command-handler';
 
 // -----------------------------------------------------------------------------
@@ -25,14 +26,24 @@ import { JourneyNotFoundException } from '../../../domain/exceptions';
 import type { JourneyRepository } from '../../../domain/repositories/journey.repository';
 
 // -----------------------------------------------------------------------------
+// Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_TOKENS } from '../../journey.tokens';
+
+// -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
+@Injectable()
 export class RemoveVehicleHandler implements CommandHandler<
   RemoveJourneyVehicleCommand,
   void
 > {
-  constructor(private readonly repository: JourneyRepository) {}
+  constructor(
+    @Inject(JOURNEY_TOKENS.REPOSITORY)
+    private readonly repository: JourneyRepository,
+  ) {}
 
   async execute(command: RemoveJourneyVehicleCommand): Promise<void> {
     // -------------------------------------------------------------------------

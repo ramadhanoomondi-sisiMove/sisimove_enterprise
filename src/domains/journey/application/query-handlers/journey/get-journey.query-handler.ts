@@ -2,6 +2,7 @@
 // Foundation
 // -----------------------------------------------------------------------------
 
+import { Inject, Injectable } from '@nestjs/common';
 import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
 
 // -----------------------------------------------------------------------------
@@ -24,14 +25,24 @@ import type { JourneyRepository } from '../../../domain/repositories/journey.rep
 import { JourneyNotFoundException } from '../../../domain/exceptions';
 
 // -----------------------------------------------------------------------------
+// Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_TOKENS } from '../../journey.tokens';
+
+// -----------------------------------------------------------------------------
 // Query Handler
 // -----------------------------------------------------------------------------
 
+@Injectable()
 export class GetJourneyQueryHandler implements QueryHandler<
   GetJourneyQuery,
   JourneyAggregate | null
 > {
-  constructor(private readonly repository: JourneyRepository) {}
+  constructor(
+    @Inject(JOURNEY_TOKENS.REPOSITORY)
+    private readonly repository: JourneyRepository,
+  ) {}
 
   async execute(query: GetJourneyQuery): Promise<JourneyAggregate | null> {
     // -------------------------------------------------------------------------

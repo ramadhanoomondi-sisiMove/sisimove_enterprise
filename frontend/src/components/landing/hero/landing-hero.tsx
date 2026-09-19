@@ -18,6 +18,26 @@
 // The illustration is supporting visual context, not a separate feature card.
 //
 // -----------------------------------------------------------------------------
+//
+// PUBLIC ACTION BOUNDARY
+//
+// This hero belongs to the public marketplace.
+//
+// Public visitors may:
+//
+// - Explore journeys.
+// - View marketplace content.
+// - View journey and demand details.
+//
+// Protected actions enter the authentication boundary:
+//
+// - Share a travel plan → /login
+//
+// The hero does not inspect authentication state, perform authorization, or
+// decide whether the authenticated user is allowed to create a demand.
+// Those decisions belong to the authenticated application flow.
+//
+// -----------------------------------------------------------------------------
 
 import Link from 'next/link';
 
@@ -28,7 +48,14 @@ import {
   UsersRound,
 } from 'lucide-react';
 
-import { cn } from '@/foundation';
+import {
+  cn,
+} from '@/foundation';
+
+import {
+  AUTHENTICATION_ROUTES,
+} from '@/foundation/routing';
+
 
 // -----------------------------------------------------------------------------
 // Props
@@ -37,6 +64,7 @@ import { cn } from '@/foundation';
 export interface LandingHeroProps {
   readonly className?: string;
 }
+
 
 // -----------------------------------------------------------------------------
 // Component
@@ -147,6 +175,7 @@ export function LandingHero({
               )}
             >
               Going somewhere?
+
               <span className="block text-[var(--brand)]">
                 Someone may be going your way.
               </span>
@@ -174,6 +203,9 @@ export function LandingHero({
                 'sm:mt-6',
               )}
             >
+              {/* ----------------------------------------------------------- */}
+              {/* Explore journeys                                             */}
+              {/* ----------------------------------------------------------- */}
               <Link
                 href="#marketplace"
                 className={cn(
@@ -198,8 +230,11 @@ export function LandingHero({
                 />
               </Link>
 
+              {/* ----------------------------------------------------------- */}
+              {/* Share travel plan                                            */}
+              {/* ----------------------------------------------------------- */}
               <Link
-                href="/demands/create"
+                href={AUTHENTICATION_ROUTES.LOGIN}
                 className={cn(
                   'inline-flex min-h-10 items-center justify-center',
                   'rounded-[var(--radius-md)]',
@@ -258,6 +293,7 @@ export function LandingHero({
           {/* =============================================================== */}
           <div className="relative min-w-0">
             {/*
+
              * This is intentionally NOT a separate card.
              *
              * It has no independent background surface or shadow. The hero's

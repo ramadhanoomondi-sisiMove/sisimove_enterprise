@@ -7,7 +7,7 @@
 // Responsibilities:
 // - Provide secondary public navigation.
 // - Reinforce the sisiMove brand.
-// - Provide basic legal/support entry points.
+// - Provide public account and support entry points.
 // - Remain independent of authenticated application state.
 //
 // Architectural boundary:
@@ -21,20 +21,31 @@
 // Account routes remain ordinary public links. Authentication behavior is
 // owned by the authentication boundary.
 //
+// Routing:
+//
+// - Public and authentication routes are consumed from their canonical
+//   routing boundaries.
+// - This component must not invent application routes.
+//
 // -----------------------------------------------------------------------------
 
 import Link from 'next/link';
 
 import {
   Compass,
-  HelpCircle,
   UserRound,
   type LucideIcon,
 } from 'lucide-react';
 
 import { cn } from '@/foundation';
 
+import {
+  AUTHENTICATION_ROUTES,
+  PUBLIC_ROUTES,
+} from '@/foundation/routing';
+
 import { Container } from '../ui';
+
 
 // =============================================================================
 // Types
@@ -51,6 +62,7 @@ interface FooterGroupProps {
   readonly links: readonly FooterLink[];
 }
 
+
 // =============================================================================
 // Navigation
 // =============================================================================
@@ -58,44 +70,32 @@ interface FooterGroupProps {
 // Keep navigation declarative.
 //
 // The footer should not contain conditional routing or authentication logic.
+// Only routes that currently belong to the application's canonical routing
+// contract are referenced here.
 // -----------------------------------------------------------------------------
 
 const exploreLinks: readonly FooterLink[] = [
   {
-    href: '/',
+    href: PUBLIC_ROUTES.HOME,
     label: 'Explore',
   },
   {
-    href: '/how-it-works',
+    href: PUBLIC_ROUTES.HOW_IT_WORKS,
     label: 'How it works',
   },
 ];
 
 const accountLinks: readonly FooterLink[] = [
   {
-    href: '/login',
+    href: AUTHENTICATION_ROUTES.LOGIN,
     label: 'Sign in',
   },
   {
-    href: '/register',
+    href: AUTHENTICATION_ROUTES.REGISTER,
     label: 'Join sisiMove',
   },
 ];
 
-const supportLinks: readonly FooterLink[] = [
-  {
-    href: '/support',
-    label: 'Support',
-  },
-  {
-    href: '/terms',
-    label: 'Terms',
-  },
-  {
-    href: '/privacy',
-    label: 'Privacy',
-  },
-];
 
 // =============================================================================
 // Footer Link List
@@ -134,6 +134,7 @@ function FooterLinkList({
   );
 }
 
+
 // =============================================================================
 // Footer Group
 // =============================================================================
@@ -167,6 +168,7 @@ function FooterGroup({
   );
 }
 
+
 // =============================================================================
 // Site Footer
 // =============================================================================
@@ -195,7 +197,7 @@ export function SiteFooter() {
             'sm:grid-cols-2',
             'sm:gap-x-10 sm:gap-y-8',
             'sm:py-9',
-            'lg:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))]',
+            'lg:grid-cols-[minmax(0,2fr)_repeat(2,minmax(0,1fr))]',
             'lg:gap-12',
             'lg:py-10',
           )}
@@ -206,7 +208,7 @@ export function SiteFooter() {
 
           <div className="min-w-0 max-w-md">
             <Link
-              href="/"
+              href={PUBLIC_ROUTES.HOME}
               aria-label="sisiMove home"
               className={cn(
                 'inline-flex items-center',
@@ -257,16 +259,6 @@ export function SiteFooter() {
             icon={UserRound}
             links={accountLinks}
           />
-
-          {/* ===============================================================
-              Support
-          =============================================================== */}
-
-          <FooterGroup
-            title="Support"
-            icon={HelpCircle}
-            links={supportLinks}
-          />
         </div>
 
         {/* ===================================================================
@@ -297,3 +289,6 @@ export function SiteFooter() {
     </footer>
   );
 }
+
+export default SiteFooter;
+

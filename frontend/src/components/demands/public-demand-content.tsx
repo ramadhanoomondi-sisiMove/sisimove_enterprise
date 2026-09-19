@@ -35,7 +35,9 @@
 // - construct storage URLs;
 // - create or mutate a Demand;
 // - convert a Demand into a Journey;
-// - implement booking or matching business logic.
+// - implement matching business logic;
+// - implement authentication;
+// - implement verification.
 //
 // IMPORTANT:
 //
@@ -53,36 +55,58 @@
 //
 // -----------------------------------------------------------------------------
 //
-// Presentation boundary:
+// PUBLIC ACTION MODEL
 //
-// Route
-//   ↓
-// PublicDemandContent
-//   ↓
-// useJourneyDemand()
-//   ↓
-// PublicJourneyDemand
-//   ↓
-// requester / trust / route / schedule / capacity / pricing / participants
+// Viewing the Demand:
+//
+//     /demands/[publicId]
+//              ↓
+//          public access
+//
+// Joining the Demand:
+//
+//     click "Join this demand"
+//              ↓
+//     LoginRequiredModal
+//              ↓
+//       ┌──────┴──────┐
+//       ↓             ↓
+//    Sign in       Join sisiMove
+//
+// Authentication and verification remain outside this presentation boundary.
 //
 // -----------------------------------------------------------------------------
 //
-// Asset boundary:
+// RESPONSIVE LAYOUT
 //
-// PublicJourneyDemand
-//   ├── requester.traveller.avatar ──> PublicAssetImage
-//   └── requester.trust.badges[] ────> TrustSummary
+// Mobile / tablet:
 //
-// The page never renders `asset.url` directly.
+//     Main content
+//     Requester
+//     Join
+//     Provider opportunity
+//
+// Desktop:
+//
+//     ┌──────────────────────────────┬──────────────────────┐
+//     │ Main Demand content          │ Requester            │
+//     │                              │ Join                 │
+//     │                              │ Provider opportunity  │
+//     └──────────────────────────────┴──────────────────────┘
+//
+// The desktop split begins at `xl` so tablet and smaller laptop widths retain
+// enough room for route names, dates, and demand information.
 // -----------------------------------------------------------------------------
 
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 
+import { LoginRequiredModal } from '@/components/authentication/login-required-modal';
 import { PublicAssetImage } from '@/components/landing/shared/assets';
-import {TravellerSummary } from '@/components/landing/shared/traveller';
-import { TrustSummary,} from '@/components/landing/shared/trust';
+import { TravellerSummary } from '@/components/landing/shared/traveller';
+import { TrustSummary } from '@/components/landing/shared/trust';
 import { useJourneyDemand } from '@/features/journey-demands';
 import type {
   PublicJourneyDemand,
@@ -98,14 +122,6 @@ export interface PublicDemandContentProps {
    * Stable public Journey Demand identifier supplied by the public route.
    */
   readonly publicId: string;
-
-  /**
-   * Optional public action URL for joining this Demand.
-   *
-   * URL construction belongs to the application/page orchestration layer.
-   * This component only renders the supplied navigation target.
-   */
-  readonly joinHref?: string;
 }
 
 // =============================================================================
@@ -248,15 +264,15 @@ function LoadingState() {
       className="section"
     >
       <div className="page-container">
-        <div className="mx-auto max-w-5xl animate-pulse space-y-6">
+        <div className="mx-auto max-w-5xl animate-pulse space-y-5 sm:space-y-6">
           <div className="h-5 w-32 rounded bg-[var(--background-muted)]" />
 
-          <div className="surface space-y-6 p-6 sm:p-8">
+          <div className="surface space-y-6 p-4 sm:p-6 lg:p-8">
             <div className="h-5 w-28 rounded bg-[var(--background-muted)]" />
 
-            <div className="h-10 w-3/4 rounded bg-[var(--background-muted)]" />
+            <div className="h-10 w-full max-w-3xl rounded bg-[var(--background-muted)]" />
 
-            <div className="h-5 w-1/2 rounded bg-[var(--background-muted)]" />
+            <div className="h-5 w-full max-w-xl rounded bg-[var(--background-muted)]" />
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="h-24 rounded bg-[var(--background-muted)]" />
@@ -284,13 +300,13 @@ function ErrorState({
         <div className="mx-auto max-w-3xl">
           <div
             role="alert"
-            className="surface border border-[color:rgb(220_38_38_/_0.2)] p-6 sm:p-8"
+            className="surface border border-[color:rgb(220_38_38_/_0.2)] p-4 sm:p-6 lg:p-8"
           >
             <h1 className="text-lg font-semibold text-[var(--foreground)]">
               Unable to load this travel demand
             </h1>
 
-            <p className="mt-2 text-sm text-[var(--foreground-secondary)]">
+            <p className="mt-2 break-words text-sm leading-6 text-[var(--foreground-secondary)]">
               {message}
             </p>
 
@@ -329,12 +345,12 @@ function NotFoundState() {
     <section className="section">
       <div className="page-container">
         <div className="mx-auto max-w-3xl">
-          <div className="surface p-6 sm:p-8">
+          <div className="surface p-4 sm:p-6 lg:p-8">
             <h1 className="text-lg font-semibold text-[var(--foreground)]">
               Travel demand not found
             </h1>
 
-            <p className="mt-2 text-sm text-[var(--foreground-secondary)]">
+            <p className="mt-2 text-sm leading-6 text-[var(--foreground-secondary)]">
               This travel demand may no longer be publicly available.
             </p>
 
@@ -378,7 +394,7 @@ function RequesterSection({
   return (
     <section
       aria-labelledby="demand-requester-heading"
-      className="surface p-6"
+      className="surface p-4 sm:p-6"
     >
       <h2
         id="demand-requester-heading"
@@ -387,7 +403,7 @@ function RequesterSection({
         Requested by
       </h2>
 
-      <div className="mt-4">
+      <div className="mt-4 min-w-0">
         <TravellerSummary
           traveller={traveller}
           linkToProfile
@@ -395,7 +411,7 @@ function RequesterSection({
       </div>
 
       {traveller.bio && (
-        <p className="mt-4 text-sm leading-6 text-[var(--foreground-secondary)]">
+        <p className="mt-4 break-words text-sm leading-6 text-[var(--foreground-secondary)]">
           {traveller.bio}
         </p>
       )}
@@ -429,7 +445,7 @@ function RouteSection({
   return (
     <section
       aria-labelledby="demand-route-heading"
-      className="surface p-6 sm:p-8"
+      className="surface p-4 sm:p-6 lg:p-8"
     >
       <h2
         id="demand-route-heading"
@@ -443,7 +459,7 @@ function RouteSection({
         {/* Origin                                                             */}
         {/* ----------------------------------------------------------------- */}
 
-        <div className="flex gap-4">
+        <div className="flex min-w-0 gap-3 sm:gap-4">
           <div className="relative flex w-4 shrink-0 justify-center">
             <div
               aria-hidden="true"
@@ -458,12 +474,12 @@ function RouteSection({
             )}
           </div>
 
-          <div className="min-w-0 pb-5">
+          <div className="min-w-0 flex-1 pb-5">
             <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
               From
             </p>
 
-            <p className="mt-1 text-lg font-semibold text-[var(--foreground)]">
+            <p className="mt-1 break-words text-lg font-semibold text-[var(--foreground)]">
               {route.origin.name}
             </p>
           </div>
@@ -476,7 +492,7 @@ function RouteSection({
         {waypoints.map((waypoint, index) => (
           <div
             key={waypoint.publicId}
-            className="flex gap-4"
+            className="flex min-w-0 gap-3 sm:gap-4"
           >
             <div className="relative flex w-4 shrink-0 justify-center">
               <div
@@ -492,18 +508,18 @@ function RouteSection({
               )}
             </div>
 
-            <div className="min-w-0 pb-5">
+            <div className="min-w-0 flex-1 pb-5">
               <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
                 {formatWaypointType(waypoint.type)}
               </p>
 
-              <p className="mt-1 font-medium text-[var(--foreground)]">
+              <p className="mt-1 break-words font-medium text-[var(--foreground)]">
                 {waypoint.name}
               </p>
 
               {(waypoint.pickupRequired ||
                 waypoint.dropoffRequired) && (
-                <p className="mt-1 text-xs text-[var(--foreground-muted)]">
+                <p className="mt-1 break-words text-xs text-[var(--foreground-muted)]">
                   {[
                     waypoint.pickupRequired
                       ? 'Pickup required'
@@ -524,7 +540,7 @@ function RouteSection({
         {/* Destination                                                        */}
         {/* ----------------------------------------------------------------- */}
 
-        <div className="flex gap-4">
+        <div className="flex min-w-0 gap-3 sm:gap-4">
           <div className="flex w-4 shrink-0 justify-center">
             <div
               aria-hidden="true"
@@ -532,12 +548,12 @@ function RouteSection({
             />
           </div>
 
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
               To
             </p>
 
-            <p className="mt-1 text-lg font-semibold text-[var(--foreground)]">
+            <p className="mt-1 break-words text-lg font-semibold text-[var(--foreground)]">
               {route.destination.name}
             </p>
           </div>
@@ -559,7 +575,7 @@ function ScheduleSection({
   return (
     <section
       aria-labelledby="demand-schedule-heading"
-      className="surface p-6 sm:p-8"
+      className="surface p-4 sm:p-6 lg:p-8"
     >
       <h2
         id="demand-schedule-heading"
@@ -568,7 +584,7 @@ function ScheduleSection({
         When they want to travel
       </h2>
 
-      <p className="mt-3 text-lg font-semibold text-[var(--foreground)]">
+      <p className="mt-3 break-words text-lg font-semibold text-[var(--foreground)]">
         {formatDateRange(
           schedule.earliestDeparture,
           schedule.latestDeparture,
@@ -582,12 +598,12 @@ function ScheduleSection({
 
       <dl className="mt-6 grid gap-5 sm:grid-cols-2">
         {schedule.targetArrival && (
-          <div>
+          <div className="min-w-0">
             <dt className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
               Preferred arrival
             </dt>
 
-            <dd className="mt-1 text-sm font-medium text-[var(--foreground)]">
+            <dd className="mt-1 break-words text-sm font-medium text-[var(--foreground)]">
               {formatDateTime(
                 schedule.targetArrival,
                 schedule.timezone,
@@ -597,12 +613,12 @@ function ScheduleSection({
         )}
 
         {schedule.maximumArrival && (
-          <div>
+          <div className="min-w-0">
             <dt className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
               Latest acceptable arrival
             </dt>
 
-            <dd className="mt-1 text-sm font-medium text-[var(--foreground)]">
+            <dd className="mt-1 break-words text-sm font-medium text-[var(--foreground)]">
               {formatDateTime(
                 schedule.maximumArrival,
                 schedule.timezone,
@@ -611,12 +627,12 @@ function ScheduleSection({
           </div>
         )}
 
-        <div>
+        <div className="min-w-0">
           <dt className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
             Timezone
           </dt>
 
-          <dd className="mt-1 text-sm font-medium text-[var(--foreground)]">
+          <dd className="mt-1 break-words text-sm font-medium text-[var(--foreground)]">
             {schedule.timezone}
           </dd>
         </div>
@@ -647,7 +663,7 @@ function SummarySection({
   return (
     <section
       aria-labelledby="demand-summary-heading"
-      className="surface p-6 sm:p-8"
+      className="surface p-4 sm:p-6 lg:p-8"
     >
       <h2
         id="demand-summary-heading"
@@ -657,7 +673,7 @@ function SummarySection({
       </h2>
 
       <div className="mt-5 grid gap-5 sm:grid-cols-3">
-        <div>
+        <div className="min-w-0">
           <p className="text-2xl font-semibold text-[var(--foreground)]">
             {demand.capacity.remainingSeats}
           </p>
@@ -669,7 +685,7 @@ function SummarySection({
           </p>
         </div>
 
-        <div>
+        <div className="min-w-0">
           <p className="text-2xl font-semibold text-[var(--foreground)]">
             {demand.capacity.requestedSeats}
           </p>
@@ -679,7 +695,7 @@ function SummarySection({
           </p>
         </div>
 
-        <div>
+        <div className="min-w-0">
           <p className="text-2xl font-semibold text-[var(--foreground)]">
             {demand.capacity.matchedSeats}
           </p>
@@ -740,7 +756,7 @@ function ParticipantCard({
     <Link
       href={`/travellers/${encodeURIComponent(traveller.handle)}`}
       className={[
-        'block rounded-[var(--radius-md)]',
+        'block min-w-0 rounded-[var(--radius-md)]',
         'border border-[var(--border)]',
         'p-4',
         'transition-colors',
@@ -798,7 +814,7 @@ function ParticipantsSection({
   return (
     <section
       aria-labelledby="demand-participants-heading"
-      className="surface p-6 sm:p-8"
+      className="surface p-4 sm:p-6 lg:p-8"
     >
       <h2
         id="demand-participants-heading"
@@ -828,17 +844,34 @@ function ParticipantsSection({
 // =============================================================================
 // Join Demand Action
 // =============================================================================
+//
+// Joining a Demand is a protected marketplace action.
+//
+// On the public marketplace:
+//
+//     Join this demand
+//            ↓
+//     login-required modal
+//
+// This component intentionally does not know whether the current visitor is
+// authenticated. The public presentation simply exposes the protected action
+// and asks the visitor to sign in.
+//
+// Once authenticated, the authenticated marketplace/action boundary can apply
+// the verification requirement before allowing the actual join operation.
+// =============================================================================
 
 function JoinDemandSection({
   isOpen,
-  joinHref,
 }: {
   readonly isOpen: boolean;
-  readonly joinHref?: string;
 }) {
+  const [loginModalOpen, setLoginModalOpen] =
+    useState(false);
+
   if (!isOpen) {
     return (
-      <section className="surface p-6">
+      <section className="surface p-4 sm:p-6">
         <p className="text-sm font-semibold text-[var(--foreground)]">
           This Demand is no longer open
         </p>
@@ -850,41 +883,45 @@ function JoinDemandSection({
     );
   }
 
-  if (!joinHref) {
-    return null;
-  }
-
   return (
-    <section className="surface p-6">
-      <p className="text-sm font-semibold text-[var(--foreground)]">
-        Looking for the same journey?
-      </p>
+    <>
+      <section className="surface p-4 sm:p-6">
+        <p className="text-sm font-semibold text-[var(--foreground)]">
+          Looking for the same journey?
+        </p>
 
-      <p className="mt-2 text-sm leading-6 text-[var(--foreground-secondary)]">
-        Join this Demand to show that you are looking for the
-        same route and travel window.
-      </p>
+        <p className="mt-2 text-sm leading-6 text-[var(--foreground-secondary)]">
+          Join this Demand to show that you are looking for the
+          same route and travel window.
+        </p>
 
-      <Link
-        href={joinHref}
-        className={[
-          'mt-5 flex w-full items-center justify-center',
-          'rounded-[var(--radius-md)]',
-          'bg-[var(--brand)]',
-          'px-4 py-3',
-          'text-sm font-semibold',
-          'text-[var(--brand-foreground)]',
-          'transition-colors',
-          'hover:bg-[var(--brand-hover)]',
-          'focus:outline-none',
-          'focus-visible:ring-2',
-          'focus-visible:ring-[var(--brand)]',
-          'focus-visible:ring-offset-2',
-        ].join(' ')}
-      >
-        Join this demand
-      </Link>
-    </section>
+        <button
+          type="button"
+          onClick={() => setLoginModalOpen(true)}
+          className={[
+            'mt-5 flex w-full items-center justify-center',
+            'rounded-[var(--radius-md)]',
+            'bg-[var(--brand)]',
+            'px-4 py-3',
+            'text-sm font-semibold',
+            'text-[var(--brand-foreground)]',
+            'transition-colors',
+            'hover:bg-[var(--brand-hover)]',
+            'focus:outline-none',
+            'focus-visible:ring-2',
+            'focus-visible:ring-[var(--brand)]',
+            'focus-visible:ring-offset-2',
+          ].join(' ')}
+        >
+          Join this demand
+        </button>
+      </section>
+
+      <LoginRequiredModal
+        open={loginModalOpen}
+        onClose={() => setLoginModalOpen(false)}
+      />
+    </>
   );
 }
 
@@ -894,12 +931,12 @@ function JoinDemandSection({
 
 function ProviderOpportunitySection() {
   return (
-    <section className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--brand-soft)] p-6">
+    <section className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--brand-soft)] p-4 sm:p-6">
       <p className="text-sm font-semibold text-[var(--foreground)]">
         Can you make this journey?
       </p>
 
-      <p className="mt-2 text-sm leading-6 text-[var(--foreground-secondary)]">
+      <p className="mt-2 break-words text-sm leading-6 text-[var(--foreground-secondary)]">
         This Demand represents a real travel need. A provider can
         use it as an opportunity to plan and publish a Journey that
         satisfies the requested route and timing.
@@ -914,7 +951,6 @@ function ProviderOpportunitySection() {
 
 export function PublicDemandContent({
   publicId,
-  joinHref,
 }: PublicDemandContentProps) {
   const {
     data: demand,
@@ -946,8 +982,8 @@ export function PublicDemandContent({
 
   return (
     <section className="section">
-      <div className="page-container">
-        <div className="mx-auto max-w-5xl">
+      <div className="page-container min-w-0">
+        <div className="mx-auto max-w-6xl min-w-0">
           {/* ---------------------------------------------------------------- */}
           {/* Navigation                                                        */}
           {/* ---------------------------------------------------------------- */}
@@ -955,6 +991,7 @@ export function PublicDemandContent({
           <Link
             href="/"
             className={[
+              'inline-flex max-w-full items-center',
               'text-sm font-medium',
               'text-[var(--foreground-secondary)]',
               'transition-colors',
@@ -972,7 +1009,7 @@ export function PublicDemandContent({
           {/* Demand Header                                                     */}
           {/* ---------------------------------------------------------------- */}
 
-          <header className="mt-6">
+          <header className="mt-5 min-w-0 sm:mt-6">
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-[var(--brand-soft)] px-3 py-1 text-xs font-semibold text-[var(--brand)]">
                 Travel demand
@@ -983,12 +1020,12 @@ export function PublicDemandContent({
               </span>
             </div>
 
-            <h1 className="mt-4 max-w-3xl text-3xl font-bold tracking-tight text-[var(--foreground)] sm:text-4xl">
+            <h1 className="mt-4 max-w-full break-words text-2xl font-bold tracking-tight text-[var(--foreground)] sm:text-3xl lg:text-4xl">
               {demand.route.origin.name} →{' '}
               {demand.route.destination.name}
             </h1>
 
-            <p className="mt-3 max-w-2xl text-base leading-7 text-[var(--foreground-secondary)]">
+            <p className="mt-3 max-w-2xl break-words text-sm leading-6 text-[var(--foreground-secondary)] sm:text-base sm:leading-7">
               A traveller is looking for a journey between these
               locations.
             </p>
@@ -997,9 +1034,19 @@ export function PublicDemandContent({
           {/* ---------------------------------------------------------------- */}
           {/* Main Content                                                      */}
           {/* ---------------------------------------------------------------- */}
+          {/*
+           * Keep the Demand page single-column until `xl`.
+           *
+           * This prevents the requester/action sidebar from squeezing the
+           * route and schedule information on tablets and smaller laptops.
+           */}
 
-          <div className="mt-8 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="min-w-0 space-y-6">
+          <div className="mt-6 grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start xl:gap-6">
+            {/* -------------------------------------------------------------- */}
+            {/* Main Demand content                                             */}
+            {/* -------------------------------------------------------------- */}
+
+            <main className="min-w-0 space-y-5 sm:space-y-6">
               <RouteSection route={demand.route} />
 
               <ScheduleSection schedule={demand.schedule} />
@@ -1009,18 +1056,17 @@ export function PublicDemandContent({
               <ParticipantsSection
                 participants={demand.participants}
               />
-            </div>
+            </main>
 
             {/* -------------------------------------------------------------- */}
             {/* Sidebar                                                         */}
             {/* -------------------------------------------------------------- */}
 
-            <aside className="min-w-0 space-y-6 lg:sticky lg:top-6 lg:self-start">
+            <aside className="min-w-0 space-y-5 sm:space-y-6 xl:sticky xl:top-6 xl:self-start">
               <RequesterSection demand={demand} />
 
               <JoinDemandSection
                 isOpen={isOpen}
-                joinHref={joinHref}
               />
 
               <ProviderOpportunitySection />

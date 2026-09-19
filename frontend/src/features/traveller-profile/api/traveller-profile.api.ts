@@ -1,146 +1,275 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Public Traveller Profile API
+// sisiMove — Traveller Profile API
 // -----------------------------------------------------------------------------
 //
-// Frontend API adapter for the public Traveller Profile read boundary.
+// Frontend API adapter for Traveller Profile read boundaries.
 //
-// The backend Traveller Profile domain owns considerably more information
-// than the public marketplace requires, including:
+// This adapter deliberately separates:
 //
-// - profile lifecycle;
-// - visibility and status;
-// - internal Identity references;
-// - avatar asset references;
-// - profile preferences;
-// - journey statistics;
-// - frequent corridors;
-// - operational profile metadata.
+//   1. Public Traveller Profile reads
+//   2. Authenticated current-Traveller Profile reads
 //
-// This adapter consumes only the deliberately reduced public Traveller Profile
-// representation and maps it into the frontend-safe `PublicTraveller` model.
+// Public reads return the reduced PublicTraveller model.
+//
+// The authenticated `/me` read returns the complete authenticated
+// TravellerProfile model required by the Profile UI.
 //
 // Architectural boundary:
 //
 //   Backend Traveller Profile API
 //              ↓
-//   Public Traveller Profile REST response
+//   REST response
 //              ↓
 //   This API adapter
 //              ↓
-//   PublicTraveller frontend model
+//   Frontend Traveller Profile model
 //              ↓
-//   Marketplace UI
+//   UI
 //
-// The frontend does not consume TravellerProfile domain entities, Prisma
-// models, internal database IDs, or private profile data.
+// The frontend does not consume:
+//
+// - TravellerProfile domain entities;
+// - Prisma models;
+// - internal database IDs;
+// - Identity domain objects;
+// - backend domain value objects.
 //
 // Asset rule:
 //
-// The backend owns Asset URL resolution. The frontend must consume a genuine
-// public avatar representation when supplied and must never construct an asset
-// URL from an opaque asset public ID.
+// The backend owns Asset URL resolution.
 //
-// Public endpoints consumed by this adapter:
+// Public Traveller endpoints return a resolved public avatar:
 //
-//   GET /traveller-profiles/public/:publicId
-//   GET /traveller-profiles/public/member/:memberPublicId
-//   GET /traveller-profiles/public/handle/:handle
+//     avatar: {
+//       publicId,
+//       url,
+//       alt
+//     }
 //
-// These endpoints intentionally form a separate public read boundary from the
-// broader authenticated/operational Traveller Profile API.
-// -----------------------------------------------------------------------------
-
-
-// -----------------------------------------------------------------------------
-// Foundation
+// The authenticated `/me` endpoint currently returns:
+//
+//     avatarAssetPublicId
+//
+// as an opaque Asset reference.
+//
+// Therefore the authenticated TravellerProfile model intentionally retains
+// `avatarAssetPublicId` rather than constructing a URL. The Profile UI may
+// resolve that public Asset through the dedicated Assets feature when it needs
+// to display the avatar.
+//
+// Authentication rule:
+//
+// Public Traveller Profile endpoints use the generic `apiClient` because they
+// do not require an authenticated session.
+//
+// The authenticated `/me` endpoint uses `authenticatedApiClient` because the
+// backend derives the current Traveller Profile from the authenticated
+// Identity represented by the Bearer access token.
+//
 // -----------------------------------------------------------------------------
 
 import { apiClient } from '@/foundation/http/api-client';
-
-
-// -----------------------------------------------------------------------------
-// Frontend Models
-// -----------------------------------------------------------------------------
+import { authenticatedApiClient } from '@/features/authentication';
 
 import type {
   PublicTraveller,
   PublicTravellerAvatar,
+  TravellerProfile,
+  TravellerProfileCorridor,
+  TravellerProfilePreferences,
 } from '../models';
 
-
-// -----------------------------------------------------------------------------
+// =============================================================================
 // API Paths
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 const TRAVELLER_PROFILE_API_PATH = '/traveller-profiles';
 
-
-// -----------------------------------------------------------------------------
-// Backend Transport Types
-// -----------------------------------------------------------------------------
+// =============================================================================
+// Backend Transport Types — Public Read Boundary
+// =============================================================================
 //
-// These interfaces represent the REST response shape rather than the
-// frontend model.
+// These interfaces represent the deliberately reduced public REST response.
 //
 // They remain local to this adapter so the rest of the frontend does not
-// become coupled to backend presentation contracts.
-// -----------------------------------------------------------------------------
-
+// become coupled to backend transport contracts.
+//
+// =============================================================================
 
 /**
  * Public avatar representation returned by the backend.
  *
- * The backend public read boundary is responsible for resolving the Asset
- * reference into a browser-consumable URL.
+ * The public Traveller Profile read boundary is responsible for resolving
+ * the Asset reference into a browser-consumable URL.
  */
 interface PublicTravellerAvatarResponse {
-  publicId: string;
-  url: string;
-  alt: string | null;
+  readonly publicId: string;
+  readonly url: string;
+  readonly alt: string | null;
 }
-
 
 /**
  * Deliberately reduced public Traveller Profile response.
  *
- * This is the transport contract exposed by the backend public Traveller
- * Profile endpoint.
- *
- * It deliberately excludes:
- *
- * - internal database identifiers;
- * - Member/Identity references;
- * - profile lifecycle state;
- * - visibility internals;
- * - profile preferences;
- * - journey statistics;
- * - private corridors;
- * - raw Asset references;
- * - operational metadata;
- * - timestamps.
+ * This is the transport contract exposed by the public Traveller Profile
+ * endpoints.
  */
 interface PublicTravellerResponse {
-  publicId: string;
-  handle: string;
-  bio: string | null;
-  avatar: PublicTravellerAvatarResponse | null;
-  countryCode: string;
+  readonly publicId: string;
+  readonly handle: string;
+  readonly bio: string | null;
+  readonly avatar: PublicTravellerAvatarResponse | null;
+  readonly countryCode: string;
 }
 
+// =============================================================================
+// Backend Transport Types — Authenticated Current Traveller
+// =============================================================================
+//
+// GET /traveller-profiles/me returns the broad
+// TravellerProfileResponse produced by:
+//
+//     TravellerProfileResponseMapper
+//
+// This adapter maps that transport representation into the frontend
+// TravellerProfile model.
+//
+// The frontend model intentionally preserves:
+//
+//     avatarAssetPublicId
+//
+// as an opaque Asset reference.
+//
+// The adapter does NOT construct an Asset URL.
+//
+// =============================================================================
 
-// -----------------------------------------------------------------------------
+interface CurrentTravellerProfilePreferencesResponse {
+  readonly id: string;
+  readonly publicId: string;
+  readonly profileId: string;
+  readonly showJourneyHistory: boolean;
+  readonly showJourneyStatistics: boolean;
+  readonly allowJourneyInvites: boolean;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+interface CurrentTravellerProfileCorridorResponse {
+  readonly id: string;
+  readonly publicId: string;
+  readonly profileId: string;
+  readonly originName: string;
+  readonly destinationName: string;
+  readonly originLatitude: number;
+  readonly originLongitude: number;
+  readonly destinationLatitude: number;
+  readonly destinationLongitude: number;
+  readonly corridorKey: string | null;
+  readonly isPrimary: boolean;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/**
+ * Current authenticated Traveller Profile REST response.
+ *
+ * This mirrors the current backend TravellerProfileResponseMapper contract.
+ *
+ * `id` fields are transport details and are intentionally not propagated into
+ * the frontend TravellerProfile model where the model uses public IDs.
+ */
+interface CurrentTravellerProfileResponse {
+  readonly id: string;
+  readonly publicId: string;
+  readonly memberPublicId: string;
+  readonly handle: string;
+  readonly bio: string | null;
+  readonly avatarAssetPublicId: string | null;
+  readonly countryCode: string;
+  readonly status: string;
+  readonly visibility: string;
+  readonly totalJourneys: number;
+  readonly completedJourneys: number;
+  readonly providerJourneys: number;
+  readonly passengerJourneys: number;
+  readonly completedProviderJourneys: number;
+  readonly completedPassengerJourneys: number;
+  readonly preferences: CurrentTravellerProfilePreferencesResponse | null;
+  readonly corridors: CurrentTravellerProfileCorridorResponse[];
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+// =============================================================================
+// Authenticated Traveller Profile Query
+// =============================================================================
+
+/**
+ * Load the Traveller Profile belonging to the currently authenticated
+ * Identity.
+ *
+ * Backend:
+ *
+ *     GET /traveller-profiles/me
+ *
+ * Authentication:
+ *
+ *     Bearer access token
+ *
+ * The frontend does NOT send:
+ *
+ * - identityPublicId;
+ * - memberPublicId;
+ * - travellerProfilePublicId;
+ * - travellerHandle.
+ *
+ * The authenticated access token is the only identity selector required.
+ *
+ * The backend resolves:
+ *
+ *     Access Token
+ *          ↓
+ *     CurrentIdentity
+ *          ↓
+ *     identityPublicId
+ *          ↓
+ *     GetTravellerProfileByMemberPublicIdQuery
+ *          ↓
+ *     TravellerProfileAggregate
+ *          ↓
+ *     TravellerProfileResponseMapper
+ *
+ * The adapter then maps the transport response into the complete frontend
+ * TravellerProfile model.
+ */
+export async function getCurrentTravellerProfile(): Promise<TravellerProfile> {
+  const response =
+    await authenticatedApiClient.get<CurrentTravellerProfileResponse | null>(
+      `${TRAVELLER_PROFILE_API_PATH}/me`,
+    );
+
+  if (response === null) {
+    throw new Error('Authenticated Traveller Profile was not found.');
+  }
+
+  return mapCurrentTravellerProfileResponse(response);
+}
+
+// =============================================================================
 // Public Traveller Profile Queries
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 /**
  * Load a public Traveller Profile by its public profile identifier.
  *
- * Backend endpoint:
+ * Backend:
  *
- *   GET /traveller-profiles/public/:publicId
+ *     GET /traveller-profiles/public/:publicId
  *
- * This endpoint is specifically intended for unauthenticated public
- * consumption.
+ * Authentication:
+ *
+ *     None
  */
 export async function getTravellerProfileByPublicId(
   travellerProfilePublicId: string,
@@ -162,25 +291,16 @@ export async function getTravellerProfileByPublicId(
     : mapPublicTravellerResponse(response);
 }
 
-
 /**
  * Load a public Traveller Profile by the associated Member public identifier.
  *
- * Backend endpoint:
+ * Backend:
  *
- *   GET /traveller-profiles/public/member/:memberPublicId
+ *     GET /traveller-profiles/public/member/:memberPublicId
  *
- * This endpoint exists specifically for public consumers whose read model
- * contains the Member public identifier rather than the Traveller Profile
- * public identifier.
+ * Authentication:
  *
- * This is useful when a public Journey, Journey Demand, Trust read model, or
- * another marketplace composition boundary references the traveller through
- * the opaque Member public identifier.
- *
- * The `/public/member` path is intentional. It keeps this request inside the
- * reduced public Traveller Profile read boundary and must not be replaced with
- * the broader `/member` endpoint.
+ *     None
  */
 export async function getTravellerProfileByMemberPublicId(
   memberPublicId: string,
@@ -202,24 +322,16 @@ export async function getTravellerProfileByMemberPublicId(
     : mapPublicTravellerResponse(response);
 }
 
-
 /**
  * Load a public Traveller Profile by its public handle.
  *
- * Backend endpoint:
+ * Backend:
  *
- *   GET /traveller-profiles/public/handle/:handle
+ *     GET /traveller-profiles/public/handle/:handle
  *
- * This endpoint is specifically intended for anonymous public Traveller
- * Profile pages whose route is based on the traveller's human-readable handle.
+ * Authentication:
  *
- * The public handle endpoint is intentionally separate from the broader:
- *
- *   GET /traveller-profiles/handle/:handle
- *
- * The broader endpoint belongs to the operational Traveller Profile API and
- * may expose a different, richer response contract. Public marketplace pages
- * must remain inside the reduced public read boundary.
+ *     None
  */
 export async function getTravellerProfileByHandle(
   handle: string,
@@ -241,14 +353,144 @@ export async function getTravellerProfileByHandle(
     : mapPublicTravellerResponse(response);
 }
 
+// =============================================================================
+// Authenticated Traveller Profile Mapper
+// =============================================================================
 
-// -----------------------------------------------------------------------------
+/**
+ * Map the authenticated `/me` transport representation into the frontend
+ * TravellerProfile model.
+ *
+ * Important:
+ *
+ * `avatarAssetPublicId` remains an opaque Asset reference.
+ *
+ * This mapper does NOT construct an Asset URL.
+ *
+ * The Assets feature remains responsible for public Asset retrieval when the
+ * authenticated UI needs to render the avatar.
+ */
+function mapCurrentTravellerProfileResponse(
+  response: CurrentTravellerProfileResponse,
+): TravellerProfile {
+  return {
+    publicId: response.publicId,
+    memberPublicId: response.memberPublicId,
+    handle: response.handle,
+    bio: response.bio,
+    avatarAssetPublicId: response.avatarAssetPublicId,
+    countryCode: response.countryCode,
+    status: mapTravellerProfileStatus(response.status),
+    visibility: mapTravellerProfileVisibility(response.visibility),
+
+    totalJourneys: response.totalJourneys,
+    completedJourneys: response.completedJourneys,
+    providerJourneys: response.providerJourneys,
+    passengerJourneys: response.passengerJourneys,
+    completedProviderJourneys: response.completedProviderJourneys,
+    completedPassengerJourneys: response.completedPassengerJourneys,
+
+    preferences:
+      response.preferences === null
+        ? null
+        : mapTravellerProfilePreferencesResponse(response.preferences),
+
+    corridors: response.corridors.map(
+      mapTravellerProfileCorridorResponse,
+    ),
+
+    createdAt: response.createdAt,
+    updatedAt: response.updatedAt,
+  };
+}
+
+// =============================================================================
+// Authenticated Traveller Profile Value Mappers
+// =============================================================================
+
+/**
+ * Keep backend status values constrained to the frontend model.
+ *
+ * The backend currently serializes the enum as a string. We validate the
+ * transport value at this adapter boundary instead of spreading arbitrary
+ * strings through the application.
+ */
+function mapTravellerProfileStatus(
+  status: string,
+): TravellerProfile['status'] {
+  switch (status) {
+    case 'ACTIVE':
+    case 'RESTRICTED':
+    case 'SUSPENDED':
+    case 'CLOSED':
+      return status;
+
+    default:
+      throw new Error(
+        `Unsupported Traveller Profile status received: ${status}`,
+      );
+  }
+}
+
+/**
+ * Keep backend visibility values constrained to the frontend model.
+ */
+function mapTravellerProfileVisibility(
+  visibility: string,
+): TravellerProfile['visibility'] {
+  switch (visibility) {
+    case 'PUBLIC':
+    case 'LIMITED':
+    case 'PRIVATE':
+      return visibility;
+
+    default:
+      throw new Error(
+        `Unsupported Traveller Profile visibility received: ${visibility}`,
+      );
+  }
+}
+
+function mapTravellerProfilePreferencesResponse(
+  response: CurrentTravellerProfilePreferencesResponse,
+): TravellerProfilePreferences {
+  return {
+    publicId: response.publicId,
+    profileId: response.profileId,
+    showJourneyHistory: response.showJourneyHistory,
+    showJourneyStatistics: response.showJourneyStatistics,
+    allowJourneyInvites: response.allowJourneyInvites,
+    createdAt: response.createdAt,
+    updatedAt: response.updatedAt,
+  };
+}
+
+function mapTravellerProfileCorridorResponse(
+  response: CurrentTravellerProfileCorridorResponse,
+): TravellerProfileCorridor {
+  return {
+    publicId: response.publicId,
+    profileId: response.profileId,
+    originName: response.originName,
+    destinationName: response.destinationName,
+    originLatitude: response.originLatitude,
+    originLongitude: response.originLongitude,
+    destinationLatitude: response.destinationLatitude,
+    destinationLongitude: response.destinationLongitude,
+    corridorKey: response.corridorKey,
+    isPrimary: response.isPrimary,
+    createdAt: response.createdAt,
+    updatedAt: response.updatedAt,
+  };
+}
+
+// =============================================================================
 // Public Traveller Profile Mapper
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 /**
  * Map the backend public Traveller Profile transport representation into the
- * frontend `PublicTraveller` model.
+ * frontend PublicTraveller model.
  *
  * This is transport-to-frontend mapping only.
  *
@@ -259,38 +501,30 @@ export async function getTravellerProfileByHandle(
  * - resolve Assets;
  * - infer private profile information;
  * - construct URLs.
- *
- * The backend public boundary remains authoritative for the data that is
- * actually safe for public consumption.
  */
 function mapPublicTravellerResponse(
   response: PublicTravellerResponse,
 ): PublicTraveller {
   return {
     publicId: response.publicId,
-
     handle: response.handle,
-
     bio: response.bio,
-
     avatar:
       response.avatar === null
         ? null
         : mapPublicTravellerAvatarResponse(response.avatar),
-
     countryCode: response.countryCode,
   };
 }
 
-
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Public Traveller Avatar Mapper
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 /**
- * Map the backend public avatar representation into the frontend avatar model.
+ * Map the backend public avatar representation into the public avatar model.
  *
- * The URL is supplied by the backend Asset delivery boundary.
+ * The URL is supplied by the backend public read boundary.
  *
  * No URL is constructed from the avatar public ID.
  */
@@ -299,9 +533,7 @@ function mapPublicTravellerAvatarResponse(
 ): PublicTravellerAvatar {
   return {
     publicId: response.publicId,
-
     url: response.url,
-
     alt: response.alt,
   };
 }

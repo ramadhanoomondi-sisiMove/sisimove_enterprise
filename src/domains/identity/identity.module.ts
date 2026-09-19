@@ -108,6 +108,49 @@
 // prevents duplicate provider registrations.
 //
 // -----------------------------------------------------------------------------
+//
+// Verification query boundaries:
+//
+// GetVerificationQuery
+//     IdentityPublicId
+//          ↓
+//     findByIdentityPublicId()
+//          ↓
+//     Current authenticated identity's Verification
+//
+// GetVerificationByPublicIdQuery
+//     VerificationPublicId
+//          ↓
+//     findByPublicId()
+//          ↓
+//     Explicit Verification resource lookup
+//
+// These are intentionally separate application queries.
+//
+// -----------------------------------------------------------------------------
+//
+// The current Verification resource therefore has two distinct read
+// boundaries:
+//
+// Applicant:
+//
+//     GET /verifications/me
+//     → GET_VERIFICATION
+//     → GetVerificationQuery
+//     → IdentityPublicId
+//
+// Reviewer:
+//
+//     GET /verifications/:verificationPublicId
+//     → GET_VERIFICATION_BY_PUBLIC_ID
+//     → GetVerificationByPublicIdQuery
+//     → VerificationPublicId
+//
+// The module registers both handlers but exports neither query handler,
+// because these are HTTP/application capabilities owned by the Identity
+// bounded context rather than cross-bounded-context registration contracts.
+//
+// -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
 // NestJS
@@ -233,6 +276,7 @@ import {
   // Verification
   // ===========================================================================
   GetVerificationHandler,
+  GetVerificationByPublicIdHandler,
   GetVerificationRequestsHandler,
   GetVerificationRequestHandler,
 
@@ -429,10 +473,34 @@ import {
     // =========================================================================
     // Verification — Query Handlers
     // =========================================================================
+    //
+    // Current identity lookup:
+    //
+    //   GetVerificationQuery
+    //       ↓
+    //   IdentityPublicId
+    //       ↓
+    //   findByIdentityPublicId()
+    //
+    // Explicit verification resource lookup:
+    //
+    //   GetVerificationByPublicIdQuery
+    //       ↓
+    //   VerificationPublicId
+    //       ↓
+    //   findByPublicId()
+    //
+    // These handlers intentionally have separate application contracts.
+    //
 
     {
       provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_VERIFICATION,
       useClass: GetVerificationHandler,
+    },
+
+    {
+      provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_VERIFICATION_BY_PUBLIC_ID,
+      useClass: GetVerificationByPublicIdHandler,
     },
 
     {

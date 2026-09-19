@@ -7,26 +7,69 @@
 //
 // Architectural boundary:
 //
-//   Component
-//      ↓
+//   Public Component
+//          |
+//          v
 //   useTravellerTrust()
-//      ↓
-//   Trust API adapter
-//      ↓
-//   Public Trust REST endpoint
+//          |
+//          v
+//   public-trust.api.ts
+//          |
+//          v
+//   GET /trust-profiles/public/member/:memberPublicId
+//          |
+//          v
+//   PublicTrustProfileResponse
+//          |
+//          v
+//   PublicTravellerTrust
 //
-// The hook owns query lifecycle/state management.
-// The API adapter owns HTTP transport and response mapping.
+// The hook owns:
+//
+// - query lifecycle;
+// - cache identity;
+// - loading/error state;
+// - enabling/disabling the query.
+//
+// The public Trust API adapter owns:
+//
+// - HTTP transport;
+// - public endpoint selection;
+// - transport response mapping.
 //
 // Consumers receive the frontend `PublicTravellerTrust` model and therefore
 // remain independent of the backend TrustProfileResponse representation.
+//
+// IMPORTANT:
+//
+// This is a PUBLIC Trust hook.
+//
+// It MUST use:
+//
+//     ../api/public-trust.api
+//
+// rather than:
+//
+//     ../api
+//
+// because the generic API barrel also exposes the authenticated Trust API,
+// where `getTravellerTrust()` has the same function name but returns:
+//
+//     Promise<TravellerTrust | null>
+//
+// The public API function returns:
+//
+//     Promise<PublicTravellerTrust>
+//
+// Keeping this import explicit prevents the authenticated and public Trust
+// boundaries from being accidentally crossed.
+//
 // -----------------------------------------------------------------------------
 
 import { useQuery } from '@tanstack/react-query';
 
-import { getTravellerTrust } from '../api';
+import { getTravellerTrust } from '../api/public-trust.api';
 import type { PublicTravellerTrust } from '../models';
-
 
 // -----------------------------------------------------------------------------
 // Query Key
@@ -44,7 +87,6 @@ export const travellerTrustQueryKeys = {
   byMemberPublicId: (memberPublicId: string) =>
     ['traveller-trust', memberPublicId] as const,
 } as const;
-
 
 // -----------------------------------------------------------------------------
 // Hook

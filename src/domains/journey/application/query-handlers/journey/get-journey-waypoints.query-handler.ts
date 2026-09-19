@@ -1,7 +1,10 @@
+// src/domains/journey/application/query-handlers/journey/get-journey-waypoints.query-handler.ts
+
 // -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
+import { Inject, Injectable } from '@nestjs/common';
 import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
 
 // -----------------------------------------------------------------------------
@@ -24,14 +27,24 @@ import type { JourneyRepository } from '../../../domain/repositories/journey.rep
 import { JourneyNotFoundException } from '../../../domain/exceptions';
 
 // -----------------------------------------------------------------------------
+// Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_TOKENS } from '../../journey.tokens';
+
+// -----------------------------------------------------------------------------
 // Query Handler
 // -----------------------------------------------------------------------------
 
+@Injectable()
 export class GetJourneyWaypointsQueryHandler implements QueryHandler<
   GetJourneyWaypointsQuery,
   JourneyWaypointEntity[]
 > {
-  constructor(private readonly repository: JourneyRepository) {}
+  constructor(
+    @Inject(JOURNEY_TOKENS.REPOSITORY)
+    private readonly repository: JourneyRepository,
+  ) {}
 
   async execute(
     query: GetJourneyWaypointsQuery,

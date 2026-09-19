@@ -1,30 +1,93 @@
 // -----------------------------------------------------------------------------
-// Identity — Prisma Authentication Repository
+// sisiMove — Prisma Authentication Repository
 // -----------------------------------------------------------------------------
 //
-// Infrastructure repository for the Authentication aggregate.
+// Infrastructure implementation of the AuthenticationRepository contract.
 //
-// Aggregate:
+// Aggregate boundary:
 //
 // AuthenticationAggregate
 // └── AuthenticationEntity
 //
-// Persistence:
+// Ownership:
+//
+// - Authentication is the aggregate root.
+// - Authentication is an independent aggregate.
+// - Cross-domain references such as identityPublicId remain opaque identifiers.
+//
+// -----------------------------------------------------------------------------
+//
+// TRANSACTION PARTICIPATION:
+//
+// This repository does NOT create its own Prisma transactions.
+//
+// PrismaTransactionContext determines which Prisma client is currently
+// available:
+//
+//     UnitOfWork
+//         │
+//         ▼
+//     PrismaUnitOfWork
+//         │
+//         ▼
+//     Prisma $transaction(tx)
+//         │
+//         ▼
+//     PrismaTransactionContext
+//         │
+//         ▼
+//     PrismaAuthenticationRepository
+//
+// When called inside a UnitOfWork, all operations use the transaction-scoped
+// Prisma client.
+//
+// When called outside a UnitOfWork, the context falls back to PrismaService.
+//
+// This is essential because Authentication creation and lifecycle changes can
+// participate in larger application workflows such as registration.
+//
+// For example:
+//
+//     Identity
+//     Verification
+//     TravellerProfile
+//     TrustProfile
+//     Authentication
+//     FinancialAccount
+//
+// can all participate in the same registration transaction.
+//
+// If a later operation in that workflow fails, the UnitOfWork owns the
+// rollback boundary.
+//
+// The Authentication repository therefore remains a transaction participant,
+// never a transaction owner.
+//
+// -----------------------------------------------------------------------------
+//
+// CROSS-DOMAIN OWNERSHIP:
 //
 // Authentication
-//
-// Authentication is an independent aggregate.
-//
-// The Identity reference is opaque:
-//
-// Authentication
-//     │
-//     └── identityPublicId
-//              │
-//              ▼
+//      │
+//      └── identityPublicId
+//               │
+//               ▼
 //        Identity public ID
 //
-// This repository never loads or resolves the Identity aggregate.
+// identityPublicId is an opaque public identifier.
+//
+// This repository never loads, queries, joins, or resolves the Identity
+// aggregate.
+//
+// -----------------------------------------------------------------------------
+//
+// PERSISTENCE GRAPH:
+//
+// Authentication
+// └── AuthenticationEntity
+//
+// Authentication is a single-entity aggregate, so persistence is represented
+// by the Authentication record itself.
 //
 // -----------------------------------------------------------------------------
 
@@ -40,7 +103,14 @@ import { Injectable } from '@nestjs/common';
 
 import type { Authentication as PrismaAuthentication } from '@prisma/client';
 
-import { PrismaService } from '../../../../../../infrastructure/database/prisma/prisma.service';
+// -----------------------------------------------------------------------------
+// Transaction Context
+// -----------------------------------------------------------------------------
+
+import {
+  PrismaTransactionContext,
+  type PrismaClientLike,
+} from '../../../../../../infrastructure/database/prisma/prisma-transaction.context';
 
 // -----------------------------------------------------------------------------
 // Aggregate
@@ -96,8 +166,10 @@ import type { UniqueEntityId } from '../../../../../../foundation/kernel/domain/
 /**
  * Prisma infrastructure implementation of the Authentication repository.
  *
- * Authentication is an independent aggregate responsible for authentication
- * state and credential lifecycle.
+ * The repository is deliberately transaction-context aware.
+ *
+ * It does not create transactions itself because Authentication operations
+ * can participate in larger application workflows such as registration.
  *
  * The repository translates between:
  *
@@ -108,11 +180,6 @@ import type { UniqueEntityId } from '../../../../../../foundation/kernel/domain/
  *     Prisma Authentication
  *
  * The Identity public identifier remains an opaque cross-aggregate reference.
- *
- * Prisma access is provided through the application's NestJS-managed
- * PrismaService. The repository therefore participates correctly in NestJS
- * dependency injection and uses the same Prisma connection lifecycle as the
- * rest of the application.
  */
 @Injectable()
 export class PrismaAuthenticationRepository implements AuthenticationRepository {
@@ -120,7 +187,36 @@ export class PrismaAuthenticationRepository implements AuthenticationRepository 
   // Constructor
   // ===========================================================================
 
-  public constructor(private readonly prisma: PrismaService) {}
+  /**
+   * Resolves the Prisma client through the ambient transaction context.
+   *
+   * Inside UnitOfWork:
+   *
+   *     Prisma.TransactionClient
+   *
+   * Outside UnitOfWork:
+   *
+   *     PrismaService
+   */
+  public constructor(
+    private readonly transactionContext: PrismaTransactionContext,
+  ) {}
+
+  // ===========================================================================
+  // Current Prisma Client
+  // ===========================================================================
+
+  /**
+   * Returns the Prisma client appropriate for the current execution context.
+   *
+   * This is the critical transaction boundary for this repository.
+   *
+   * The repository does not need to know whether the current operation is
+   * running inside or outside a UnitOfWork.
+   */
+  private get prisma(): PrismaClientLike {
+    return this.transactionContext.getClient();
+  }
 
   // ===========================================================================
   // Persistence
@@ -134,6 +230,11 @@ export class PrismaAuthenticationRepository implements AuthenticationRepository 
    *
    * identityPublicId is persisted directly because it is an opaque
    * cross-aggregate reference.
+   *
+   * No repository-owned transaction is created.
+   *
+   * When called inside PrismaUnitOfWork, this operation participates in the
+   * caller's active Prisma transaction.
    */
   public async save(aggregate: AuthenticationAggregate): Promise<void> {
     if (aggregate === undefined) {
@@ -174,7 +275,12 @@ export class PrismaAuthenticationRepository implements AuthenticationRepository 
   /**
    * Deletes an Authentication aggregate.
    *
-   * Deletion policy belongs to the application/domain workflow.
+   * No repository-owned transaction is created.
+   *
+   * When called inside a UnitOfWork, the delete participates in the caller's
+   * active Prisma transaction.
+   *
+   * Transaction atomicity belongs to the UnitOfWork/application workflow.
    */
   public async delete(aggregate: AuthenticationAggregate): Promise<void> {
     if (aggregate === undefined) {
@@ -218,7 +324,7 @@ export class PrismaAuthenticationRepository implements AuthenticationRepository 
   /**
    * Finds an Authentication aggregate by Identity public identifier.
    *
-   * identityPublicId is treated as an opaque reference.
+   * identityPublicId remains an opaque cross-domain reference.
    */
   public async findByIdentityPublicId(
     identityPublicId: AuthenticationIdentityPublicId,
@@ -855,17 +961,7 @@ export class PrismaAuthenticationRepository implements AuthenticationRepository 
       throw new Error('Authentication status is required.');
     }
 
-    const record = await this.prisma.authentication.findFirst({
-      where: {
-        status: status.value,
-      },
-
-      select: {
-        id: true,
-      },
-    });
-
-    return record !== null;
+    return this.existsByStatusValue(status.value);
   }
 
   /**

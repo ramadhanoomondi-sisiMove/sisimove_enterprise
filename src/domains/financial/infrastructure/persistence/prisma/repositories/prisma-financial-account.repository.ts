@@ -1,8 +1,8 @@
 // -----------------------------------------------------------------------------
-// Prisma Financial Account Repository
+// sisiMove — Prisma Financial Account Repository
 // -----------------------------------------------------------------------------
 //
-// Infrastructure repository for the Financial Account aggregate.
+// Infrastructure implementation of the FinancialAccountRepository contract.
 //
 // Aggregate boundary:
 //
@@ -10,51 +10,104 @@
 // ├── FinancialAccountEntity
 // └── FinancialAccountBalanceEntity
 //
-// Responsibilities:
+// Ownership:
 //
-// - Aggregate persistence and rehydration
-// - Financial Account root queries
-// - Owner queries
-// - Account classification queries
-// - Account lifecycle queries
-// - Currency queries
-// - Aggregate-owned balance queries
-// - Balance state queries
-// - Existence / count queries
-//
-// The repository does NOT expose:
-//
-// - FinancialTransactionAggregate
-// - FinancialPaymentAggregate
-// - FinancialAccountHoldAggregate
-// - FinancialSettlementAggregate
-// - FinancialAccountWithdrawalAggregate
-// - FinancialDisbursementAggregate
-//
-// Cross-domain references such as ownerPublicId are persisted as opaque
-// public identifiers and are not modeled as Prisma relations.
+// - FinancialAccount is the aggregate root.
+// - FinancialAccountBalance is an aggregate-owned child entity.
+// - Cross-domain references such as ownerPublicId remain opaque identifiers.
 //
 // -----------------------------------------------------------------------------
+//
+// TRANSACTION PARTICIPATION:
+//
+// This repository does NOT create its own Prisma transactions.
+//
+// PrismaTransactionContext determines which Prisma client is currently
+// available:
+//
+//     UnitOfWork
+//         │
+//         ▼
+//     PrismaUnitOfWork
+//         │
+//         ▼
+//     Prisma $transaction(tx)
+//         │
+//         ▼
+//     PrismaTransactionContext
+//         │
+//         ▼
+//     PrismaFinancialAccountRepository
+//
+// When called inside a UnitOfWork, all operations use the transaction-scoped
+// Prisma client.
+//
+// When called outside a UnitOfWork, the context falls back to PrismaService.
+//
+// This is essential because Financial Account creation is part of the
+// registration workflow. If Identity, TravellerProfile, TrustProfile,
+// Authentication, or FinancialAccount creation fails, the complete
+// registration transaction must roll back.
+//
+// -----------------------------------------------------------------------------
+//
+// CROSS-DOMAIN OWNERSHIP:
+//
+// FinancialAccount
+//      │
+//      └── ownerPublicId
+//               │
+//               ▼
+//        Identity public ID
+//
+// ownerPublicId is an opaque public identifier.
+//
+// This repository never loads, queries, or resolves the Identity aggregate.
+//
+// -----------------------------------------------------------------------------
+//
+// PERSISTENCE GRAPH:
+//
+// FinancialAccount
+// └── FinancialAccountBalance
+//
+// The balance is persisted as part of the FinancialAccount aggregate and is
+// therefore written through the same ambient Prisma transaction.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Prisma
 // -----------------------------------------------------------------------------
 
-import type { $Enums, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 // -----------------------------------------------------------------------------
-// Foundation
+// Transaction Context
 // -----------------------------------------------------------------------------
 
-import type { PrismaService } from '../../../../../../infrastructure/database/prisma/prisma.service';
-
-import type { UniqueEntityId } from '../../../../../../foundation/kernel/domain/unique-entity-id';
+import {
+  PrismaTransactionContext,
+  type PrismaClientLike,
+} from '../../../../../../infrastructure/database/prisma/prisma-transaction.context';
 
 // -----------------------------------------------------------------------------
 // Aggregate
 // -----------------------------------------------------------------------------
 
-import type { FinancialAccountAggregate } from '../../../../domain/aggregates/financial-account.aggregate';
+import { FinancialAccountAggregate } from '../../../../domain/aggregates/financial-account.aggregate';
+
+// -----------------------------------------------------------------------------
+// Repository Contract
+// -----------------------------------------------------------------------------
+
+import type { FinancialAccountRepository } from '../../../../domain/repositories/financial-account.repository';
 
 // -----------------------------------------------------------------------------
 // Entities
@@ -63,12 +116,6 @@ import type { FinancialAccountAggregate } from '../../../../domain/aggregates/fi
 import type { FinancialAccountEntity } from '../../../../domain/entities/financial-account.entity';
 
 import type { FinancialAccountBalanceEntity } from '../../../../domain/entities/financial-account-balance.entity';
-
-// -----------------------------------------------------------------------------
-// Repository Contract
-// -----------------------------------------------------------------------------
-
-import type { FinancialAccountRepository } from '../../../../domain/repositories/financial-account.repository';
 
 // -----------------------------------------------------------------------------
 // Value Objects
@@ -82,12 +129,11 @@ import type { FinancialAccountBalancePublicId } from '../../../../domain/value-o
 
 import type { FinancialAccountType } from '../../../../domain/value-objects/financial-account-type.vo';
 
-import {
-  FinancialAccountStatus,
-  type FinancialAccountStatusValue,
-} from '../../../../domain/value-objects/financial-account-status.vo';
+import { FinancialAccountStatus } from '../../../../domain/value-objects/financial-account-status.vo';
 
 import type { Currency } from '../../../../domain/value-objects/currency.vo';
+
+import type { UniqueEntityId } from '../../../../../../foundation/kernel/domain/unique-entity-id';
 
 // -----------------------------------------------------------------------------
 // Mapper
@@ -96,214 +142,156 @@ import type { Currency } from '../../../../domain/value-objects/currency.vo';
 import {
   FinancialAccountPrismaMapper,
   type FinancialAccountWithBalance,
-} from '../../../persistence/prisma/mappers/financial-account-prisma.mapper';
-
-// =============================================================================
-// Internal ID
-// =============================================================================
-//
-// Financial Account does not expose a dedicated persistence ID value object.
-//
-// Entity.id therefore remains:
-//
-// UniqueEntityId
-//
-// -----------------------------------------------------------------------------
-
-type FinancialAccountId = UniqueEntityId;
+} from '../mappers/financial-account-prisma.mapper';
 
 // =============================================================================
 // Repository
 // =============================================================================
 
+/**
+ * Prisma infrastructure implementation of the Financial Account repository.
+ *
+ * The repository is deliberately transaction-context aware.
+ *
+ * It does not create transactions itself because Financial Account operations
+ * can participate in larger application workflows such as registration.
+ *
+ * The repository translates between:
+ *
+ *     FinancialAccountAggregate
+ *              ↕
+ *     FinancialAccountPrismaMapper
+ *              ↕
+ *     Prisma FinancialAccount
+ *
+ * The aggregate owns its balance, so aggregate rehydration includes the
+ * FinancialAccountBalance record.
+ */
+@Injectable()
 export class PrismaFinancialAccountRepository implements FinancialAccountRepository {
   // ===========================================================================
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly prisma: PrismaService) {}
+  /**
+   * Resolves the Prisma client through the ambient transaction context.
+   *
+   * Inside UnitOfWork:
+   *
+   *     Prisma.TransactionClient
+   *
+   * Outside UnitOfWork:
+   *
+   *     PrismaService
+   */
+  public constructor(
+    private readonly transactionContext: PrismaTransactionContext,
+  ) {}
 
   // ===========================================================================
-  // Prisma Enum Boundary
+  // Current Prisma Client
   // ===========================================================================
 
   /**
-   * Converts a domain account type value into the Prisma enum.
+   * Returns the Prisma client appropriate for the current execution context.
    *
-   * The repository is the infrastructure boundary between domain values and
-   * Prisma persistence values.
+   * This is the critical transaction boundary for this repository.
    */
-  private toPrismaFinancialAccountType(
-    value: string,
-  ): $Enums.FinancialAccountType {
-    return value as $Enums.FinancialAccountType;
+  private get prisma(): PrismaClientLike {
+    return this.transactionContext.getClient();
   }
-
-  /**
-   * Converts a domain account status value into the Prisma enum.
-   *
-   * FinancialAccountStatus is validated before reaching this boundary.
-   */
-  private toPrismaFinancialAccountStatus(
-    value: FinancialAccountStatusValue,
-  ): $Enums.FinancialAccountStatus {
-    return value;
-  }
-
-  // ===========================================================================
-  // Include Graph
-  // ===========================================================================
-
-  /**
-   * Complete Financial Account aggregate persistence graph.
-   *
-   * The balance is an aggregate-owned entity and therefore must be loaded
-   * together with the Financial Account root when rehydrating the aggregate.
-   */
-  private readonly include = {
-    balance: true,
-  } satisfies Prisma.FinancialAccountInclude;
 
   // ===========================================================================
   // Aggregate Persistence
   // ===========================================================================
 
   /**
-   * Persists the complete Financial Account aggregate atomically.
+   * Persists the complete FinancialAccount aggregate.
    *
-   * Persistence boundary:
+   * No repository-owned transaction is created.
    *
-   * FinancialAccount
-   * └── FinancialAccountBalance
+   * Therefore, when this method is called inside PrismaUnitOfWork:
    *
-   * The balance is upserted as part of the same database transaction.
+   *     FinancialAccount
+   *          +
+   *     FinancialAccountBalance
+   *
+   * both participate in the caller's transaction.
    */
   public async save(aggregate: FinancialAccountAggregate): Promise<void> {
+    if (aggregate === undefined) {
+      throw new Error('Financial Account aggregate is required.');
+    }
+
     const persistence = FinancialAccountPrismaMapper.toPersistence(aggregate);
 
-    await this.prisma.$transaction(async (tx) => {
-      // -----------------------------------------------------------------------
-      // Root
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Financial Account Root
+    // -------------------------------------------------------------------------
 
-      await tx.financialAccount.upsert({
-        where: {
-          id: persistence.account.id,
-        },
+    await this.prisma.financialAccount.upsert({
+      where: {
+        id: persistence.account.id,
+      },
 
-        create: {
-          id: persistence.account.id,
+      create: persistence.account,
 
-          publicId: persistence.account.publicId,
+      update: {
+        publicId: persistence.account.publicId,
+        type: persistence.account.type,
+        status: persistence.account.status,
+        ownerPublicId: persistence.account.ownerPublicId,
+        currency: persistence.account.currency,
+        updatedAt: persistence.account.updatedAt,
+      },
+    });
 
-          type: this.toPrismaFinancialAccountType(persistence.account.type),
+    // -------------------------------------------------------------------------
+    // Aggregate-Owned Balance
+    // -------------------------------------------------------------------------
+    //
+    // The balance is owned by the FinancialAccount aggregate.
+    //
+    // accountId uniquely identifies the balance belonging to the aggregate
+    // root.
+    //
+    // No separate transaction is created here.
+    //
+    // -------------------------------------------------------------------------
 
-          status: this.toPrismaFinancialAccountStatus(
-            persistence.account.status,
-          ),
+    await this.prisma.financialAccountBalance.upsert({
+      where: {
+        accountId: persistence.balance.accountId,
+      },
 
-          ownerPublicId: persistence.account.ownerPublicId,
+      create: persistence.balance,
 
-          currency: persistence.account.currency,
-
-          createdAt: persistence.account.createdAt,
-
-          updatedAt: persistence.account.updatedAt,
-        },
-
-        update: {
-          publicId: persistence.account.publicId,
-
-          type: this.toPrismaFinancialAccountType(persistence.account.type),
-
-          status: this.toPrismaFinancialAccountStatus(
-            persistence.account.status,
-          ),
-
-          ownerPublicId: persistence.account.ownerPublicId,
-
-          currency: persistence.account.currency,
-
-          updatedAt: persistence.account.updatedAt,
-        },
-      });
-
-      // -----------------------------------------------------------------------
-      // Aggregate-Owned Balance
-      // -----------------------------------------------------------------------
-      //
-      // FinancialAccountBalance has a unique accountId.
-      //
-      // The balance therefore belongs to exactly one Financial Account.
-      //
-      // Upsert guarantees:
-      //
-      // FinancialAccount
-      //      │
-      //      └── exactly one FinancialAccountBalance
-      //
-      // -----------------------------------------------------------------------
-
-      await tx.financialAccountBalance.upsert({
-        where: {
-          accountId: persistence.balance.accountId,
-        },
-
-        create: {
-          id: persistence.balance.id,
-
-          publicId: persistence.balance.publicId,
-
-          accountId: persistence.balance.accountId,
-
-          availableAmount: persistence.balance.availableAmount,
-
-          pendingAmount: persistence.balance.pendingAmount,
-
-          heldAmount: persistence.balance.heldAmount,
-
-          currency: persistence.balance.currency,
-
-          version: persistence.balance.version,
-
-          createdAt: persistence.balance.createdAt,
-
-          updatedAt: persistence.balance.updatedAt,
-        },
-
-        update: {
-          publicId: persistence.balance.publicId,
-
-          availableAmount: persistence.balance.availableAmount,
-
-          pendingAmount: persistence.balance.pendingAmount,
-
-          heldAmount: persistence.balance.heldAmount,
-
-          currency: persistence.balance.currency,
-
-          version: persistence.balance.version,
-
-          updatedAt: persistence.balance.updatedAt,
-        },
-      });
+      update: {
+        publicId: persistence.balance.publicId,
+        availableAmount: persistence.balance.availableAmount,
+        pendingAmount: persistence.balance.pendingAmount,
+        heldAmount: persistence.balance.heldAmount,
+        currency: persistence.balance.currency,
+        version: persistence.balance.version,
+        updatedAt: persistence.balance.updatedAt,
+      },
     });
   }
 
   // ===========================================================================
-  // Aggregate Lookup
+  // Aggregate Queries
   // ===========================================================================
 
   /**
-   * Finds and rehydrates the complete Financial Account aggregate by
-   * internal persistence identity.
+   * Finds and rehydrates the complete FinancialAccount aggregate by internal
+   * persistence identity.
    */
   public async findById(
-    id: FinancialAccountId,
+    id: UniqueEntityId,
   ): Promise<FinancialAccountAggregate | null> {
     const record = await this.prisma.financialAccount.findUnique({
       where: {
-        id: id.value,
+        id: id.toString(),
       },
 
       include: this.include,
@@ -313,8 +301,8 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
   }
 
   /**
-   * Finds and rehydrates the complete Financial Account aggregate by
-   * public identity.
+   * Finds and rehydrates the complete FinancialAccount aggregate by public
+   * identity.
    */
   public async findByPublicId(
     publicId: FinancialAccountPublicId,
@@ -330,130 +318,10 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
     return record === null ? null : this.toAggregate(record);
   }
 
-  // ===========================================================================
-  // Delete / Exists
-  // ===========================================================================
-
   /**
-   * Deletes the complete Financial Account aggregate atomically.
+   * Finds the FinancialAccount aggregate belonging to an owner.
    *
-   * The aggregate-owned balance is explicitly deleted before the root.
-   */
-  public async delete(id: FinancialAccountId): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      // -----------------------------------------------------------------------
-      // Aggregate-Owned Balance
-      // -----------------------------------------------------------------------
-
-      await tx.financialAccountBalance.deleteMany({
-        where: {
-          accountId: id.value,
-        },
-      });
-
-      // -----------------------------------------------------------------------
-      // Root
-      // -----------------------------------------------------------------------
-
-      await tx.financialAccount.delete({
-        where: {
-          id: id.value,
-        },
-      });
-    });
-  }
-
-  /**
-   * Determines whether a Financial Account exists by internal identity.
-   */
-  public async exists(id: FinancialAccountId): Promise<boolean> {
-    return (
-      (await this.prisma.financialAccount.count({
-        where: {
-          id: id.value,
-        },
-      })) > 0
-    );
-  }
-
-  /**
-   * Determines whether a Financial Account exists by public identity.
-   */
-  public async existsByPublicId(
-    publicId: FinancialAccountPublicId,
-  ): Promise<boolean> {
-    return (
-      (await this.prisma.financialAccount.count({
-        where: {
-          publicId: publicId.value,
-        },
-      })) > 0
-    );
-  }
-
-  // ===========================================================================
-  // Account Root Queries
-  // ===========================================================================
-
-  /**
-   * Finds only the Financial Account root entity.
-   *
-   * The aggregate-owned balance is deliberately not loaded.
-   */
-  public async findAccountById(
-    id: FinancialAccountId,
-  ): Promise<FinancialAccountEntity | null> {
-    const record = await this.prisma.financialAccount.findUnique({
-      where: {
-        id: id.value,
-      },
-    });
-
-    return record === null
-      ? null
-      : FinancialAccountPrismaMapper.accountToDomain(record);
-  }
-
-  /**
-   * Finds only the Financial Account root entity by public identity.
-   */
-  public async findAccountByPublicId(
-    publicId: FinancialAccountPublicId,
-  ): Promise<FinancialAccountEntity | null> {
-    const record = await this.prisma.financialAccount.findUnique({
-      where: {
-        publicId: publicId.value,
-      },
-    });
-
-    return record === null
-      ? null
-      : FinancialAccountPrismaMapper.accountToDomain(record);
-  }
-
-  /**
-   * Returns all Financial Account root entities.
-   *
-   * Balance is intentionally not loaded.
-   */
-  public async findAccounts(): Promise<FinancialAccountEntity[]> {
-    const records = await this.prisma.financialAccount.findMany({
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-
-    return records.map((record) =>
-      FinancialAccountPrismaMapper.accountToDomain(record),
-    );
-  }
-
-  // ===========================================================================
-  // Owner Queries
-  // ===========================================================================
-
-  /**
-   * Finds the Financial Account aggregate belonging to an owner.
+   * ownerPublicId remains an opaque cross-domain reference.
    */
   public async findByOwnerPublicId(
     ownerPublicId: FinancialAccountOwnerPublicId,
@@ -470,22 +338,7 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
   }
 
   /**
-   * Determines whether an owner has a Financial Account.
-   */
-  public async existsByOwnerPublicId(
-    ownerPublicId: FinancialAccountOwnerPublicId,
-  ): Promise<boolean> {
-    return (
-      (await this.prisma.financialAccount.count({
-        where: {
-          ownerPublicId: ownerPublicId.value,
-        },
-      })) > 0
-    );
-  }
-
-  /**
-   * Finds an owner's Financial Account by lifecycle status.
+   * Finds an owner's FinancialAccount by lifecycle status.
    */
   public async findByOwnerPublicIdAndStatus(
     ownerPublicId: FinancialAccountOwnerPublicId,
@@ -494,8 +347,7 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
     const record = await this.prisma.financialAccount.findFirst({
       where: {
         ownerPublicId: ownerPublicId.value,
-
-        status: this.toPrismaFinancialAccountStatus(status.value),
+        status: status.value,
       },
 
       include: this.include,
@@ -504,22 +356,158 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
     return record === null ? null : this.toAggregate(record);
   }
 
+  // ===========================================================================
+  // Entity Queries
+  // ===========================================================================
+
   /**
-   * Determines whether an owner has an account with the specified status.
+   * Finds only the FinancialAccount root entity by internal identity.
+   *
+   * The aggregate-owned balance is deliberately not loaded.
+   */
+  public async findAccountById(
+    id: UniqueEntityId,
+  ): Promise<FinancialAccountEntity | null> {
+    const record = await this.prisma.financialAccount.findUnique({
+      where: {
+        id: id.toString(),
+      },
+    });
+
+    return record === null
+      ? null
+      : FinancialAccountPrismaMapper.accountToDomain(record);
+  }
+
+  /**
+   * Finds only the FinancialAccount root entity by public identity.
+   */
+  public async findAccountByPublicId(
+    publicId: FinancialAccountPublicId,
+  ): Promise<FinancialAccountEntity | null> {
+    const record = await this.prisma.financialAccount.findUnique({
+      where: {
+        publicId: publicId.value,
+      },
+    });
+
+    return record === null
+      ? null
+      : FinancialAccountPrismaMapper.accountToDomain(record);
+  }
+
+  /**
+   * Returns all FinancialAccount root entities.
+   *
+   * The balance is intentionally not loaded.
+   */
+  public async findAccounts(): Promise<FinancialAccountEntity[]> {
+    const records = await this.prisma.financialAccount.findMany({
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return records.map((record) =>
+      FinancialAccountPrismaMapper.accountToDomain(record),
+    );
+  }
+
+  // ===========================================================================
+  // Delete / Exists
+  // ===========================================================================
+
+  /**
+   * Deletes the FinancialAccount aggregate root.
+   *
+   * No repository-owned transaction is created.
+   *
+   * Referential cleanup is expected to be handled by the Prisma relation
+   * configuration where appropriate.
+   */
+  public async delete(id: UniqueEntityId): Promise<void> {
+    const account = await this.prisma.financialAccount.findUnique({
+      where: {
+        id: id.toString(),
+      },
+
+      select: {
+        id: true,
+      },
+    });
+
+    if (account === null) {
+      return;
+    }
+
+    await this.prisma.financialAccount.delete({
+      where: {
+        id: account.id,
+      },
+    });
+  }
+
+  /**
+   * Determines whether a FinancialAccount exists by internal identity.
+   */
+  public async exists(id: UniqueEntityId): Promise<boolean> {
+    const count = await this.prisma.financialAccount.count({
+      where: {
+        id: id.toString(),
+      },
+    });
+
+    return count > 0;
+  }
+
+  /**
+   * Determines whether a FinancialAccount exists by public identity.
+   */
+  public async existsByPublicId(
+    publicId: FinancialAccountPublicId,
+  ): Promise<boolean> {
+    const count = await this.prisma.financialAccount.count({
+      where: {
+        publicId: publicId.value,
+      },
+    });
+
+    return count > 0;
+  }
+
+  /**
+   * Determines whether an owner already has a FinancialAccount.
+   *
+   * This is used directly by account creation to enforce the one-account-per-
+   * owner invariant.
+   */
+  public async existsByOwnerPublicId(
+    ownerPublicId: FinancialAccountOwnerPublicId,
+  ): Promise<boolean> {
+    const count = await this.prisma.financialAccount.count({
+      where: {
+        ownerPublicId: ownerPublicId.value,
+      },
+    });
+
+    return count > 0;
+  }
+
+  /**
+   * Determines whether an owner has an account with the supplied status.
    */
   public async existsByOwnerPublicIdAndStatus(
     ownerPublicId: FinancialAccountOwnerPublicId,
     status: FinancialAccountStatus,
   ): Promise<boolean> {
-    return (
-      (await this.prisma.financialAccount.count({
-        where: {
-          ownerPublicId: ownerPublicId.value,
+    const count = await this.prisma.financialAccount.count({
+      where: {
+        ownerPublicId: ownerPublicId.value,
+        status: status.value,
+      },
+    });
 
-          status: this.toPrismaFinancialAccountStatus(status.value),
-        },
-      })) > 0
-    );
+    return count > 0;
   }
 
   // ===========================================================================
@@ -534,7 +522,7 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
   ): Promise<FinancialAccountEntity[]> {
     const records = await this.prisma.financialAccount.findMany({
       where: {
-        type: this.toPrismaFinancialAccountType(type.value),
+        type: type.value,
       },
 
       orderBy: {
@@ -555,7 +543,7 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
   ): Promise<FinancialAccountEntity[]> {
     const records = await this.prisma.financialAccount.findMany({
       where: {
-        status: this.toPrismaFinancialAccountStatus(status.value),
+        status: status.value,
       },
 
       orderBy: {
@@ -598,9 +586,8 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
   ): Promise<FinancialAccountEntity[]> {
     const records = await this.prisma.financialAccount.findMany({
       where: {
-        type: this.toPrismaFinancialAccountType(type.value),
-
-        status: this.toPrismaFinancialAccountStatus(status.value),
+        type: type.value,
+        status: status.value,
       },
 
       orderBy: {
@@ -623,8 +610,7 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
     const records = await this.prisma.financialAccount.findMany({
       where: {
         currency: currency.value,
-
-        status: this.toPrismaFinancialAccountStatus(status.value),
+        status: status.value,
       },
 
       orderBy: {
@@ -642,39 +628,37 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
   // ===========================================================================
 
   /**
-   * Determines whether an account uses the specified currency.
+   * Determines whether an account uses the supplied currency.
    */
   public async usesCurrency(
-    accountId: FinancialAccountId,
+    accountId: UniqueEntityId,
     currency: Currency,
   ): Promise<boolean> {
-    return (
-      (await this.prisma.financialAccount.count({
-        where: {
-          id: accountId.value,
+    const count = await this.prisma.financialAccount.count({
+      where: {
+        id: accountId.toString(),
+        currency: currency.value,
+      },
+    });
 
-          currency: currency.value,
-        },
-      })) > 0
-    );
+    return count > 0;
   }
 
   /**
-   * Determines whether a public account uses the specified currency.
+   * Determines whether a public account uses the supplied currency.
    */
   public async usesCurrencyByPublicId(
     accountPublicId: FinancialAccountPublicId,
     currency: Currency,
   ): Promise<boolean> {
-    return (
-      (await this.prisma.financialAccount.count({
-        where: {
-          publicId: accountPublicId.value,
+    const count = await this.prisma.financialAccount.count({
+      where: {
+        publicId: accountPublicId.value,
+        currency: currency.value,
+      },
+    });
 
-          currency: currency.value,
-        },
-      })) > 0
-    );
+    return count > 0;
   }
 
   // ===========================================================================
@@ -682,14 +666,14 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
   // ===========================================================================
 
   /**
-   * Finds active Financial Accounts.
+   * Finds active FinancialAccounts.
    */
   public async findActiveAccounts(): Promise<FinancialAccountEntity[]> {
     return this.findAccountsByStatus(FinancialAccountStatus.create('ACTIVE'));
   }
 
   /**
-   * Finds suspended Financial Accounts.
+   * Finds suspended FinancialAccounts.
    */
   public async findSuspendedAccounts(): Promise<FinancialAccountEntity[]> {
     return this.findAccountsByStatus(
@@ -698,25 +682,25 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
   }
 
   /**
-   * Finds closed Financial Accounts.
+   * Finds closed FinancialAccounts.
    */
   public async findClosedAccounts(): Promise<FinancialAccountEntity[]> {
     return this.findAccountsByStatus(FinancialAccountStatus.create('CLOSED'));
   }
 
   /**
-   * Counts Financial Accounts by lifecycle status.
+   * Counts FinancialAccounts by lifecycle status.
    */
   public async countByStatus(status: FinancialAccountStatus): Promise<number> {
     return this.prisma.financialAccount.count({
       where: {
-        status: this.toPrismaFinancialAccountStatus(status.value),
+        status: status.value,
       },
     });
   }
 
   /**
-   * Counts all Financial Accounts.
+   * Counts all FinancialAccounts.
    */
   public async count(): Promise<number> {
     return this.prisma.financialAccount.count();
@@ -727,16 +711,16 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
   // ===========================================================================
 
   /**
-   * Finds the balance belonging to a Financial Account.
+   * Finds the balance belonging to a FinancialAccount.
    *
-   * The balance remains an entity inside the Financial Account aggregate.
+   * The balance remains an entity inside the FinancialAccount aggregate.
    */
   public async findBalanceByAccountId(
-    accountId: FinancialAccountId,
+    accountId: UniqueEntityId,
   ): Promise<FinancialAccountBalanceEntity | null> {
     const record = await this.prisma.financialAccountBalance.findUnique({
       where: {
-        accountId: accountId.value,
+        accountId: accountId.toString(),
       },
     });
 
@@ -765,7 +749,7 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
   }
 
   /**
-   * Finds a Financial Account balance by its public identity.
+   * Finds a FinancialAccount balance by public identity.
    */
   public async findBalanceByPublicId(
     publicId: FinancialAccountBalancePublicId,
@@ -782,20 +766,20 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
   }
 
   /**
-   * Determines whether a Financial Account has a balance.
+   * Determines whether a FinancialAccount has a balance.
    */
-  public async existsBalance(accountId: FinancialAccountId): Promise<boolean> {
-    return (
-      (await this.prisma.financialAccountBalance.count({
-        where: {
-          accountId: accountId.value,
-        },
-      })) > 0
-    );
+  public async existsBalance(accountId: UniqueEntityId): Promise<boolean> {
+    const count = await this.prisma.financialAccountBalance.count({
+      where: {
+        accountId: accountId.toString(),
+      },
+    });
+
+    return count > 0;
   }
 
   /**
-   * Finds and rehydrates the Financial Account aggregate that owns a balance.
+   * Finds and rehydrates the FinancialAccount aggregate that owns a balance.
    */
   public async findByBalancePublicId(
     balancePublicId: FinancialAccountBalancePublicId,
@@ -826,7 +810,7 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
   /**
    * Finds accounts with positive available funds.
    *
-   * Only the Financial Account root is mapped because the repository contract
+   * Only the FinancialAccount root is mapped because this repository method
    * returns FinancialAccountEntity rather than the complete aggregate.
    */
   public async findAccountsWithAvailableFunds(): Promise<
@@ -918,9 +902,7 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
         balance: {
           is: {
             availableAmount: 0,
-
             pendingAmount: 0,
-
             heldAmount: 0,
           },
         },
@@ -940,60 +922,60 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
    * Determines whether an account has at least the requested available funds.
    */
   public async hasAvailableFunds(
-    accountId: FinancialAccountId,
+    accountId: UniqueEntityId,
     amount: number,
   ): Promise<boolean> {
-    return (
-      (await this.prisma.financialAccountBalance.count({
-        where: {
-          accountId: accountId.value,
+    const count = await this.prisma.financialAccountBalance.count({
+      where: {
+        accountId: accountId.toString(),
 
-          availableAmount: {
-            gte: amount,
-          },
+        availableAmount: {
+          gte: amount,
         },
-      })) > 0
-    );
+      },
+    });
+
+    return count > 0;
   }
 
   /**
    * Determines whether an account has at least the requested pending funds.
    */
   public async hasPendingFunds(
-    accountId: FinancialAccountId,
+    accountId: UniqueEntityId,
     amount: number,
   ): Promise<boolean> {
-    return (
-      (await this.prisma.financialAccountBalance.count({
-        where: {
-          accountId: accountId.value,
+    const count = await this.prisma.financialAccountBalance.count({
+      where: {
+        accountId: accountId.toString(),
 
-          pendingAmount: {
-            gte: amount,
-          },
+        pendingAmount: {
+          gte: amount,
         },
-      })) > 0
-    );
+      },
+    });
+
+    return count > 0;
   }
 
   /**
    * Determines whether an account has at least the requested held funds.
    */
   public async hasHeldFunds(
-    accountId: FinancialAccountId,
+    accountId: UniqueEntityId,
     amount: number,
   ): Promise<boolean> {
-    return (
-      (await this.prisma.financialAccountBalance.count({
-        where: {
-          accountId: accountId.value,
+    const count = await this.prisma.financialAccountBalance.count({
+      where: {
+        accountId: accountId.toString(),
 
-          heldAmount: {
-            gte: amount,
-          },
+        heldAmount: {
+          gte: amount,
         },
-      })) > 0
-    );
+      },
+    });
+
+    return count > 0;
   }
 
   // ===========================================================================
@@ -1060,9 +1042,7 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
         balance: {
           is: {
             availableAmount: 0,
-
             pendingAmount: 0,
-
             heldAmount: 0,
           },
         },
@@ -1071,11 +1051,28 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
   }
 
   // ===========================================================================
+  // Prisma Include Graph
+  // ===========================================================================
+
+  /**
+   * Complete aggregate rehydration graph.
+   *
+   * The balance is part of the FinancialAccount aggregate and is therefore
+   * loaded whenever the complete aggregate is requested.
+   */
+  private readonly include = {
+    balance: true,
+  } satisfies Prisma.FinancialAccountInclude;
+
+  // ===========================================================================
   // Aggregate Reconstruction
   // ===========================================================================
 
   /**
-   * Rehydrates the complete Financial Account aggregate.
+   * Rehydrates the complete FinancialAccount aggregate.
+   *
+   * Prisma records are translated into domain entities exclusively through the
+   * FinancialAccountPrismaMapper.
    */
   private toAggregate(
     record: FinancialAccountWithBalance,
@@ -1083,3 +1080,9 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
     return FinancialAccountPrismaMapper.toDomain(record);
   }
 }
+
+// -----------------------------------------------------------------------------
+// Default Export
+// -----------------------------------------------------------------------------
+
+export default PrismaFinancialAccountRepository;

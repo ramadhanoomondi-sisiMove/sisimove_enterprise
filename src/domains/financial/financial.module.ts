@@ -239,52 +239,13 @@ import {
   // ===========================================================================
 
   controllers: [
-    // -------------------------------------------------------------------------
-    // Financial Account
-    // -------------------------------------------------------------------------
-
     FinancialAccountsController,
-
-    // -------------------------------------------------------------------------
-    // Financial Account Hold
-    // -------------------------------------------------------------------------
-
     FinancialAccountHoldsController,
-
-    // -------------------------------------------------------------------------
-    // Financial Account Withdrawal
-    // -------------------------------------------------------------------------
-
     FinancialAccountWithdrawalsController,
-
-    // -------------------------------------------------------------------------
-    // Financial Transaction
-    // -------------------------------------------------------------------------
-
     FinancialTransactionsController,
-
-    // -------------------------------------------------------------------------
-    // Financial Payment
-    // -------------------------------------------------------------------------
-
     FinancialPaymentsController,
-
-    // -------------------------------------------------------------------------
-    // Financial Payment Method
-    // -------------------------------------------------------------------------
-
     FinancialPaymentMethodsController,
-
-    // -------------------------------------------------------------------------
-    // Financial Settlement
-    // -------------------------------------------------------------------------
-
     FinancialSettlementsController,
-
-    // -------------------------------------------------------------------------
-    // Financial Disbursement
-    // -------------------------------------------------------------------------
-
     FinancialDisbursementsController,
   ],
 
@@ -298,19 +259,12 @@ import {
     // =========================================================================
 
     ...FINANCIAL_ACCOUNT_PROVIDERS,
-
     ...FINANCIAL_ACCOUNT_HOLD_PROVIDERS,
-
     ...FINANCIAL_ACCOUNT_WITHDRAWAL_PROVIDERS,
-
     ...FINANCIAL_TRANSACTION_PROVIDERS,
-
     ...FINANCIAL_PAYMENT_PROVIDERS,
-
     ...FINANCIAL_PAYMENT_METHOD_PROVIDERS,
-
     ...FINANCIAL_SETTLEMENT_PROVIDERS,
-
     ...FINANCIAL_DISBURSEMENT_PROVIDERS,
 
     // =========================================================================
@@ -620,6 +574,19 @@ import {
   // ===========================================================================
   // Exports
   // ===========================================================================
+  //
+  // The Financial bounded context normally exposes repository contracts to
+  // other modules that need to coordinate directly with Financial aggregates.
+  //
+  // Registration is a cross-bounded-context application workflow that also
+  // needs to initialize the user's FinancialAccount. Therefore the specific
+  // Financial Account creation command handler is exposed as an application
+  // capability.
+  //
+  // We deliberately export only the handler required by the registration
+  // workflow rather than exposing every Financial command handler.
+  //
+  // ===========================================================================
 
   exports: [
     // -------------------------------------------------------------------------
@@ -627,6 +594,8 @@ import {
     // -------------------------------------------------------------------------
 
     FINANCIAL_ACCOUNT_TOKENS.REPOSITORY,
+
+    FINANCIAL_ACCOUNT_TOKENS.COMMAND_HANDLERS.CREATE,
 
     // -------------------------------------------------------------------------
     // Financial Account Hold

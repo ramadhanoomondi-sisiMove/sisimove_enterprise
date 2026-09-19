@@ -21,21 +21,32 @@
 // Infrastructure providers belong here because they must be available to
 // every route tree.
 //
+// Providers:
+//
+//   QueryProvider
+//       └── server-state / query infrastructure
+//
+//   AuthenticationProvider
+//       └── client authentication session state
+//
 // Public presentation is provided by:
 //
 //   app/(public)/layout.tsx
 //
 // This separation keeps root document infrastructure independent from the
 // public marketplace and from future authenticated application shells.
-//
 // -----------------------------------------------------------------------------
-
 
 import type { Metadata } from 'next';
 
 import './globals.css';
 
-import { QueryProvider } from '@/query-provider';
+import {
+  QueryProvider,
+} from '@/query-provider';
+import {
+  AuthenticationProvider,
+} from '@/authentication-provider';
 
 
 // =============================================================================
@@ -66,9 +77,12 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <QueryProvider>
-          {children}
+          <AuthenticationProvider>
+            {children}
+          </AuthenticationProvider>
         </QueryProvider>
       </body>
     </html>
   );
 }
+

@@ -13,6 +13,66 @@
 //
 // -----------------------------------------------------------------------------
 //
+// Verification read boundaries:
+//
+// 1. GET /verifications/me
+//
+//    Authenticated self-read.
+//
+//    The authenticated Identity is resolved from the access token through
+//    CurrentIdentity.
+//
+//        Access Token
+//             ↓
+//        JwtAuthGuard
+//             ↓
+//        CurrentIdentity
+//             ↓
+//        IdentityPublicId
+//             ↓
+//        GetVerificationQuery
+//             ↓
+//        findByIdentityPublicId()
+//             ↓
+//        VerificationAggregate
+//
+//    This endpoint requires authentication only.
+//
+// 2. GET /verifications/:verificationPublicId
+//
+//    Reviewer/query boundary.
+//
+//    The Verification aggregate is addressed directly by its own public ID.
+//
+//        VerificationPublicId
+//             ↓
+//        GetVerificationByPublicIdQuery
+//             ↓
+//        findByPublicId()
+//             ↓
+//        VerificationAggregate
+//
+//    This endpoint requires:
+//
+//        JwtAuthGuard
+//        PermissionsGuard
+//        verification:read
+//
+// IMPORTANT:
+//
+// GetVerificationQuery and GetVerificationByPublicIdQuery are intentionally
+// separate application queries.
+//
+// GetVerificationQuery:
+//     IdentityPublicId → findByIdentityPublicId()
+//
+// GetVerificationByPublicIdQuery:
+//     VerificationPublicId → findByPublicId()
+//
+// The controller must not pass VerificationPublicId to GetVerificationQuery.
+//
+// -----------------------------------------------------------------------------
+//
 // Applicant / service operations:
 //
 // 1. POST   /verifications
@@ -125,12 +185,12 @@ import {
 // -----------------------------------------------------------------------------
 
 import {
+  CurrentIdentity,
   JwtAuthGuard,
   PermissionsGuard,
   RequirePermissions,
+  type AuthenticatedIdentity,
 } from '../../../../../foundation/security/auth';
-
-import type { AuthenticatedIdentity } from '../../../../../foundation/security/auth/authenticated-identity.interface';
 
 // -----------------------------------------------------------------------------
 // Foundation — Application
@@ -175,6 +235,7 @@ import type { SubmitVerificationRequestHandler } from '../../../application/comm
 // -----------------------------------------------------------------------------
 
 import {
+  GetVerificationByPublicIdQuery,
   GetVerificationQuery,
   GetVerificationRequestQuery,
   GetVerificationRequestsQuery,
@@ -257,8 +318,7 @@ import { VerificationResponseMapper } from '../mappers/verification.response.map
 //          ↓
 //     request.user.identityPublicId
 //
-// Applicant identity is therefore always derived from the authenticated
-// security context.
+// CurrentIdentity is used for authenticated self-read operations.
 //
 // =============================================================================
 
@@ -375,10 +435,42 @@ export class VerificationsController {
     // Verification Query Handlers
     // -------------------------------------------------------------------------
 
+    /**
+     * Authenticated self-read handler.
+     *
+     * Query boundary:
+     *
+     *     IdentityPublicId
+     *         → findByIdentityPublicId()
+     *
+     * Used by:
+     *
+     *     GET /verifications/me
+     */
     @Inject(IDENTITY_TOKENS.QUERY_HANDLERS.GET_VERIFICATION)
     private readonly getVerificationHandler: QueryHandler<
       GetVerificationQuery,
-      VerificationAggregate | null
+      VerificationAggregate
+    >,
+
+    /**
+     * Verification public-ID read handler.
+     *
+     * Query boundary:
+     *
+     *     VerificationPublicId
+     *         → findByPublicId()
+     *
+     * Used by:
+     *
+     *     GET /verifications/:verificationPublicId
+     *
+     * This is intentionally separate from getVerificationHandler.
+     */
+    @Inject(IDENTITY_TOKENS.QUERY_HANDLERS.GET_VERIFICATION_BY_PUBLIC_ID)
+    private readonly getVerificationByPublicIdHandler: QueryHandler<
+      GetVerificationByPublicIdQuery,
+      VerificationAggregate
     >,
 
     @Inject(IDENTITY_TOKENS.QUERY_HANDLERS.GET_VERIFICATION_REQUESTS)
@@ -395,11 +487,84 @@ export class VerificationsController {
   ) {}
 
   // ===========================================================================
+  // Verification Queries — Authenticated Applicant
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Get Current Authenticated Verification
+  // ---------------------------------------------------------------------------
+  //
+  // Authenticated self-read boundary.
+  //
+  // The client does not provide:
+  //
+  // - verificationPublicId;
+  // - identityPublicId.
+  //
+  // The authenticated Identity is obtained from the validated access token
+  // through CurrentIdentity.
+  //
+  // The existing GetVerificationQuery is intentionally reused here because it
+  // already expresses the correct application capability:
+  //
+  //     IdentityPublicId
+  //         → findByIdentityPublicId()
+  //
+  // No GetCurrentVerificationQuery is required.
+  //
+  // Route ordering is intentional:
+  //
+  //     GET /verifications/me
+  //
+  // must be declared before:
+  //
+  //     GET /verifications/:verificationPublicId
+  //
+  // so that `me` is not interpreted as a VerificationPublicId.
+  //
+  // ---------------------------------------------------------------------------
+
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get current verification',
+    description:
+      'Returns the verification aggregate belonging to the authenticated identity.',
+  })
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  public async getCurrent(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+  ): Promise<VerificationResponse> {
+    const query = new GetVerificationQuery(
+      new IdentityPublicId(identity.identityPublicId),
+    );
+
+    const aggregate = await this.getVerificationHandler.execute(query);
+
+    return VerificationResponseMapper.toResponse(aggregate);
+  }
+
+  // ===========================================================================
   // Verification Queries — Reviewer
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
-  // Get Verification
+  // Get Verification By Public ID
+  // ---------------------------------------------------------------------------
+  //
+  // Reviewer/query boundary.
+  //
+  // This endpoint addresses the Verification aggregate by its own public ID.
+  //
+  //     VerificationPublicId
+  //          ↓
+  //     GetVerificationByPublicIdQuery
+  //          ↓
+  //     findByPublicId()
+  //
+  // It must NOT construct GetVerificationQuery because that query is defined
+  // against IdentityPublicId.
+  //
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -419,16 +584,13 @@ export class VerificationsController {
   @RequirePermissions('verification:read')
   public async get(
     @Param() dto: GetVerificationQueryDto,
-  ): Promise<VerificationResponse | null> {
-    const query = new GetVerificationQuery(
+  ): Promise<VerificationResponse> {
+    const query = new GetVerificationByPublicIdQuery(
       new VerificationPublicId(dto.verificationPublicId),
     );
 
-    const aggregate = await this.getVerificationHandler.execute(query);
-
-    if (aggregate === null) {
-      return null;
-    }
+    const aggregate =
+      await this.getVerificationByPublicIdHandler.execute(query);
 
     return VerificationResponseMapper.toResponse(aggregate);
   }
@@ -1032,8 +1194,8 @@ export class VerificationsController {
   }
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Default Export
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export default VerificationsController;

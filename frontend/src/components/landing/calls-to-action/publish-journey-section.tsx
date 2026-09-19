@@ -31,6 +31,37 @@
 // publishes, validates, or matches anything.
 //
 // -----------------------------------------------------------------------------
+// LANDING-PAGE ACCESS RULE
+// -----------------------------------------------------------------------------
+//
+// This component is used on the public landing marketplace.
+//
+// An unauthenticated visitor may:
+//
+// - view published Journeys;
+// - view Journey Demands.
+//
+// An unauthenticated visitor may NOT:
+//
+// - publish a Journey;
+// - create a Journey Demand;
+// - book a Journey;
+// - join a Journey Demand.
+//
+// Therefore:
+//
+//     Publish a journey
+//            │
+//            ▼
+//         Sign in
+//
+// Authentication is the first access boundary. Verification is handled later
+// by the authenticated marketplace when the user attempts to perform the
+// protected action.
+//
+// This component does not perform that access check itself.
+//
+// -----------------------------------------------------------------------------
 // ARCHITECTURE
 // -----------------------------------------------------------------------------
 //
@@ -43,8 +74,10 @@
 // - call an API;
 // - access authentication state;
 // - determine permissions;
+// - determine verification status;
 // - resolve provider eligibility;
-// - perform booking or matching logic.
+// - perform booking or matching logic;
+// - determine the final post-login destination.
 //
 // The CTA receives an `href` from the surrounding application.
 //
@@ -53,6 +86,14 @@
 // -----------------------------------------------------------------------------
 //
 // The CTA is a Next.js Link because its purpose is navigation.
+//
+// For the public landing marketplace, the default destination is the
+// canonical sign-in route:
+//
+//     /login
+//
+// The actual Journey creation and publishing flow remains an authenticated
+// concern.
 //
 // -----------------------------------------------------------------------------
 // VISUAL ROLE
@@ -89,7 +130,12 @@ export interface PublishJourneySectionProps {
   /**
    * Destination used by the CTA.
    *
-   * Defaults to the Journey creation route.
+   * The public landing marketplace defaults to the canonical sign-in route
+   * because publishing a Journey is an authenticated marketplace action.
+   *
+   * The destination remains configurable so the surrounding composition
+   * boundary can provide the appropriate route when this presentation
+   * component is reused elsewhere.
    */
   readonly href?: string;
 
@@ -104,7 +150,7 @@ export interface PublishJourneySectionProps {
 // =============================================================================
 
 export function PublishJourneySection({
-  href = '/journeys/create',
+  href = '/login',
   className,
 }: PublishJourneySectionProps) {
   return (
@@ -292,3 +338,4 @@ export function PublishJourneySection({
     </section>
   );
 }
+

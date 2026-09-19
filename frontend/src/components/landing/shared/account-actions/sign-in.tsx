@@ -28,6 +28,9 @@
 // - account prompts;
 // - other public presentation contexts.
 //
+// The default destination comes from the canonical authentication routing
+// boundary.
+//
 // -----------------------------------------------------------------------------
 // VISUAL ROLE
 // -----------------------------------------------------------------------------
@@ -53,9 +56,12 @@
 // - authentication behavior;
 // - authorization;
 // - application state.
+//
 // -----------------------------------------------------------------------------
 
 import Link from 'next/link';
+
+import { AUTHENTICATION_ROUTES } from '@/foundation/routing';
 
 
 // =============================================================================
@@ -66,7 +72,7 @@ export interface SignInProps {
   /**
    * Sign-in destination.
    *
-   * Defaults to the public login route.
+   * Defaults to the canonical public login route.
    */
   readonly href?: string;
 
@@ -90,7 +96,7 @@ export interface SignInProps {
 // =============================================================================
 
 export function SignIn({
-  href = '/login',
+  href = AUTHENTICATION_ROUTES.LOGIN,
   className,
   compact = false,
 }: SignInProps) {
@@ -170,3 +176,6 @@ export function SignIn({
     </Link>
   );
 }
+
+export default SignIn;
+

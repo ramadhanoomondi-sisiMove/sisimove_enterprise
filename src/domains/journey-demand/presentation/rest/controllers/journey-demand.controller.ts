@@ -4,19 +4,27 @@
 //
 // Transport boundary for the Journey Demand bounded context.
 //
-// The controller:
-// - binds HTTP requests;
-// - converts primitives to domain Value Objects where required;
-// - constructs application Commands / Queries;
-// - dispatches application handlers;
-// - declares authentication / authorization.
+// The controller is responsible for:
+//
+// - binding HTTP requests;
+// - converting HTTP primitives into domain Value Objects where required;
+// - constructing application Commands / Queries;
+// - dispatching application handlers;
+// - declaring authentication / authorization;
+// - mapping authenticated owner results into transport-safe responses.
 //
 // The controller does NOT:
+//
 // - access Prisma;
 // - implement business rules;
 // - compose Traveller / Trust;
-// - determine public visibility;
-// - construct public marketplace projections.
+// - determine public marketplace visibility;
+// - perform ownership checks itself;
+// - construct public marketplace projections;
+// - expose domain entities as the authenticated owner contract when a
+//   dedicated response projection exists.
+//
+// -----------------------------------------------------------------------------
 //
 // PUBLIC MARKETPLACE
 // -----------------
@@ -43,8 +51,114 @@
 //      v
 // PublicJourneyDemandResponse
 //
-// The plural and singular public endpoints therefore expose the same
+// The collection and detail endpoints therefore remain part of the same
 // application-level public marketplace boundary.
+//
+// -----------------------------------------------------------------------------
+//
+// AUTHENTICATED OWNER SURFACE
+// ---------------------------
+//
+// GET /journey-demands/me
+//      |
+//      v
+// AuthenticatedIdentity.identityPublicId
+//      |
+//      v
+// RequesterPublicId
+//      |
+//      v
+// GetMyJourneyDemandsQuery
+//      |
+//      v
+// GetMyJourneyDemandsQueryHandler
+//      |
+//      v
+// JourneyDemandEntity[]
+//      |
+//      v
+// MyJourneyDemandMapper
+//      |
+//      v
+// MyJourneyDemandResponse[]
+//
+// IMPORTANT:
+//
+// The client does NOT provide requesterPublicId for /me.
+//
+// The authenticated identity establishes the requester scope. This prevents
+// a caller from selecting another requester's Journey Demands by changing a
+// query-string or route parameter.
+//
+// The query handler establishes the ownership boundary. The mapper only
+// transforms the already-scoped domain result into transport primitives.
+//
+// -----------------------------------------------------------------------------
+//
+// PUBLIC MARKETPLACE AND OWNER SURFACES REMAIN DISTINCT:
+//
+// /journey-demands
+//     -> anonymous marketplace discovery
+//
+// /journey-demands/:journeyDemandPublicId
+//     -> anonymous public marketplace detail
+//
+// /journey-demands/me
+//     -> authenticated requester's own Journey Demands
+//
+// -----------------------------------------------------------------------------
+//
+// RESPONSE BOUNDARIES
+// -------------------
+//
+// Public marketplace:
+//
+//     PublicJourneyDemandResponse
+//
+// Authenticated owner:
+//
+//     MyJourneyDemandResponse
+//
+// Generic/domain query endpoints:
+//
+//     Existing domain/application response contracts remain unchanged.
+//
+// The My Journey Demand response intentionally does not reuse the public
+// marketplace projection because the two surfaces have different purposes.
+//
+// -----------------------------------------------------------------------------
+//
+// ROUTE ORDER
+// -----------
+//
+// Static collection routes such as:
+//
+//     /me
+//     /open
+//     /matchable
+//     /corridor/:corridorId
+//     /schedule/:scheduleId
+//     /requester/:requesterPublicId
+//
+// are declared before:
+//
+//     /:journeyDemandPublicId
+//
+// so that static paths cannot be interpreted as Journey Demand public IDs.
+//
+// -----------------------------------------------------------------------------
+//
+// IMPORTANT ARCHITECTURAL NOTE
+// ----------------------------
+//
+// This controller currently preserves the existing command/query contracts.
+//
+// In particular, CreateJourneyDemandCommand still receives the requester
+// supplied by CreateJourneyDemandDto because changing that command contract
+// would be a separate application-layer ownership refactor.
+//
+// The /me read boundary, however, is explicitly identity-derived and does
+// not accept requesterPublicId from the client.
 // -----------------------------------------------------------------------------
 
 import {
@@ -72,11 +186,7 @@ import {
 // Authentication / Authorization
 // -----------------------------------------------------------------------------
 
-import {
-  JwtAuthGuard,
-  PermissionsGuard,
-  RequirePermissions,
-} from '../../../../../foundation/security/auth';
+import * as auth from '../../../../../foundation/security/auth';
 
 // -----------------------------------------------------------------------------
 // Foundation Application Contracts
@@ -136,17 +246,18 @@ import {
   GetJourneyDemandScheduleQuery,
   GetJourneyDemandWaypointsQuery,
   GetMyJourneyDemandsQuery,
-
-  // ---------------------------------------------------------------------------
-  // Public marketplace collection
-  // ---------------------------------------------------------------------------
-  GetPublicJourneyDemandsQuery,
-
-  // ---------------------------------------------------------------------------
-  // Public marketplace detail
-  // ---------------------------------------------------------------------------
   GetPublicJourneyDemandQuery,
+  GetPublicJourneyDemandsQuery,
 } from '../../../application/queries';
+
+// -----------------------------------------------------------------------------
+// Authenticated Owner Response
+// -----------------------------------------------------------------------------
+
+import {
+  MyJourneyDemandMapper,
+  type MyJourneyDemandResponse,
+} from '../../mappers/my-journey-demand.mapper';
 
 // -----------------------------------------------------------------------------
 // Public Journey Demand Responses
@@ -376,26 +487,12 @@ export class JourneyDemandController {
     // Public Marketplace Query Handlers
     // =========================================================================
 
-    /**
-     * Public Journey Demand collection.
-     *
-     * This is the anonymous marketplace discovery boundary.
-     *
-     * The handler returns a public read model rather than Journey Demand
-     * aggregates. Traveller and Trust information is composed inside the
-     * application layer.
-     */
     @Inject(JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.GET_PUBLIC_MANY)
     private readonly getPublicJourneyDemandsHandler: QueryHandler<
       GetPublicJourneyDemandsQuery,
       readonly PublicJourneyDemandCollectionResponse[]
     >,
 
-    /**
-     * Public Journey Demand detail.
-     *
-     * This remains separate from the generic aggregate lookup.
-     */
     @Inject(JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.GET_PUBLIC)
     private readonly getPublicJourneyDemandHandler: QueryHandler<
       GetPublicJourneyDemandQuery,
@@ -412,6 +509,15 @@ export class JourneyDemandController {
       JourneyDemandAggregate
     >,
 
+    /**
+     * Returns Journey Demands belonging to the authenticated requester.
+     *
+     * The requester scope is established by the controller from the
+     * authenticated identity.
+     *
+     * The handler therefore receives a RequesterPublicId derived from the
+     * authenticated JWT rather than from client-controlled input.
+     */
     @Inject(JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.GET_MY)
     private readonly getMyJourneyDemandsHandler: QueryHandler<
       GetMyJourneyDemandsQuery,
@@ -506,12 +612,10 @@ export class JourneyDemandController {
    *
    *     "Return all publicly discoverable Journey Demands."
    *
-   * Optional from / to / date values narrow the collection.
+   * Optional filters narrow the collection.
    *
-   * IMPORTANT:
-   *
-   * The query object contains readonly properties. We therefore construct
-   * GetPublicJourneyDemandsQuery once and never mutate it.
+   * No authentication is required because this is the anonymous marketplace
+   * read boundary.
    */
   @Get()
   @ApiOperation({
@@ -564,43 +668,86 @@ export class JourneyDemandController {
   }
 
   // ===========================================================================
-  // PROTECTED COLLECTION QUERIES
+  // AUTHENTICATED OWNER COLLECTION
   // ===========================================================================
 
   /**
-   * My Journey Demands remain protected because this operation exposes
-   * requester-scoped domain data rather than the anonymous marketplace
-   * projection.
+   * Returns Journey Demands belonging to the currently authenticated
+   * requester.
+   *
+   * Ownership flow:
+   *
+   *     JWT
+   *       ↓
+   *     AuthenticatedIdentity
+   *       ↓
+   *     identity.identityPublicId
+   *       ↓
+   *     RequesterPublicId
+   *       ↓
+   *     GetMyJourneyDemandsQuery
+   *       ↓
+   *     JourneyDemandEntity[]
+   *       ↓
+   *     MyJourneyDemandMapper
+   *       ↓
+   *     MyJourneyDemandResponse[]
+   *
+   * The client cannot provide requesterPublicId for this endpoint.
+   *
+   * This is intentionally parallel to:
+   *
+   *     GET /journeys/me
    */
-  @Get('mine')
+  @Get('me')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:read')
+  @UseGuards(auth.JwtAuthGuard)
   @ApiOperation({
     summary: 'Get my journey demands',
     description:
-      'Returns journey demands belonging to the specified requester.',
+      'Returns journey demands belonging to the currently authenticated requester.',
   })
-  public async getMine(
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Maximum number of Journey Demands to return.',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'Number of Journey Demands to skip.',
+  })
+  public async getMyJourneyDemands(
+    @auth.CurrentIdentity() identity: auth.AuthenticatedIdentity,
     @Query() dto: GetMyJourneyDemandsQueryDto,
-  ): Promise<JourneyDemandEntity[]> {
-    return this.getMyJourneyDemandsHandler.execute(
+  ): Promise<readonly MyJourneyDemandResponse[]> {
+    const entities = await this.getMyJourneyDemandsHandler.execute(
       new GetMyJourneyDemandsQuery(
-        new RequesterPublicId(dto.requesterPublicId),
+        new RequesterPublicId(identity.identityPublicId),
         dto.limit,
         dto.offset,
       ),
     );
+
+    return entities.map((entity) => MyJourneyDemandMapper.fromEntity(entity));
   }
 
-  // ---------------------------------------------------------------------------
-  // Find Open
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // OTHER PROTECTED COLLECTION QUERIES
+  // ===========================================================================
 
+  /**
+   * Returns open Journey Demands for authorized domain operations.
+   *
+   * This is deliberately distinct from /me and remains an operational query
+   * rather than an authenticated owner projection.
+   */
   @Get('open')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:read')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:read')
   @ApiOperation({
     summary: 'Find open journey demands',
     description:
@@ -624,18 +771,27 @@ export class JourneyDemandController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Find Matchable
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Returns Journey Demands that are currently eligible for matching.
+   */
   @Get('matchable')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:read')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:read')
   @ApiOperation({
     summary: 'Find matchable journey demands',
     description:
       'Returns Journey Demands available for authorized matching operations.',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
   })
   public async findMatchable(
     @Query() dto: FindMatchableJourneyDemandsQueryDto,
@@ -645,11 +801,16 @@ export class JourneyDemandController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Find By Corridor
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Returns Journey Demands associated with a specific corridor.
+   *
+   * This is a protected domain query and is not the public marketplace
+   * collection boundary.
+   */
   @Get('corridor/:corridorId')
+  @ApiBearerAuth('access-token')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:read')
   @ApiOperation({
     summary: 'Find journey demands by corridor',
     description: 'Returns Journey Demands associated with a specific corridor.',
@@ -657,6 +818,16 @@ export class JourneyDemandController {
   @ApiParam({
     name: 'corridorId',
     description: 'Journey Demand corridor identifier.',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
   })
   public async findByCorridor(
     @Param('corridorId') corridorId: string,
@@ -671,11 +842,13 @@ export class JourneyDemandController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Find By Schedule
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Returns Journey Demands associated with a specific schedule.
+   */
   @Get('schedule/:scheduleId')
+  @ApiBearerAuth('access-token')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:read')
   @ApiOperation({
     summary: 'Find journey demands by schedule',
     description: 'Returns Journey Demands associated with a specific schedule.',
@@ -683,6 +856,16 @@ export class JourneyDemandController {
   @ApiParam({
     name: 'scheduleId',
     description: 'Journey Demand schedule identifier.',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
   })
   public async findBySchedule(
     @Param('scheduleId') scheduleId: string,
@@ -697,14 +880,22 @@ export class JourneyDemandController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Find By Requester
-  // ---------------------------------------------------------------------------
-
+  /**
+   * Generic requester lookup.
+   *
+   * This remains distinct from /me.
+   *
+   * /me:
+   *     requester scope comes from the authenticated identity.
+   *
+   * /requester/:requesterPublicId:
+   *     requester scope is explicitly selected and therefore remains a
+   *     protected domain query.
+   */
   @Get('requester/:requesterPublicId')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:read')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:read')
   @ApiOperation({
     summary: 'Find journey demands by requester',
     description: 'Returns Journey Demands belonging to a specific requester.',
@@ -712,6 +903,16 @@ export class JourneyDemandController {
   @ApiParam({
     name: 'requesterPublicId',
     description: 'Public identifier of the requester.',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
   })
   public async findByRequester(
     @Param('requesterPublicId') requesterPublicId: string,
@@ -733,8 +934,8 @@ export class JourneyDemandController {
   /**
    * Public marketplace detail.
    *
-   * This must remain after static routes such as /mine, /open,
-   * /matchable, /corridor and /schedule.
+   * This endpoint intentionally returns the public application read model.
+   * It does not expose the Journey Demand aggregate directly.
    */
   @Get(':journeyDemandPublicId')
   @ApiOperation({
@@ -760,6 +961,9 @@ export class JourneyDemandController {
   // COMPONENT QUERIES
   // ===========================================================================
 
+  /**
+   * Returns the corridor associated with a Journey Demand.
+   */
   @Get(':journeyDemandPublicId/corridor')
   @ApiOperation({
     summary: 'Get journey demand corridor',
@@ -779,6 +983,9 @@ export class JourneyDemandController {
     );
   }
 
+  /**
+   * Returns the waypoints associated with a Journey Demand.
+   */
   @Get(':journeyDemandPublicId/waypoints')
   @ApiOperation({
     summary: 'Get journey demand waypoints',
@@ -798,6 +1005,9 @@ export class JourneyDemandController {
     );
   }
 
+  /**
+   * Returns the schedule associated with a Journey Demand.
+   */
   @Get(':journeyDemandPublicId/schedule')
   @ApiOperation({
     summary: 'Get journey demand schedule',
@@ -817,6 +1027,9 @@ export class JourneyDemandController {
     );
   }
 
+  /**
+   * Returns capacity requirements for a Journey Demand.
+   */
   @Get(':journeyDemandPublicId/capacity')
   @ApiOperation({
     summary: 'Get journey demand capacity',
@@ -836,6 +1049,9 @@ export class JourneyDemandController {
     );
   }
 
+  /**
+   * Returns pricing information for a Journey Demand.
+   */
   @Get(':journeyDemandPublicId/pricing')
   @ApiOperation({
     summary: 'Get journey demand pricing',
@@ -861,8 +1077,8 @@ export class JourneyDemandController {
 
   @Post()
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:create')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:create')
   @ApiOperation({
     summary: 'Create journey demand',
     description: 'Creates a new Journey Demand.',
@@ -879,10 +1095,13 @@ export class JourneyDemandController {
     );
   }
 
+  /**
+   * Updates the root Journey Demand.
+   */
   @Put(':journeyDemandPublicId')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:update')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:update')
   @ApiOperation({
     summary: 'Update journey demand',
     description: 'Updates an existing Journey Demand.',
@@ -904,10 +1123,13 @@ export class JourneyDemandController {
     );
   }
 
+  /**
+   * Publishes a Journey Demand for public discovery and matching.
+   */
   @Post(':journeyDemandPublicId/publish')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:publish')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:publish')
   @ApiOperation({
     summary: 'Publish journey demand',
     description:
@@ -930,10 +1152,13 @@ export class JourneyDemandController {
     );
   }
 
+  /**
+   * Matches a Journey Demand with a Journey.
+   */
   @Post(':journeyDemandPublicId/match')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:match')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:match')
   @ApiOperation({
     summary: 'Match journey demand',
     description: 'Matches a Journey Demand with a Journey.',
@@ -956,10 +1181,13 @@ export class JourneyDemandController {
     );
   }
 
+  /**
+   * Converts a Journey Demand into the corresponding Journey flow.
+   */
   @Post(':journeyDemandPublicId/convert')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:convert')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:convert')
   @ApiOperation({
     summary: 'Convert journey demand',
     description:
@@ -983,10 +1211,13 @@ export class JourneyDemandController {
     );
   }
 
+  /**
+   * Marks a Journey Demand as fulfilled.
+   */
   @Post(':journeyDemandPublicId/fulfill')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:fulfill')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:fulfill')
   @ApiOperation({
     summary: 'Fulfill journey demand',
     description: 'Marks a Journey Demand as fulfilled.',
@@ -1008,10 +1239,13 @@ export class JourneyDemandController {
     );
   }
 
+  /**
+   * Cancels a Journey Demand.
+   */
   @Post(':journeyDemandPublicId/cancel')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:cancel')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:cancel')
   @ApiOperation({
     summary: 'Cancel journey demand',
     description: 'Cancels an existing Journey Demand.',
@@ -1034,10 +1268,13 @@ export class JourneyDemandController {
     );
   }
 
+  /**
+   * Expires a Journey Demand.
+   */
   @Post(':journeyDemandPublicId/expire')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:expire')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:expire')
   @ApiOperation({
     summary: 'Expire journey demand',
     description: 'Expires a Journey Demand that is no longer active.',
@@ -1065,8 +1302,8 @@ export class JourneyDemandController {
 
   @Put(':journeyDemandPublicId/corridor')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:corridor:update')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:corridor:update')
   @ApiOperation({
     summary: 'Update journey demand corridor',
     description: 'Updates the origin and destination corridor.',
@@ -1096,8 +1333,8 @@ export class JourneyDemandController {
 
   @Post(':journeyDemandPublicId/waypoints')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:waypoint:add')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:waypoint:add')
   @ApiOperation({
     summary: 'Add journey demand waypoint',
     description: 'Adds a waypoint to a Journey Demand.',
@@ -1126,8 +1363,8 @@ export class JourneyDemandController {
 
   @Put(':journeyDemandPublicId/waypoints/:waypointPublicId')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:waypoint:update')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:waypoint:update')
   @ApiOperation({
     summary: 'Update journey demand waypoint',
     description: 'Updates an existing Journey Demand waypoint.',
@@ -1161,8 +1398,8 @@ export class JourneyDemandController {
 
   @Delete(':journeyDemandPublicId/waypoints/:waypointPublicId')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:waypoint:remove')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:waypoint:remove')
   @ApiOperation({
     summary: 'Remove journey demand waypoint',
     description: 'Removes a waypoint from a Journey Demand.',
@@ -1196,8 +1433,8 @@ export class JourneyDemandController {
 
   @Put(':journeyDemandPublicId/schedule')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:schedule:update')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:schedule:update')
   @ApiOperation({
     summary: 'Update journey demand schedule',
     description: 'Updates the requested travel schedule.',
@@ -1234,8 +1471,8 @@ export class JourneyDemandController {
 
   @Put(':journeyDemandPublicId/capacity')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:capacity:update')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:capacity:update')
   @ApiOperation({
     summary: 'Update journey demand capacity',
     description: 'Updates the number of seats required.',
@@ -1264,8 +1501,8 @@ export class JourneyDemandController {
 
   @Put(':journeyDemandPublicId/pricing')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:pricing:update')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:pricing:update')
   @ApiOperation({
     summary: 'Update journey demand pricing',
     description: 'Updates pricing for a Journey Demand.',
@@ -1295,8 +1532,8 @@ export class JourneyDemandController {
 
   @Post(':journeyDemandPublicId/participants')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:participant:add')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:participant:add')
   @ApiOperation({
     summary: 'Add journey demand participant',
     description: 'Adds a participant to a Journey Demand.',
@@ -1322,8 +1559,8 @@ export class JourneyDemandController {
 
   @Put(':journeyDemandPublicId/participants/:participantPublicId')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:participant:update')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:participant:update')
   @ApiOperation({
     summary: 'Update journey demand participant',
     description: 'Updates participant seat requirements.',
@@ -1354,8 +1591,8 @@ export class JourneyDemandController {
 
   @Post(':journeyDemandPublicId/participants/:participantPublicId/withdraw')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:participant:withdraw')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:participant:withdraw')
   @ApiOperation({
     summary: 'Withdraw journey demand participant',
     description: 'Withdraws a participant from a Journey Demand.',
@@ -1385,8 +1622,8 @@ export class JourneyDemandController {
 
   @Delete(':journeyDemandPublicId/participants/:participantPublicId')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:participant:remove')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:participant:remove')
   @ApiOperation({
     summary: 'Remove journey demand participant',
     description: 'Removes a participant from a Journey Demand.',
@@ -1420,8 +1657,8 @@ export class JourneyDemandController {
 
   @Get(':journeyDemandPublicId/participants')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:read')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:read')
   @ApiOperation({
     summary: 'Get journey demand participants',
     description: 'Returns participants associated with a Journey Demand.',
@@ -1442,8 +1679,8 @@ export class JourneyDemandController {
 
   @Get(':journeyDemandPublicId/participants/:participantPublicId')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('journey-demand:read')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey-demand:read')
   @ApiOperation({
     summary: 'Get journey demand participant',
     description: 'Returns a specific Journey Demand participant.',

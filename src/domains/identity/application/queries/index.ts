@@ -33,6 +33,7 @@ export * from './get-identity-roles.query';
 export * from './get-verification.query';
 export * from './get-verification-requests.query';
 export * from './get-verification-request.query';
+export * from './get-verification-by-public-id.query';
 
 // =============================================================================
 // Role

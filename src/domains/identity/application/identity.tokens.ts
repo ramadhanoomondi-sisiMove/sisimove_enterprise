@@ -200,7 +200,30 @@ export const IDENTITY_TOKENS = {
     // Verification
     // -------------------------------------------------------------------------
 
+    /**
+     * Retrieves the Verification aggregate belonging to an Identity.
+     *
+     * Application boundary:
+     *
+     *     IdentityPublicId
+     *         → findByIdentityPublicId()
+     *
+     * Used by the authenticated self-service `/me` boundary.
+     */
     GET_VERIFICATION: Symbol('GetVerificationHandler'),
+
+    /**
+     * Retrieves the Verification aggregate by its own public identifier.
+     *
+     * Application boundary:
+     *
+     *     VerificationPublicId
+     *         → findByPublicId()
+     *
+     * This is intentionally separate from GET_VERIFICATION because the two
+     * queries address the aggregate through different public-ID boundaries.
+     */
+    GET_VERIFICATION_BY_PUBLIC_ID: Symbol('GetVerificationByPublicIdHandler'),
 
     GET_VERIFICATION_REQUESTS: Symbol('GetVerificationRequestsHandler'),
 

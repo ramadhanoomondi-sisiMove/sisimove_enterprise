@@ -1,6 +1,38 @@
 // src/domains/journey-demand/application/handlers/get-journey-demand-participants.handler.ts
 
 // -----------------------------------------------------------------------------
+// sisiMove — Get Journey Demand Participants Query Handler
+// -----------------------------------------------------------------------------
+//
+// Application-layer query handler for retrieving all Participants belonging
+// to a Journey Demand.
+//
+// Responsibilities:
+// - resolve the Journey Demand aggregate from its public identifier;
+// - use the aggregate identity to retrieve its Participants;
+// - translate a missing Journey Demand into the appropriate domain-level
+//   not-found exception;
+// - return the JourneyDemandParticipantEntity collection.
+//
+// This handler deliberately does NOT:
+// - access Prisma directly;
+// - perform HTTP concerns;
+// - perform authentication;
+// - perform authorization;
+// - instantiate a repository;
+// - expose Prisma models.
+//
+// Dependency injection is resolved through Journey Demand application tokens.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
+
+// -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
@@ -26,9 +58,16 @@ import type { JourneyDemandRepository } from '../../domain/repositories/journey-
 import { JourneyDemandNotFoundException } from '../../domain/exceptions';
 
 // -----------------------------------------------------------------------------
+// Journey Demand Application
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_DEMAND_TOKENS } from '../journey-demand.tokens';
+
+// -----------------------------------------------------------------------------
 // Query Handler
 // -----------------------------------------------------------------------------
 
+@Injectable()
 export class GetJourneyDemandParticipantsQueryHandler implements QueryHandler<
   GetJourneyDemandParticipantsQuery,
   JourneyDemandParticipantEntity[]
@@ -37,7 +76,10 @@ export class GetJourneyDemandParticipantsQueryHandler implements QueryHandler<
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly repository: JourneyDemandRepository) {}
+  public constructor(
+    @Inject(JOURNEY_DEMAND_TOKENS.REPOSITORY)
+    private readonly repository: JourneyDemandRepository,
+  ) {}
 
   // ===========================================================================
   // Execute

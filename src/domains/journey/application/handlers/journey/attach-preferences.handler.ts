@@ -1,6 +1,36 @@
 // src/domains/journey/application/handlers/journey/attach-preferences.handler.ts
 
 // -----------------------------------------------------------------------------
+// sisiMove — Attach Journey Preferences Command Handler
+// -----------------------------------------------------------------------------
+//
+// Application-layer command handler for attaching existing Journey Preferences
+// to a Journey aggregate.
+//
+// Responsibilities:
+// - resolve the Journey aggregate;
+// - resolve the Journey Preferences within the Journey aggregate boundary;
+// - delegate the attachment mutation to the Journey aggregate;
+// - persist the mutated aggregate.
+//
+// The command already contains JourneyPublicId and JourneyPreferencesPublicId
+// as domain value objects. The handler therefore does not reconstruct them.
+//
+// The handler does NOT:
+// - access Prisma directly;
+// - perform HTTP concerns;
+// - mutate persistence models;
+// - implement Journey business rules.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
+
+// -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
@@ -25,20 +55,39 @@ import { JourneyNotFoundException } from '../../../domain/exceptions';
 import type { JourneyRepository } from '../../../domain/repositories/journey.repository';
 
 // -----------------------------------------------------------------------------
+// Application Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_TOKENS } from '../../journey.tokens';
+
+// -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
+@Injectable()
 export class AttachPreferencesHandler implements CommandHandler<
   AttachPreferencesCommand,
   void
 > {
-  constructor(private readonly journeyRepository: JourneyRepository) {}
+  // ===========================================================================
+  // Constructor
+  // ===========================================================================
 
-  async execute(command: AttachPreferencesCommand): Promise<void> {
+  public constructor(
+    @Inject(JOURNEY_TOKENS.REPOSITORY)
+    private readonly journeyRepository: JourneyRepository,
+  ) {}
+
+  // ===========================================================================
+  // Execute
+  // ===========================================================================
+
+  public async execute(command: AttachPreferencesCommand): Promise<void> {
     // -------------------------------------------------------------------------
     // Resolve Journey Aggregate
     //
     // command.journeyPublicId is already a JourneyPublicId Value Object.
+    // Do not construct another JourneyPublicId here.
     // -------------------------------------------------------------------------
 
     const aggregate = await this.journeyRepository.findByPublicId(
@@ -52,10 +101,8 @@ export class AttachPreferencesHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     // Resolve Journey Preferences
     //
-    // command.preferencesPublicId is already a
-    // JourneyPreferencesPublicId Value Object.
-    //
-    // The lookup is scoped to the owning Journey aggregate.
+    // command.preferencesPublicId is already a JourneyPreferencesPublicId
+    // Value Object. The lookup is scoped to the owning Journey aggregate.
     // -------------------------------------------------------------------------
 
     const preferences = await this.journeyRepository.findPreferencesByPublicId(
@@ -73,6 +120,10 @@ export class AttachPreferencesHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     // Aggregate Mutation
     // -------------------------------------------------------------------------
+    //
+    // The Journey aggregate owns the business rules governing preferences
+    // attachment.
+    //
 
     aggregate.attachPreferences(preferences);
 

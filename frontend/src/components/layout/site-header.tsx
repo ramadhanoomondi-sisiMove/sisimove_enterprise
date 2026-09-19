@@ -8,6 +8,8 @@
 // - Render the sisiMove brand.
 // - Compose desktop and mobile navigation.
 // - Provide public authentication entry points.
+// - Provide the public "Share travel plan" entry point.
+// - Route protected public actions to the authentication boundary.
 // - Remain independent of authentication implementation details.
 //
 // Architectural boundary:
@@ -17,6 +19,19 @@
 // - It does not perform authentication.
 // - It does not call APIs.
 // - It does not contain marketplace/domain logic.
+// - It does not determine whether a user is authenticated.
+// - It does not determine whether a user is verified.
+//
+// Public action rule:
+//
+//     Share travel plan → /login
+//
+// The public header does not attempt to determine whether the visitor can
+// create or publish a journey. The login route is the entry boundary for
+// this protected action.
+//
+// After authentication, the authenticated application is responsible for
+// determining the user's verification/capability requirements.
 //
 // Import boundary:
 //
@@ -29,18 +44,22 @@
 //
 // - SignIn owns the presentation of the sign-in action.
 // - JoinSisiMove owns the presentation of the registration action.
-// - SiteHeader only composes those actions.
+// - SiteHeader composes those actions.
+// - "Share travel plan" is a public-shell navigation action and therefore
+//   remains a plain Link to the authentication boundary.
 //
-// Authentication state, session handling, authorization, and registration
-// behavior remain outside this component.
+// Authentication state, session handling, authorization, verification,
+// and registration behavior remain outside this component.
 //
 // -----------------------------------------------------------------------------
+
 
 'use client';
 
 import Link from 'next/link';
 
 import { cn } from '@/foundation';
+import { AUTHENTICATION_ROUTES, PUBLIC_ROUTES } from '@/foundation/routing';
 
 import { Container } from '../ui';
 
@@ -51,6 +70,7 @@ import {
 
 import { DesktopNavigation } from './desktop-navigation';
 import { MobileNavigation } from './mobile-navigation';
+
 
 // =============================================================================
 // Site Header
@@ -83,7 +103,7 @@ export function SiteHeader() {
         =================================================================== */}
 
         <Link
-          href="/"
+          href={PUBLIC_ROUTES.HOME}
           aria-label="sisiMove home"
           className={cn(
             'shrink-0',
@@ -119,7 +139,7 @@ export function SiteHeader() {
         </div>
 
         {/* ===================================================================
-            Desktop Account Actions
+            Desktop Public Actions
         =================================================================== */}
 
         <div
@@ -129,6 +149,45 @@ export function SiteHeader() {
             'md:flex',
           )}
         >
+          {/* ---------------------------------------------------------------
+              Share Travel Plan
+
+              Public visitors may see this action, but creating/publishing
+              travel plans is protected.
+
+              The header therefore sends the visitor directly to the login
+              boundary. Authentication and verification are handled after
+              entering the authenticated flow.
+
+              This is intentionally a plain Link:
+              - no authentication state
+              - no API call
+              - no authorization logic
+              - no marketplace/domain logic
+          ---------------------------------------------------------------- */}
+
+          <Link
+            href={AUTHENTICATION_ROUTES.LOGIN}
+            className={cn(
+              'inline-flex items-center justify-center',
+              'min-h-9',
+              'rounded-[var(--radius-md)]',
+              'px-3',
+              'text-sm font-medium',
+              'text-[var(--foreground)]',
+              'outline-none',
+              'transition-colors duration-150 ease-out',
+              'hover:bg-[var(--muted)]',
+              'hover:text-[var(--brand)]',
+              'focus-visible:ring-2',
+              'focus-visible:ring-[var(--brand)]',
+              'focus-visible:ring-offset-2',
+              'focus-visible:ring-offset-[var(--surface)]',
+            )}
+          >
+            Share travel plan
+          </Link>
+
           <SignIn compact />
 
           <JoinSisiMove compact />
@@ -153,3 +212,5 @@ export function SiteHeader() {
     </header>
   );
 }
+
+export default SiteHeader;
