@@ -58,6 +58,18 @@
 //        PermissionsGuard
 //        verification:read
 //
+// 3. GET /verifications/:verificationPublicId/requests
+//
+//    Authenticated applicant/service read.
+//
+//    This endpoint is part of the authenticated verification workflow.
+//    It requires authentication but does not require reviewer permission.
+//
+//    Reviewer authorization is not used here because applicants need to
+//    inspect their own verification requests from the verification UI.
+//
+// -----------------------------------------------------------------------------
+//
 // IMPORTANT:
 //
 // GetVerificationQuery and GetVerificationByPublicIdQuery are intentionally
@@ -81,7 +93,13 @@
 // 2. POST   /verifications/requests
 //    Submit verification evidence for the authenticated identity.
 //
-// 3. PATCH  /verifications/:verificationPublicId/requests/:requestId/cancel
+// 3. GET    /verifications/:verificationPublicId/requests
+//    Read verification requests from the authenticated verification workflow.
+//
+// 4. GET    /verifications/:verificationPublicId/requests/:requestId
+//    Read a verification request from the authenticated verification workflow.
+//
+// 5. PATCH  /verifications/:verificationPublicId/requests/:requestId/cancel
 //    Cancel a pending verification request belonging to the authenticated
 //    identity.
 //
@@ -98,7 +116,7 @@
 //
 // Reviewer operations:
 //
-// Reviewer/query operations remain protected by:
+// Reviewer operations remain protected by:
 //
 //     JwtAuthGuard
 //     PermissionsGuard
@@ -435,38 +453,12 @@ export class VerificationsController {
     // Verification Query Handlers
     // -------------------------------------------------------------------------
 
-    /**
-     * Authenticated self-read handler.
-     *
-     * Query boundary:
-     *
-     *     IdentityPublicId
-     *         → findByIdentityPublicId()
-     *
-     * Used by:
-     *
-     *     GET /verifications/me
-     */
     @Inject(IDENTITY_TOKENS.QUERY_HANDLERS.GET_VERIFICATION)
     private readonly getVerificationHandler: QueryHandler<
       GetVerificationQuery,
       VerificationAggregate
     >,
 
-    /**
-     * Verification public-ID read handler.
-     *
-     * Query boundary:
-     *
-     *     VerificationPublicId
-     *         → findByPublicId()
-     *
-     * Used by:
-     *
-     *     GET /verifications/:verificationPublicId
-     *
-     * This is intentionally separate from getVerificationHandler.
-     */
     @Inject(IDENTITY_TOKENS.QUERY_HANDLERS.GET_VERIFICATION_BY_PUBLIC_ID)
     private readonly getVerificationByPublicIdHandler: QueryHandler<
       GetVerificationByPublicIdQuery,
@@ -492,36 +484,6 @@ export class VerificationsController {
 
   // ---------------------------------------------------------------------------
   // Get Current Authenticated Verification
-  // ---------------------------------------------------------------------------
-  //
-  // Authenticated self-read boundary.
-  //
-  // The client does not provide:
-  //
-  // - verificationPublicId;
-  // - identityPublicId.
-  //
-  // The authenticated Identity is obtained from the validated access token
-  // through CurrentIdentity.
-  //
-  // The existing GetVerificationQuery is intentionally reused here because it
-  // already expresses the correct application capability:
-  //
-  //     IdentityPublicId
-  //         → findByIdentityPublicId()
-  //
-  // No GetCurrentVerificationQuery is required.
-  //
-  // Route ordering is intentional:
-  //
-  //     GET /verifications/me
-  //
-  // must be declared before:
-  //
-  //     GET /verifications/:verificationPublicId
-  //
-  // so that `me` is not interpreted as a VerificationPublicId.
-  //
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -550,21 +512,6 @@ export class VerificationsController {
 
   // ---------------------------------------------------------------------------
   // Get Verification By Public ID
-  // ---------------------------------------------------------------------------
-  //
-  // Reviewer/query boundary.
-  //
-  // This endpoint addresses the Verification aggregate by its own public ID.
-  //
-  //     VerificationPublicId
-  //          ↓
-  //     GetVerificationByPublicIdQuery
-  //          ↓
-  //     findByPublicId()
-  //
-  // It must NOT construct GetVerificationQuery because that query is defined
-  // against IdentityPublicId.
-  //
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -595,8 +542,33 @@ export class VerificationsController {
     return VerificationResponseMapper.toResponse(aggregate);
   }
 
+  // ===========================================================================
+  // Verification Queries — Authenticated Applicant
+  // ===========================================================================
+
   // ---------------------------------------------------------------------------
   // Get Verification Requests
+  // ---------------------------------------------------------------------------
+  //
+  // Applicant/service read.
+  //
+  // IMPORTANT:
+  //
+  // This endpoint intentionally requires authentication only.
+  //
+  // It is consumed by the authenticated verification workflow so the
+  // applicant can inspect the requests associated with their verification.
+  //
+  // Reviewer permissions are reserved for reviewer operations such as:
+  //
+  //     verification-request:approve
+  //     verification-request:reject
+  //
+  // Therefore this route MUST NOT use:
+  //
+  //     PermissionsGuard
+  //     @RequirePermissions('verification-request:read')
+  //
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -613,8 +585,7 @@ export class VerificationsController {
     example: 'VER-8VBLAO',
   })
   @Get(':verificationPublicId/requests')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('verification-request:read')
+  @UseGuards(JwtAuthGuard)
   public async getRequests(
     @Param() dto: GetVerificationRequestsQueryDto,
   ): Promise<VerificationRequestResponse[]> {
@@ -629,6 +600,15 @@ export class VerificationsController {
 
   // ---------------------------------------------------------------------------
   // Get Verification Request
+  // ---------------------------------------------------------------------------
+  //
+  // Applicant/service read.
+  //
+  // Authentication is required, but reviewer permission is not.
+  //
+  // Reviewer permissions remain applicable to reviewer mutation operations
+  // such as approving and rejecting requests below.
+  //
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -652,8 +632,7 @@ export class VerificationsController {
     example: 'VRQ-XBBJ1OQ',
   })
   @Get(':verificationPublicId/requests/:verificationRequestPublicId')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('verification-request:read')
+  @UseGuards(JwtAuthGuard)
   public async getRequest(
     @Param() dto: GetVerificationRequestQueryDto,
   ): Promise<VerificationRequestResponse | null> {
@@ -677,13 +656,6 @@ export class VerificationsController {
 
   // ---------------------------------------------------------------------------
   // Start Verification
-  // ---------------------------------------------------------------------------
-  //
-  // Authentication only.
-  //
-  // No permission is required because this is an applicant/service operation
-  // performed for the authenticated identity.
-  //
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -713,37 +685,6 @@ export class VerificationsController {
 
   // ---------------------------------------------------------------------------
   // Submit Verification Evidence
-  // ---------------------------------------------------------------------------
-  //
-  // Primary applicant/service operation.
-  //
-  // Authentication only.
-  //
-  // No verification permission is required.
-  //
-  // Route:
-  //
-  //     POST /verifications/requests
-  //
-  // Request:
-  //
-  //     multipart/form-data
-  //
-  // Fields:
-  //
-  //     type
-  //     file
-  //
-  // The authenticated JWT determines the Identity.
-  //
-  // SubmitVerificationRequestHandler then:
-  //
-  //     Upload Asset
-  //          ↓
-  //     Resolve/Create Verification
-  //          ↓
-  //     Create Verification Request
-  //
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -1136,21 +1077,6 @@ export class VerificationsController {
 
   // ---------------------------------------------------------------------------
   // Cancel Verification Request
-  // ---------------------------------------------------------------------------
-  //
-  // Applicant/service operation.
-  //
-  // Authentication only.
-  //
-  // No permission is required.
-  //
-  // The authenticated identity is supplied to the command. The request public
-  // ID is supplied by the route.
-  //
-  // The verificationPublicId remains part of the REST resource hierarchy.
-  // It is intentionally not added to CancelVerificationRequestCommand because
-  // that would change the existing application command contract.
-  //
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
