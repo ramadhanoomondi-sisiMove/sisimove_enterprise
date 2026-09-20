@@ -1,3 +1,5 @@
+'use client';
+
 // -----------------------------------------------------------------------------
 // sisiMove — Profile Page
 // -----------------------------------------------------------------------------
@@ -62,8 +64,28 @@
 // Identity/account boundary rather than Traveller Profile.
 //
 // -----------------------------------------------------------------------------
-
-'use client';
+//
+// Presentation boundary:
+//
+// ProfilePage owns:
+//
+// - page background;
+// - page introduction;
+// - overall content width;
+// - section ordering;
+// - section spacing.
+//
+// Individual sections own:
+//
+// - their internal spacing;
+// - their headings;
+// - their actions;
+// - their content surfaces;
+// - their loading/error/empty states where applicable.
+//
+// This prevents duplicated card shells and keeps each profile section
+// independently reusable.
+// -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
 // React
@@ -271,35 +293,37 @@ export function ProfilePage({
   onAccountSettings,
 }: ProfilePageProps): ReactNode {
   return (
-    <main>
+    <main className="min-h-screen bg-[var(--background-brand)]">
       <Container size="lg" padded>
-        <div className="space-y-10 py-8">
+        <div className="py-6 sm:py-8 lg:py-10">
 
-          {/* ----------------------------------------------------------------- */}
-          {/* Page Header                                                        */}
-          {/* ----------------------------------------------------------------- */}
+          {/* -----------------------------------------------------------------
+              Page Introduction
+             ----------------------------------------------------------------- */}
 
-          <header>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              Profile
-            </h1>
+          <header className="mb-6 sm:mb-7">
+            <div className="max-w-2xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--brand)]">
+                sisiMove
+              </p>
 
-            <p className="mt-1 text-sm text-muted-foreground">
-              Manage your traveller profile, verification, preferences and
-              account.
-            </p>
+              <h1 className="mt-2 text-2xl font-semibold tracking-[-0.025em] text-[var(--foreground)] sm:text-3xl">
+                Your profile
+              </h1>
+
+              <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--foreground-secondary)]">
+                Manage your traveller identity, verification, travel
+                preferences and account information.
+              </p>
+            </div>
           </header>
 
-          {/* ----------------------------------------------------------------- */}
-          {/* Profile Header                                                     */}
-          {/* ----------------------------------------------------------------- */}
+          {/* -----------------------------------------------------------------
+              Profile Identity
 
-          {/*
-            Traveller Profile owns the handle, country and lifecycle status.
-
-            Avatar rendering is supplied separately because the profile model
-            stores only the opaque avatar Asset public ID.
-          */}
+              ProfileHeader owns its own visual surface. The page only controls
+              its placement and spacing.
+             ----------------------------------------------------------------- */}
 
           <ProfileHeader
             handle={profile.handle}
@@ -312,137 +336,104 @@ export function ProfilePage({
             onChangePhoto={onChangePhoto}
           />
 
-          {/* ----------------------------------------------------------------- */}
-          {/* About You                                                          */}
-          {/* ----------------------------------------------------------------- */}
+          {/* -----------------------------------------------------------------
+              Profile Information
 
-          {/*
-            AboutSection receives the exact same TravellerProfile used by the
-            rest of this page. It does not perform its own profile read.
-          */}
+              Each section owns its own presentation surface.
+             ----------------------------------------------------------------- */}
 
-          <AboutSection
-            profile={profile}
-          />
+          <div className="mt-4 space-y-4 sm:mt-5 sm:space-y-5">
 
-          {/* ----------------------------------------------------------------- */}
-          {/* Profile Visibility                                                 */}
-          {/* ----------------------------------------------------------------- */}
+            {/* ---------------------------------------------------------------
+                About
+               --------------------------------------------------------------- */}
 
-          {/*
-            Visibility is owned by Traveller Profile.
-          */}
+            <AboutSection
+              profile={profile}
+            />
 
-          <ProfileVisibilitySection
-            value={profile.visibility}
-            onSave={onSaveVisibility}
-          />
+            {/* ---------------------------------------------------------------
+                Visibility
+               --------------------------------------------------------------- */}
 
-          {/* ----------------------------------------------------------------- */}
-          {/* Verification                                                       */}
-          {/* ----------------------------------------------------------------- */}
+            <ProfileVisibilitySection
+              value={profile.visibility}
+              onSave={onSaveVisibility}
+            />
 
-          {/*
-            Verification is a separate feature boundary.
+            {/* ---------------------------------------------------------------
+                Verification
+               --------------------------------------------------------------- */}
 
-            The Verification aggregate and its requirement projection are
-            supplied by the profile composition/container.
-          */}
+            <VerificationSection
+              verification={verification}
+              requirements={verificationRequirements}
+              onManage={onManageVerification}
+              onManageMember={onManageMemberVerification}
+              onManageDriver={onManageDriverVerification}
+            />
 
-          <VerificationSection
-            verification={verification}
-            requirements={verificationRequirements}
-            onManage={onManageVerification}
-            onManageMember={onManageMemberVerification}
-            onManageDriver={onManageDriverVerification}
-          />
+            {/* ---------------------------------------------------------------
+                Trust & Reputation
+               --------------------------------------------------------------- */}
 
-          {/* ----------------------------------------------------------------- */}
-          {/* Trust & Reputation                                                 */}
-          {/* ----------------------------------------------------------------- */}
+            <TrustSection
+              memberPublicId={profile.memberPublicId}
+              onViewReputation={onViewReputation}
+            />
 
-          {/*
-            Trust is intentionally resolved independently because it is a
-            separate domain/feature boundary.
+            {/* ---------------------------------------------------------------
+                Travel Activity
+               --------------------------------------------------------------- */}
 
-            memberPublicId is an opaque cross-domain public identifier.
-          */}
+            <TravelActivitySection
+              totalJourneys={profile.totalJourneys}
+              completedJourneys={profile.completedJourneys}
+              providerJourneys={profile.providerJourneys}
+              passengerJourneys={profile.passengerJourneys}
+              completedProviderJourneys={
+                profile.completedProviderJourneys
+              }
+              completedPassengerJourneys={
+                profile.completedPassengerJourneys
+              }
+            />
 
-          <TrustSection
-            memberPublicId={profile.memberPublicId}
-            onViewReputation={onViewReputation}
-          />
+            {/* ---------------------------------------------------------------
+                Frequent Corridors
+               --------------------------------------------------------------- */}
 
-          {/* ----------------------------------------------------------------- */}
-          {/* Travel Activity                                                    */}
-          {/* ----------------------------------------------------------------- */}
+            <CorridorsSection
+              corridors={profile.corridors}
+              onManage={onManageCorridors}
+            />
 
-          {/*
-            These are read-only Traveller Profile projections.
+            {/* ---------------------------------------------------------------
+                Travel Preferences
+               --------------------------------------------------------------- */}
 
-            Journey remains authoritative for journey lifecycle, while
-            Traveller Profile exposes the materialized profile-facing
-            statistics.
-          */}
+            <TravelPreferencesSection
+              preferences={profile.preferences}
+              onEdit={onEditPreferences}
+            />
 
-          <TravelActivitySection
-            totalJourneys={profile.totalJourneys}
-            completedJourneys={profile.completedJourneys}
-            providerJourneys={profile.providerJourneys}
-            passengerJourneys={profile.passengerJourneys}
-            completedProviderJourneys={
-              profile.completedProviderJourneys
-            }
-            completedPassengerJourneys={
-              profile.completedPassengerJourneys
-            }
-          />
+            {/* ---------------------------------------------------------------
+                Account
+               --------------------------------------------------------------- */}
 
-          {/* ----------------------------------------------------------------- */}
-          {/* Frequent Travel Corridors                                          */}
-          {/* ----------------------------------------------------------------- */}
+            <AccountSection
+              email={email}
+              phoneNumber={phoneNumber}
+              status={accountStatus}
+              onSettings={onAccountSettings}
+            />
+          </div>
 
-          {/*
-            Corridors belong to Traveller Profile and are not Journey
-            references.
-          */}
+          {/* -----------------------------------------------------------------
+              Bottom Spacing
+             ----------------------------------------------------------------- */}
 
-          <CorridorsSection
-            corridors={profile.corridors}
-            onManage={onManageCorridors}
-          />
-
-          {/* ----------------------------------------------------------------- */}
-          {/* Travel Preferences                                                 */}
-          {/* ----------------------------------------------------------------- */}
-
-          {/*
-            Preferences are an internal Traveller Profile component and are
-            already represented by the authenticated TravellerProfile model.
-          */}
-
-          <TravelPreferencesSection
-            preferences={profile.preferences}
-            onEdit={onEditPreferences}
-          />
-
-          {/* ----------------------------------------------------------------- */}
-          {/* Account                                                             */}
-          {/* ----------------------------------------------------------------- */}
-
-          {/*
-            Account data remains outside Traveller Profile.
-
-            ProfilePage simply presents the resolved account projection.
-          */}
-
-          <AccountSection
-            email={email}
-            phoneNumber={phoneNumber}
-            status={accountStatus}
-            onSettings={onAccountSettings}
-          />
-
+          <div className="h-4 sm:h-6" />
         </div>
       </Container>
     </main>

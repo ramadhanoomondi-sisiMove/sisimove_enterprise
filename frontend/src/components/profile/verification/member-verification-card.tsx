@@ -2,8 +2,7 @@
 // sisiMove — Member Verification Card
 // -----------------------------------------------------------------------------
 //
-// Presentation-only card for the verification requirements that establish
-// member-level verification.
+// Presentation-only member verification surface.
 //
 // Member verification currently consists of:
 // - Profile photo
@@ -29,15 +28,40 @@
 // - `verified` is supplied by the parent from the Verification aggregate's
 //   verification level.
 //
+// Visual language:
+// - The member verification heading remains outside the requirement card.
+// - The requirement list is the only card/surface owned here.
+// - SisiMove blue identifies the member verification pathway.
+// - Semantic success state is used only when verification is granted.
+// - Requirement rows remain responsible for their own status presentation.
+// - Mobile-first layout keeps the state and action easy to scan and reach.
+//
 // -----------------------------------------------------------------------------
-// Imports
+//
+// Layout:
+//
+//     Member verification
+//     Verify your identity...
+//     [Not verified] [Manage]
+//
+//     ┌──────────────────────────────────────────────────────────────┐
+//     │ Profile photo                         Not started             │
+//     │ A clear photo of you                                      │
+//     ├──────────────────────────────────────────────────────────────┤
+//     │ Government ID                         Not started             │
+//     │ Government-issued identification                         │
+//     └──────────────────────────────────────────────────────────────┘
+//
 // -----------------------------------------------------------------------------
 
 import type { ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import type { VerificationRequirement } from '@/features/verification/models';
+
+import type {
+  VerificationRequirement,
+} from '@/features/verification/models';
 
 import { VerificationRequirementRow } from './verification-requirement-row';
 
@@ -54,8 +78,8 @@ export interface MemberVerificationCardProps {
   /**
    * Whether the traveller currently holds member-level verification.
    *
-   * This is supplied by the parent rather than calculated from the individual
-   * requirement rows.
+   * This value is supplied by the parent and is intentionally not inferred
+   * from the individual requirement rows.
    */
   readonly verified: boolean;
 
@@ -76,10 +100,20 @@ export function MemberVerificationCard({
   verified,
   onManage,
 }: MemberVerificationCardProps): ReactNode {
-  // Member verification is established through these two requirements.
+  // ---------------------------------------------------------------------------
+  // Member Requirements
+  // ---------------------------------------------------------------------------
   //
-  // VerificationRequirement does not have its own publicId. The requirement
-  // type is therefore the stable identity within this presentation model.
+  // Member verification currently presents only the requirements belonging
+  // to the member verification pathway.
+  //
+  // This is a presentation filter, not an eligibility calculation.
+  //
+  // VerificationRequirement does not expose a separate public requirement ID,
+  // so the requirement type is the stable identity within this presentation
+  // collection.
+  //
+
   const memberRequirements = requirements.filter(
     (requirement) =>
       requirement.type === 'PROFILE_PHOTO' ||
@@ -87,55 +121,147 @@ export function MemberVerificationCard({
   );
 
   return (
-    <Card
-      variant="default"
-      padding="none"
-      header={
-        <>
-          <div className="min-w-0">
-            <div className="text-base font-semibold text-foreground">
-              Member verification
-            </div>
+    <div className="space-y-4">
+      {/* ---------------------------------------------------------------------
+          Member Verification Header
+         --------------------------------------------------------------------- */}
 
-            <p className="mt-1 text-sm text-muted-foreground">
-              Verify your identity to access protected sisiMove marketplace
-              actions.
-            </p>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-3">
-            <span className="text-sm font-medium text-foreground">
-              {verified ? 'Verified' : 'Not verified'}
-            </span>
-
-            {onManage !== undefined ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={onManage}
-              >
-                Manage
-              </Button>
-            ) : null}
-          </div>
-        </>
-      }
-    >
-      {memberRequirements.length > 0 ? (
-        <div className="px-5 pb-5">
-          {memberRequirements.map((requirement) => (
-            <VerificationRequirementRow
-              key={requirement.type}
-              requirement={requirement}
+      <div
+        className="
+          flex
+          flex-col
+          gap-4
+          sm:flex-row
+          sm:items-center
+          sm:justify-between
+        "
+      >
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className={[
+                'size-2 shrink-0 rounded-full',
+                verified
+                  ? 'bg-[var(--success)]'
+                  : 'bg-[var(--brand)]',
+              ].join(' ')}
             />
-          ))}
+
+            <h3 className="text-base font-semibold tracking-[-0.01em] text-[var(--foreground)]">
+              Member verification
+            </h3>
+          </div>
+
+          <p className="mt-1.5 max-w-xl text-sm leading-5 text-[var(--foreground-secondary)]">
+            Verify your identity to build trust and unlock protected
+            sisiMove marketplace actions.
+          </p>
         </div>
+
+        {/* -------------------------------------------------------------------
+            State + Action
+           ------------------------------------------------------------------- */}
+
+        <div
+          className="
+            flex
+            shrink-0
+            items-center
+            justify-between
+            gap-3
+            sm:justify-end
+          "
+        >
+          <span
+            aria-label={
+              verified
+                ? 'Member verification: Verified'
+                : 'Member verification: Not verified'
+            }
+            className={[
+              'inline-flex items-center gap-1.5',
+              'rounded-full border px-2.5 py-1',
+              'text-xs font-medium leading-none whitespace-nowrap',
+              verified
+                ? 'border-[var(--success-border)] bg-[var(--success-soft)] text-[var(--success)]'
+                : 'border-[var(--border)] bg-[var(--background-subtle)] text-[var(--foreground-muted)]',
+            ].join(' ')}
+          >
+            <span
+              aria-hidden="true"
+              className={[
+                'size-1.5 shrink-0 rounded-full',
+                verified
+                  ? 'bg-[var(--success)]'
+                  : 'bg-[var(--foreground-subtle)]',
+              ].join(' ')}
+            />
+
+            {verified ? 'Verified' : 'Not verified'}
+          </span>
+
+          {onManage !== undefined ? (
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={onManage}
+            >
+              Manage
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      {/* ---------------------------------------------------------------------
+          Requirements Card
+         ---------------------------------------------------------------------
+         
+         Only the actual verification requirements receive card treatment.
+         This keeps the member verification heading visually independent and
+         avoids a large nested card around the entire verification block.
+         --------------------------------------------------------------------- */}
+
+      {memberRequirements.length > 0 ? (
+        <Card
+          variant="default"
+          padding="none"
+          className="
+            overflow-hidden
+            rounded-[var(--radius-2xl)]
+            border-[var(--border)]
+            bg-[var(--surface)]
+            shadow-[var(--shadow-sm)]
+          "
+        >
+          <div className="px-4 sm:px-5">
+            {memberRequirements.map((requirement) => (
+              <VerificationRequirementRow
+                key={requirement.type}
+                requirement={requirement}
+              />
+            ))}
+          </div>
+        </Card>
       ) : (
-        <div className="p-5 text-sm text-muted-foreground">
-          No member verification requirements are available.
+        <div
+          className="
+            rounded-[var(--radius-2xl)]
+            border
+            border-dashed
+            border-[var(--border-strong)]
+            bg-[var(--background-subtle)]
+            px-4
+            py-5
+            text-sm
+            leading-5
+            text-[var(--foreground-muted)]
+          "
+        >
+          No member verification requirements are currently available.
         </div>
       )}
-    </Card>
+    </div>
   );
 }

@@ -20,6 +20,12 @@
 // The parent Trust section owns data loading and passes presentation-ready
 // values into this component.
 //
+// Visual language:
+// - Compact metric strip.
+// - Uses sisiMove design tokens rather than generic utility colors.
+// - Rating receives a subtle semantic emphasis.
+// - Metrics remain visually consistent and easy to scan on mobile and desktop.
+//
 // -----------------------------------------------------------------------------
 
 import type { ReactNode } from 'react';
@@ -46,52 +52,70 @@ export function TrustStatistics({
   cancellationRate,
 }: TrustStatisticsProps): ReactNode {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-      {/* ------------------------------------------------------------------ */}
-      {/* Rating                                                             */}
-      {/* ------------------------------------------------------------------ */}
-
-      <div className="rounded-lg border border-border bg-background p-4">
-        <div className="text-sm text-muted-foreground">
+    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+      {/* -------------------------------------------------------------------
           Rating
-        </div>
+          ------------------------------------------------------------------- */}
 
-        <div className="mt-1 flex items-baseline gap-2">
-          <span className="text-2xl font-semibold tracking-tight">
-            ★ {ratingAverage.toFixed(1)}
+      <div className="rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--background-subtle)] px-4 py-3.5">
+        <p className="text-xs font-medium text-[var(--foreground-muted)]">
+          Rating
+        </p>
+
+        <div className="mt-1.5 flex items-baseline gap-2">
+          <span className="text-xl font-semibold tracking-tight text-[var(--foreground)]">
+            <span
+              aria-hidden="true"
+              className="mr-1 text-[var(--warning)]"
+            >
+              ★
+            </span>
+            {ratingAverage.toFixed(1)}
           </span>
 
-          <span className="text-sm text-muted-foreground">
+          <span className="text-xs text-[var(--foreground-muted)]">
             {ratingCount.toLocaleString()} ratings
           </span>
         </div>
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Completion Rate                                                    */}
-      {/* ------------------------------------------------------------------ */}
+      {/* -------------------------------------------------------------------
+          Completion Rate
+          ------------------------------------------------------------------- */}
 
-      <div className="rounded-lg border border-border bg-background p-4">
-        <div className="text-sm text-muted-foreground">
+      <div className="rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--background-subtle)] px-4 py-3.5">
+        <p className="text-xs font-medium text-[var(--foreground-muted)]">
           Completion rate
-        </div>
+        </p>
 
-        <div className="mt-1 text-2xl font-semibold tracking-tight">
-          {completionRate.toFixed(1)}%
+        <div className="mt-1.5 flex items-baseline gap-1">
+          <span className="text-xl font-semibold tracking-tight text-[var(--foreground)]">
+            {completionRate.toFixed(1)}
+          </span>
+
+          <span className="text-sm font-medium text-[var(--foreground-muted)]">
+            %
+          </span>
         </div>
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Cancellation Rate                                                  */}
-      {/* ------------------------------------------------------------------ */}
+      {/* -------------------------------------------------------------------
+          Cancellation Rate
+          ------------------------------------------------------------------- */}
 
-      <div className="rounded-lg border border-border bg-background p-4">
-        <div className="text-sm text-muted-foreground">
+      <div className="rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--background-subtle)] px-4 py-3.5">
+        <p className="text-xs font-medium text-[var(--foreground-muted)]">
           Cancellation rate
-        </div>
+        </p>
 
-        <div className="mt-1 text-2xl font-semibold tracking-tight">
-          {cancellationRate.toFixed(1)}%
+        <div className="mt-1.5 flex items-baseline gap-1">
+          <span className="text-xl font-semibold tracking-tight text-[var(--foreground)]">
+            {cancellationRate.toFixed(1)}
+          </span>
+
+          <span className="text-sm font-medium text-[var(--foreground-muted)]">
+            %
+          </span>
         </div>
       </div>
     </div>

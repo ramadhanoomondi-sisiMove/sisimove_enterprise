@@ -1,3 +1,5 @@
+'use client';
+
 // -----------------------------------------------------------------------------
 // sisiMove — About Section
 // -----------------------------------------------------------------------------
@@ -71,8 +73,14 @@
 // the API write contract uses the domain-specific `countryCode` name.
 //
 // -----------------------------------------------------------------------------
-
-'use client';
+//
+// Visual language:
+// - Compact mobile-first profile section.
+// - sisiMove blue accent for section identity.
+// - Mutation feedback remains close to the form.
+// - Saving state is informational and non-alarming.
+// - Errors use the profile's semantic danger treatment.
+// -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
 // React
@@ -164,17 +172,30 @@ export function AboutSection({
   // ---------------------------------------------------------------------------
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-5">
+      {/* ---------------------------------------------------------------------
+          Section header
+          --------------------------------------------------------------------- */}
       <div>
-        <h2 className="text-sm font-semibold uppercase tracking-wide">
-          About You
-        </h2>
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden="true"
+            className="h-2 w-2 shrink-0 rounded-full bg-[var(--brand)]"
+          />
 
-        <p className="mt-1 text-sm text-muted-foreground">
+          <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--foreground-secondary)]">
+            About You
+          </h2>
+        </div>
+
+        <p className="mt-1.5 max-w-2xl text-sm leading-5 text-[var(--foreground-muted)]">
           Keep your traveller profile information up to date.
         </p>
       </div>
 
+      {/* ---------------------------------------------------------------------
+          Profile details form
+          --------------------------------------------------------------------- */}
       <ProfileDetailsForm
         initialValues={{
           handle: profile.handle,
@@ -184,22 +205,40 @@ export function AboutSection({
         onSave={handleSave}
       />
 
+      {/* ---------------------------------------------------------------------
+          Mutation feedback
+          --------------------------------------------------------------------- */}
+
       {isUpdating ? (
-        <p
-          className="text-sm text-muted-foreground"
+        <div
+          className="flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--background-subtle)] px-3.5 py-3"
+          role="status"
           aria-live="polite"
         >
-          Saving your profile…
-        </p>
+          <span
+            aria-hidden="true"
+            className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-[var(--brand)]"
+          />
+
+          <p className="text-sm text-[var(--foreground-secondary)]">
+            Saving your profile…
+          </p>
+        </div>
       ) : null}
 
       {updateError !== null ? (
-        <p
-          className="text-sm text-muted-foreground"
+        <div
+          className="rounded-[var(--radius-lg)] border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3.5 py-3"
           role="alert"
         >
-          {updateError.message}
-        </p>
+          <p className="text-sm font-medium text-[var(--danger)]">
+            We couldn’t save your profile.
+          </p>
+
+          <p className="mt-1 text-sm leading-5 text-[var(--danger)]">
+            {updateError.message}
+          </p>
+        </div>
       ) : null}
     </section>
   );

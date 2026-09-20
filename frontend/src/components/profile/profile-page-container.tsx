@@ -176,18 +176,6 @@ import {
 //     GET /identities/me
 //
 // -----------------------------------------------------------------------------
-//
-// IMPORTANT:
-//
-// Do not move this hook into:
-//
-//     @/features/authentication
-//
-// merely to make the import convenient.
-//
-// Authentication and Identity are separate bounded contexts.
-//
-// -----------------------------------------------------------------------------
 
 import {
   useCurrentIdentity,
@@ -380,6 +368,195 @@ function buildVerificationRequirements(
 }
 
 // =============================================================================
+// Loading State
+// =============================================================================
+
+function ProfileLoadingState(): ReactNode {
+  return (
+    <main className="min-h-screen bg-[var(--background-brand)]">
+      <Container size="lg" padded>
+        <div className="py-6 sm:py-8 lg:py-10">
+          {/* -----------------------------------------------------------------
+              Page heading skeleton
+             ----------------------------------------------------------------- */}
+
+          <div className="mb-7 space-y-2">
+            <div className="h-7 w-28 animate-pulse rounded-lg bg-[var(--border-subtle)] sm:h-8" />
+
+            <div className="h-4 w-64 animate-pulse rounded-md bg-[var(--border-subtle)]" />
+          </div>
+
+          {/* -----------------------------------------------------------------
+              Profile content skeletons
+             ----------------------------------------------------------------- */}
+
+          <div className="space-y-4">
+            <div
+              className="
+                overflow-hidden
+                rounded-[var(--radius-2xl)]
+                border
+                border-[var(--border)]
+                bg-[var(--surface)]
+                shadow-[var(--shadow-sm)]
+              "
+            >
+              <div className="h-32 animate-pulse bg-[var(--background-subtle)] sm:h-40" />
+
+              <div className="space-y-4 p-5 sm:p-6">
+                <div className="h-7 w-40 animate-pulse rounded-lg bg-[var(--border-subtle)]" />
+
+                <div className="h-4 w-72 max-w-full animate-pulse rounded-md bg-[var(--border-subtle)]" />
+
+                <div className="h-10 w-32 animate-pulse rounded-lg bg-[var(--border-subtle)]" />
+              </div>
+            </div>
+
+            <div
+              className="
+                h-44
+                animate-pulse
+                rounded-[var(--radius-2xl)]
+                border
+                border-[var(--border)]
+                bg-[var(--surface)]
+                shadow-[var(--shadow-sm)]
+              "
+            />
+
+            <div
+              className="
+                h-44
+                animate-pulse
+                rounded-[var(--radius-2xl)]
+                border
+                border-[var(--border)]
+                bg-[var(--surface)]
+                shadow-[var(--shadow-sm)]
+              "
+            />
+          </div>
+        </div>
+      </Container>
+    </main>
+  );
+}
+
+// =============================================================================
+// Error State
+// =============================================================================
+
+interface ProfileStateProps {
+  readonly message: string;
+  readonly onRetry: () => void;
+}
+
+function ProfileState({
+  message,
+  onRetry,
+}: ProfileStateProps): ReactNode {
+  return (
+    <main className="min-h-screen bg-[var(--background-brand)]">
+      <Container size="lg" padded>
+        <div className="py-6 sm:py-8 lg:py-10">
+          {/* -----------------------------------------------------------------
+              Heading
+             ----------------------------------------------------------------- */}
+
+          <div className="mb-7">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--brand)]">
+              sisiMove
+            </p>
+
+            <h1 className="mt-2 text-2xl font-semibold tracking-[-0.025em] text-[var(--foreground)] sm:text-3xl">
+              Profile
+            </h1>
+          </div>
+
+          {/* -----------------------------------------------------------------
+              State card
+             ----------------------------------------------------------------- */}
+
+          <section
+            className="
+              overflow-hidden
+              rounded-[var(--radius-2xl)]
+              border
+              border-[var(--border)]
+              bg-[var(--surface)]
+              shadow-[var(--shadow-sm)]
+            "
+          >
+            <div className="border-b border-[var(--border-subtle)] bg-[var(--background-subtle)] px-5 py-4 sm:px-6">
+              <div className="flex items-center gap-3">
+                <span
+                  className="
+                    flex
+                    h-9
+                    w-9
+                    shrink-0
+                    items-center
+                    justify-center
+                    rounded-full
+                    bg-[var(--danger-soft)]
+                    text-sm
+                    font-semibold
+                    text-[var(--danger)]
+                  "
+                  aria-hidden="true"
+                >
+                  !
+                </span>
+
+                <div>
+                  <p className="text-sm font-semibold text-[var(--foreground)]">
+                    We couldn&apos;t load your profile
+                  </p>
+
+                  <p className="mt-0.5 text-xs text-[var(--foreground-muted)]">
+                    Something prevented the profile data from loading.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5 sm:p-6">
+              <p className="max-w-2xl text-sm leading-6 text-[var(--foreground-secondary)]">
+                {message}
+              </p>
+
+              <button
+                type="button"
+                onClick={onRetry}
+                className="
+                  mt-5
+                  inline-flex
+                  min-h-10
+                  items-center
+                  justify-center
+                  rounded-[var(--radius-md)]
+                  bg-[var(--brand)]
+                  px-4
+                  text-sm
+                  font-semibold
+                  text-[var(--brand-foreground)]
+                  shadow-[var(--shadow-sm)]
+                  transition
+                  hover:bg-[var(--brand-hover)]
+                  active:translate-y-px
+                "
+              >
+                Try again
+              </button>
+            </div>
+          </section>
+        </div>
+      </Container>
+    </main>
+  );
+}
+
+// =============================================================================
 // Component
 // =============================================================================
 
@@ -436,16 +613,6 @@ export function ProfilePageContainer(): ReactNode {
 
   // ---------------------------------------------------------------------------
   // Identity / Account
-  // ---------------------------------------------------------------------------
-  //
-  // Identity owns the authenticated self-read.
-  //
-  // Backend endpoint:
-  //
-  //     GET /identities/me
-  //
-  // Authentication is supplied by the Identity feature's query/API boundary.
-  //
   // ---------------------------------------------------------------------------
 
   const {
@@ -576,27 +743,7 @@ export function ProfilePageContainer(): ReactNode {
   // ---------------------------------------------------------------------------
 
   if (isLoading) {
-    return (
-      <main>
-        <Container size="lg" padded>
-          <div className="space-y-8 py-8">
-            <div className="space-y-3">
-              <div className="h-8 w-32 animate-pulse rounded bg-muted" />
-
-              <div className="h-4 w-72 animate-pulse rounded bg-muted" />
-            </div>
-
-            <div className="space-y-4">
-              <div className="h-40 animate-pulse rounded-lg bg-muted" />
-
-              <div className="h-48 animate-pulse rounded-lg bg-muted" />
-
-              <div className="h-48 animate-pulse rounded-lg bg-muted" />
-            </div>
-          </div>
-        </Container>
-      </main>
-    );
+    return <ProfileLoadingState />;
   }
 
   // ---------------------------------------------------------------------------
@@ -605,33 +752,10 @@ export function ProfilePageContainer(): ReactNode {
 
   if (error !== null && error !== undefined) {
     return (
-      <main>
-        <Container size="lg" padded>
-          <div className="py-8">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              Profile
-            </h1>
-
-            <div className="mt-6 rounded-lg border border-destructive/20 bg-destructive/5 p-5">
-              <p className="text-sm font-medium text-foreground">
-                We couldn&apos;t load your profile.
-              </p>
-
-              <p className="mt-1 text-sm text-muted-foreground">
-                {error.message}
-              </p>
-
-              <button
-                type="button"
-                onClick={handleRetry}
-                className="mt-4 rounded-md border px-4 py-2 text-sm font-medium"
-              >
-                Try again
-              </button>
-            </div>
-          </div>
-        </Container>
-      </main>
+      <ProfileState
+        message={error.message}
+        onRetry={handleRetry}
+      />
     );
   }
 
@@ -641,19 +765,10 @@ export function ProfilePageContainer(): ReactNode {
 
   if (profile === null || profile === undefined) {
     return (
-      <main>
-        <Container size="lg" padded>
-          <div className="py-8">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              Profile
-            </h1>
-
-            <p className="mt-4 text-sm text-muted-foreground">
-              Your traveller profile could not be found.
-            </p>
-          </div>
-        </Container>
-      </main>
+      <ProfileState
+        message="Your traveller profile could not be found. Please try again."
+        onRetry={handleRetry}
+      />
     );
   }
 
@@ -666,27 +781,10 @@ export function ProfilePageContainer(): ReactNode {
     verification === undefined
   ) {
     return (
-      <main>
-        <Container size="lg" padded>
-          <div className="py-8">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              Profile
-            </h1>
-
-            <p className="mt-4 text-sm text-muted-foreground">
-              Your verification profile could not be loaded.
-            </p>
-
-            <button
-              type="button"
-              onClick={handleRetry}
-              className="mt-4 rounded-md border px-4 py-2 text-sm font-medium"
-            >
-              Try again
-            </button>
-          </div>
-        </Container>
-      </main>
+      <ProfileState
+        message="Your verification profile could not be loaded."
+        onRetry={handleRetry}
+      />
     );
   }
 
@@ -696,27 +794,10 @@ export function ProfilePageContainer(): ReactNode {
 
   if (identity === null || identity === undefined) {
     return (
-      <main>
-        <Container size="lg" padded>
-          <div className="py-8">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              Profile
-            </h1>
-
-            <p className="mt-4 text-sm text-muted-foreground">
-              Your account information could not be loaded.
-            </p>
-
-            <button
-              type="button"
-              onClick={handleRetry}
-              className="mt-4 rounded-md border px-4 py-2 text-sm font-medium"
-            >
-              Try again
-            </button>
-          </div>
-        </Container>
-      </main>
+      <ProfileState
+        message="Your account information could not be loaded."
+        onRetry={handleRetry}
+      />
     );
   }
 
@@ -807,4 +888,3 @@ export function ProfilePageContainer(): ReactNode {
 // -----------------------------------------------------------------------------
 
 export default ProfilePageContainer;
-

@@ -2,7 +2,7 @@
 // sisiMove — Driver Verification Card
 // -----------------------------------------------------------------------------
 //
-// Presentation-only card for driver-level verification.
+// Presentation-only driver verification surface.
 //
 // Driver verification currently consists of:
 // - Driver license
@@ -21,23 +21,45 @@
 //
 // Architecture:
 // - Consumes the VerificationRequirement application/presentation model.
-// - Uses shared Card and Button primitives for consistent design-system
-//   behavior.
+// - Uses shared Card and Button primitives.
 // - Does not access verification APIs or hooks.
 // - Does not construct Asset URLs from assetPublicId.
 // - Does not inspect VerificationRequest directly.
 // - The `verified` state is supplied by the parent from the Verification
 //   aggregate's verification level.
 //
+// Visual language:
+// - Driver verification heading remains outside the requirement card.
+// - The requirement list is the only card/surface owned here.
+// - Visually aligned with MemberVerificationCard.
+// - SisiMove blue identifies the driver verification pathway.
+// - Semantic success state is used only when driver verification is granted.
+// - Requirement rows remain responsible for their own status presentation.
+// - Mobile-first layout keeps the state and management action easy to scan.
+//
 // -----------------------------------------------------------------------------
-// Imports
+//
+// Layout:
+//
+//     Driver verification
+//     Verify your driver credentials...
+//     [Not verified] [Manage]
+//
+//     ┌──────────────────────────────────────────────────────────────┐
+//     │ Driver license                         Not started            │
+//     │ Valid driver licensing                                      │
+//     └──────────────────────────────────────────────────────────────┘
+//
 // -----------------------------------------------------------------------------
 
 import type { ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import type { VerificationRequirement } from '@/features/verification/models';
+
+import type {
+  VerificationRequirement,
+} from '@/features/verification/models';
 
 import { VerificationRequirementRow } from './verification-requirement-row';
 
@@ -62,7 +84,7 @@ export interface DriverVerificationCardProps {
   /**
    * Presentation-level action for opening driver verification management.
    *
-   * The actual workflow remains outside this component.
+   * The actual verification workflow remains outside this component.
    */
   readonly onManage?: () => void;
 }
@@ -76,65 +98,166 @@ export function DriverVerificationCard({
   verified,
   onManage,
 }: DriverVerificationCardProps): ReactNode {
-  // This card owns only the DRIVER_LICENSE requirement.
+  // ---------------------------------------------------------------------------
+  // Driver Requirements
+  // ---------------------------------------------------------------------------
+  //
+  // This presentation pathway owns only DRIVER_LICENSE.
+  //
+  // Filtering here is strictly a presentation concern. It does not determine
+  // whether the traveller is eligible for driver verification.
   //
   // VerificationRequirement does not have its own publicId. The requirement
-  // type is the stable identity of the requirement within this presentation
-  // model, while requestPublicId identifies an actual submitted request.
+  // type is therefore the stable identity within this presentation model.
+  // requestPublicId remains opaque and belongs to the verification workflow.
+  //
+
   const driverRequirements = requirements.filter(
     (requirement) => requirement.type === 'DRIVER_LICENSE',
   );
 
   return (
-    <Card
-      variant="default"
-      padding="none"
-      header={
-        <>
-          <div className="min-w-0">
-            <div className="text-base font-semibold text-foreground">
-              Driver verification
-            </div>
+    <div className="space-y-4">
+      {/* ---------------------------------------------------------------------
+          Driver Verification Header
+         --------------------------------------------------------------------- */}
 
-            <p className="mt-1 text-sm text-muted-foreground">
-              Verify your driver credentials before publishing journeys as a
-              provider.
-            </p>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-3">
-            <span className="text-sm font-medium text-foreground">
-              {verified ? 'Verified' : 'Not verified'}
-            </span>
-
-            {onManage !== undefined ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={onManage}
-              >
-                Manage
-              </Button>
-            ) : null}
-          </div>
-        </>
-      }
-    >
-      {driverRequirements.length > 0 ? (
-        <div className="px-5 pb-5">
-          {driverRequirements.map((requirement) => (
-            <VerificationRequirementRow
-              key={requirement.type}
-              requirement={requirement}
+      <div
+        className="
+          flex
+          flex-col
+          gap-4
+          sm:flex-row
+          sm:items-center
+          sm:justify-between
+        "
+      >
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className={[
+                'size-2 shrink-0 rounded-full',
+                verified
+                  ? 'bg-[var(--success)]'
+                  : 'bg-[var(--brand)]',
+              ].join(' ')}
             />
-          ))}
+
+            <h3 className="text-base font-semibold tracking-[-0.01em] text-[var(--foreground)]">
+              Driver verification
+            </h3>
+          </div>
+
+          <p className="mt-1.5 max-w-xl text-sm leading-5 text-[var(--foreground-secondary)]">
+            Verify your driver credentials before publishing journeys as a
+            provider.
+          </p>
         </div>
+
+        {/* -------------------------------------------------------------------
+            State + Action
+           ------------------------------------------------------------------- */}
+
+        <div
+          className="
+            flex
+            shrink-0
+            items-center
+            justify-between
+            gap-3
+            sm:justify-end
+          "
+        >
+          <span
+            aria-label={
+              verified
+                ? 'Driver verification: Verified'
+                : 'Driver verification: Not verified'
+            }
+            className={[
+              'inline-flex items-center gap-1.5',
+              'rounded-full border px-2.5 py-1',
+              'text-xs font-medium leading-none whitespace-nowrap',
+              verified
+                ? 'border-[var(--success-border)] bg-[var(--success-soft)] text-[var(--success)]'
+                : 'border-[var(--border)] bg-[var(--background-subtle)] text-[var(--foreground-muted)]',
+            ].join(' ')}
+          >
+            <span
+              aria-hidden="true"
+              className={[
+                'size-1.5 shrink-0 rounded-full',
+                verified
+                  ? 'bg-[var(--success)]'
+                  : 'bg-[var(--foreground-subtle)]',
+              ].join(' ')}
+            />
+
+            {verified ? 'Verified' : 'Not verified'}
+          </span>
+
+          {onManage !== undefined ? (
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={onManage}
+            >
+              Manage
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      {/* ---------------------------------------------------------------------
+          Driver Requirement Card
+         ---------------------------------------------------------------------
+         
+         Only the actual driver requirement receives card treatment.
+         This keeps the driver verification heading visually independent and
+         prevents the entire block from becoming one large nested card.
+         --------------------------------------------------------------------- */}
+
+      {driverRequirements.length > 0 ? (
+        <Card
+          variant="default"
+          padding="none"
+          className="
+            overflow-hidden
+            rounded-[var(--radius-2xl)]
+            border-[var(--border)]
+            bg-[var(--surface)]
+            shadow-[var(--shadow-sm)]
+          "
+        >
+          <div className="px-4 sm:px-5">
+            {driverRequirements.map((requirement) => (
+              <VerificationRequirementRow
+                key={requirement.type}
+                requirement={requirement}
+              />
+            ))}
+          </div>
+        </Card>
       ) : (
-        <div className="p-5 text-sm text-muted-foreground">
-          No driver verification requirements are available.
+        <div
+          className="
+            rounded-[var(--radius-2xl)]
+            border
+            border-dashed
+            border-[var(--border-strong)]
+            bg-[var(--background-subtle)]
+            px-4
+            py-5
+            text-sm
+            leading-5
+            text-[var(--foreground-muted)]
+          "
+        >
+          No driver verification requirements are currently available.
         </div>
       )}
-    </Card>
+    </div>
   );
 }

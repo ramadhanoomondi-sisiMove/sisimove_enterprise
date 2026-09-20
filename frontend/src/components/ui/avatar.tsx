@@ -12,6 +12,7 @@
 // - Provide responsive image sizing for optimized delivery
 //
 // The component remains domain-agnostic.
+//
 // -----------------------------------------------------------------------------
 
 'use client';
@@ -35,7 +36,8 @@ export type AvatarSize =
   | 'sm'
   | 'md'
   | 'lg'
-  | 'xl';
+  | 'xl'
+  | '2xl';
 
 export interface AvatarProps
   extends Omit<
@@ -50,7 +52,7 @@ export interface AvatarProps
   /**
    * Image source.
    *
-   * A URL is expected because public SisiMove assets are exposed
+   * A URL is expected because public sisiMove assets are exposed
    * through the application's asset API/CDN.
    */
   src?: string | null;
@@ -89,6 +91,10 @@ const sizeClasses: Record<AvatarSize, string> = {
   md: 'h-10 w-10 text-sm',
   lg: 'h-12 w-12 text-base',
   xl: 'h-16 w-16 text-lg',
+
+  // Large identity avatar used by profile headers and other
+  // primary traveller identity surfaces.
+  '2xl': 'h-24 w-24 text-2xl',
 };
 
 const imageSizes: Record<AvatarSize, string> = {
@@ -97,6 +103,7 @@ const imageSizes: Record<AvatarSize, string> = {
   md: '40px',
   lg: '48px',
   xl: '64px',
+  '2xl': '96px',
 };
 
 // -----------------------------------------------------------------------------

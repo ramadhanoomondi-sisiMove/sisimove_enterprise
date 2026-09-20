@@ -14,14 +14,26 @@
 // - Fetching activity data.
 // - Calculating activity statistics.
 // - Mutating travel history.
+//
+// Architectural note:
+// - `value` is already the authoritative activity metric supplied by the
+//   parent/feature model.
+// - `toLocaleString()` is presentation formatting only; this component does
+//   not calculate or interpret the underlying statistic.
+//
+// Visual language:
+// - Compact metric panel.
+// - Subtle background and border.
+// - Clear value hierarchy.
+// - Consistent spacing with TrustStatistics and other profile metrics.
 // -----------------------------------------------------------------------------
 
 import type { ReactNode } from 'react';
 
 export interface TravelActivityStatProps {
-  label: string;
-  value: number;
-  description?: string;
+  readonly label: string;
+  readonly value: number;
+  readonly description?: string;
 }
 
 export function TravelActivityStat({
@@ -30,15 +42,17 @@ export function TravelActivityStat({
   description,
 }: TravelActivityStatProps): ReactNode {
   return (
-    <div className="rounded-lg border border-border bg-background p-4">
-      <div className="text-sm text-muted-foreground">{label}</div>
+    <div className="rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--background-subtle)] px-4 py-3.5">
+      <div className="text-xs font-medium text-[var(--foreground-muted)]">
+        {label}
+      </div>
 
-      <div className="mt-1 text-2xl font-semibold tracking-tight">
+      <div className="mt-1.5 text-2xl font-semibold tracking-tight text-[var(--foreground)]">
         {value.toLocaleString()}
       </div>
 
       {description !== undefined ? (
-        <div className="mt-1 text-xs text-muted-foreground">
+        <div className="mt-1 text-xs leading-5 text-[var(--foreground-muted)]">
           {description}
         </div>
       ) : null}

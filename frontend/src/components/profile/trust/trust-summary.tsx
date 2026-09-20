@@ -6,12 +6,12 @@
 //
 // Presentation:
 //
-//   TRUST VERIFICATION        MEMBER VERIFIED
+//   TRUST VERIFICATION                         MEMBER VERIFIED
 //
-//   ★ 4.9                     128 ratings
+//   ★ 4.9                                      128 ratings
 //
-//   Completion rate            96.5%
-//   Cancellation rate           2.1%
+//   Completion rate                            96.5%
+//   Cancellation rate                           2.1%
 //
 //   [ Identity verified ] [ Reliable traveller ] [ Highly rated ]
 //
@@ -25,6 +25,14 @@
 //   Trust-domain statistics.
 // - Trust status is surfaced separately from verification level because
 //   verification and profile lifecycle are distinct Trust concepts.
+//
+// Visual language:
+// - Compact sisiMove profile surface.
+// - Blue accent for Trust identity.
+// - Semantic status treatment.
+// - Rating remains the visual focal point.
+// - Statistics and badges remain delegated to their presentation components.
+//
 // -----------------------------------------------------------------------------
 
 import type { ReactNode } from 'react';
@@ -52,36 +60,62 @@ function getVerificationLabel(
 ): string {
   switch (level) {
     case 'DRIVER':
-      return 'DRIVER VERIFIED';
+      return 'Driver verified';
 
     case 'MEMBER':
-      return 'MEMBER VERIFIED';
+      return 'Member verified';
 
     case 'NONE':
     default:
-      return 'NOT VERIFIED';
+      return 'Not verified';
   }
 }
 
 // -----------------------------------------------------------------------------
-// Trust Status Label
+// Trust Status Presentation
 // -----------------------------------------------------------------------------
 
-function getTrustStatusLabel(
+interface TrustStatusPresentation {
+  readonly label: string;
+  readonly className: string;
+  readonly dotClassName: string;
+}
+
+function getTrustStatusPresentation(
   status: TravellerTrust['status'],
-): string {
+): TrustStatusPresentation {
   switch (status) {
     case 'ACTIVE':
-      return 'Active';
+      return {
+        label: 'Active',
+        className:
+          'border-[var(--success-border)] bg-[var(--success-soft)] text-[var(--success)]',
+        dotClassName: 'bg-[var(--success)]',
+      };
 
     case 'SUSPENDED':
-      return 'Suspended';
+      return {
+        label: 'Suspended',
+        className:
+          'border-[var(--warning-border)] bg-[var(--warning-soft)] text-[var(--warning)]',
+        dotClassName: 'bg-[var(--warning)]',
+      };
 
     case 'REVOKED':
-      return 'Revoked';
+      return {
+        label: 'Revoked',
+        className:
+          'border-[var(--danger-border)] bg-[var(--danger-soft)] text-[var(--danger)]',
+        dotClassName: 'bg-[var(--danger)]',
+      };
 
     default:
-      return 'Unknown';
+      return {
+        label: 'Unknown',
+        className:
+          'border-[var(--border)] bg-[var(--background-subtle)] text-[var(--foreground-muted)]',
+        dotClassName: 'bg-[var(--foreground-subtle)]',
+      };
   }
 }
 
@@ -93,66 +127,125 @@ export function TrustSummary({
   trust,
   onViewReputation,
 }: TrustSummaryProps): ReactNode {
+  const status = getTrustStatusPresentation(trust.status);
+
   return (
-    <div className="rounded-xl border border-border bg-background p-6">
-      {/* ---------------------------------------------------------------- */ }
-      {/* Trust Header                                                     */ }
-      {/* ---------------------------------------------------------------- */ }
+    <div className="overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-sm)]">
+      {/* -------------------------------------------------------------------
+          Header
+          ------------------------------------------------------------------- */}
 
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="text-sm text-muted-foreground">
-            Trust verification
+      <div className="flex flex-col gap-4 border-b border-[var(--border-subtle)] px-5 py-5 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="size-2 shrink-0 rounded-full bg-[var(--brand)]"
+            />
+
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--foreground-muted)]">
+              Trust verification
+            </p>
           </div>
 
-          <div className="mt-1 text-base font-semibold">
+          <p className="mt-1.5 text-base font-semibold text-[var(--foreground)]">
             {getVerificationLabel(trust.verificationLevel)}
-          </div>
+          </p>
         </div>
 
-        <span className="shrink-0 text-sm text-muted-foreground">
-          {getTrustStatusLabel(trust.status)}
+        <span
+          className={[
+            'inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full',
+            'border px-2.5 py-1 text-xs font-medium',
+            status.className,
+          ].join(' ')}
+        >
+          <span
+            aria-hidden="true"
+            className={['size-1.5 rounded-full', status.dotClassName].join(
+              ' ',
+            )}
+          />
+
+          {status.label}
         </span>
       </div>
 
-      {/* ---------------------------------------------------------------- */ }
-      {/* Statistics                                                       */ }
-      {/* ---------------------------------------------------------------- */ }
+      {/* -------------------------------------------------------------------
+          Rating
+          ------------------------------------------------------------------- */}
 
-      <div className="mt-6">
-        <TrustStatistics
-          ratingAverage={trust.ratingAverage}
-          ratingCount={trust.ratingCount}
-          completionRate={trust.completionRate}
-          cancellationRate={trust.cancellationRate}
-        />
+      <div className="px-5 py-5">
+        <div className="flex items-end justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-2">
+              <span
+                aria-hidden="true"
+                className="text-xl leading-none text-[var(--warning)]"
+              >
+                ★
+              </span>
+
+              <span className="text-3xl font-semibold tracking-tight text-[var(--foreground)]">
+                {trust.ratingAverage}
+              </span>
+            </div>
+
+            <p className="mt-1 text-sm text-[var(--foreground-muted)]">
+              {trust.ratingCount.toLocaleString()} ratings
+            </p>
+          </div>
+        </div>
+
+        {/* -----------------------------------------------------------------
+            Statistics
+            ----------------------------------------------------------------- */}
+
+        <div className="mt-5 border-t border-[var(--border-subtle)] pt-5">
+          <TrustStatistics
+            ratingAverage={trust.ratingAverage}
+            ratingCount={trust.ratingCount}
+            completionRate={trust.completionRate}
+            cancellationRate={trust.cancellationRate}
+          />
+        </div>
+
+        {/* -----------------------------------------------------------------
+            Badges
+            ----------------------------------------------------------------- */}
+
+        {trust.badges.length > 0 ? (
+          <div className="mt-5 border-t border-[var(--border-subtle)] pt-5">
+            <TrustBadgeList badges={trust.badges} />
+          </div>
+        ) : null}
+
+        {/* -----------------------------------------------------------------
+            Reputation
+            ----------------------------------------------------------------- */}
+
+        {onViewReputation !== undefined ? (
+          <div className="mt-5 flex justify-end border-t border-[var(--border-subtle)] pt-4">
+            <button
+              type="button"
+              onClick={onViewReputation}
+              className={[
+                'inline-flex items-center gap-1 rounded-[var(--radius-md)]',
+                'px-2 py-1.5 text-sm font-medium',
+                'text-[var(--brand)]',
+                'transition-colors',
+                'hover:bg-[var(--brand-soft)] hover:text-[var(--brand-hover)]',
+                'focus-visible:outline-none',
+                'focus-visible:ring-2 focus-visible:ring-[var(--brand)]',
+                'focus-visible:ring-offset-2',
+              ].join(' ')}
+            >
+              View reputation
+              <span aria-hidden="true">→</span>
+            </button>
+          </div>
+        ) : null}
       </div>
-
-      {/* ---------------------------------------------------------------- */ }
-      {/* Badges                                                           */ }
-      {/* ---------------------------------------------------------------- */ }
-
-      {trust.badges.length > 0 ? (
-        <div className="mt-6">
-          <TrustBadgeList badges={trust.badges} />
-        </div>
-      ) : null}
-
-      {/* ---------------------------------------------------------------- */ }
-      {/* Reputation                                                       */ }
-      {/* ---------------------------------------------------------------- */ }
-
-      {onViewReputation !== undefined ? (
-        <div className="mt-6 flex justify-end">
-          <button
-            type="button"
-            onClick={onViewReputation}
-            className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
-          >
-            View reputation →
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -20,6 +20,14 @@
 // - Preferences have their own API lifecycle and therefore remain a dedicated
 //   feature model rather than being flattened into TravellerProfile.
 // - The management workflow owns the publicId/profileId required for mutations.
+//
+// Visual language:
+// - Compact authenticated-profile section.
+// - sisiMove blue accent for section identity.
+// - Edit remains a lightweight secondary action.
+// - Preference rows provide the detailed presentation.
+// - Empty state uses the same surface language as the rest of the profile.
+//
 // -----------------------------------------------------------------------------
 
 'use client';
@@ -30,29 +38,53 @@ import type { TravellerProfilePreferences } from '@/features/traveller-profile/m
 
 import { PreferenceRow } from './preference-row';
 
+// -----------------------------------------------------------------------------
+// Types
+// -----------------------------------------------------------------------------
+
 export interface TravelPreferencesSectionProps {
   readonly preferences: TravellerProfilePreferences | null;
   readonly onEdit?: () => void;
 }
 
+// -----------------------------------------------------------------------------
+// Presentation Helpers
+// -----------------------------------------------------------------------------
+
 function getBooleanValue(value: boolean): string {
   return value ? 'Enabled' : 'Disabled';
 }
+
+// -----------------------------------------------------------------------------
+// Travel Preferences Section
+// -----------------------------------------------------------------------------
 
 export function TravelPreferencesSection({
   preferences,
   onEdit,
 }: TravelPreferencesSectionProps): ReactNode {
   return (
-    <section className="space-y-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-sm font-semibold uppercase tracking-wide">
-            Travel Preferences
-          </h2>
+    <section className="space-y-5">
+      {/* -------------------------------------------------------------------
+          Section Header
+          ------------------------------------------------------------------- */}
 
-          <p className="mt-1 text-sm text-muted-foreground">
-            Your preferred way to travel on sisiMove.
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="size-2 shrink-0 rounded-full bg-[var(--brand)]"
+            />
+
+            <h2 className="text-sm font-semibold uppercase tracking-[0.08em] text-[var(--foreground)]">
+              Travel Preferences
+            </h2>
+          </div>
+
+          <p className="mt-1.5 max-w-2xl text-sm leading-6 text-[var(--foreground-muted)]">
+            Choose how you prefer to travel and how your profile information
+            may be shared on sisiMove.
           </p>
         </div>
 
@@ -60,17 +92,68 @@ export function TravelPreferencesSection({
           <button
             type="button"
             onClick={onEdit}
-            className="shrink-0 text-sm font-medium text-foreground underline-offset-4 hover:underline"
+            className={[
+              'self-start shrink-0 rounded-[var(--radius-md)]',
+              'px-2.5 py-1.5',
+              'text-sm font-medium',
+              'text-[var(--brand)]',
+              'transition-colors',
+              'hover:bg-[var(--brand-soft)]',
+              'hover:text-[var(--brand-hover)]',
+              'focus-visible:outline-none',
+              'focus-visible:ring-2',
+              'focus-visible:ring-[var(--brand)]',
+              'focus-visible:ring-offset-2',
+            ].join(' ')}
           >
-            Edit
+            Edit preferences
           </button>
         ) : null}
       </div>
 
-      <div className="rounded-xl border border-border bg-background px-4">
+      {/* -------------------------------------------------------------------
+          Preferences
+          ------------------------------------------------------------------- */}
+
+      <div
+        className={[
+          'overflow-hidden rounded-[var(--radius-2xl)]',
+          'border border-[var(--border)]',
+          'bg-[var(--surface)]',
+          'px-4',
+          'shadow-[var(--shadow-sm)]',
+        ].join(' ')}
+      >
         {preferences === null ? (
-          <div className="py-6 text-sm text-muted-foreground">
-            No travel preferences have been set yet.
+          <div className="px-1 py-6 sm:px-2">
+            <p className="text-sm font-medium text-[var(--foreground)]">
+              No travel preferences set
+            </p>
+
+            <p className="mt-1 text-sm leading-6 text-[var(--foreground-muted)]">
+              Set your preferences to control how your profile information is
+              presented and how other travellers may interact with you.
+            </p>
+
+            {onEdit !== undefined ? (
+              <button
+                type="button"
+                onClick={onEdit}
+                className={[
+                  'mt-4 inline-flex items-center rounded-[var(--radius-md)]',
+                  'bg-[var(--brand)] px-3 py-2',
+                  'text-sm font-medium text-[var(--brand-foreground)]',
+                  'transition-colors',
+                  'hover:bg-[var(--brand-hover)]',
+                  'focus-visible:outline-none',
+                  'focus-visible:ring-2',
+                  'focus-visible:ring-[var(--brand)]',
+                  'focus-visible:ring-offset-2',
+                ].join(' ')}
+              >
+                Set preferences
+              </button>
+            ) : null}
           </div>
         ) : (
           <>

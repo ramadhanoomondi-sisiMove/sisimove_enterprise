@@ -23,6 +23,14 @@
 // - TravellerTrust embeds the safe PublicTrustBadge representation.
 // - Internal Trust badge-definition and badge-assignment models remain behind
 //   the Trust boundary.
+//
+// Visual language:
+// - Compact badge collection.
+// - White badge surfaces with subtle borders.
+// - Brand-accented artwork container.
+// - Suitable for both mobile wrapping and desktop presentation.
+// - Badge content remains presentation-only.
+//
 // -----------------------------------------------------------------------------
 
 import Image from 'next/image';
@@ -50,26 +58,73 @@ export function TrustBadgeList({
   }
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div
+      className="flex flex-wrap gap-2"
+      aria-label="Trust badges"
+    >
       {badges.map((badge) => (
         <div
           key={badge.publicId}
-          className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5"
+          className={[
+            'inline-flex min-w-0 items-center gap-2',
+            'rounded-[var(--radius-full)]',
+            'border border-[var(--border)]',
+            'bg-[var(--surface)]',
+            'px-3 py-2',
+            'shadow-[var(--shadow-sm)]',
+          ].join(' ')}
+          title={badge.description ?? undefined}
         >
+          {/* -----------------------------------------------------------------
+              Badge Artwork
+              ----------------------------------------------------------------- */}
+
           {badge.asset !== null ? (
-            <span className="relative h-5 w-5 shrink-0 overflow-hidden rounded-full">
+            <span
+              aria-hidden="true"
+              className={[
+                'relative size-6 shrink-0 overflow-hidden',
+                'rounded-full',
+                'border border-[var(--border-subtle)]',
+                'bg-[var(--brand-soft)]',
+              ].join(' ')}
+            >
               <Image
                 src={badge.asset.url}
                 alt={badge.asset.alt ?? ''}
                 fill
-                sizes="20px"
+                sizes="24px"
                 className="object-cover"
               />
             </span>
-          ) : null}
+          ) : (
+            <span
+              aria-hidden="true"
+              className={[
+                'flex size-6 shrink-0 items-center justify-center',
+                'rounded-full',
+                'bg-[var(--brand-soft)]',
+                'text-xs font-semibold text-[var(--brand)]',
+              ].join(' ')}
+            >
+              ✓
+            </span>
+          )}
 
-          <span className="text-sm font-medium">
-            {badge.name}
+          {/* -----------------------------------------------------------------
+              Badge Content
+              ----------------------------------------------------------------- */}
+
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-medium text-[var(--foreground)]">
+              {badge.name}
+            </span>
+
+            {badge.description ? (
+              <span className="block max-w-[18rem] truncate text-xs text-[var(--foreground-muted)]">
+                {badge.description}
+              </span>
+            ) : null}
           </span>
         </div>
       ))}
