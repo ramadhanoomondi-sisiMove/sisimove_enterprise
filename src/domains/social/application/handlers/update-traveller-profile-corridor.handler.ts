@@ -1,4 +1,18 @@
-// src/domains/social/application/handlers/update-traveller-profile-corridor.handler.ts
+// -----------------------------------------------------------------------------
+// sisiMove — Update Traveller Profile Corridor Handler
+// -----------------------------------------------------------------------------
+//
+// Application command handler for updating a Traveller Profile corridor.
+//
+// Dependency injection:
+//
+// - TravellerProfileRepository is a domain abstraction.
+// - The repository is injected through the existing Traveller Profile
+//   application token because the repository is a TypeScript interface.
+//
+// -----------------------------------------------------------------------------
+
+import { Inject } from '@nestjs/common';
 
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 
@@ -9,6 +23,8 @@ import {
   TravellerProfileNotFoundException,
 } from '../../domain/exceptions';
 
+import { TRAVELLER_PROFILE_TOKENS } from '../traveller-profile.tokens';
+
 import type { TravellerProfileRepository } from '../../domain/repositories/traveller-profile.repository';
 
 import {
@@ -17,8 +33,19 @@ import {
   TravellerProfileId,
 } from '../../domain/value-objects';
 
+// =============================================================================
+// Update Traveller Profile Corridor Handler
+// =============================================================================
+
 export class UpdateTravellerProfileCorridorHandler implements CommandHandler<UpdateTravellerProfileCorridorCommand> {
-  constructor(private readonly repository: TravellerProfileRepository) {}
+  constructor(
+    @Inject(TRAVELLER_PROFILE_TOKENS.REPOSITORY)
+    private readonly repository: TravellerProfileRepository,
+  ) {}
+
+  // ---------------------------------------------------------------------------
+  // Execute
+  // ---------------------------------------------------------------------------
 
   async execute(command: UpdateTravellerProfileCorridorCommand): Promise<void> {
     const profileId = new TravellerProfileId(command.travellerProfileId);

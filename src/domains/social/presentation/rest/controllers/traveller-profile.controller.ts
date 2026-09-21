@@ -118,24 +118,19 @@ import {
 // Traveller Profile HTTP Controller
 // =============================================================================
 //
-// This controller exposes three logical categories of Traveller Profile
-// operations:
+// Traveller Profile authorization model
 //
 // 1. PUBLIC PROFILE DISCOVERY
 //
-//    Anonymous endpoints used by the public SisiMove experience.
+//    Anonymous endpoints.
 //
-// 2. AUTHENTICATED CURRENT-PROFILE READ
+// 2. AUTHENTICATED SELF-SERVICE
 //
-//    The authenticated traveller can retrieve their own Traveller Profile
-//    through:
+//    A traveller may work on their own Traveller Profile using authentication.
+//    These operations do NOT require `traveller-profile:update` or
+//    `traveller-profile:read` permissions.
 //
-//        GET /traveller-profiles/me
-//
-//    This endpoint does NOT accept a Traveller Profile ID, member public ID,
-//    or handle from the client.
-//
-//    The authenticated Identity is resolved from the access token:
+//    Security boundary:
 //
 //        Access Token
 //             ↓
@@ -143,35 +138,18 @@ import {
 //             ↓
 //        CurrentIdentity
 //             ↓
-//        identityPublicId
-//             ↓
-//        GetTravellerProfileByMemberPublicIdQuery
+//        Application ownership verification
 //             ↓
 //        TravellerProfileAggregate
-//             ↓
-//        TravellerProfileResponseMapper
 //
-//    TravellerProfile.memberPublicId is the opaque cross-domain reference
-//    established between Identity and TravellerProfile during registration.
+//    Ownership must be enforced by the application layer. The client-provided
+//    Traveller Profile ID is never treated as proof of ownership.
 //
-//    The existing GetTravellerProfileByMemberPublicIdQuery is therefore the
-//    correct application query for the current-profile read boundary.
+// 3. ADMINISTRATIVE / SYSTEM OPERATIONS
 //
-//    No separate GetMyTravellerProfileQuery is required.
-//
-// 3. AUTHENTICATED PROFILE MANAGEMENT
-//
-//    Commands and private profile queries require the appropriate access
-//    token and traveller-profile permission.
-//
-// Responsibilities:
-//
-// - HTTP transport;
-// - DTO binding;
-// - command/query construction;
-// - dispatching application handlers;
-// - mapping broad application/domain results to HTTP responses;
-// - declaring authorization requirements.
+//    Operations such as profile creation and status management remain
+//    permission-controlled because they are not ordinary traveller
+//    self-service operations.
 //
 // The controller contains no business rules.
 //
@@ -181,55 +159,6 @@ import {
 // - TravellerProfilePreferencesEntity;
 // - TravellerProfileCorridorEntity;
 // - application command/query handlers.
-//
-// IMPORTANT PUBLIC READ DESIGN:
-//
-// The reduced public traveller query is deliberately separate from the broad
-// Traveller Profile queries.
-//
-// The broad profile response is an internal/application representation used by
-// existing profile endpoints. The reduced public representation exists for
-// anonymous marketplace consumers and exposes only the fields required by the
-// public SisiMove experience.
-//
-// Therefore:
-//
-//     GET /traveller-profiles/member/:memberPublicId
-//
-// and:
-//
-//     GET /traveller-profiles/public/member/:memberPublicId
-//
-// are intentionally different contracts.
-//
-// The public member endpoint uses:
-//
-//     GetPublicTravellerByMemberQuery
-//
-// rather than the broad member lookup query.
-//
-// The same boundary applies to public handle discovery:
-//
-//     GET /traveller-profiles/handle/:handle
-//
-// and:
-//
-//     GET /traveller-profiles/public/handle/:handle
-//
-// are intentionally different contracts.
-//
-// The first returns the broad Traveller Profile representation.
-// The second is the anonymous/public marketplace representation.
-//
-// Public query handlers own:
-//
-// - public visibility enforcement;
-// - public data selection;
-// - public response shaping;
-// - public asset resolution when required.
-//
-// The controller only converts HTTP parameters into the application query
-// representation and dispatches the appropriate handler.
 //
 // =============================================================================
 
@@ -387,24 +316,6 @@ export class TravellerProfileController {
   // ---------------------------------------------------------------------------
   // Get Reduced Public Traveller Profile By Member Public ID
   // ---------------------------------------------------------------------------
-  //
-  // Anonymous marketplace endpoint.
-  //
-  // The HTTP route receives a primitive string because HTTP parameters are
-  // primitives. The application query requires the domain MemberPublicId value
-  // object, so conversion happens here at the presentation/application
-  // boundary.
-  //
-  // The public query handler owns the actual public read boundary.
-  //
-  // It is responsible for ensuring that only a publicly visible Traveller
-  // Profile is returned and for producing the reduced public representation.
-  //
-  // No broad TravellerProfileResponseMapper is used here because doing so would
-  // unnecessarily expose the broad Traveller Profile contract to this public
-  // marketplace endpoint.
-  //
-  // ---------------------------------------------------------------------------
 
   @Get('public/member/:memberPublicId')
   public async getPublicByMemberPublicId(
@@ -417,34 +328,6 @@ export class TravellerProfileController {
 
   // ---------------------------------------------------------------------------
   // Get Reduced Public Traveller Profile By Handle
-  // ---------------------------------------------------------------------------
-  //
-  // Anonymous marketplace endpoint.
-  //
-  // This endpoint is intentionally separate from the broad:
-  //
-  //     GET /traveller-profiles/handle/:handle
-  //
-  // endpoint.
-  //
-  // The broad endpoint exposes the existing Traveller Profile response and is
-  // not the contract used by anonymous marketplace pages.
-  //
-  // This endpoint instead dispatches:
-  //
-  //     GetPublicTravellerByHandleQuery
-  //
-  // which applies the public visibility boundary and returns the reduced
-  // PublicTravellerProfileResponse.
-  //
-  // Keeping the route under `/public` also makes the API contract explicit:
-  // callers requesting a public traveller by handle are receiving the same
-  // public-safe representation used by other anonymous traveller lookups.
-  //
-  // The handle remains a primitive HTTP parameter. Handle normalization and
-  // validation belong to the application/domain boundary rather than the
-  // controller.
-  //
   // ---------------------------------------------------------------------------
 
   @Get('public/handle/:handle')
@@ -513,44 +396,6 @@ export class TravellerProfileController {
   // ---------------------------------------------------------------------------
   // Get Current Authenticated Traveller Profile
   // ---------------------------------------------------------------------------
-  //
-  // Authenticated self-read boundary.
-  //
-  // The client does not provide:
-  //
-  // - travellerProfileId;
-  // - memberPublicId;
-  // - handle.
-  //
-  // Instead, the authenticated Identity is obtained from the validated access
-  // token through CurrentIdentity.
-  //
-  // TravellerProfile.memberPublicId is the opaque cross-domain reference to
-  // Identity.publicId established when the Traveller Profile is created.
-  //
-  // Therefore the existing member-public-ID query is reused rather than
-  // introducing a separate "my profile" query or repository method.
-  //
-  // Resolution:
-  //
-  //     Access Token
-  //          ↓
-  //     JwtAuthGuard
-  //          ↓
-  //     CurrentIdentity
-  //          ↓
-  //     identityPublicId
-  //          ↓
-  //     GetTravellerProfileByMemberPublicIdQuery
-  //          ↓
-  //     TravellerProfileAggregate
-  //          ↓
-  //     TravellerProfileResponseMapper
-  //
-  // This endpoint is intentionally placed before the parameterized
-  // `/:travellerProfileId` route.
-  //
-  // ---------------------------------------------------------------------------
 
   @Get('me')
   @ApiBearerAuth('access-token')
@@ -591,6 +436,8 @@ export class TravellerProfileController {
 
   // ---------------------------------------------------------------------------
   // Create Traveller Profile
+  //
+  // This is not ordinary profile self-editing. Keep permission control.
   // ---------------------------------------------------------------------------
 
   @Post()
@@ -620,12 +467,15 @@ export class TravellerProfileController {
 
   // ---------------------------------------------------------------------------
   // Change Handle
+  //
+  // Self-service.
+  // Authentication is sufficient at the HTTP authorization boundary.
+  // Ownership must be enforced by the application layer.
   // ---------------------------------------------------------------------------
 
   @Patch(':travellerProfileId/handle')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('traveller-profile:update')
+  @UseGuards(JwtAuthGuard)
   public async changeHandle(
     @Param('travellerProfileId') travellerProfileId: string,
     @Body() dto: ChangeTravellerProfileHandleDto,
@@ -641,69 +491,83 @@ export class TravellerProfileController {
 
   // ---------------------------------------------------------------------------
   // Change Bio
+  //
+  // Self-service.
   // ---------------------------------------------------------------------------
 
   @Patch(':travellerProfileId/bio')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('traveller-profile:update')
+  @UseGuards(JwtAuthGuard)
   public async changeBio(
     @Param('travellerProfileId') travellerProfileId: string,
     @Body() dto: ChangeTravellerProfileBioDto,
+    @CurrentIdentity() identity: AuthenticatedIdentity,
   ): Promise<void> {
     await this.changeTravellerProfileBioHandler.execute(
       new ChangeTravellerProfileBioCommand(
         travellerProfileId,
         dto.bio ?? null,
         randomUUID(),
+        identity.identityPublicId,
       ),
     );
   }
 
   // ---------------------------------------------------------------------------
   // Change Avatar
+  //
+  // Self-service.
+  //
+  // No traveller-profile permission is required.
   // ---------------------------------------------------------------------------
 
   @Patch(':travellerProfileId/avatar')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('traveller-profile:update')
+  @UseGuards(JwtAuthGuard)
   public async changeAvatar(
     @Param('travellerProfileId') travellerProfileId: string,
     @Body() dto: ChangeTravellerProfileAvatarDto,
+    @CurrentIdentity() identity: AuthenticatedIdentity,
   ): Promise<void> {
     await this.changeTravellerProfileAvatarHandler.execute(
       new ChangeTravellerProfileAvatarCommand(
         travellerProfileId,
         dto.avatarAssetPublicId ?? null,
         randomUUID(),
+        identity.identityPublicId,
       ),
     );
   }
 
   // ---------------------------------------------------------------------------
   // Change Country
+  //
+  // Self-service.
   // ---------------------------------------------------------------------------
 
   @Patch(':travellerProfileId/country')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('traveller-profile:update')
+  @UseGuards(JwtAuthGuard)
   public async changeCountry(
     @Param('travellerProfileId') travellerProfileId: string,
     @Body() dto: ChangeTravellerProfileCountryDto,
+    @CurrentIdentity() identity: AuthenticatedIdentity,
   ): Promise<void> {
     await this.changeTravellerProfileCountryHandler.execute(
       new ChangeTravellerProfileCountryCommand(
         travellerProfileId,
         dto.countryCode,
         randomUUID(),
+        identity.identityPublicId,
       ),
     );
   }
 
   // ---------------------------------------------------------------------------
   // Change Status
+  //
+  // Status is not ordinary traveller self-service.
+  // Keep RBAC protection.
   // ---------------------------------------------------------------------------
 
   @Patch(':travellerProfileId/status')
@@ -725,21 +589,24 @@ export class TravellerProfileController {
 
   // ---------------------------------------------------------------------------
   // Change Visibility
+  //
+  // Self-service.
   // ---------------------------------------------------------------------------
 
   @Patch(':travellerProfileId/visibility')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('traveller-profile:update')
+  @UseGuards(JwtAuthGuard)
   public async changeVisibility(
     @Param('travellerProfileId') travellerProfileId: string,
     @Body() dto: ChangeTravellerProfileVisibilityDto,
+    @CurrentIdentity() identity: AuthenticatedIdentity,
   ): Promise<void> {
     await this.changeTravellerProfileVisibilityHandler.execute(
       new ChangeTravellerProfileVisibilityCommand(
         travellerProfileId,
         dto.visibility,
         randomUUID(),
+        identity.identityPublicId,
       ),
     );
   }
@@ -750,12 +617,13 @@ export class TravellerProfileController {
 
   // ---------------------------------------------------------------------------
   // Create Preferences
+  //
+  // Self-service.
   // ---------------------------------------------------------------------------
 
   @Post(':travellerProfileId/preferences')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('traveller-profile:update')
+  @UseGuards(JwtAuthGuard)
   public async createPreferences(
     @Param('travellerProfileId') travellerProfileId: string,
     @Body() dto: CreateTravellerProfilePreferencesDto,
@@ -773,12 +641,14 @@ export class TravellerProfileController {
 
   // ---------------------------------------------------------------------------
   // Get Preferences
+  //
+  // Authenticated profile access.
+  // No RBAC permission is required for self-service.
   // ---------------------------------------------------------------------------
 
   @Get(':travellerProfileId/preferences')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('traveller-profile:read')
+  @UseGuards(JwtAuthGuard)
   public async getPreferences(
     @Param('travellerProfileId') travellerProfileId: string,
   ): Promise<TravellerProfilePreferencesResponse | null> {
@@ -794,12 +664,13 @@ export class TravellerProfileController {
 
   // ---------------------------------------------------------------------------
   // Change Preferences
+  //
+  // Self-service.
   // ---------------------------------------------------------------------------
 
   @Patch(':travellerProfileId/preferences')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('traveller-profile:update')
+  @UseGuards(JwtAuthGuard)
   public async changePreferences(
     @Param('travellerProfileId') travellerProfileId: string,
     @Body() dto: ChangeTravellerProfilePreferencesDto,
@@ -817,12 +688,13 @@ export class TravellerProfileController {
 
   // ---------------------------------------------------------------------------
   // Remove Preferences
+  //
+  // Self-service.
   // ---------------------------------------------------------------------------
 
   @Delete(':travellerProfileId/preferences')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('traveller-profile:update')
+  @UseGuards(JwtAuthGuard)
   public async removePreferences(
     @Param('travellerProfileId') travellerProfileId: string,
   ): Promise<void> {
@@ -840,12 +712,13 @@ export class TravellerProfileController {
 
   // ---------------------------------------------------------------------------
   // Add Corridor
+  //
+  // Self-service.
   // ---------------------------------------------------------------------------
 
   @Post(':travellerProfileId/corridors')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('traveller-profile:update')
+  @UseGuards(JwtAuthGuard)
   public async addCorridor(
     @Param('travellerProfileId') travellerProfileId: string,
     @Body() dto: AddTravellerProfileCorridorDto,
@@ -868,9 +741,13 @@ export class TravellerProfileController {
 
   // ---------------------------------------------------------------------------
   // Get Primary Corridor
+  //
+  // Authenticated self-service read.
   // ---------------------------------------------------------------------------
 
   @Get(':travellerProfileId/corridors/primary')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard)
   public async getPrimaryCorridor(
     @Param('travellerProfileId') travellerProfileId: string,
   ): Promise<TravellerProfileCorridorResponse | null> {
@@ -886,9 +763,13 @@ export class TravellerProfileController {
 
   // ---------------------------------------------------------------------------
   // Get Corridors
+  //
+  // Authenticated self-service read.
   // ---------------------------------------------------------------------------
 
   @Get(':travellerProfileId/corridors')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard)
   public async getCorridors(
     @Param('travellerProfileId') travellerProfileId: string,
   ): Promise<TravellerProfileCorridorResponse[]> {
@@ -902,9 +783,13 @@ export class TravellerProfileController {
 
   // ---------------------------------------------------------------------------
   // Get Corridor
+  //
+  // Authenticated self-service read.
   // ---------------------------------------------------------------------------
 
   @Get(':travellerProfileId/corridors/:corridorId')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard)
   public async getCorridor(
     @Param('corridorId') corridorId: string,
   ): Promise<TravellerProfileCorridorResponse | null> {
@@ -919,12 +804,13 @@ export class TravellerProfileController {
 
   // ---------------------------------------------------------------------------
   // Update Corridor
+  //
+  // Self-service.
   // ---------------------------------------------------------------------------
 
   @Patch(':travellerProfileId/corridors/:corridorId')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('traveller-profile:update')
+  @UseGuards(JwtAuthGuard)
   public async updateCorridor(
     @Param('travellerProfileId') travellerProfileId: string,
     @Param('corridorId') corridorId: string,
@@ -948,12 +834,13 @@ export class TravellerProfileController {
 
   // ---------------------------------------------------------------------------
   // Remove Corridor
+  //
+  // Self-service.
   // ---------------------------------------------------------------------------
 
   @Delete(':travellerProfileId/corridors/:corridorId')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('traveller-profile:update')
+  @UseGuards(JwtAuthGuard)
   public async removeCorridor(
     @Param('travellerProfileId') travellerProfileId: string,
     @Param('corridorId') corridorId: string,
@@ -969,12 +856,13 @@ export class TravellerProfileController {
 
   // ---------------------------------------------------------------------------
   // Set Primary Corridor
+  //
+  // Self-service.
   // ---------------------------------------------------------------------------
 
   @Patch(':travellerProfileId/corridors/:corridorId/primary')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('traveller-profile:update')
+  @UseGuards(JwtAuthGuard)
   public async setPrimaryCorridor(
     @Param('travellerProfileId') travellerProfileId: string,
     @Param('corridorId') corridorId: string,
@@ -990,12 +878,13 @@ export class TravellerProfileController {
 
   // ---------------------------------------------------------------------------
   // Clear Primary Corridor
+  //
+  // Self-service.
   // ---------------------------------------------------------------------------
 
   @Delete(':travellerProfileId/corridors/primary')
   @ApiBearerAuth('access-token')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('traveller-profile:update')
+  @UseGuards(JwtAuthGuard)
   public async clearPrimaryCorridor(
     @Param('travellerProfileId') travellerProfileId: string,
   ): Promise<void> {

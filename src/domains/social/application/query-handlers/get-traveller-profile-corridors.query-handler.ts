@@ -1,5 +1,7 @@
 // src/domains/social/application/query-handlers/get-traveller-profile-corridors.query-handler.ts
 
+import { Inject } from '@nestjs/common';
+
 import type { QueryHandler } from '../../../../foundation/kernel/application/query-handler';
 
 import type { GetTravellerProfileCorridorsQuery } from '../queries/get-traveller-profile-corridors.query';
@@ -9,11 +11,16 @@ import type { TravellerProfileRepository } from '../../domain/repositories/trave
 
 import { TravellerProfileId } from '../../domain/value-objects/traveller-profile-id.vo';
 
+import { TRAVELLER_PROFILE_TOKENS } from '../traveller-profile.tokens';
+
 export class GetTravellerProfileCorridorsQueryHandler implements QueryHandler<
   GetTravellerProfileCorridorsQuery,
   TravellerProfileCorridorEntity[]
 > {
-  constructor(private readonly repository: TravellerProfileRepository) {}
+  constructor(
+    @Inject(TRAVELLER_PROFILE_TOKENS.REPOSITORY)
+    private readonly repository: TravellerProfileRepository,
+  ) {}
 
   async execute(
     query: GetTravellerProfileCorridorsQuery,

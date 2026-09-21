@@ -12,6 +12,9 @@
 // - Resolve the public avatar asset referenced by TravellerProfile.
 // - Resolve authenticated Identity/account data required by AccountSection.
 // - Compose presentation-level navigation callbacks.
+// - Orchestrate the profile-photo upload workflow.
+// - Associate an uploaded Asset with the TravellerProfile as its avatar.
+// - Refresh TravellerProfile state after a successful avatar change.
 // - Pass the complete composition into ProfilePage.
 //
 // Non-responsibilities:
@@ -24,7 +27,9 @@
 // - Calculating Traveller Profile statistics.
 // - Implementing account persistence.
 // - Performing HTTP requests directly.
-// - Managing server state with useState/useEffect.
+// - Uploading physical files directly.
+// - Resolving public Asset URLs directly.
+// - Owning Asset lifecycle rules.
 //
 // Architecture:
 //
@@ -33,17 +38,41 @@
 //            ▼
 //     ProfilePageContainer
 //            │
-//       ┌────┼─────────────────────────┐
-//       │    │            │            │
-//       ▼    ▼            ▼            ▼
-//    Profile Verification Identity   Avatar
-//       │    │            │            │
-//       │    └─ Requests   │            │
-//       │                 │            │
-//       └─────────────────┴────────────┘
+//       ┌────┼──────────────────────────────┐
+//       │    │            │                 │
+//       ▼    ▼            ▼                 ▼
+//    Profile Verification Identity       Avatar
+//       │    │            │                 │
+//       │    └─ Requests   │                 │
+//       │                 │                 │
+//       └─────────────────┴─────────────────┘
 //                         │
 //                         ▼
 //                    ProfilePage
+//
+// Profile photo workflow:
+//
+//     ProfileHeader
+//          │
+//          │ onChangePhoto
+//          ▼
+//     ProfilePageContainer
+//          │
+//          ▼
+//     AssetUploadDialog
+//          │
+//          │ Asset
+//          ▼
+//     useTravellerProfileAvatar
+//          │
+//          ▼
+//     TravellerProfile avatar association
+//          │
+//          ▼
+//     refetch TravellerProfile
+//          │
+//          ▼
+//     usePublicAsset
 //
 // Important:
 //
@@ -59,6 +88,7 @@
 // - status;
 // - visibility;
 // - memberPublicId;
+// - avatarAssetPublicId;
 // - journey statistics;
 // - corridors;
 // - preferences.
@@ -68,18 +98,7 @@
 // Identity remains authoritative for account contact information and
 // account lifecycle status.
 //
-// -----------------------------------------------------------------------------
-//
-// Authenticated Traveller Profile:
-//
-//     GET /traveller-profiles/me
-//
-// Authenticated Identity:
-//
-//     GET /identities/me
-//
-// Both endpoints derive the authenticated Identity from the access token.
-// The client therefore does not supply an Identity public ID.
+// Asset remains authoritative for physical file storage and Asset lifecycle.
 //
 // -----------------------------------------------------------------------------
 
@@ -92,6 +111,7 @@
 import {
   useCallback,
   useMemo,
+  useState,
   type ReactNode,
 } from 'react';
 
@@ -119,6 +139,7 @@ import { ProfilePage } from './profile-page';
 
 import {
   useCurrentTravellerProfile,
+  useTravellerProfileAvatar,
 } from '@/features/traveller-profile/hooks';
 
 // -----------------------------------------------------------------------------
@@ -144,7 +165,12 @@ import type {
 
 import {
   usePublicAsset,
+  type Asset,
 } from '@/features/assets';
+
+import {
+  AssetUploadDialog,
+} from '@/components/assets/asset-upload-dialog';
 
 // -----------------------------------------------------------------------------
 // Identity
@@ -566,6 +592,9 @@ function ProfileState({
  * This component composes independently owned server-state boundaries and
  * passes the resulting presentation model into ProfilePage.
  *
+ * It also owns the orchestration boundary for changing the TravellerProfile
+ * avatar.
+ *
  * It intentionally does not perform imperative data loading.
  */
 export function ProfilePageContainer(): ReactNode {
@@ -638,6 +667,24 @@ export function ProfilePageContainer(): ReactNode {
   );
 
   // ---------------------------------------------------------------------------
+  // Profile Photo Dialog
+  // ---------------------------------------------------------------------------
+
+  const [
+    isPhotoUploadOpen,
+    setIsPhotoUploadOpen,
+  ] = useState(false);
+
+  // ---------------------------------------------------------------------------
+  // Traveller Profile Avatar Mutation
+  // ---------------------------------------------------------------------------
+
+  const {
+    changeAvatar,
+    clearError: clearAvatarChangeError,
+  } = useTravellerProfileAvatar();
+
+  // ---------------------------------------------------------------------------
   // Verification Requirement Projection
   // ---------------------------------------------------------------------------
 
@@ -703,12 +750,70 @@ export function ProfilePageContainer(): ReactNode {
   ]);
 
   // ---------------------------------------------------------------------------
-  // Presentation Actions
+  // Profile Photo — Open
   // ---------------------------------------------------------------------------
 
   const handleChangePhoto = useCallback((): void => {
-    // Avatar upload workflow is intentionally not invented here.
-  }, []);
+    clearAvatarChangeError();
+    setIsPhotoUploadOpen(true);
+  }, [
+    clearAvatarChangeError,
+  ]);
+
+  // ---------------------------------------------------------------------------
+  // Profile Photo — Uploaded Asset
+  // ---------------------------------------------------------------------------
+  //
+  // AssetUploadDialog owns the physical upload.
+  //
+  // Once the Asset exists, this container gives its public ID meaning in the
+  // Traveller Profile bounded context by associating it as the avatar.
+  //
+  // The Asset itself remains generic and does not know that it is a profile
+  // avatar.
+  //
+  // IMPORTANT:
+  //
+  // This callback deliberately does NOT close the upload dialog.
+  //
+  // AssetUploadDialog awaits this callback and closes itself only after this
+  // complete workflow succeeds.
+  //
+  // If the TravellerProfile association fails, the callback throws and the
+  // AssetUploadDialog remains open so the user can see the error.
+  //
+  // ---------------------------------------------------------------------------
+
+  const handleProfilePhotoUploaded = useCallback(
+    async (asset: Asset): Promise<void> => {
+      if (
+        profile === null ||
+        profile === undefined
+      ) {
+        throw new Error(
+          'Your traveller profile could not be loaded. Please try again.',
+        );
+      }
+
+      await changeAvatar(
+        profile.publicId,
+        {
+          avatarAssetPublicId: asset.publicId,
+        },
+      );
+
+      await refetchProfile();
+    },
+    [
+      profile,
+      changeAvatar,
+      refetchProfile,
+    ],
+  );
+
+  // ---------------------------------------------------------------------------
+  // Presentation Actions
+  // ---------------------------------------------------------------------------
 
   const handleManageVerification = useCallback((): void => {
     router.push('/profile/verification');
@@ -801,85 +906,112 @@ export function ProfilePageContainer(): ReactNode {
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // =============================================================================
   // Presentation Composition
-  // ---------------------------------------------------------------------------
+  // =============================================================================
 
   return (
-    <ProfilePage
-      profile={profile}
+    <>
+      <ProfilePage
+        profile={profile}
 
-      verification={verification}
+        verification={verification}
 
-      verificationRequirements={
-        verificationRequirements
-      }
+        verificationRequirements={
+          verificationRequirements
+        }
 
-      avatarUrl={
-        avatarAsset?.url ?? null
-      }
+        avatarUrl={
+          avatarAsset?.url ?? null
+        }
 
-      avatarAlt={
-        avatarAsset?.alt ??
-        `@${profile.handle}`
-      }
+        avatarAlt={
+          avatarAsset?.alt ??
+          `@${profile.handle}`
+        }
 
-      avatarFallback={
-        profile.handle
-          .charAt(0)
-          .toUpperCase()
-      }
+        avatarFallback={
+          profile.handle
+            .charAt(0)
+            .toUpperCase()
+        }
 
-      visibilityDescription={
-        profile.visibility === 'PUBLIC'
-          ? 'Your public traveller profile is visible according to your visibility settings.'
-          : profile.visibility === 'LIMITED'
-            ? 'Your profile is visible in a limited way according to your visibility settings.'
-            : 'Your profile is currently private.'
-      }
+        visibilityDescription={
+          profile.visibility === 'PUBLIC'
+            ? 'Your public traveller profile is visible according to your visibility settings.'
+            : profile.visibility === 'LIMITED'
+              ? 'Your profile is visible in a limited way according to your visibility settings.'
+              : 'Your profile is currently private.'
+        }
 
-      email={identity.email}
+        email={identity.email}
 
-      phoneNumber={
-        resolvePhoneNumber(
-          identity.phoneNumber,
-        )
-      }
+        phoneNumber={
+          resolvePhoneNumber(
+            identity.phoneNumber,
+          )
+        }
 
-      accountStatus={identity.status}
+        accountStatus={identity.status}
 
-      onChangePhoto={
-        handleChangePhoto
-      }
+        onChangePhoto={
+          handleChangePhoto
+        }
 
-      onManageVerification={
-        handleManageVerification
-      }
+        onManageVerification={
+          handleManageVerification
+        }
 
-      onManageMemberVerification={
-        handleManageMemberVerification
-      }
+        onManageMemberVerification={
+          handleManageMemberVerification
+        }
 
-      onManageDriverVerification={
-        handleManageDriverVerification
-      }
+        onManageDriverVerification={
+          handleManageDriverVerification
+        }
 
-      onViewReputation={
-        handleViewReputation
-      }
+        onViewReputation={
+          handleViewReputation
+        }
 
-      onManageCorridors={
-        handleManageCorridors
-      }
+        onManageCorridors={
+          handleManageCorridors
+        }
 
-      onEditPreferences={
-        handleEditPreferences
-      }
+        onEditPreferences={
+          handleEditPreferences
+        }
 
-      onAccountSettings={
-        handleAccountSettings
-      }
-    />
+        onAccountSettings={
+          handleAccountSettings
+        }
+      />
+
+      {/* -----------------------------------------------------------------------
+          Profile Photo Upload
+
+          This is deliberately outside ProfilePage.
+
+          ProfilePage remains presentation-only while this container owns the
+          workflow that gives an uploaded Asset its TravellerProfile meaning.
+
+          The dialog remains open until:
+          1. the Asset upload succeeds;
+          2. the TravellerProfile avatar association succeeds;
+          3. the TravellerProfile is refreshed.
+         ----------------------------------------------------------------------- */}
+
+      <AssetUploadDialog
+        open={isPhotoUploadOpen}
+        onOpenChange={setIsPhotoUploadOpen}
+        category="PROFILE_PHOTO"
+        type="IMAGE"
+        title="Change profile photo"
+        description="Choose a clear photo that represents you on your traveller profile."
+        accept="image/*"
+        onUploaded={handleProfilePhotoUploaded}
+      />
+    </>
   );
 }
 

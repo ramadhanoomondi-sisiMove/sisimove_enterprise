@@ -38,6 +38,9 @@
 //     /my-demands
 //         Traveller's journey-demand management surface.
 //
+//     /assets
+//         Traveller's Asset-management surface.
+//
 // Next.js route-group relationship:
 //
 //     app/(authenticated)/home/page.tsx
@@ -49,6 +52,9 @@
 //     app/(authenticated)/my-demands/page.tsx
 //         → /my-demands
 //
+//     app/(authenticated)/assets/page.tsx
+//         → /assets
+//
 // The "(authenticated)" directory is a Next.js route group and therefore
 // does not appear in the URL.
 //
@@ -56,8 +62,12 @@
 
 export const AUTHENTICATED_ROUTES = {
   HOME: '/home',
+
   MY_JOURNEYS: '/my-journeys',
+
   MY_DEMANDS: '/my-demands',
+
+  ASSETS: '/assets',
 } as const;
 
 export type AuthenticatedRoute =

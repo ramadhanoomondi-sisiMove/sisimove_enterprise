@@ -5,86 +5,25 @@
 // Application query handler for retrieving the existing Traveller Profile
 // aggregate owned by a specific Identity public identifier.
 //
-// Relationship:
+// Dependency injection:
 //
-//     Identity.publicId
-//            │
-//            ▼
-//     TravellerProfile.memberPublicId
-//            │
-//            ▼
-//     TravellerProfileAggregate
-//
-// This query is particularly useful at authenticated application boundaries
-// where the authenticated principal already provides the Identity public ID.
+// - TravellerProfileRepository is a domain abstraction.
+// - The repository is injected through TRAVELLER_PROFILE_TOKENS.REPOSITORY.
 //
 // The handler does NOT:
 //
-// - authenticate the request;
+// - authenticate requests;
 // - inspect JWTs;
 // - access HTTP request objects;
 // - perform authorization;
-// - evaluate verification status;
-// - determine marketplace capabilities;
-// - create a Traveller Profile;
-// - generate a Traveller handle;
 // - access Prisma directly;
-// - reconstruct the aggregate;
+// - reconstruct aggregates;
 // - perform public visibility filtering.
 //
 // Authentication belongs to JwtAuthGuard.
-// Authorization belongs to PermissionsGuard where required.
+// Authorization belongs to the appropriate application/HTTP boundary.
 // Persistence belongs to TravellerProfileRepository.
 //
-// The Traveller Profile already exists because registration created it.
-// Therefore this handler is strictly a read operation.
-//
-// -----------------------------------------------------------------------------
-//
-// Query:
-//
-//     GetTravellerProfileByMemberPublicIdQuery
-//
-// Input:
-//
-//     memberPublicId
-//
-// Output:
-//
-//     TravellerProfileAggregate | null
-//
-// -----------------------------------------------------------------------------
-//
-// Authenticated shell flow:
-//
-//     JWT
-//      │
-//      ▼
-//     AuthenticatedIdentity
-//      │
-//      └── identityPublicId
-//              │
-//              ▼
-//     GetTravellerProfileByMemberPublicIdQuery
-//              │
-//              ▼
-//     GetTravellerProfileByMemberPublicIdQueryHandler
-//              │
-//              ▼
-//     TravellerProfileRepository.findByMemberPublicId()
-//              │
-//              ▼
-//     TravellerProfileAggregate
-//              │
-//              └── handle
-//
-// The handler does not derive the handle. It reads the handle that was already
-// persisted on TravellerProfile during registration.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// NestJS
 // -----------------------------------------------------------------------------
 
 import { Inject, Injectable } from '@nestjs/common';
@@ -118,22 +57,22 @@ import type { TravellerProfileAggregate } from '../../domain/aggregates/travelle
 // -----------------------------------------------------------------------------
 
 import type { TravellerProfileRepository } from '../../domain/repositories/traveller-profile.repository';
-import { MemberPublicId } from '../../domain/value-objects';
 
 // -----------------------------------------------------------------------------
-// Handler
+// Domain — Value Objects
 // -----------------------------------------------------------------------------
+
+import { MemberPublicId } from '../../domain/value-objects';
+
+// =============================================================================
+// Get Traveller Profile By Member Public ID Query Handler
+// =============================================================================
 
 /**
  * Retrieves an existing Traveller Profile aggregate by the public identifier
  * of the Identity that owns the profile.
  *
  * The repository is injected through the Traveller Profile application token.
- *
- * This handler intentionally returns the broad TravellerProfileAggregate
- * because it belongs to the existing Traveller Profile application read
- * boundary. Individual HTTP consumers remain responsible for mapping the
- * aggregate into the representation appropriate for their boundary.
  */
 @Injectable()
 export class GetTravellerProfileByMemberPublicIdQueryHandler implements QueryHandler<
@@ -153,30 +92,11 @@ export class GetTravellerProfileByMemberPublicIdQueryHandler implements QueryHan
   // Execute
   // ===========================================================================
 
-  /**
-   * Executes the Traveller Profile lookup.
-   *
-   * The query contains the public identifier of the owning Identity.
-   *
-   * The repository already exposes the corresponding domain lookup:
-   *
-   *     findByMemberPublicId(...)
-   *
-   * Therefore no additional repository method is required.
-   */
   public async execute(
     query: GetTravellerProfileByMemberPublicIdQuery,
   ): Promise<TravellerProfileAggregate | null> {
     // -------------------------------------------------------------------------
-    // 1. Query guard
-    // -------------------------------------------------------------------------
-    //
-    // Application query objects should normally always be present when
-    // dispatched through the application bus/handler boundary.
-    //
-    // The guard nevertheless prevents an invalid direct invocation from
-    // reaching the repository with an undefined query.
-    //
+    // Query guard
     // -------------------------------------------------------------------------
 
     if (query === undefined) {
@@ -184,16 +104,7 @@ export class GetTravellerProfileByMemberPublicIdQueryHandler implements QueryHan
     }
 
     // -------------------------------------------------------------------------
-    // 2. Member Public ID guard
-    // -------------------------------------------------------------------------
-    //
-    // The query contract carries a primitive string because application
-    // queries are transport/application-facing messages.
-    //
-    // The repository boundary requires the domain MemberPublicId value object.
-    //
-    // Empty input therefore represents "no matching Traveller Profile".
-    //
+    // Member Public ID guard
     // -------------------------------------------------------------------------
 
     if (
@@ -204,28 +115,13 @@ export class GetTravellerProfileByMemberPublicIdQueryHandler implements QueryHan
     }
 
     // -------------------------------------------------------------------------
-    // 3. Construct the domain value object
-    // -------------------------------------------------------------------------
-    //
-    // MemberPublicId remains the domain source of truth for validation and
-    // normalization.
-    //
-    // The handler does not duplicate the value object's rules.
-    //
+    // Convert application primitive to domain value object
     // -------------------------------------------------------------------------
 
     const memberPublicId = new MemberPublicId(query.memberPublicId);
 
     // -------------------------------------------------------------------------
-    // 4. Resolve the existing Traveller Profile aggregate
-    // -------------------------------------------------------------------------
-    //
-    // Aggregate reconstruction belongs to the repository/infrastructure
-    // boundary.
-    //
-    // The handler does not access Prisma and does not manually reconstruct
-    // TravellerProfileEntity, preferences, or corridors.
-    //
+    // Resolve aggregate through repository abstraction
     // -------------------------------------------------------------------------
 
     return this.travellerProfileRepository.findByMemberPublicId(memberPublicId);

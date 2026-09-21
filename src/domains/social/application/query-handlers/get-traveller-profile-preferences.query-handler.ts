@@ -1,5 +1,7 @@
 // src/domains/social/application/query-handlers/get-traveller-profile-preferences.query-handler.ts
 
+import { Inject } from '@nestjs/common';
+
 import type { QueryHandler } from '../../../../foundation/kernel/application/query-handler';
 
 import type { GetTravellerProfilePreferencesQuery } from '../queries/get-traveller-profile-preferences.query';
@@ -9,11 +11,16 @@ import type { TravellerProfileRepository } from '../../domain/repositories/trave
 
 import { TravellerProfileId } from '../../domain/value-objects/traveller-profile-id.vo';
 
+import { TRAVELLER_PROFILE_TOKENS } from '../traveller-profile.tokens';
+
 export class GetTravellerProfilePreferencesQueryHandler implements QueryHandler<
   GetTravellerProfilePreferencesQuery,
   TravellerProfilePreferencesEntity | null
 > {
-  constructor(private readonly repository: TravellerProfileRepository) {}
+  constructor(
+    @Inject(TRAVELLER_PROFILE_TOKENS.REPOSITORY)
+    private readonly repository: TravellerProfileRepository,
+  ) {}
 
   async execute(
     query: GetTravellerProfilePreferencesQuery,

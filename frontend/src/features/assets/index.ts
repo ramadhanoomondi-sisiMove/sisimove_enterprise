@@ -2,23 +2,9 @@
 // sisiMove — Assets Feature Public API
 // -----------------------------------------------------------------------------
 //
-// Feature boundary for public Asset consumption.
+// Public feature boundary for Asset consumption.
 //
-// This barrel exposes only the frontend contracts and operations that other
-// features or application components are allowed to consume.
-//
-// The internal structure remains:
-//
-//     assets/
-//     ├── api/
-//     │   └── assets.api.ts
-//     ├── models/
-//     │   └── public-asset.ts
-//     ├── hooks/
-//     │   └── use-public-asset.ts
-//     └── index.ts
-//
-// Consumers should import from:
+// Consumers should import Asset functionality from:
 //
 //     @/features/assets
 //
@@ -28,13 +14,52 @@
 //     @/features/assets/models/...
 //     @/features/assets/hooks/...
 //
-// This keeps the Assets feature free to change its internal organization
-// without forcing changes throughout the application.
+// This keeps the internal Assets feature structure private and allows the
+// implementation to evolve without forcing changes throughout the application.
+//
+// -----------------------------------------------------------------------------
+//
+// INTERNAL FEATURE STRUCTURE
+// -----------------------------------------------------------------------------
+//
+//     assets/
+//     ├── api/
+//     │   ├── assets.api.ts
+//     │   └── public-assets.api.ts
+//     │
+//     ├── models/
+//     │   ├── asset.ts
+//     │   └── public-asset.ts
+//     │
+//     ├── hooks/
+//     │   ├── use-asset.ts
+//     │   └── use-public-asset.ts
+//     │
+//     └── index.ts
 //
 // -----------------------------------------------------------------------------
 //
 // PUBLIC FEATURE CONTRACT
 // -----------------------------------------------------------------------------
+//
+// AUTHENTICATED ASSET MANAGEMENT
+//
+// API
+//     getMyAssets()
+//     uploadAsset()
+//     archiveAsset()
+//     deleteAsset()
+//     changeAssetVisibility()
+//
+// Models
+//     Asset
+//
+// Hooks
+//     useAsset()
+//
+// -----------------------------------------------------------------------------
+//
+// PUBLIC ASSET DELIVERY
 //
 // API
 //     getPublicAsset()
@@ -45,33 +70,113 @@
 // Hooks
 //     usePublicAsset()
 //
-// The feature intentionally does not expose internal transport types such as
-// `PublicAssetResponse`.
+// -----------------------------------------------------------------------------
+//
+// SECURITY BOUNDARIES
+// -----------------------------------------------------------------------------
+//
+// Authenticated Asset operations use:
+//
+//     authenticatedApiClient
+//
+// and operate against the current authenticated Identity.
+//
+// The frontend does not provide ownership information for owner-scoped
+// operations.
+//
+// Public Asset delivery uses:
+//
+//     apiClient
+//
+// and exposes only the reduced PublicAsset representation.
 //
 // -----------------------------------------------------------------------------
 //
-// PUBLIC ASSET BOUNDARY
+// MODEL BOUNDARIES
 // -----------------------------------------------------------------------------
 //
-// `PublicAsset` is the reduced representation used by public frontend
-// experiences:
+// Asset
 //
-//     publicId
-//     url
-//     alt
+//     Authenticated Asset-management representation.
 //
-// Internal Asset-domain metadata remains outside this feature contract.
+// PublicAsset
+//
+//     Safe public rendering representation.
+//
+// These models intentionally remain separate.
+//
+// `PublicAsset` does not expose internal Asset-management metadata such as:
+//
+//     ownerPublicId
+//     status
+//     visibility
+//     storageProvider
+//     bucket
+//     objectKey
 //
 // -----------------------------------------------------------------------------
+//
+// INTERNAL TYPES
+// -----------------------------------------------------------------------------
+//
+// The feature intentionally does not expose internal transport, persistence,
+// or implementation-specific types unless they are explicitly part of the
+// frontend feature contract.
+//
+// -----------------------------------------------------------------------------
+
+
+// =============================================================================
+// Authenticated Asset API
+// =============================================================================
+
+export {
+  getMyAssets,
+  uploadAsset,
+  archiveAsset,
+  deleteAsset,
+  changeAssetVisibility,
+} from './api';
+
+export type {
+  AssetUploadType,
+  AssetUploadCategory,
+  AssetVisibility,
+  UploadAssetInput,
+  ChangeAssetVisibilityInput,
+} from './api';
+
+
+// =============================================================================
+// Public Asset API
+// =============================================================================
 
 export {
   getPublicAsset,
 } from './api';
 
+
+// =============================================================================
+// Asset Models
+// =============================================================================
+
 export type {
+  Asset,
   PublicAsset,
 } from './models';
 
+
+// =============================================================================
+// Asset Hooks
+// =============================================================================
+
 export {
+  useAsset,
   usePublicAsset,
+} from './hooks';
+
+export type {
+  UseAssetState,
+  UseAssetActions,
+  UseAssetResult,
 } from './hooks';

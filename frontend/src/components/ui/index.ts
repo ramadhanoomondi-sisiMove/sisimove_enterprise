@@ -84,3 +84,9 @@ export {
   type ErrorStateAction,
   type ErrorStateProps,
 } from './error-state';
+
+export {
+  Dialog,
+  type DialogProps,
+  type DialogSize,
+} from './dialog';

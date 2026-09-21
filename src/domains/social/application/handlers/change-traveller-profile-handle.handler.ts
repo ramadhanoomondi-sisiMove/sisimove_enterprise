@@ -1,8 +1,24 @@
-// src/domains/social/application/handlers/change-traveller-profile-handle.handler.ts
+// -----------------------------------------------------------------------------
+// sisiMove — Change Traveller Profile Handle Handler
+// -----------------------------------------------------------------------------
+//
+// Application command handler for changing a Traveller Profile handle.
+//
+// Dependency injection:
+//
+// - TravellerProfileRepository is a domain abstraction.
+// - The repository is injected through the existing Traveller Profile
+//   application token because the repository is a TypeScript interface.
+//
+// -----------------------------------------------------------------------------
+
+import { Inject } from '@nestjs/common';
 
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 
 import type { ChangeTravellerProfileHandleCommand } from '../commands/change-traveller-profile-handle.command';
+
+import { TRAVELLER_PROFILE_TOKENS } from '../traveller-profile.tokens';
 
 import {
   TravellerProfileHandleAlreadyExistsException,
@@ -14,8 +30,19 @@ import type { TravellerProfileRepository } from '../../domain/repositories/trave
 import { TravellerHandle } from '../../domain/value-objects/traveller-handle.vo';
 import { TravellerProfileId } from '../../domain/value-objects/traveller-profile-id.vo';
 
+// =============================================================================
+// Change Traveller Profile Handle Handler
+// =============================================================================
+
 export class ChangeTravellerProfileHandleHandler implements CommandHandler<ChangeTravellerProfileHandleCommand> {
-  constructor(private readonly repository: TravellerProfileRepository) {}
+  constructor(
+    @Inject(TRAVELLER_PROFILE_TOKENS.REPOSITORY)
+    private readonly repository: TravellerProfileRepository,
+  ) {}
+
+  // ---------------------------------------------------------------------------
+  // Execute
+  // ---------------------------------------------------------------------------
 
   async execute(command: ChangeTravellerProfileHandleCommand): Promise<void> {
     const profileId = new TravellerProfileId(command.travellerProfileId);

@@ -69,6 +69,7 @@ import {
   SupportCaseParticipantRole,
   SupportMessageType,
 } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
@@ -108,7 +109,7 @@ async function main(): Promise<void> {
     {
       code: 'MEMBER',
       name: 'Member',
-      description: 'Standard SisiMove member.',
+      description: 'Standard sisiMove member.',
       displayOrder: 1,
     },
     {
@@ -537,196 +538,299 @@ for (const [identityKey, roleCode] of identityRoleDefinitions) {
   }
 }
 
-  // ===========================================================================
-  // 6. AUTHENTICATION
-  // ===========================================================================
+// -----------------------------------------------------------------------------
+// 6. AUTHENTICATION
+// -----------------------------------------------------------------------------
+//
+// Development authentication credentials.
+//
+// The seed password is hashed using BCrypt with the same configuration
+// convention as BcryptPasswordService.
+//
+// Password:
+//     sisiMove123
+//
+// IMPORTANT:
+// - Never persist the plaintext password.
+// - Never log the plaintext password.
+// - Never hard-code a BCrypt hash for a known development password.
+// - The generated hash contains its own unique salt.
+// - createdAt and passwordChangedAt intentionally use the same timestamp
+//   for newly created development authentication records.
+// -----------------------------------------------------------------------------
 
-  console.log('[6/12] Seeding authentication...');
+console.log('[6/12] Seeding authentication...');
 
-  /*
-   * Development-only password hash.
-   *
-   * Password:
-   *   SisiMove123!
-   *
-   * Replace this with your application's actual password-hashing service
-   * before using this seed outside development.
-   */
-  const developmentPasswordHash =
-    '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC7Y2s3X9u4mG0gJ5v5K';
+const developmentPassword = 'sisiMove123';
 
-  for (const identity of Object.values(identities)) {
-    await prisma.authentication.upsert({
-      where: {
-        identityPublicId: identity.publicId,
-      },
-      update: {
-        status: AuthenticationStatus.ACTIVE,
-        passwordHash: developmentPasswordHash,
-        passwordMustChange: false,
-        failedAuthenticationCount: 0,
-        lockedAt: null,
-        lockedUntil: null,
-        lockReason: null,
-      },
-      create: {
-        publicId: `SM-AUTH-${identity.publicId}`,
-        identityPublicId: identity.publicId,
-        status: AuthenticationStatus.ACTIVE,
-        passwordHash: developmentPasswordHash,
-        passwordVersion: 1,
-        passwordChangedAt: NOW,
-        passwordMustChange: false,
-        failedAuthenticationCount: 0,
-      },
-    });
+const bcryptRounds = (() => {
+  const value = process.env.SECURITY_BCRYPT_ROUNDS;
+
+  if (!value || value.trim() === '') {
+    return 12;
   }
 
-  // ===========================================================================
-  // 7. ASSETS
-  // ===========================================================================
+  const rounds = Number.parseInt(value, 10);
 
-  console.log('[7/12] Seeding assets...');
+  if (!Number.isInteger(rounds) || rounds < 10 || rounds > 15) {
+    throw new Error(
+      'SECURITY_BCRYPT_ROUNDS must be an integer between 10 and 15.',
+    );
+  }
 
-  const memberAvatar = await prisma.asset.upsert({
+  return rounds;
+})();
+
+const developmentPasswordHash = await bcrypt.hash(
+  developmentPassword,
+  bcryptRounds,
+);
+
+for (const identity of Object.values(identities)) {
+  // ---------------------------------------------------------------------------
+  // Authentication lifecycle timestamp
+  // ---------------------------------------------------------------------------
+  //
+  // Use one timestamp for both:
+  //
+  //     createdAt
+  //     passwordChangedAt
+  //
+  // This guarantees the Authentication domain invariant:
+  //
+  //     passwordChangedAt >= createdAt
+  //
+  // for newly seeded authentication records.
+  // ---------------------------------------------------------------------------
+
+  const authenticationNow = new Date();
+
+  await prisma.authentication.upsert({
     where: {
-      objectKey: 'seed/member/profile.jpg',
+      identityPublicId: identity.publicId,
     },
+
+    // -------------------------------------------------------------------------
+    // Existing development authentication
+    // -------------------------------------------------------------------------
+    //
+    // Reseeding intentionally resets the development password and its
+    // password lifecycle timestamp.
+    //
+    // This keeps the development credential deterministic and ensures that
+    // an existing record cannot retain an invalid passwordChangedAt value.
+    // -------------------------------------------------------------------------
+
     update: {
-      ownerIdentityId: identities.member.id,
-      type: AssetType.IMAGE,
-      category: AssetCategory.PROFILE_PHOTO,
-      status: AssetStatus.READY,
-      visibility: AssetVisibility.PUBLIC,
+      status: AuthenticationStatus.ACTIVE,
+      passwordHash: developmentPasswordHash,
+      passwordChangedAt: authenticationNow,
+      passwordMustChange: false,
+      failedAuthenticationCount: 0,
+      lockedAt: null,
+      lockedUntil: null,
+      lockReason: null,
     },
+
+    // -------------------------------------------------------------------------
+    // New authentication
+    // -------------------------------------------------------------------------
+    //
+    // createdAt and passwordChangedAt deliberately share the exact same
+    // application-generated timestamp.
+    // -------------------------------------------------------------------------
+
     create: {
-      publicId: 'SM-ASSET-MEMBER-PROFILE',
-      ownerIdentityId: identities.member.id,
-      type: AssetType.IMAGE,
-      category: AssetCategory.PROFILE_PHOTO,
-      status: AssetStatus.READY,
-      visibility: AssetVisibility.PUBLIC,
-      storageProvider: StorageProvider.LOCAL,
-      bucket: 'sisimove-dev',
-      objectKey: 'seed/member/profile.jpg',
-      originalFilename: 'member-profile.jpg',
-      mimeType: 'image/jpeg',
-      sizeBytes: BigInt(125000),
-      uploadedAt: NOW,
+      publicId: `SM-AUTH-${identity.publicId}`,
+      identityPublicId: identity.publicId,
+      status: AuthenticationStatus.ACTIVE,
+      passwordHash: developmentPasswordHash,
+      passwordVersion: 1,
+      passwordChangedAt: authenticationNow,
+      passwordMustChange: false,
+      failedAuthenticationCount: 0,
+      lockedAt: null,
+      lockedUntil: null,
+      lockReason: null,
+      createdAt: authenticationNow,
     },
   });
+}
 
-  const driverAvatar = await prisma.asset.upsert({
-    where: {
-      objectKey: 'seed/driver/profile.jpg',
-    },
-    update: {
-      ownerIdentityId: identities.driver.id,
-      type: AssetType.IMAGE,
-      category: AssetCategory.PROFILE_PHOTO,
-      status: AssetStatus.READY,
-      visibility: AssetVisibility.PUBLIC,
-    },
-    create: {
-      publicId: 'SM-ASSET-DRIVER-PROFILE',
-      ownerIdentityId: identities.driver.id,
-      type: AssetType.IMAGE,
-      category: AssetCategory.PROFILE_PHOTO,
-      status: AssetStatus.READY,
-      visibility: AssetVisibility.PUBLIC,
-      storageProvider: StorageProvider.LOCAL,
-      bucket: 'sisimove-dev',
-      objectKey: 'seed/driver/profile.jpg',
-      originalFilename: 'driver-profile.jpg',
-      mimeType: 'image/jpeg',
-      sizeBytes: BigInt(145000),
-      uploadedAt: NOW,
-    },
-  });
+// ===========================================================================
+// 7. ASSETS
+// ===========================================================================
+//
+// Seeded assets represent files that have already been successfully uploaded.
+//
+// IMPORTANT:
+// - `uploadedAt` must never be earlier than `createdAt`.
+// - We therefore provide the same deterministic timestamp for both fields.
+// - Do not rely on Prisma's @default(now()) for createdAt when explicitly
+//   supplying uploadedAt.
+// - Existing rows are also normalized through the update branch below.
+//
+// ===========================================================================
 
-  const driverLicense = await prisma.asset.upsert({
-    where: {
-      objectKey: 'seed/driver/license.jpg',
-    },
-    update: {
-      ownerIdentityId: identities.driver.id,
-      type: AssetType.IMAGE,
-      category: AssetCategory.DRIVER_LICENSE,
-      status: AssetStatus.READY,
-      visibility: AssetVisibility.PRIVATE,
-    },
-    create: {
-      publicId: 'SM-ASSET-DRIVER-LICENSE',
-      ownerIdentityId: identities.driver.id,
-      type: AssetType.IMAGE,
-      category: AssetCategory.DRIVER_LICENSE,
-      status: AssetStatus.READY,
-      visibility: AssetVisibility.PRIVATE,
-      storageProvider: StorageProvider.LOCAL,
-      bucket: 'sisimove-dev',
-      objectKey: 'seed/driver/license.jpg',
-      originalFilename: 'driver-license.jpg',
-      mimeType: 'image/jpeg',
-      sizeBytes: BigInt(175000),
-      uploadedAt: NOW,
-    },
-  });
+console.log('[7/12] Seeding assets...');
 
-  const governmentId = await prisma.asset.upsert({
-    where: {
-      objectKey: 'seed/driver/government-id.jpg',
-    },
-    update: {
-      ownerIdentityId: identities.driver.id,
-      type: AssetType.IMAGE,
-      category: AssetCategory.GOVERNMENT_ID,
-      status: AssetStatus.READY,
-      visibility: AssetVisibility.PRIVATE,
-    },
-    create: {
-      publicId: 'SM-ASSET-DRIVER-GOV-ID',
-      ownerIdentityId: identities.driver.id,
-      type: AssetType.IMAGE,
-      category: AssetCategory.GOVERNMENT_ID,
-      status: AssetStatus.READY,
-      visibility: AssetVisibility.PRIVATE,
-      storageProvider: StorageProvider.LOCAL,
-      bucket: 'sisimove-dev',
-      objectKey: 'seed/driver/government-id.jpg',
-      originalFilename: 'government-id.jpg',
-      mimeType: 'image/jpeg',
-      sizeBytes: BigInt(165000),
-      uploadedAt: NOW,
-    },
-  });
+const ASSET_CREATED_AT = NOW;
+const ASSET_UPLOADED_AT = NOW;
 
-  const vehiclePhoto = await prisma.asset.upsert({
-    where: {
-      objectKey: 'seed/driver/vehicle.jpg',
-    },
-    update: {
-      ownerIdentityId: identities.driver.id,
-      type: AssetType.IMAGE,
-      category: AssetCategory.VEHICLE_PHOTO,
-      status: AssetStatus.READY,
-      visibility: AssetVisibility.PUBLIC,
-    },
-    create: {
-      publicId: 'SM-ASSET-VEHICLE-001',
-      ownerIdentityId: identities.driver.id,
-      type: AssetType.IMAGE,
-      category: AssetCategory.VEHICLE_PHOTO,
-      status: AssetStatus.READY,
-      visibility: AssetVisibility.PUBLIC,
-      storageProvider: StorageProvider.LOCAL,
-      bucket: 'sisimove-dev',
-      objectKey: 'seed/driver/vehicle.jpg',
-      originalFilename: 'vehicle.jpg',
-      mimeType: 'image/jpeg',
-      sizeBytes: BigInt(210000),
-      uploadedAt: NOW,
-    },
-  });
+const memberAvatar = await prisma.asset.upsert({
+  where: {
+    objectKey: 'seed/member/profile.jpg',
+  },
+  update: {
+    ownerIdentityId: identities.member.id,
+    type: AssetType.IMAGE,
+    category: AssetCategory.PROFILE_PHOTO,
+    status: AssetStatus.READY,
+    visibility: AssetVisibility.PUBLIC,
+    createdAt: ASSET_CREATED_AT,
+    uploadedAt: ASSET_UPLOADED_AT,
+  },
+  create: {
+    publicId: 'AS-ASSET-MEMBER-PROFILE',
+    ownerIdentityId: identities.member.id,
+    type: AssetType.IMAGE,
+    category: AssetCategory.PROFILE_PHOTO,
+    status: AssetStatus.READY,
+    visibility: AssetVisibility.PUBLIC,
+    storageProvider: StorageProvider.LOCAL,
+    bucket: 'sisimove-dev',
+    objectKey: 'seed/member/profile.jpg',
+    originalFilename: 'member-profile.jpg',
+    mimeType: 'image/jpeg',
+    sizeBytes: BigInt(125000),
+    createdAt: ASSET_CREATED_AT,
+    uploadedAt: ASSET_UPLOADED_AT,
+  },
+});
+
+const driverAvatar = await prisma.asset.upsert({
+  where: {
+    objectKey: 'seed/driver/profile.jpg',
+  },
+  update: {
+    ownerIdentityId: identities.driver.id,
+    type: AssetType.IMAGE,
+    category: AssetCategory.PROFILE_PHOTO,
+    status: AssetStatus.READY,
+    visibility: AssetVisibility.PUBLIC,
+    createdAt: ASSET_CREATED_AT,
+    uploadedAt: ASSET_UPLOADED_AT,
+  },
+  create: {
+    publicId: 'AS-ASSET-DRIVER-PROFILE',
+    ownerIdentityId: identities.driver.id,
+    type: AssetType.IMAGE,
+    category: AssetCategory.PROFILE_PHOTO,
+    status: AssetStatus.READY,
+    visibility: AssetVisibility.PUBLIC,
+    storageProvider: StorageProvider.LOCAL,
+    bucket: 'sisimove-dev',
+    objectKey: 'seed/driver/profile.jpg',
+    originalFilename: 'driver-profile.jpg',
+    mimeType: 'image/jpeg',
+    sizeBytes: BigInt(145000),
+    createdAt: ASSET_CREATED_AT,
+    uploadedAt: ASSET_UPLOADED_AT,
+  },
+});
+
+const driverLicense = await prisma.asset.upsert({
+  where: {
+    objectKey: 'seed/driver/license.jpg',
+  },
+  update: {
+    ownerIdentityId: identities.driver.id,
+    type: AssetType.IMAGE,
+    category: AssetCategory.DRIVER_LICENSE,
+    status: AssetStatus.READY,
+    visibility: AssetVisibility.PRIVATE,
+    createdAt: ASSET_CREATED_AT,
+    uploadedAt: ASSET_UPLOADED_AT,
+  },
+  create: {
+    publicId: 'AS-ASSET-DRIVER-LICENSE',
+    ownerIdentityId: identities.driver.id,
+    type: AssetType.IMAGE,
+    category: AssetCategory.DRIVER_LICENSE,
+    status: AssetStatus.READY,
+    visibility: AssetVisibility.PRIVATE,
+    storageProvider: StorageProvider.LOCAL,
+    bucket: 'sisimove-dev',
+    objectKey: 'seed/driver/license.jpg',
+    originalFilename: 'driver-license.jpg',
+    mimeType: 'image/jpeg',
+    sizeBytes: BigInt(175000),
+    createdAt: ASSET_CREATED_AT,
+    uploadedAt: ASSET_UPLOADED_AT,
+  },
+});
+
+const governmentId = await prisma.asset.upsert({
+  where: {
+    objectKey: 'seed/driver/government-id.jpg',
+  },
+  update: {
+    ownerIdentityId: identities.driver.id,
+    type: AssetType.IMAGE,
+    category: AssetCategory.GOVERNMENT_ID,
+    status: AssetStatus.READY,
+    visibility: AssetVisibility.PRIVATE,
+    createdAt: ASSET_CREATED_AT,
+    uploadedAt: ASSET_UPLOADED_AT,
+  },
+  create: {
+    publicId: 'AS-ASSET-DRIVER-GOV-ID',
+    ownerIdentityId: identities.driver.id,
+    type: AssetType.IMAGE,
+    category: AssetCategory.GOVERNMENT_ID,
+    status: AssetStatus.READY,
+    visibility: AssetVisibility.PRIVATE,
+    storageProvider: StorageProvider.LOCAL,
+    bucket: 'sisimove-dev',
+    objectKey: 'seed/driver/government-id.jpg',
+    originalFilename: 'government-id.jpg',
+    mimeType: 'image/jpeg',
+    sizeBytes: BigInt(165000),
+    createdAt: ASSET_CREATED_AT,
+    uploadedAt: ASSET_UPLOADED_AT,
+  },
+});
+
+const vehiclePhoto = await prisma.asset.upsert({
+  where: {
+    objectKey: 'seed/driver/vehicle.jpg',
+  },
+  update: {
+    ownerIdentityId: identities.driver.id,
+    type: AssetType.IMAGE,
+    category: AssetCategory.VEHICLE_PHOTO,
+    status: AssetStatus.READY,
+    visibility: AssetVisibility.PUBLIC,
+    createdAt: ASSET_CREATED_AT,
+    uploadedAt: ASSET_UPLOADED_AT,
+  },
+  create: {
+    publicId: 'AS-ASSET-VEHICLE-001',
+    ownerIdentityId: identities.driver.id,
+    type: AssetType.IMAGE,
+    category: AssetCategory.VEHICLE_PHOTO,
+    status: AssetStatus.READY,
+    visibility: AssetVisibility.PUBLIC,
+    storageProvider: StorageProvider.LOCAL,
+    bucket: 'sisimove-dev',
+    objectKey: 'seed/driver/vehicle.jpg',
+    originalFilename: 'vehicle.jpg',
+    mimeType: 'image/jpeg',
+    sizeBytes: BigInt(210000),
+    createdAt: ASSET_CREATED_AT,
+    uploadedAt: ASSET_UPLOADED_AT,
+  },
+});
 
   // ===========================================================================
   // 8. VERIFICATION
@@ -754,7 +858,7 @@ for (const [identityKey, roleCode] of identityRoleDefinitions) {
       lastReviewedAt: NOW,
     },
     create: {
-      publicId: 'SM-VERIFICATION-DRIVER-001',
+      publicId: 'AS-VERIFICATION-DRIVER-001',
       identityId: identities.driver.id,
       status: VerificationStatus.VERIFIED,
       level: VerificationLevel.DRIVER,
@@ -791,7 +895,7 @@ for (const [identityKey, roleCode] of identityRoleDefinitions) {
       lastReviewedAt: NOW,
     },
     create: {
-      publicId: 'SM-VERIFICATION-MEMBER-001',
+      publicId: 'AS-VERIFICATION-MEMBER-001',
       identityId: identities.member.id,
       status: VerificationStatus.VERIFIED,
       level: VerificationLevel.MEMBER,
@@ -810,7 +914,7 @@ for (const [identityKey, roleCode] of identityRoleDefinitions) {
   // Verification requests for the driver's evidence.
   await prisma.verificationRequest.upsert({
     where: {
-      publicId: 'SM-VREQ-DRIVER-LICENSE-001',
+      publicId: 'AS-VREQ-DRIVER-LICENSE-001',
     },
     update: {
       status: VerificationRequestStatus.APPROVED,
@@ -819,7 +923,7 @@ for (const [identityKey, roleCode] of identityRoleDefinitions) {
       rejectionReason: null,
     },
     create: {
-      publicId: 'SM-VREQ-DRIVER-LICENSE-001',
+      publicId: 'AS-VREQ-DRIVER-LICENSE-001',
       verificationId: driverVerification.id,
       type: VerificationRequestType.DRIVER_LICENSE,
       status: VerificationRequestStatus.APPROVED,
@@ -832,7 +936,7 @@ for (const [identityKey, roleCode] of identityRoleDefinitions) {
 
   await prisma.verificationRequest.upsert({
     where: {
-      publicId: 'SM-VREQ-DRIVER-GOV-ID-001',
+      publicId: 'AS-VREQ-DRIVER-GOV-ID-001',
     },
     update: {
       status: VerificationRequestStatus.APPROVED,
@@ -841,7 +945,7 @@ for (const [identityKey, roleCode] of identityRoleDefinitions) {
       rejectionReason: null,
     },
     create: {
-      publicId: 'SM-VREQ-DRIVER-GOV-ID-001',
+      publicId: 'AS-VREQ-DRIVER-GOV-ID-001',
       verificationId: driverVerification.id,
       type: VerificationRequestType.GOVERNMENT_ID,
       status: VerificationRequestStatus.APPROVED,
@@ -871,7 +975,7 @@ for (const [identityKey, roleCode] of identityRoleDefinitions) {
       visibility: TravellerProfileVisibility.PUBLIC,
     },
     create: {
-      publicId: 'SM-TRAVELLER-MEMBER-001',
+      publicId: 'AS-TRAVELLER-MEMBER-001',
       memberPublicId: identities.member.publicId,
       handle: 'sisimove_member',
       bio: 'SisiMove development member.',
@@ -899,7 +1003,7 @@ for (const [identityKey, roleCode] of identityRoleDefinitions) {
       completedJourneys: 2,
     },
     create: {
-      publicId: 'SM-TRAVELLER-DRIVER-001',
+      publicId: 'AS-TRAVELLER-DRIVER-001',
       memberPublicId: identities.driver.publicId,
       handle: 'sisimove_driver',
       bio: 'Verified SisiMove development driver.',
@@ -920,7 +1024,7 @@ for (const [identityKey, roleCode] of identityRoleDefinitions) {
     },
     update: {},
     create: {
-      publicId: 'SM-TPREF-MEMBER-001',
+      publicId: 'AS-TPREF-MEMBER-001',
       profileId: memberProfile.id,
       showJourneyHistory: true,
       showJourneyStatistics: true,

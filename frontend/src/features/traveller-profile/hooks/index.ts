@@ -95,3 +95,13 @@ export {
   type UseDeleteTravelCorridorResult,
 } from './use-delete-travel-corridor';
 
+export {
+  useTravellerProfileAvatar,
+} from './use-traveller-profile-avatar';
+
+export type {
+  UseTravellerProfileAvatarState,
+  UseTravellerProfileAvatarActions,
+  UseTravellerProfileAvatarResult,
+} from './use-traveller-profile-avatar';
+

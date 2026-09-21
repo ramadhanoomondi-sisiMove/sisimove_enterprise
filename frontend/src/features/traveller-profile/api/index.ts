@@ -69,3 +69,11 @@ export { createTravelCorridor } from './create-travel-corridor.api';
 export { updateTravelCorridor } from './update-travel-corridor.api';
 export { deleteTravelCorridor } from './delete-travel-corridor.api';
 
+export {
+  changeTravellerProfileAvatar,
+} from './change-traveller-profile-avatar.api';
+
+export type {
+  ChangeTravellerProfileAvatarInput,
+} from './change-traveller-profile-avatar.api';
+

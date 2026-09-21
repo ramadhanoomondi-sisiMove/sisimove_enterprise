@@ -1,8 +1,25 @@
-// src/domains/social/application/handlers/set-traveller-profile-primary-corridor.handler.ts
+// -----------------------------------------------------------------------------
+// sisiMove — Set Traveller Profile Primary Corridor Handler
+// -----------------------------------------------------------------------------
+//
+// Application command handler for setting a Traveller Profile primary
+// corridor.
+//
+// Dependency injection:
+//
+// - TravellerProfileRepository is a domain abstraction.
+// - The repository is injected through the existing Traveller Profile
+//   application token because the repository is a TypeScript interface.
+//
+// -----------------------------------------------------------------------------
+
+import { Inject } from '@nestjs/common';
 
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 
 import type { SetTravellerProfilePrimaryCorridorCommand } from '../commands/set-traveller-profile-primary-corridor.command';
+
+import { TRAVELLER_PROFILE_TOKENS } from '../traveller-profile.tokens';
 
 import { TravellerProfileNotFoundException } from '../../domain/exceptions';
 
@@ -13,8 +30,19 @@ import {
   TravellerProfileId,
 } from '../../domain/value-objects';
 
+// =============================================================================
+// Set Traveller Profile Primary Corridor Handler
+// =============================================================================
+
 export class SetTravellerProfilePrimaryCorridorHandler implements CommandHandler<SetTravellerProfilePrimaryCorridorCommand> {
-  constructor(private readonly repository: TravellerProfileRepository) {}
+  constructor(
+    @Inject(TRAVELLER_PROFILE_TOKENS.REPOSITORY)
+    private readonly repository: TravellerProfileRepository,
+  ) {}
+
+  // ---------------------------------------------------------------------------
+  // Execute
+  // ---------------------------------------------------------------------------
 
   async execute(
     command: SetTravellerProfilePrimaryCorridorCommand,

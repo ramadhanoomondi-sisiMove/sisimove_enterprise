@@ -81,7 +81,7 @@
 //
 //    The owner Identity is ALWAYS obtained from:
 //
-//        request.user.identityPublicId
+//        @CurrentIdentity()
 //
 //    The caller must never provide an arbitrary owner Identity public ID.
 //
@@ -149,14 +149,6 @@
 //             │
 //             └── AssetDeliveryPort
 //
-// This allows delivery implementations such as:
-//
-//     LocalAssetDeliveryService
-//     BunnyAssetDeliveryService
-//
-// to determine how the Asset is consumed without exposing their infrastructure
-// details through the HTTP controller.
-//
 // The public reference does NOT expose:
 //
 // - internal persistence IDs;
@@ -210,17 +202,6 @@
 //     ├── url
 //     └── alt
 //
-// The public read boundary is responsible for resolving the safe renderable
-// representation.
-//
-// The public Asset URL may ultimately resolve to:
-//
-//     GET /assets/public/:assetPublicId
-//
-// while the public reference query may expose that URL through:
-//
-//     GET /assets/public/:assetPublicId/reference
-//
 // -----------------------------------------------------------------------------
 //
 // PUBLIC ASSET REFERENCE FLOW
@@ -255,8 +236,6 @@
 //        ▼
 //     Public Marketplace
 //
-// The controller does not construct the URL and does not access storage.
-//
 // -----------------------------------------------------------------------------
 //
 // PUBLIC ASSET CONTENT FLOW
@@ -277,7 +256,6 @@
 //        │      └── AssetAggregate
 //        │
 //        ├── verify PUBLIC
-//        │
 //        ├── verify READY / usable
 //        │
 //        └── AssetStoragePort
@@ -297,9 +275,6 @@
 //        ▼
 //     Browser
 //
-// The controller never accesses the repository or physical storage directly
-// for public delivery.
-//
 // -----------------------------------------------------------------------------
 //
 // OWNER AUTHORIZATION MODEL
@@ -310,7 +285,7 @@
 //     JwtAuthGuard
 //          │
 //          ▼
-//     request.user.identityPublicId
+//     @CurrentIdentity()
 //          │
 //          ▼
 //     Application Command
@@ -401,21 +376,6 @@
 //
 // -----------------------------------------------------------------------------
 //
-// STORAGE METADATA
-//
-// The controller generates the unique object key because the current
-// UploadAssetCommand contract requires one.
-//
-// However, the controller does NOT decide storage behavior.
-//
-// Provider and bucket values are configuration/infrastructure concerns exposed
-// to the application boundary through the current command contract.
-//
-// The controller therefore performs only the final transport-to-value-object
-// conversion required by UploadAssetCommand.
-//
-// -----------------------------------------------------------------------------
-//
 // APPLICATION MESSAGE METADATA
 //
 // A direct HTTP request starts a new application operation.
@@ -447,34 +407,6 @@
 //
 // -----------------------------------------------------------------------------
 //
-// QUERY DTO ALIGNMENT
-//
-// Query DTOs remain responsible for HTTP query parameters:
-//
-// - CheckAssetExistsQueryDto;
-// - GetAssetByObjectKeyQueryDto;
-// - GetAssetsByCategoryQueryDto;
-// - GetAssetsByOwnerQueryDto;
-// - GetAssetsByStatusQueryDto.
-//
-// The owner operation does not trust an owner ID supplied by the caller.
-//
-// GET /assets/owner always derives ownership from:
-//
-//     request.user.identityPublicId
-//
-// GET /assets/:assetPublicId receives the public identifier directly through
-// @Param() because there is no dedicated GetAssetQueryDto.
-//
-// GET /assets/public/:assetPublicId/reference receives only the stable Asset
-// public identifier. The caller cannot supply storage metadata.
-//
-// GET /assets/public/:assetPublicId also receives only the stable Asset public
-// identifier.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
 // Node
 // -----------------------------------------------------------------------------
 
@@ -496,7 +428,6 @@ import {
   Patch,
   Post,
   Query,
-  Req,
   StreamableFile,
   UploadedFile,
   UseGuards,
@@ -504,12 +435,6 @@ import {
 } from '@nestjs/common';
 
 import { FileInterceptor } from '@nestjs/platform-express';
-
-// -----------------------------------------------------------------------------
-// HTTP
-// -----------------------------------------------------------------------------
-
-import type { Request } from 'express';
 
 // -----------------------------------------------------------------------------
 // Swagger
@@ -528,12 +453,13 @@ import {
 // -----------------------------------------------------------------------------
 
 import {
+  CurrentIdentity,
   JwtAuthGuard,
   PermissionsGuard,
   RequirePermissions,
 } from '../../../../../foundation/security/auth';
 
-import type { AuthenticatedIdentity } from '../../../../../foundation/security/auth/authenticated-identity.interface';
+import type { AuthenticatedIdentity } from '../../../../../foundation/security/auth';
 
 // -----------------------------------------------------------------------------
 // Foundation — Application
@@ -615,7 +541,7 @@ import {
 
 import {
   ChangeAssetVisibilityRequestDto,
-  CreateAssetRequestDto,
+  UploadAssetRequestDto,
 } from '../dto/request';
 
 // -----------------------------------------------------------------------------
@@ -626,7 +552,6 @@ import {
   CheckAssetExistsQueryDto,
   GetAssetByObjectKeyQueryDto,
   GetAssetsByCategoryQueryDto,
-  GetAssetsByOwnerQueryDto,
   GetAssetsByStatusQueryDto,
 } from '../queries';
 
@@ -637,21 +562,6 @@ import {
 import { AssetResponseMapper } from '../mappers/asset.response.mapper';
 
 import type { AssetResponse } from '../mappers/asset.response.mapper';
-
-// =============================================================================
-// Authenticated Request
-// =============================================================================
-
-/**
- * Request shape after JwtAuthGuard has authenticated the caller.
- *
- * The authentication layer owns the creation of this identity context.
- *
- * The Asset controller merely consumes it.
- */
-interface AuthenticatedRequest extends Request {
-  user: AuthenticatedIdentity;
-}
 
 // =============================================================================
 // Uploaded File Transport
@@ -778,11 +688,6 @@ export class AssetsController {
   // ---------------------------------------------------------------------------
   // GET /assets
   // ---------------------------------------------------------------------------
-  //
-  // Permission-controlled Asset administration/read operation.
-  //
-  // This is NOT a public marketplace endpoint.
-  // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -815,11 +720,10 @@ export class AssetsController {
   @Get('owner')
   @UseGuards(JwtAuthGuard)
   public async getByOwner(
-    @Query() _dto: GetAssetsByOwnerQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentIdentity() identity: AuthenticatedIdentity,
   ): Promise<AssetResponse[]> {
     const identityPublicId = new AssetIdentityPublicId(
-      req.user.identityPublicId,
+      identity.identityPublicId,
     );
 
     const query = new GetAssetsByOwnerQuery(identityPublicId);
@@ -846,9 +750,7 @@ export class AssetsController {
   public async getByCategory(
     @Query() dto: GetAssetsByCategoryQueryDto,
   ): Promise<AssetResponse[]> {
-    const category = AssetCategory.create(
-      dto.category as Parameters<typeof AssetCategory.create>[0],
-    );
+    const category = AssetCategory.create(dto.category);
 
     const query = new GetAssetsByCategoryQuery(category);
 
@@ -874,9 +776,7 @@ export class AssetsController {
   public async getByStatus(
     @Query() dto: GetAssetsByStatusQueryDto,
   ): Promise<AssetResponse[]> {
-    const status = AssetStatus.create(
-      dto.status as Parameters<typeof AssetStatus.create>[0],
-    );
+    const status = AssetStatus.create(dto.status);
 
     const query = new GetAssetsByStatusQuery(status);
 
@@ -964,35 +864,6 @@ export class AssetsController {
   // ---------------------------------------------------------------------------
   // GET /assets/public/:assetPublicId/reference
   // ---------------------------------------------------------------------------
-  //
-  // Anonymous public Asset-reference resolution.
-  //
-  // This endpoint does NOT return AssetResponse.
-  //
-  // It returns the deliberately reduced public Asset reference:
-  //
-  //     {
-  //       publicId,
-  //       url,
-  //     }
-  //
-  // The application handler is responsible for:
-  //
-  // - resolving the Asset;
-  // - verifying that the Asset is usable;
-  // - verifying that the Asset is public;
-  // - resolving the consumer-facing delivery URL.
-  //
-  // The controller does not:
-  //
-  // - query the repository;
-  // - inspect Asset visibility;
-  // - inspect Asset lifecycle;
-  // - construct a delivery URL;
-  // - access physical storage;
-  // - accept storage metadata from the caller.
-  //
-  // ---------------------------------------------------------------------------
 
   @ApiOperation({
     summary: 'Get a public asset reference',
@@ -1012,37 +883,6 @@ export class AssetsController {
 
   // ---------------------------------------------------------------------------
   // GET /assets/public/:assetPublicId
-  // ---------------------------------------------------------------------------
-  //
-  // Anonymous public Asset-content delivery.
-  //
-  // IMPORTANT:
-  //
-  // This endpoint does NOT return AssetResponse.
-  //
-  // It returns only the physical content of an Asset that the application
-  // layer has determined is both:
-  //
-  //     PUBLIC
-  //     READY / usable
-  //
-  // There is deliberately NO JwtAuthGuard here.
-  //
-  // The stable AssetPublicId is sufficient to address the public Asset.
-  //
-  // The controller does not:
-  //
-  // - query the repository;
-  // - inspect Asset visibility;
-  // - inspect Asset lifecycle;
-  // - access storage directly;
-  // - construct a storage path;
-  // - accept bucket/objectKey from the caller.
-  //
-  // All of those concerns belong behind the application boundary.
-  //
-  // StreamableFile keeps the HTTP transport concern here while allowing the
-  // application handler to return a normal Node Readable stream.
   // ---------------------------------------------------------------------------
 
   @ApiOperation({
@@ -1069,16 +909,6 @@ export class AssetsController {
 
   // ---------------------------------------------------------------------------
   // GET /assets/:assetPublicId
-  // ---------------------------------------------------------------------------
-  //
-  // IMPORTANT:
-  //
-  // This is an authenticated Asset-management endpoint.
-  //
-  // It is NOT the public Asset read boundary.
-  //
-  // The complete AssetResponse may contain storage metadata and therefore must
-  // not be exposed anonymously merely because an Asset has PUBLIC visibility.
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -1133,32 +963,38 @@ export class AssetsController {
         },
         type: {
           type: 'string',
-          enum: ['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT', 'OTHER'],
-          example: 'IMAGE',
+          enum: [
+            AssetType.IMAGE,
+            AssetType.VIDEO,
+            AssetType.AUDIO,
+            AssetType.DOCUMENT,
+            AssetType.OTHER,
+          ],
+          example: AssetType.IMAGE,
           description: 'Type of Asset being uploaded.',
         },
         category: {
           type: 'string',
           enum: [
-            'PROFILE_PHOTO',
-            'COVER_PHOTO',
-            'AVATAR',
-            'GOVERNMENT_ID',
-            'DRIVER_LICENSE',
-            'PASSPORT',
-            'SELFIE',
-            'VEHICLE_PHOTO',
-            'CHAT_ATTACHMENT',
-            'OTHER',
+            AssetCategory.PROFILE_PHOTO,
+            AssetCategory.COVER_PHOTO,
+            AssetCategory.AVATAR,
+            AssetCategory.GOVERNMENT_ID,
+            AssetCategory.DRIVER_LICENSE,
+            AssetCategory.PASSPORT,
+            AssetCategory.SELFIE,
+            AssetCategory.VEHICLE_PHOTO,
+            AssetCategory.CHAT_ATTACHMENT,
+            AssetCategory.OTHER,
           ],
-          example: 'PROFILE_PHOTO',
+          example: AssetCategory.PROFILE_PHOTO,
           description: 'Business category of the Asset.',
         },
         visibility: {
           type: 'string',
-          enum: ['PUBLIC', 'PRIVATE'],
-          example: 'PRIVATE',
-          default: 'PRIVATE',
+          enum: [AssetVisibility.PUBLIC, AssetVisibility.PRIVATE],
+          example: AssetVisibility.PRIVATE,
+          default: AssetVisibility.PRIVATE,
           description: 'Visibility of the Asset.',
         },
       },
@@ -1168,9 +1004,9 @@ export class AssetsController {
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('file'))
   public async upload(
-    @Body() dto: CreateAssetRequestDto,
+    @Body() dto: UploadAssetRequestDto,
     @UploadedFile() file: UploadedAssetFile | undefined,
-    @Req() req: AuthenticatedRequest,
+    @CurrentIdentity() identity: AuthenticatedIdentity,
   ): Promise<AssetResponse> {
     // -------------------------------------------------------------------------
     // HTTP file validation
@@ -1200,25 +1036,19 @@ export class AssetsController {
     // -------------------------------------------------------------------------
 
     const ownerIdentityPublicId = new AssetIdentityPublicId(
-      req.user.identityPublicId,
+      identity.identityPublicId,
     );
 
     // -------------------------------------------------------------------------
     // Domain value objects
     // -------------------------------------------------------------------------
 
-    const type = AssetType.create(
-      dto.type as Parameters<typeof AssetType.create>[0],
-    );
+    const type = AssetType.create(dto.type);
 
-    const category = AssetCategory.create(
-      dto.category as Parameters<typeof AssetCategory.create>[0],
-    );
+    const category = AssetCategory.create(dto.category);
 
     const visibility = AssetVisibility.create(
-      (dto.visibility ?? 'PRIVATE') as Parameters<
-        typeof AssetVisibility.create
-      >[0],
+      dto.visibility ?? AssetVisibility.PRIVATE,
     );
 
     // -------------------------------------------------------------------------
@@ -1250,7 +1080,7 @@ export class AssetsController {
     const objectKey = this.createObjectKey();
 
     // -------------------------------------------------------------------------
-    // HTTP Buffer -> application Readable
+    // HTTP Buffer -> Readable
     // -------------------------------------------------------------------------
 
     const content = this.createReadableContent(file);
@@ -1308,10 +1138,10 @@ export class AssetsController {
   @UseGuards(JwtAuthGuard)
   public async archive(
     @Param('assetPublicId') assetPublicId: string,
-    @Req() req: AuthenticatedRequest,
+    @CurrentIdentity() identity: AuthenticatedIdentity,
   ): Promise<AssetResponse> {
     const authenticatedIdentityPublicId = new AssetIdentityPublicId(
-      req.user.identityPublicId,
+      identity.identityPublicId,
     );
 
     const command = new ArchiveAssetCommand(
@@ -1340,10 +1170,10 @@ export class AssetsController {
   @UseGuards(JwtAuthGuard)
   public async delete(
     @Param('assetPublicId') assetPublicId: string,
-    @Req() req: AuthenticatedRequest,
+    @CurrentIdentity() identity: AuthenticatedIdentity,
   ): Promise<AssetResponse> {
     const authenticatedIdentityPublicId = new AssetIdentityPublicId(
-      req.user.identityPublicId,
+      identity.identityPublicId,
     );
 
     const command = new DeleteAssetCommand(
@@ -1373,15 +1203,13 @@ export class AssetsController {
   public async changeVisibility(
     @Param('assetPublicId') assetPublicId: string,
     @Body() dto: ChangeAssetVisibilityRequestDto,
-    @Req() req: AuthenticatedRequest,
+    @CurrentIdentity() identity: AuthenticatedIdentity,
   ): Promise<AssetResponse> {
     const authenticatedIdentityPublicId = new AssetIdentityPublicId(
-      req.user.identityPublicId,
+      identity.identityPublicId,
     );
 
-    const visibility = AssetVisibility.create(
-      dto.visibility as Parameters<typeof AssetVisibility.create>[0],
-    );
+    const visibility = AssetVisibility.create(dto.visibility);
 
     const command = new ChangeAssetVisibilityCommand(
       new AssetPublicId(assetPublicId),

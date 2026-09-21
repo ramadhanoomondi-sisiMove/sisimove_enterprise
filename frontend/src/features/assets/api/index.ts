@@ -2,13 +2,52 @@
 // sisiMove — Asset API
 // -----------------------------------------------------------------------------
 //
-// Public exports for the Asset frontend API boundary.
+// Public export surface for Asset HTTP operations.
 //
-// Feature consumers should import Asset API operations from this barrel rather
-// than reaching into individual implementation files.
+// Consumers should import Asset API functions through:
 //
+//     import {
+//       getMyAssets,
+//       uploadAsset,
+//       archiveAsset,
+//       deleteAsset,
+//       changeAssetVisibility,
+//     } from "@/features/assets/api";
+//
+// Public Asset delivery remains separately exposed through:
+//
+//     getPublicAsset
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Public Asset API
 // -----------------------------------------------------------------------------
 
 export {
   getPublicAsset,
+} from './public-assets.api';
+
+// -----------------------------------------------------------------------------
+// Authenticated Asset API
+// -----------------------------------------------------------------------------
+
+export {
+  getMyAssets,
+  uploadAsset,
+  archiveAsset,
+  deleteAsset,
+  changeAssetVisibility,
+} from './assets.api';
+
+// -----------------------------------------------------------------------------
+// Authenticated Asset API Types
+// -----------------------------------------------------------------------------
+
+export type {
+  AssetUploadType,
+  AssetUploadCategory,
+  AssetVisibility,
+  UploadAssetInput,
+  ChangeAssetVisibilityInput,
 } from './assets.api';

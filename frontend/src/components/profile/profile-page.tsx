@@ -301,22 +301,23 @@ export function ProfilePage({
               Page Introduction
              ----------------------------------------------------------------- */}
 
-          <header className="mb-6 sm:mb-7">
-            <div className="max-w-2xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--brand)]">
-                sisiMove
-              </p>
+              <header className="mb-6 sm:mb-7">
+                <div className="max-w-2xl">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em]">
+                    <span className="text-[var(--foreground)]">sisi</span>
+                    <span className="text-[var(--brand)]">Move</span>
+                  </p>
 
-              <h1 className="mt-2 text-2xl font-semibold tracking-[-0.025em] text-[var(--foreground)] sm:text-3xl">
-                Your profile
-              </h1>
+                  <h1 className="mt-2 text-2xl font-semibold tracking-[-0.025em] text-[var(--foreground)] sm:text-3xl">
+                    Your profile
+                  </h1>
 
-              <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--foreground-secondary)]">
-                Manage your traveller identity, verification, travel
-                preferences and account information.
-              </p>
-            </div>
-          </header>
+                  <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--foreground-secondary)]">
+                    Manage your traveller identity, verification, travel
+                    preferences and account information.
+                  </p>
+                </div>
+              </header>
 
           {/* -----------------------------------------------------------------
               Profile Identity

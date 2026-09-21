@@ -1,18 +1,24 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Public Asset Models
+// sisiMove — Asset Models
 // -----------------------------------------------------------------------------
 //
 // Public export surface for the Asset feature.
 //
-// Consumers should import the public Asset contract through this barrel:
+// Consumers should import Asset contracts through this barrel:
 //
-//     import type { PublicAsset } from "@/features/assets/models";
+//     import type { Asset, PublicAsset } from "@/features/assets/models";
 //
-// The frontend therefore depends on the public Asset read boundary rather
-// than on Prisma models, storage-provider enums, or internal Asset metadata.
+// The frontend therefore depends on Asset API models and the public Asset
+// read boundary rather than on Prisma models, storage-provider enums, or
+// internal Asset persistence metadata.
 //
 // -----------------------------------------------------------------------------
 
+
+export type {
+  Asset,
+} from './asset';
+
 export type {
   PublicAsset,
-} from "./public-asset";
+} from './public-asset';

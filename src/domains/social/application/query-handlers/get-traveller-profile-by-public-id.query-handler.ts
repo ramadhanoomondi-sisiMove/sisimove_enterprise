@@ -1,5 +1,7 @@
 // src/domains/social/application/query-handlers/get-traveller-profile-by-public-id.query-handler.ts
 
+import { Inject } from '@nestjs/common';
+
 import type { QueryHandler } from '../../../../foundation/kernel/application/query-handler';
 
 import type { GetTravellerProfileByPublicIdQuery } from '../queries/get-traveller-profile-by-public-id.query';
@@ -9,11 +11,16 @@ import type { TravellerProfileRepository } from '../../domain/repositories/trave
 
 import { TravellerProfilePublicId } from '../../domain/value-objects/traveller-profile-public-id.vo';
 
+import { TRAVELLER_PROFILE_TOKENS } from '../traveller-profile.tokens';
+
 export class GetTravellerProfileByPublicIdQueryHandler implements QueryHandler<
   GetTravellerProfileByPublicIdQuery,
   TravellerProfileAggregate | null
 > {
-  constructor(private readonly repository: TravellerProfileRepository) {}
+  constructor(
+    @Inject(TRAVELLER_PROFILE_TOKENS.REPOSITORY)
+    private readonly repository: TravellerProfileRepository,
+  ) {}
 
   async execute(
     query: GetTravellerProfileByPublicIdQuery,

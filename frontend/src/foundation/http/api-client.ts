@@ -1,9 +1,20 @@
-//src/foundation/http/api-client.ts
 // -----------------------------------------------------------------------------
 // API Client
 // -----------------------------------------------------------------------------
+//
 // Lightweight fetch-based HTTP client.
 // No Axios dependency.
+//
+// Supports:
+// - JSON request bodies
+// - FormData request bodies
+// - Authentication context
+// - Correlation IDs
+// - Query parameters
+// - Request cancellation
+// - Request timeout
+// - Standardized API errors
+//
 // -----------------------------------------------------------------------------
 
 import { apiConfig } from '../config/api.config';
@@ -89,6 +100,26 @@ export class ApiClient {
       );
     }
 
+    /**
+     * FormData must be passed directly to fetch().
+     *
+     * JSON.stringify(FormData) would discard the multipart fields and
+     * prevent Nest's multipart parser from populating @Body() and
+     * @UploadedFile().
+     *
+     * The browser automatically generates the correct:
+     *
+     *     Content-Type: multipart/form-data; boundary=...
+     *
+     * header when the body is FormData.
+     *
+     * Therefore Content-Type is removed when sending FormData.
+     */
+    const requestBody = this.prepareRequestBody(
+      options.body,
+      headers,
+    );
+
     const controller = new AbortController();
 
     const timeout = setTimeout(() => {
@@ -99,12 +130,10 @@ export class ApiClient {
       const response = await fetch(url, {
         method,
         headers,
-        signal: options.context?.signal ?? controller.signal,
+        signal:
+          options.context?.signal ?? controller.signal,
         credentials: 'include',
-        body:
-          options.body === undefined
-            ? undefined
-            : JSON.stringify(options.body),
+        body: requestBody,
       });
 
       const payload = await this.parseResponse(response);
@@ -146,11 +175,54 @@ export class ApiClient {
     }
   }
 
+  private prepareRequestBody(
+    body: unknown,
+    headers: Headers,
+  ): BodyInit | undefined {
+    if (body === undefined) {
+      return undefined;
+    }
+
+    if (body instanceof FormData) {
+      /**
+       * Do not manually specify Content-Type for multipart requests.
+       *
+       * The browser adds the multipart boundary automatically.
+       */
+      headers.delete('Content-Type');
+
+      return body;
+    }
+
+    if (body instanceof Blob) {
+      return body;
+    }
+
+    if (body instanceof URLSearchParams) {
+      return body;
+    }
+
+    if (
+      typeof body === 'string'
+    ) {
+      return body;
+    }
+
+    headers.set(
+      'Content-Type',
+      'application/json',
+    );
+
+    return JSON.stringify(body);
+  }
+
   private buildUrl(
     path: string,
     query?: RequestOptions['query'],
   ): string {
-    const normalizedBase = this.baseUrl.replace(/\/+$/, '');
+    const normalizedBase =
+      this.baseUrl.replace(/\/+$/, '');
+
     const normalizedPath = path.startsWith('/')
       ? path
       : `/${path}`;
@@ -167,7 +239,10 @@ export class ApiClient {
           value !== null &&
           value !== ''
         ) {
-          url.searchParams.set(key, String(value));
+          url.searchParams.set(
+            key,
+            String(value),
+          );
         }
       }
     }
@@ -181,7 +256,9 @@ export class ApiClient {
     const contentType =
       response.headers.get('content-type') ?? '';
 
-    if (contentType.includes('application/json')) {
+    if (
+      contentType.includes('application/json')
+    ) {
       return response.json();
     }
 
@@ -194,19 +271,25 @@ export class ApiClient {
     return text;
   }
 
-  private unwrapResponse<T>(payload: unknown): T {
+  private unwrapResponse<T>(
+    payload: unknown,
+  ): T {
     if (
       payload &&
       typeof payload === 'object' &&
       'data' in payload
     ) {
-      return (payload as { data: T }).data;
+      return (
+        payload as { data: T }
+      ).data;
     }
 
     return payload as T;
   }
 
-  private extractErrorMessage(payload: unknown): string {
+  private extractErrorMessage(
+    payload: unknown,
+  ): string {
     if (
       payload &&
       typeof payload === 'object' &&
