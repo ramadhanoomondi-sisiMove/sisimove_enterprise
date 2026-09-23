@@ -865,16 +865,17 @@ export class JourneyController {
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Create journey',
-    description: 'Creates a new journey for an authenticated provider.',
+    description:
+      'Creates a new journey for the currently authenticated journey provider.',
   })
   @Post()
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
   @auth.RequirePermissions('journey:create')
   public async create(
-    @Body() dto: CreateJourneyDto,
+    @auth.CurrentIdentity() identity: auth.AuthenticatedIdentity,
   ): Promise<JourneyAggregate> {
     return this.createJourneyHandler.execute(
-      new CreateJourneyCommand(dto.providerPublicId, randomUUID()),
+      new CreateJourneyCommand(identity.identityPublicId, randomUUID()),
     );
   }
 

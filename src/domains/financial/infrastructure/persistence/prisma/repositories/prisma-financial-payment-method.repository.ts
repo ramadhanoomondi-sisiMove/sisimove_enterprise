@@ -56,12 +56,56 @@
 // - PrismaFinancialPaymentMethodRepository
 //
 // -----------------------------------------------------------------------------
+//
+// TRANSACTION PARTICIPATION:
+//
+// This repository does NOT create its own Prisma transactions.
+//
+// PrismaTransactionContext determines which Prisma client is currently
+// available:
+//
+//     UnitOfWork
+//         │
+//         ▼
+//     PrismaUnitOfWork
+//         │
+//         ▼
+//     Prisma $transaction(tx)
+//         │
+//         ▼
+//     PrismaTransactionContext
+//         │
+//         ▼
+//     PrismaFinancialPaymentMethodRepository
+//
+// When called inside a UnitOfWork, all operations use the transaction-scoped
+// Prisma client.
+//
+// When called outside a UnitOfWork, the context falls back to PrismaService.
+//
+// This allows Financial Payment Method persistence to participate in larger
+// Financial workflows without creating independent transaction boundaries.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Prisma
 // -----------------------------------------------------------------------------
 
-import type { Prisma, PrismaClient } from '@prisma/client';
+// -----------------------------------------------------------------------------
+// Transaction Context
+// -----------------------------------------------------------------------------
+
+import {
+  PrismaTransactionContext,
+  type PrismaClientLike,
+} from '../../../../../../infrastructure/database/prisma/prisma-transaction.context';
 
 // -----------------------------------------------------------------------------
 // Repository Contract
@@ -116,12 +160,67 @@ import { FinancialPaymentMethodException } from '../../../../domain/exceptions/f
 // Repository
 // =============================================================================
 
+/**
+ * Prisma infrastructure implementation of the Financial Payment Method
+ * repository.
+ *
+ * The repository is deliberately transaction-context aware.
+ *
+ * It does not create transactions itself because Financial Payment Method
+ * operations may participate in larger application workflows.
+ *
+ * The repository translates between:
+ *
+ *     FinancialPaymentMethodAggregate
+ *              ↕
+ *     FinancialPaymentMethodPrismaMapper
+ *              ↕
+ *     Prisma FinancialPaymentMethod
+ *
+ * Financial Account ownership is represented inside the domain by its public
+ * identity. The internal FinancialAccount persistence identity is resolved
+ * only at the infrastructure boundary.
+ */
+@Injectable()
 export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentMethodRepository {
   // ===========================================================================
   // Constructor
   // ===========================================================================
 
-  public constructor(private readonly prisma: PrismaClient) {}
+  /**
+   * Resolves the Prisma client through the ambient transaction context.
+   *
+   * Inside UnitOfWork:
+   *
+   *     Prisma.TransactionClient
+   *
+   * Outside UnitOfWork:
+   *
+   *     PrismaService
+   *
+   * This keeps the repository compatible with both ordinary application
+   * queries and larger transactional workflows.
+   */
+  public constructor(
+    private readonly transactionContext: PrismaTransactionContext,
+  ) {}
+
+  // ===========================================================================
+  // Current Prisma Client
+  // ===========================================================================
+
+  /**
+   * Returns the Prisma client appropriate for the current execution context.
+   *
+   * When a PrismaUnitOfWork is active, this returns the transaction-scoped
+   * Prisma client.
+   *
+   * When no UnitOfWork is active, this returns the normal PrismaService-backed
+   * client.
+   */
+  private get prisma(): PrismaClientLike {
+    return this.transactionContext.getClient();
+  }
 
   // ===========================================================================
   // Create
@@ -134,65 +233,50 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
    *
    * The Financial Payment Method aggregate itself contains only one entity,
    * therefore persistence consists of one FinancialPaymentMethod record.
+   *
+   * No repository-owned transaction is created.
+   *
+   * If this method is invoked inside a UnitOfWork, the insert participates in
+   * the caller's transaction.
    */
   public async create(
     aggregate: FinancialPaymentMethodAggregate,
   ): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      // -----------------------------------------------------------------------
-      // Resolve Owning Financial Account
-      // -----------------------------------------------------------------------
+    if (aggregate === undefined) {
+      throw new FinancialPaymentMethodException(
+        'Financial Payment Method aggregate is required.',
+      );
+    }
 
-      const accountId = await this.resolveAccountId(tx, aggregate.accountId);
+    const accountId = await this.resolveAccountId(
+      this.prisma,
+      aggregate.accountId,
+    );
 
-      // -----------------------------------------------------------------------
-      // Map Aggregate
-      // -----------------------------------------------------------------------
+    const persistence =
+      FinancialPaymentMethodPrismaMapper.aggregateToPersistence(aggregate);
 
-      const persistence =
-        FinancialPaymentMethodPrismaMapper.aggregateToPersistence(aggregate);
+    if (persistence.paymentMethod.accountId !== accountId) {
+      throw new FinancialPaymentMethodException(
+        `Financial Payment Method "${aggregate.publicId.value}" contains an inconsistent Financial Account reference.`,
+      );
+    }
 
-      // -----------------------------------------------------------------------
-      // Validate Account Consistency
-      // -----------------------------------------------------------------------
-
-      if (persistence.paymentMethod.accountId !== accountId) {
-        throw new FinancialPaymentMethodException(
-          `Financial Payment Method "${aggregate.publicId.value}" contains an inconsistent Financial Account reference.`,
-        );
-      }
-
-      // -----------------------------------------------------------------------
-      // Create Payment Method
-      // -----------------------------------------------------------------------
-
-      await tx.financialPaymentMethod.create({
-        data: {
-          id: persistence.paymentMethod.id,
-
-          publicId: persistence.paymentMethod.publicId,
-
-          accountId,
-
-          type: persistence.paymentMethod.type,
-
-          provider: persistence.paymentMethod.provider,
-
-          providerReference: persistence.paymentMethod.providerReference,
-
-          displayName: persistence.paymentMethod.displayName,
-
-          lastFour: persistence.paymentMethod.lastFour,
-
-          isDefault: persistence.paymentMethod.isDefault,
-
-          isActive: persistence.paymentMethod.isActive,
-
-          createdAt: persistence.paymentMethod.createdAt,
-
-          updatedAt: persistence.paymentMethod.updatedAt,
-        },
-      });
+    await this.prisma.financialPaymentMethod.create({
+      data: {
+        id: persistence.paymentMethod.id,
+        publicId: persistence.paymentMethod.publicId,
+        accountId,
+        type: persistence.paymentMethod.type,
+        provider: persistence.paymentMethod.provider,
+        providerReference: persistence.paymentMethod.providerReference,
+        displayName: persistence.paymentMethod.displayName,
+        lastFour: persistence.paymentMethod.lastFour,
+        isDefault: persistence.paymentMethod.isDefault,
+        isActive: persistence.paymentMethod.isActive,
+        createdAt: persistence.paymentMethod.createdAt,
+        updatedAt: persistence.paymentMethod.updatedAt,
+      },
     });
   }
 
@@ -201,102 +285,73 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // ===========================================================================
 
   /**
-   * Persists the current state of an existing Financial Payment Method
-   * aggregate.
+   * Persists changes to an existing Financial Payment Method aggregate.
    *
-   * Internal identity, public identity, and owning Financial Account identity
-   * are treated as stable.
+   * Internal persistence identity and public identity are both protected.
    *
-   * A Payment Method cannot be moved from one Financial Account to another.
+   * The Financial Payment Method cannot be reassigned to another Financial
+   * Account through this repository.
+   *
+   * No repository-owned transaction is created.
    */
   public async save(aggregate: FinancialPaymentMethodAggregate): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      // -----------------------------------------------------------------------
-      // Load Existing Record
-      // -----------------------------------------------------------------------
+    if (aggregate === undefined) {
+      throw new FinancialPaymentMethodException(
+        'Financial Payment Method aggregate is required.',
+      );
+    }
 
-      const existing = await tx.financialPaymentMethod.findUnique({
-        where: {
-          id: aggregate.id.toString(),
-        },
+    const existing = await this.prisma.financialPaymentMethod.findUnique({
+      where: {
+        id: aggregate.id.toString(),
+      },
+      select: {
+        id: true,
+        publicId: true,
+        accountId: true,
+      },
+    });
 
-        select: {
-          id: true,
-          publicId: true,
-          accountId: true,
-        },
-      });
+    if (existing === null) {
+      throw new FinancialPaymentMethodException(
+        `Financial Payment Method "${aggregate.publicId.value}" does not exist and cannot be updated.`,
+      );
+    }
 
-      // -----------------------------------------------------------------------
-      // Existence
-      // -----------------------------------------------------------------------
+    if (existing.publicId !== aggregate.publicId.value) {
+      throw new FinancialPaymentMethodException(
+        `Financial Payment Method internal identity "${aggregate.id.toString()}" is associated with a different public identity.`,
+      );
+    }
 
-      if (existing === null) {
-        throw new FinancialPaymentMethodException(
-          `Financial Payment Method "${aggregate.publicId.value}" does not exist and cannot be updated.`,
-        );
-      }
+    const accountId = await this.resolveAccountId(
+      this.prisma,
+      aggregate.accountId,
+    );
 
-      // -----------------------------------------------------------------------
-      // Public Identity Stability
-      // -----------------------------------------------------------------------
+    if (existing.accountId !== accountId) {
+      throw new FinancialPaymentMethodException(
+        `Financial Payment Method "${aggregate.publicId.value}" cannot be moved to another Financial Account.`,
+      );
+    }
 
-      if (existing.publicId !== aggregate.publicId.value) {
-        throw new FinancialPaymentMethodException(
-          `Financial Payment Method internal identity "${aggregate.id.toString()}" is associated with a different public identity.`,
-        );
-      }
+    const persistence =
+      FinancialPaymentMethodPrismaMapper.aggregateToPersistence(aggregate);
 
-      // -----------------------------------------------------------------------
-      // Resolve Account
-      // -----------------------------------------------------------------------
-
-      const accountId = await this.resolveAccountId(tx, aggregate.accountId);
-
-      // -----------------------------------------------------------------------
-      // Account Ownership Stability
-      // -----------------------------------------------------------------------
-
-      if (existing.accountId !== accountId) {
-        throw new FinancialPaymentMethodException(
-          `Financial Payment Method "${aggregate.publicId.value}" cannot be moved to another Financial Account.`,
-        );
-      }
-
-      // -----------------------------------------------------------------------
-      // Map Aggregate
-      // -----------------------------------------------------------------------
-
-      const persistence =
-        FinancialPaymentMethodPrismaMapper.aggregateToPersistence(aggregate);
-
-      // -----------------------------------------------------------------------
-      // Update
-      // -----------------------------------------------------------------------
-
-      await tx.financialPaymentMethod.update({
-        where: {
-          id: aggregate.id.toString(),
-        },
-
-        data: {
-          type: persistence.paymentMethod.type,
-
-          provider: persistence.paymentMethod.provider,
-
-          providerReference: persistence.paymentMethod.providerReference,
-
-          displayName: persistence.paymentMethod.displayName,
-
-          lastFour: persistence.paymentMethod.lastFour,
-
-          isDefault: persistence.paymentMethod.isDefault,
-
-          isActive: persistence.paymentMethod.isActive,
-
-          updatedAt: persistence.paymentMethod.updatedAt,
-        },
-      });
+    await this.prisma.financialPaymentMethod.update({
+      where: {
+        id: aggregate.id.toString(),
+      },
+      data: {
+        type: persistence.paymentMethod.type,
+        provider: persistence.paymentMethod.provider,
+        providerReference: persistence.paymentMethod.providerReference,
+        displayName: persistence.paymentMethod.displayName,
+        lastFour: persistence.paymentMethod.lastFour,
+        isDefault: persistence.paymentMethod.isDefault,
+        isActive: persistence.paymentMethod.isActive,
+        updatedAt: persistence.paymentMethod.updatedAt,
+      },
     });
   }
 
@@ -305,17 +360,9 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // ===========================================================================
 
   /**
-   * Physical deletion of Financial Payment Methods is intentionally
-   * unsupported.
+   * Financial Payment Methods are not physically deleted.
    *
-   * Financial Payment Methods are financial records and therefore must not
-   * be physically deleted.
-   *
-   * Lifecycle removal is represented through the aggregate's deactivate()
-   * operation.
-   *
-   * This method intentionally returns a rejected Promise without being
-   * declared async, avoiding an unnecessary async function with no await.
+   * Lifecycle state is represented through the aggregate's active state.
    */
   public delete(aggregate: FinancialPaymentMethodAggregate): Promise<void> {
     return Promise.reject(
@@ -329,6 +376,10 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Find By Public ID
   // ===========================================================================
 
+  /**
+   * Finds and rehydrates a complete Financial Payment Method aggregate by
+   * public identity.
+   */
   public async findByPublicId(
     publicId: FinancialPaymentMethodPublicId,
   ): Promise<FinancialPaymentMethodAggregate | null> {
@@ -336,7 +387,6 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
       where: {
         publicId: publicId.value,
       },
-
       include: {
         account: true,
       },
@@ -353,6 +403,10 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Find By Account Public ID
   // ===========================================================================
 
+  /**
+   * Finds all Financial Payment Method aggregates belonging to a Financial
+   * Account identified by public identity.
+   */
   public async findByAccountPublicId(
     accountPublicId: FinancialAccountPublicId,
   ): Promise<FinancialPaymentMethodAggregate[]> {
@@ -362,11 +416,9 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
       where: {
         accountId,
       },
-
       include: {
         account: true,
       },
-
       orderBy: [
         {
           isDefault: 'desc',
@@ -388,6 +440,10 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Find Active By Account Public ID
   // ===========================================================================
 
+  /**
+   * Finds active Financial Payment Method aggregates belonging to a Financial
+   * Account.
+   */
   public async findActiveByAccountPublicId(
     accountPublicId: FinancialAccountPublicId,
   ): Promise<FinancialPaymentMethodAggregate[]> {
@@ -398,11 +454,9 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
         accountId,
         isActive: true,
       },
-
       include: {
         account: true,
       },
-
       orderBy: [
         {
           isDefault: 'desc',
@@ -424,6 +478,9 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Find Default By Account Public ID
   // ===========================================================================
 
+  /**
+   * Finds the active default Financial Payment Method for a Financial Account.
+   */
   public async findDefaultByAccountPublicId(
     accountPublicId: FinancialAccountPublicId,
   ): Promise<FinancialPaymentMethodAggregate | null> {
@@ -435,11 +492,9 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
         isDefault: true,
         isActive: true,
       },
-
       include: {
         account: true,
       },
-
       orderBy: {
         updatedAt: 'desc',
       },
@@ -456,6 +511,9 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Find By Provider
   // ===========================================================================
 
+  /**
+   * Finds Financial Payment Method aggregates by provider.
+   */
   public async findByProvider(
     provider: FinancialProvider,
   ): Promise<FinancialPaymentMethodAggregate[]> {
@@ -463,11 +521,9 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
       where: {
         provider: provider.value,
       },
-
       include: {
         account: true,
       },
-
       orderBy: {
         createdAt: 'desc',
       },
@@ -484,6 +540,10 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Find By Account + Provider
   // ===========================================================================
 
+  /**
+   * Finds Financial Payment Method aggregates belonging to an account and
+   * provider.
+   */
   public async findByAccountPublicIdAndProvider(
     accountPublicId: FinancialAccountPublicId,
     provider: FinancialProvider,
@@ -495,11 +555,9 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
         accountId,
         provider: provider.value,
       },
-
       include: {
         account: true,
       },
-
       orderBy: {
         createdAt: 'desc',
       },
@@ -516,6 +574,11 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Find By Provider + Provider Reference
   // ===========================================================================
 
+  /**
+   * Finds a Financial Payment Method using the provider-issued reference.
+   *
+   * The provider reference is treated as persistence-safe provider metadata.
+   */
   public async findByProviderAndProviderReference(
     provider: FinancialProvider,
     providerReference: FinancialProviderReference,
@@ -527,7 +590,6 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
           providerReference: providerReference.value,
         },
       },
-
       include: {
         account: true,
       },
@@ -544,6 +606,10 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Find By Account + Provider + Provider Reference
   // ===========================================================================
 
+  /**
+   * Finds a Financial Payment Method belonging to an account using provider
+   * identity and provider-issued reference.
+   */
   public async findByAccountPublicIdAndProviderAndProviderReference(
     accountPublicId: FinancialAccountPublicId,
     provider: FinancialProvider,
@@ -557,7 +623,6 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
         provider: provider.value,
         providerReference: providerReference.value,
       },
-
       include: {
         account: true,
       },
@@ -574,6 +639,11 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Find Entity By Public ID
   // ===========================================================================
 
+  /**
+   * Finds only the Financial Payment Method entity by public identity.
+   *
+   * The aggregate is not rehydrated here.
+   */
   public async findEntityByPublicId(
     publicId: FinancialPaymentMethodPublicId,
   ): Promise<FinancialPaymentMethodEntity | null> {
@@ -581,7 +651,6 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
       where: {
         publicId: publicId.value,
       },
-
       include: {
         account: true,
       },
@@ -598,6 +667,10 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Find Entity By Internal ID
   // ===========================================================================
 
+  /**
+   * Finds only the Financial Payment Method entity by internal persistence
+   * identity.
+   */
   public async findEntityById(
     id: UniqueEntityId,
   ): Promise<FinancialPaymentMethodEntity | null> {
@@ -605,7 +678,6 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
       where: {
         id: id.toString(),
       },
-
       include: {
         account: true,
       },
@@ -622,6 +694,10 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Find Entity By Account Internal ID
   // ===========================================================================
 
+  /**
+   * Finds Financial Payment Method entities belonging to an account identified
+   * by internal persistence identity.
+   */
   public async findEntityByAccountId(
     accountId: UniqueEntityId,
   ): Promise<FinancialPaymentMethodEntity[]> {
@@ -629,11 +705,9 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
       where: {
         accountId: accountId.toString(),
       },
-
       include: {
         account: true,
       },
-
       orderBy: {
         createdAt: 'desc',
       },
@@ -650,6 +724,10 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Find By Account + Type
   // ===========================================================================
 
+  /**
+   * Finds Financial Payment Method aggregates belonging to an account and
+   * payment method type.
+   */
   public async findByAccountPublicIdAndType(
     accountPublicId: FinancialAccountPublicId,
     type: FinancialPaymentMethodType,
@@ -661,11 +739,9 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
         accountId,
         type: type.value,
       },
-
       include: {
         account: true,
       },
-
       orderBy: {
         createdAt: 'desc',
       },
@@ -682,6 +758,10 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Find Active By Account + Type
   // ===========================================================================
 
+  /**
+   * Finds active Financial Payment Method aggregates belonging to an account
+   * and payment method type.
+   */
   public async findActiveByAccountPublicIdAndType(
     accountPublicId: FinancialAccountPublicId,
     type: FinancialPaymentMethodType,
@@ -694,11 +774,9 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
         type: type.value,
         isActive: true,
       },
-
       include: {
         account: true,
       },
-
       orderBy: {
         createdAt: 'desc',
       },
@@ -715,16 +793,17 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Find Active
   // ===========================================================================
 
+  /**
+   * Finds all active Financial Payment Method aggregates.
+   */
   public async findActive(): Promise<FinancialPaymentMethodAggregate[]> {
     const records = await this.prisma.financialPaymentMethod.findMany({
       where: {
         isActive: true,
       },
-
       include: {
         account: true,
       },
-
       orderBy: {
         createdAt: 'desc',
       },
@@ -741,16 +820,17 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Find Inactive
   // ===========================================================================
 
+  /**
+   * Finds all inactive Financial Payment Method aggregates.
+   */
   public async findInactive(): Promise<FinancialPaymentMethodAggregate[]> {
     const records = await this.prisma.financialPaymentMethod.findMany({
       where: {
         isActive: false,
       },
-
       include: {
         account: true,
       },
-
       orderBy: {
         updatedAt: 'desc',
       },
@@ -767,6 +847,9 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Exists By Public ID
   // ===========================================================================
 
+  /**
+   * Determines whether a Financial Payment Method exists by public identity.
+   */
   public async existsByPublicId(
     publicId: FinancialPaymentMethodPublicId,
   ): Promise<boolean> {
@@ -774,7 +857,6 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
       where: {
         publicId: publicId.value,
       },
-
       select: {
         id: true,
       },
@@ -787,12 +869,14 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Exists By Internal ID
   // ===========================================================================
 
+  /**
+   * Determines whether a Financial Payment Method exists by internal identity.
+   */
   public async existsById(id: UniqueEntityId): Promise<boolean> {
     const record = await this.prisma.financialPaymentMethod.findUnique({
       where: {
         id: id.toString(),
       },
-
       select: {
         id: true,
       },
@@ -805,6 +889,9 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Exists Active By Account
   // ===========================================================================
 
+  /**
+   * Determines whether an account has at least one active Payment Method.
+   */
   public async existsActiveByAccountPublicId(
     accountPublicId: FinancialAccountPublicId,
   ): Promise<boolean> {
@@ -815,7 +902,6 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
         accountId,
         isActive: true,
       },
-
       select: {
         id: true,
       },
@@ -828,6 +914,9 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Exists Default By Account
   // ===========================================================================
 
+  /**
+   * Determines whether an account has an active default Payment Method.
+   */
   public async existsDefaultByAccountPublicId(
     accountPublicId: FinancialAccountPublicId,
   ): Promise<boolean> {
@@ -839,7 +928,6 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
         isDefault: true,
         isActive: true,
       },
-
       select: {
         id: true,
       },
@@ -852,6 +940,10 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   // Exists By Provider + Provider Reference
   // ===========================================================================
 
+  /**
+   * Determines whether a provider-issued Payment Method reference already
+   * exists.
+   */
   public async existsByProviderAndProviderReference(
     provider: FinancialProvider,
     providerReference: FinancialProviderReference,
@@ -863,7 +955,6 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
           providerReference: providerReference.value,
         },
       },
-
       select: {
         id: true,
       },
@@ -884,9 +975,12 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
    * FinancialAccount.id
    *
    * The internal database identity never crosses into the domain.
+   *
+   * The Prisma client supplied here is the current ambient client. Therefore
+   * account resolution participates in the same UnitOfWork when one exists.
    */
   private async resolveAccountId(
-    prisma: PrismaClient | Prisma.TransactionClient,
+    prisma: PrismaClientLike,
     accountPublicId: FinancialAccountPublicId,
   ): Promise<string> {
     const normalized = accountPublicId.value.trim();
@@ -901,7 +995,6 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
       where: {
         publicId: normalized,
       },
-
       select: {
         id: true,
       },
@@ -916,3 +1009,9 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
     return account.id;
   }
 }
+
+// -----------------------------------------------------------------------------
+// Default Export
+// -----------------------------------------------------------------------------
+
+export default PrismaFinancialPaymentMethodRepository;

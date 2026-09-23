@@ -4,116 +4,39 @@
 //
 // Application route boundary for authenticated SisiMove surfaces.
 //
-// Route structure:
+// Responsibilities:
+// - Resolve the current Traveller Profile.
+// - Resolve the current Traveller Profile's public avatar Asset reference.
+// - Supply presentation-ready identity data to AuthenticatedShell.
 //
-//     app/(authenticated)/layout.tsx
-//              │
-//              ├── Current Traveller Profile
-//              │       │
-//              │       └── useCurrentTravellerProfile()
-//              │
-//              └── AuthenticatedShell
-//                      │
-//                      ├── AuthenticatedHeader
-//                      ├── Page content
-//                      └── AuthenticatedFooter
+// Data flow:
 //
-// -----------------------------------------------------------------------------
-//
-// RESPONSIBILITIES
-// -----------------------------------------------------------------------------
-//
-// This layout:
-//
-// - composes authenticated route content through AuthenticatedShell;
-// - resolves the current Traveller Profile required by the shell;
-// - supplies the Traveller Profile handle to the presentation shell;
-// - keeps Traveller Profile fetching outside header and shell components.
-//
-// -----------------------------------------------------------------------------
-//
-// NON-RESPONSIBILITIES
-// -----------------------------------------------------------------------------
-//
-// This layout does NOT:
-//
-// - implement Traveller Profile HTTP calls;
-// - access the API client directly;
-// - construct Asset URLs;
-// - implement verification logic;
-// - implement marketplace capability logic;
-// - fetch marketplace data;
-// - create or persist authentication sessions;
-// - introduce a second authentication/session mechanism.
-//
-// -----------------------------------------------------------------------------
-//
-// AUTHENTICATION
-// -----------------------------------------------------------------------------
-//
-// Authentication/session state remains owned by the existing authentication
-// infrastructure.
-//
-// This route layout consumes authenticated application state indirectly
-// through the existing authenticated route boundary and the authenticated
-// Traveller Profile API.
-//
-// It does not create, persist, refresh, or otherwise manage sessions.
-//
-// -----------------------------------------------------------------------------
-//
-// TRAVELLER IDENTITY
-// -----------------------------------------------------------------------------
-//
-// AuthSession contains authentication identifiers.
-//
-// The Traveller Profile owns the traveller handle.
-//
-// Therefore the handle is resolved through:
-//
-//     authenticated access token
-//             ↓
-//     GET /traveller-profiles/me
-//             ↓
 //     useCurrentTravellerProfile()
-//             ↓
-//     Traveller Profile
-//             ↓
-//     traveller.handle
-//             ↓
-//     AuthenticatedShell
+//              │
+//              ├── handle
+//              │
+//              └── avatarAssetPublicId
+//                         │
+//                         ▼
+//                  usePublicAsset()
+//                         │
+//                         └── avatar.url
+//                                  │
+//                                  ▼
+//                         AuthenticatedShell
+//                                  │
+//                                  ▼
+//                         AuthenticatedHeader
+//                                  │
+//                                  ▼
+//                    AuthenticatedAccountMenu
 //
-// The layout deliberately does not attempt to derive the handle from:
-//
-// - identityPublicId;
-// - sessionPublicId;
-// - authenticationPublicId;
-// - JWT claims.
-//
-// -----------------------------------------------------------------------------
-//
-// PROFILE FAILURE
-// -----------------------------------------------------------------------------
-//
-// The authenticated shell requires a Traveller Profile handle.
-//
-// Therefore the shell is not rendered while the current Traveller Profile is
-// loading or when the profile cannot be resolved.
-//
-// This prevents the header from being rendered with:
-//
-// - an empty handle;
-// - a fabricated handle;
-// - an Identity identifier used as a handle;
-// - incomplete Traveller Profile state.
-//
-// Authentication failures themselves remain the responsibility of the existing
-// authentication/API infrastructure.
+// The layout is the composition boundary. Header and shell components do not
+// fetch Traveller Profile or Asset data.
 //
 // -----------------------------------------------------------------------------
 
 'use client';
-
 
 // -----------------------------------------------------------------------------
 // React
@@ -121,13 +44,11 @@
 
 import type { ReactNode } from 'react';
 
-
 // -----------------------------------------------------------------------------
 // Authenticated Application
 // -----------------------------------------------------------------------------
 
 import { AuthenticatedShell } from '@/components/authenticated';
-
 
 // -----------------------------------------------------------------------------
 // Traveller Profile
@@ -137,10 +58,29 @@ import {
   useCurrentTravellerProfile,
 } from '@/features/traveller-profile';
 
+// -----------------------------------------------------------------------------
+// Assets
+// -----------------------------------------------------------------------------
+//
+// Use the existing public Asset reference hook.
+//
+// This hook resolves:
+//
+//     avatarAssetPublicId
+//             ↓
+//     GET /assets/public/:assetPublicId/reference
+//             ↓
+//     public Asset URL
+//
+// -----------------------------------------------------------------------------
 
-// -----------------------------------------------------------------------------
+import {
+  usePublicAsset,
+} from '@/features/assets';
+
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export interface AuthenticatedLayoutProps {
   /**
@@ -149,31 +89,48 @@ export interface AuthenticatedLayoutProps {
   readonly children: ReactNode;
 }
 
-
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Component
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export default function AuthenticatedLayout({
   children,
 }: AuthenticatedLayoutProps) {
   const {
     data: travellerProfile,
-    isLoading,
-    isError,
+    isLoading: profileLoading,
+    isError: profileIsError,
   } = useCurrentTravellerProfile();
+
+  // ---------------------------------------------------------------------------
+  // Avatar Asset Reference
+  // ---------------------------------------------------------------------------
+  //
+  // TravellerProfile owns only the opaque Asset public ID.
+  //
+  // It does not own Asset delivery and must not construct the URL itself.
+  //
+  // The Asset feature owns resolution of:
+  //
+  //     avatarAssetPublicId → public delivery URL
+  //
+  // Passing `null` while the profile is unavailable prevents an unnecessary
+  // Asset request.
+  //
+  // ---------------------------------------------------------------------------
+
+  const avatarAssetPublicId =
+    travellerProfile?.avatarAssetPublicId ?? null;
+
+  const {
+    asset: avatarAsset,
+  } = usePublicAsset(avatarAssetPublicId);
 
   // ---------------------------------------------------------------------------
   // Current Traveller Profile Loading
   // ---------------------------------------------------------------------------
-  //
-  // The authenticated shell requires the Traveller Profile handle for the
-  // account control.
-  //
-  // Do not render the shell while the profile is being resolved.
-  // ---------------------------------------------------------------------------
 
-  if (isLoading) {
+  if (profileLoading) {
     return (
       <div className="min-h-screen bg-background text-foreground">
         <div
@@ -192,17 +149,8 @@ export default function AuthenticatedLayout({
   // ---------------------------------------------------------------------------
   // Current Traveller Profile Failure
   // ---------------------------------------------------------------------------
-  //
-  // A successful authenticated route requires a Traveller Profile because the
-  // authenticated shell depends on its handle.
-  //
-  // Do not fabricate a handle or derive one from authentication identifiers.
-  //
-  // Authentication/session failures remain outside this layout's
-  // responsibility.
-  // ---------------------------------------------------------------------------
 
-  if (isError || travellerProfile == null) {
+  if (profileIsError || travellerProfile == null) {
     return (
       <div className="min-h-screen bg-background text-foreground">
         <div className="flex min-h-screen items-center justify-center px-4">
@@ -224,16 +172,21 @@ export default function AuthenticatedLayout({
   // Authenticated Application Shell
   // ---------------------------------------------------------------------------
   //
-  // The layout owns profile resolution.
+  // The header receives the exact same resolved Asset URL that can be used by
+  // ProfileHeader.
   //
-  // The shell remains presentation-oriented and receives only the information
-  // it needs to render the authenticated application chrome.
+  // Avatar resolution is intentionally non-blocking. Until `avatarAsset.url`
+  // is available, AuthenticatedAccountMenu passes `undefined` to Avatar and
+  // the shared Avatar primitive renders its initials fallback.
+  //
   // ---------------------------------------------------------------------------
 
   return (
-    <AuthenticatedShell travellerHandle={travellerProfile.handle}>
+    <AuthenticatedShell
+      travellerHandle={travellerProfile.handle}
+      travellerAvatarUrl={avatarAsset?.url ?? null}
+    >
       {children}
     </AuthenticatedShell>
   );
 }
-

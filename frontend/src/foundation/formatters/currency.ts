@@ -1,3 +1,5 @@
+//founsation/formatters/currency.ts
+
 export function formatCurrency(
   amount: number,
   currency = 'KES',

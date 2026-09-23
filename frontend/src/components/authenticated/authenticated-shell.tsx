@@ -34,6 +34,8 @@
 // - No marketplace capability logic.
 // - No marketplace data fetching.
 // - No traveller-profile fetching.
+// - No Asset fetching.
+// - No Asset URL resolution.
 //
 // Authentication boundary:
 //
@@ -49,9 +51,33 @@
 // Traveller identity:
 //
 // AuthSession contains authentication/session identifiers, but the public
-// traveller handle belongs to TravellerProfile. Therefore the shell receives
-// travellerHandle from the authenticated application boundary rather than
-// reading it from AuthSession.
+// traveller handle and avatar belong to TravellerProfile.
+//
+// Therefore the authenticated application boundary resolves the current
+// TravellerProfile and its public avatar URL, then supplies those values
+// to this shell.
+//
+// Presentation flow:
+//
+//     TravellerProfile
+//          │
+//          ├── handle
+//          │
+//          └── avatarAssetPublicId
+//                    │
+//                    ▼
+//             usePublicAsset()
+//                    │
+//                    ▼
+//          AuthenticatedShell
+//                    │
+//                    ▼
+//          AuthenticatedHeader
+//                    │
+//                    ▼
+//        AuthenticatedAccountMenu
+//
+// The shell does not know how the avatar URL was resolved.
 //
 // -----------------------------------------------------------------------------
 
@@ -61,6 +87,10 @@ import {
   AuthenticatedFooter,
   AuthenticatedHeader,
 } from '@/components/authenticated';
+
+// =============================================================================
+// Props
+// =============================================================================
 
 export interface AuthenticatedShellProps {
   /**
@@ -78,17 +108,34 @@ export interface AuthenticatedShellProps {
    * AuthenticatedAccountMenu is responsible for presenting the @ prefix.
    */
   readonly travellerHandle: string;
+
+  /**
+   * Already-resolved public TravellerProfile avatar URL.
+   *
+   * Asset resolution remains outside the shell.
+   *
+   * `null` or `undefined` means that the traveller does not currently have
+   * a usable public avatar, in which case the shared Avatar primitive
+   * renders its initials fallback.
+   */
+  readonly travellerAvatarUrl?: string | null;
 }
+
+// =============================================================================
+// Component
+// =============================================================================
 
 export function AuthenticatedShell({
   children,
   travellerHandle,
+  travellerAvatarUrl,
 }: AuthenticatedShellProps) {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="flex min-h-screen flex-col">
         <AuthenticatedHeader
           travellerHandle={travellerHandle}
+          travellerAvatarUrl={travellerAvatarUrl}
         />
 
         <main className="min-w-0 flex-1">

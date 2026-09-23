@@ -4,14 +4,6 @@
 //
 // Account control for the authenticated application header.
 //
-// Header placement:
-//
-//     sisiMove
-//         │
-//         ├── 🧳 My Journeys
-//         ├── @traveller ▾
-//         └── 🔔
-//
 // Responsibilities:
 // - Display the authenticated traveller's public handle.
 // - Display the traveller's avatar through the shared Avatar primitive.
@@ -21,53 +13,33 @@
 // - Close the account menu when interaction occurs outside its boundary.
 // - Initiate the authenticated logout workflow through useLogout().
 //
-// Profile navigation:
-//
-//     Account Menu
-//          │
-//          └── Profile
-//                │
-//                ▼
-//           /profile
-//                │
-//                ▼
-//        Authenticated Profile
-//        └── ProfilePage
-//
-// The account menu does NOT fetch the profile page data.
-// The authenticated profile route owns the profile workflow and loads the
-// profile data required by ProfilePage.
-//
 // Non-responsibilities:
 // - No authentication-state implementation.
 // - No session persistence.
 // - No direct localStorage access.
 // - No direct logout API communication.
 // - No traveller-profile fetching.
+// - No Asset fetching.
 // - No verification logic.
 // - No marketplace capability logic.
 // - No authorization decisions.
 // - No profile data orchestration.
-// - No dashboard route invention.
 //
-// Logout ownership:
+// Avatar ownership:
 //
-//     AuthenticatedAccountMenu
+//     Authenticated application composition
 //              │
-//              ▼
-//          useLogout()
+//              ├── travellerHandle
 //              │
-//              ├── logoutUser()
-//              │       │
-//              │       └── POST /sessions/logout
-//              │
-//              └── authSessionStorage.remove()
+//              └── avatarSrc
 //                       │
 //                       ▼
-//                  public login
+//             AuthenticatedAccountMenu
+//                       │
+//                       ▼
+//                    Avatar
 //
-// The component owns the user interaction.
-// The authentication feature owns the logout lifecycle.
+// `avatarSrc` is already a resolved public Asset URL.
 //
 // -----------------------------------------------------------------------------
 
@@ -95,27 +67,26 @@ import {
 
 export interface AuthenticatedAccountMenuProps {
   /**
-   * Public TravellerProfile handle displayed in the authenticated header.
-   *
-   * Example:
-   *
-   *     ramadhan
+   * Public TravellerProfile handle.
    *
    * The @ prefix is presentation-only and is added by this component.
    */
   readonly travellerHandle: string;
 
   /**
-   * TravellerProfile display name used as the avatar fallback.
+   * Optional TravellerProfile display name.
+   *
+   * Used only as a richer avatar fallback when available.
    */
   readonly travellerName?: string | null;
 
   /**
-   * Public profile-image URL.
+   * Already-resolved public profile-image URL.
    *
-   * This is presentation data supplied by the authenticated application
-   * boundary. The Avatar primitive owns image rendering and fallback
-   * behavior.
+   * The authenticated application composition boundary resolves the
+   * TravellerProfile avatarAssetPublicId into this URL.
+   *
+   * This component does not resolve AssetPublicId or call the Asset API.
    */
   readonly avatarSrc?: string | null;
 }
@@ -207,15 +178,17 @@ export function AuthenticatedAccountMenu({
   // Traveller Presentation
   // ---------------------------------------------------------------------------
 
-  const normalizedHandle = travellerHandle.trim();
+  const normalizedHandle =
+    travellerHandle.trim() || 'Traveller';
 
-  const displayHandle = normalizedHandle.startsWith('@')
-    ? normalizedHandle
-    : `@${normalizedHandle}`;
+  const displayHandle =
+    normalizedHandle.startsWith('@')
+      ? normalizedHandle
+      : `@${normalizedHandle}`;
 
   const avatarFallback =
     travellerName?.trim() ||
-    normalizedHandle ||
+    normalizedHandle.replace(/^@/, '') ||
     'Traveller';
 
   // ---------------------------------------------------------------------------
@@ -255,7 +228,7 @@ export function AuthenticatedAccountMenu({
     >
       {/* ---------------------------------------------------------------------
           Account Trigger
-          --------------------------------------------------------------------- */}
+      --------------------------------------------------------------------- */}
 
       <button
         type="button"
@@ -287,6 +260,16 @@ export function AuthenticatedAccountMenu({
           'disabled:opacity-60',
         ].join(' ')}
       >
+        {/* -----------------------------------------------------------------
+            Same public Asset URL used by the profile page.
+
+            The Avatar primitive owns:
+            - image rendering;
+            - fallback initials;
+            - failed-image handling;
+            - direct Asset delivery.
+        ----------------------------------------------------------------- */}
+
         <Avatar
           src={avatarSrc}
           alt=""
@@ -320,7 +303,7 @@ export function AuthenticatedAccountMenu({
 
       {/* ---------------------------------------------------------------------
           Account Dropdown
-          --------------------------------------------------------------------- */}
+      --------------------------------------------------------------------- */}
 
       {isOpen ? (
         <div
@@ -386,18 +369,10 @@ export function AuthenticatedAccountMenu({
             </Link>
           ))}
 
-          {/* -----------------------------------------------------------------
-              Separator
-              ----------------------------------------------------------------- */}
-
           <div
             aria-hidden="true"
             className="my-1.5 border-t border-[var(--border-subtle)]"
           />
-
-          {/* -----------------------------------------------------------------
-              Sign Out
-              ----------------------------------------------------------------- */}
 
           <button
             type="button"

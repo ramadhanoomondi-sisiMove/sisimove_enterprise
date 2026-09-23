@@ -10,11 +10,111 @@
 // ├── FinancialAccountEntity
 // └── FinancialAccountBalanceEntity
 //
-// The controller is responsible only for:
+// -----------------------------------------------------------------------------
+//
+// Financial Account read boundaries:
+//
+// 1. GET /financial-accounts/me
+//
+//    Authenticated self-read.
+//
+//    The authenticated Identity is resolved from the access token through
+//    CurrentIdentity.
+//
+//        Access Token
+//             ↓
+//        JwtAuthGuard
+//             ↓
+//        CurrentIdentity
+//             ↓
+//        IdentityPublicId
+//             ↓
+//        FinancialAccountOwnerPublicId
+//             ↓
+//        GetMyFinancialAccountQuery
+//             ↓
+//        findByOwnerPublicId()
+//             ↓
+//        FinancialAccountAggregate
+//
+//    This endpoint requires authentication only.
+//
+//    It does NOT require:
+//
+//        PermissionsGuard
+//        financial-account:read
+//
+// 2. GET /financial-accounts/:accountPublicId
+//
+//    Direct Financial Account read.
+//
+//    This endpoint is protected by:
+//
+//        JwtAuthGuard
+//        PermissionsGuard
+//        financial-account:read
+//
+// 3. GET /financial-accounts/:accountPublicId/balance
+//
+//    Direct Financial Account balance read.
+//
+//    Authentication is required.
+//
+//    The balance is aggregate-owned and is therefore retrieved through:
+//
+//        GetFinancialAccountBalanceQuery
+//             ↓
+//        GetFinancialAccountBalanceHandler
+//             ↓
+//        FinancialAccountAggregate
+//             ↓
+//        aggregate.balance
+//             ↓
+//        FinancialAccountBalanceEntity
+//
+//    This endpoint does NOT require:
+//
+//        PermissionsGuard
+//        financial-account:read
+//
+// -----------------------------------------------------------------------------
+//
+// IMPORTANT:
+//
+// GetMyFinancialAccountQuery and GetFinancialAccountQuery are intentionally
+// separate application queries.
+//
+// GetMyFinancialAccountQuery:
+//
+//     FinancialAccountOwnerPublicId → findByOwnerPublicId()
+//
+// GetFinancialAccountQuery:
+//
+//     FinancialAccountPublicId → findByPublicId()
+//
+// GetFinancialAccountBalanceQuery:
+//
+//     FinancialAccountPublicId → aggregate containing balance
+//
+// The controller must not pass FinancialAccountPublicId to the self-read
+// query.
+//
+// The balance query handler returns FinancialAccountAggregate because the
+// FinancialAccountBalanceEntity is aggregate-owned and is not an independent
+// aggregate.
+//
+// -----------------------------------------------------------------------------
+//
+// Responsibilities:
+//
 // - HTTP transport;
-// - DTO validation;
-// - conversion from transport primitives to domain value objects;
-// - dispatching application commands and queries.
+// - DTO binding and validation;
+// - extraction of authenticated identity from JWT security context;
+// - conversion of transport primitives to domain value objects;
+// - dispatching application commands and queries;
+// - mapping application/domain results to HTTP response models.
+//
+// The controller contains NO business rules.
 //
 // Domain behavior remains inside FinancialAccountAggregate.
 // Application orchestration remains inside command/query handlers.
@@ -40,16 +140,18 @@ import {
 // Swagger
 // -----------------------------------------------------------------------------
 
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 // -----------------------------------------------------------------------------
-// Identity — Authentication & Authorization
+// Foundation — Security
 // -----------------------------------------------------------------------------
 
 import {
+  CurrentIdentity,
   JwtAuthGuard,
   PermissionsGuard,
   RequirePermissions,
+  type AuthenticatedIdentity,
 } from '../../../../../foundation/security/auth';
 
 // -----------------------------------------------------------------------------
@@ -84,6 +186,7 @@ import {
 import {
   GetFinancialAccountBalanceQuery,
   GetFinancialAccountQuery,
+  GetMyFinancialAccountQuery,
 } from '../../../application/queries';
 
 // -----------------------------------------------------------------------------
@@ -91,12 +194,6 @@ import {
 // -----------------------------------------------------------------------------
 
 import type { FinancialAccountAggregate } from '../../../domain/aggregates/financial-account.aggregate';
-
-// -----------------------------------------------------------------------------
-// Domain — Entities
-// -----------------------------------------------------------------------------
-
-import type { FinancialAccountBalanceEntity } from '../../../domain/entities/financial-account-balance.entity';
 
 // -----------------------------------------------------------------------------
 // Domain — Value Objects
@@ -132,7 +229,6 @@ import { FinancialAccountResponseMapper } from '../mappers/financial-account-res
 
 @ApiTags('Financial Accounts')
 @Controller('financial-accounts')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class FinancialAccountsController {
   // ===========================================================================
   // Constructor
@@ -177,22 +273,71 @@ export class FinancialAccountsController {
       FinancialAccountAggregate | null
     >,
 
+    @Inject(FINANCIAL_ACCOUNT_TOKENS.QUERY_HANDLERS.GET_ME)
+    private readonly getMyFinancialAccountHandler: QueryHandler<
+      GetMyFinancialAccountQuery,
+      FinancialAccountAggregate
+    >,
+
     @Inject(FINANCIAL_ACCOUNT_TOKENS.QUERY_HANDLERS.GET_BALANCE)
     private readonly getFinancialAccountBalanceHandler: QueryHandler<
       GetFinancialAccountBalanceQuery,
-      FinancialAccountBalanceEntity | null
+      FinancialAccountAggregate
     >,
   ) {}
 
   // ===========================================================================
-  // Queries
+  // Financial Account Queries — Authenticated Owner
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Get Current Authenticated Financial Account
+  // ---------------------------------------------------------------------------
+  //
+  // Self-read.
+  //
+  // Authentication is required, but Financial Account read permission is NOT.
+  //
+  // The account is resolved from the authenticated Identity rather than from
+  // an account public ID supplied by the client.
+  //
+  // ---------------------------------------------------------------------------
+
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get current financial account',
+    description:
+      'Returns the Financial Account belonging to the authenticated identity.',
+  })
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  public async getCurrent(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+  ): Promise<ReturnType<typeof FinancialAccountResponseMapper.toResponse>> {
+    const query = new GetMyFinancialAccountQuery(
+      FinancialAccountOwnerPublicId.create(identity.identityPublicId),
+    );
+
+    const aggregate = await this.getMyFinancialAccountHandler.execute(query);
+
+    return FinancialAccountResponseMapper.toResponse(aggregate);
+  }
+
+  // ===========================================================================
+  // Financial Account Queries — Direct Account Access
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Get Financial Account
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get a financial account',
+    description: 'Returns a Financial Account aggregate by its public ID.',
+  })
   @Get(':accountPublicId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('financial-account:read')
   public async get(
     @Param('accountPublicId') accountPublicId: string,
@@ -215,28 +360,64 @@ export class FinancialAccountsController {
   // ---------------------------------------------------------------------------
   // Get Financial Account Balance
   // ---------------------------------------------------------------------------
+  //
+  // The application handler returns the complete FinancialAccountAggregate.
+  //
+  // The balance is owned by that aggregate:
+  //
+  //     FinancialAccountAggregate
+  //     └── balance: FinancialAccountBalanceEntity
+  //
+  // Therefore the controller extracts aggregate.balance before passing the
+  // domain entity to balanceFromEntity().
+  //
+  // This is important because balanceFromEntity() operates on the actual
+  // FinancialAccountBalanceEntity and may call domain behavior such as:
+  //
+  //     balance.totalAmount()
+  //
+  // The aggregate itself exposes totalAmount as a property, whereas the
+  // balance entity exposes totalAmount() as a domain method.
+  //
+  // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get financial account balance',
+    description:
+      'Returns the balance belonging to an authenticated Financial Account.',
+  })
   @Get(':accountPublicId/balance')
-  @RequirePermissions('financial-account:read')
+  @UseGuards(JwtAuthGuard)
   public async getBalance(
     @Param('accountPublicId') accountPublicId: string,
-  ): Promise<FinancialAccountBalanceEntity | null> {
-    return this.getFinancialAccountBalanceHandler.execute(
+  ): Promise<
+    ReturnType<typeof FinancialAccountResponseMapper.balanceFromEntity>
+  > {
+    const aggregate = await this.getFinancialAccountBalanceHandler.execute(
       new GetFinancialAccountBalanceQuery(
         new FinancialAccountPublicId(accountPublicId),
       ),
     );
+
+    return FinancialAccountResponseMapper.balanceFromEntity(aggregate.balance);
   }
 
   // ===========================================================================
-  // Commands
+  // Financial Account Commands
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Create Financial Account
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Create financial account',
+    description: 'Creates a Financial Account.',
+  })
   @Post()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('financial-account:create')
   public async create(
     @Body() dto: CreateFinancialAccountDto,
@@ -262,7 +443,13 @@ export class FinancialAccountsController {
   // Activate Financial Account
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Activate financial account',
+    description: 'Activates a Financial Account.',
+  })
   @Post(':accountPublicId/activate')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('financial-account:activate')
   public async activate(
     @Param('accountPublicId') accountPublicId: string,
@@ -287,7 +474,13 @@ export class FinancialAccountsController {
   // Suspend Financial Account
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Suspend financial account',
+    description: 'Suspends a Financial Account.',
+  })
   @Post(':accountPublicId/suspend')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('financial-account:suspend')
   public async suspend(
     @Param('accountPublicId') accountPublicId: string,
@@ -312,7 +505,13 @@ export class FinancialAccountsController {
   // Close Financial Account
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Close financial account',
+    description: 'Closes a Financial Account.',
+  })
   @Post(':accountPublicId/close')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('financial-account:close')
   public async close(
     @Param('accountPublicId') accountPublicId: string,

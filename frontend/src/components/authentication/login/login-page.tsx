@@ -6,7 +6,7 @@
 //
 // Responsibilities:
 // - Compose the public authentication layout.
-// - Present the SisiMove introduction/brand context.
+// - Present the sisiMove introduction/brand context.
 // - Provide navigation to registration.
 // - Render the LoginForm.
 // - Navigate the user to the authenticated marketplace after successful login.
@@ -22,6 +22,20 @@
 // workflow. This component owns the page-level transition that occurs after
 // authentication succeeds.
 //
+// Navigation boundary:
+//
+//     LoginForm
+//          │
+//          │ authentication succeeds
+//          ▼
+//     onSuccess(response)
+//          │
+//          ▼
+//     LoginPage
+//          │
+//          ▼
+//     AUTHENTICATED_ROUTES.HOME
+//
 // -----------------------------------------------------------------------------
 
 'use client';
@@ -29,7 +43,12 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-import { AUTHENTICATION_ROUTES } from '@/foundation/routing';
+import {
+  AUTHENTICATED_ROUTES,
+  AUTHENTICATION_ROUTES,
+} from '@/foundation/routing';
+
+import type { AuthenticateLoginResponse } from '@/features/authentication/login';
 
 import { LoginForm } from './login-form';
 
@@ -58,8 +77,10 @@ export function LoginPage({
   //
   // ---------------------------------------------------------------------------
 
-  const handleLoginSuccess = () => {
-    router.replace('/home');
+  const handleLoginSuccess = (
+    _response: AuthenticateLoginResponse,
+  ) => {
+    router.replace(AUTHENTICATED_ROUTES.HOME);
   };
 
   return (
@@ -125,4 +146,3 @@ export function LoginPage({
 }
 
 export default LoginPage;
-

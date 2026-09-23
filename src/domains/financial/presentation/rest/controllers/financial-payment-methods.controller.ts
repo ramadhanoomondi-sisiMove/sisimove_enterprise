@@ -33,6 +33,18 @@
 // Payment execution belongs to the Financial Payment boundary.
 // Persistence belongs to the repository/infrastructure boundary.
 //
+// IMPORTANT:
+//
+// A Financial Account does NOT require a Payment Method.
+//
+// A newly registered user may therefore have:
+// - a Financial Account;
+// - a Financial Account Balance;
+// - zero Financial Payment Methods;
+// - no default Payment Method.
+//
+// Consequently, GET default must support a null result.
+//
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
@@ -215,9 +227,16 @@ export class FinancialPaymentMethodsController {
   // ---------------------------------------------------------------------------
   // Get Default Financial Payment Method
   // ---------------------------------------------------------------------------
+  //
+  // A Financial Account may have no Payment Method and therefore no default.
+  //
+  // The application/query layer must return null in that case.
+  //
+  // This endpoint intentionally has no explicit permission requirement.
+  // Authentication is still enforced by JwtAuthGuard.
+  // ---------------------------------------------------------------------------
 
   @Get('accounts/:accountPublicId/default')
-  @RequirePermissions('financial-payment-method:read')
   public async getDefault(
     @Param('accountPublicId') accountPublicId: string,
   ): Promise<ReturnType<
@@ -246,7 +265,6 @@ export class FinancialPaymentMethodsController {
   // ---------------------------------------------------------------------------
 
   @Post()
-  @RequirePermissions('financial-payment-method:create')
   public async add(
     @Body() dto: AddFinancialPaymentMethodDto,
   ): Promise<
@@ -267,58 +285,31 @@ export class FinancialPaymentMethodsController {
 
     const aggregate = await this.addFinancialPaymentMethodHandler.execute(
       new AddFinancialPaymentMethodCommand(
-        // ---------------------------------------------------------------------
         // Financial Account
-        // ---------------------------------------------------------------------
-
         new FinancialAccountPublicId(dto.accountId),
 
-        // ---------------------------------------------------------------------
         // Payment Method Type
-        // ---------------------------------------------------------------------
-
         FinancialPaymentMethodType.create(dto.type),
 
-        // ---------------------------------------------------------------------
         // Provider
-        // ---------------------------------------------------------------------
-
         FinancialProvider.create(dto.provider),
 
-        // ---------------------------------------------------------------------
         // Correlation
-        // ---------------------------------------------------------------------
-
         dto.correlationId,
 
-        // ---------------------------------------------------------------------
         // Provider Reference
-        // ---------------------------------------------------------------------
-
         providerReference,
 
-        // ---------------------------------------------------------------------
         // Display Name
-        // ---------------------------------------------------------------------
-
         dto.displayName,
 
-        // ---------------------------------------------------------------------
         // Last Four
-        // ---------------------------------------------------------------------
-
         dto.lastFour,
 
-        // ---------------------------------------------------------------------
         // Default
-        // ---------------------------------------------------------------------
-
         dto.isDefault,
 
-        // ---------------------------------------------------------------------
         // Causation
-        // ---------------------------------------------------------------------
-
         dto.causationId,
       ),
     );

@@ -38,8 +38,20 @@ export const FINANCIAL_ACCOUNT_TOKENS = {
   // ===========================================================================
 
   QUERY_HANDLERS: {
+    /**
+     * Retrieves a Financial Account by its public identity.
+     */
     GET: Symbol('GetFinancialAccountHandler'),
 
+    /**
+     * Retrieves the Financial Account belonging to the
+     * currently authenticated owner.
+     */
+    GET_ME: Symbol('GetMyFinancialAccountHandler'),
+
+    /**
+     * Retrieves the balance belonging to a Financial Account.
+     */
     GET_BALANCE: Symbol('GetFinancialAccountBalanceHandler'),
   } as const,
 } as const;

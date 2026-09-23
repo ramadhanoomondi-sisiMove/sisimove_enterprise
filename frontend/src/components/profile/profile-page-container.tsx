@@ -9,8 +9,8 @@
 // - Resolve the authenticated Verification aggregate.
 // - Resolve verification request state.
 // - Project verification request state into VerificationRequirement[].
-// - Resolve the public avatar asset referenced by TravellerProfile.
-// - Resolve authenticated Identity/account data required by AccountSection.
+// - Resolve the authenticated Identity/account data.
+// - Resolve the public avatar Asset referenced by TravellerProfile.
 // - Compose presentation-level navigation callbacks.
 // - Orchestrate the profile-photo upload workflow.
 // - Associate an uploaded Asset with the TravellerProfile as its avatar.
@@ -73,6 +73,12 @@
 //          │
 //          ▼
 //     usePublicAsset
+//          │
+//          ▼
+//     ProfilePage
+//          │
+//          ▼
+//     ProfileAvatar priority
 //
 // Important:
 //
@@ -99,6 +105,10 @@
 // account lifecycle status.
 //
 // Asset remains authoritative for physical file storage and Asset lifecycle.
+//
+// Avatar loading is intentionally non-blocking for the profile page.
+// If the public Asset reference is unavailable, ProfileAvatar renders its
+// initials fallback rather than preventing the profile from rendering.
 //
 // -----------------------------------------------------------------------------
 
@@ -176,8 +186,6 @@ import {
 // Identity
 // -----------------------------------------------------------------------------
 //
-// IMPORTANT:
-//
 // Identity is NOT owned by Authentication.
 //
 // Authentication owns:
@@ -192,14 +200,6 @@ import {
 // - account contact information;
 // - account lifecycle state;
 // - authenticated self Identity query.
-//
-// Therefore the authenticated Identity query belongs to:
-//
-//     @/features/identity
-//
-// and ultimately calls:
-//
-//     GET /identities/me
 //
 // -----------------------------------------------------------------------------
 
@@ -353,20 +353,6 @@ function buildVerificationRequirements(
     return {
       type,
 
-      // -----------------------------------------------------------------------
-      // Requirement policy
-      // -----------------------------------------------------------------------
-      //
-      // The current verification read model does not expose an explicit
-      // requirement projection.
-      //
-      // Therefore the frontend must not invent one.
-      //
-      // `required` remains false until the backend exposes an authoritative
-      // requirement projection.
-      //
-      // -----------------------------------------------------------------------
-
       required: false,
 
       status: resolveRequirementStatus(
@@ -402,19 +388,11 @@ function ProfileLoadingState(): ReactNode {
     <main className="min-h-screen bg-[var(--background-brand)]">
       <Container size="lg" padded>
         <div className="py-6 sm:py-8 lg:py-10">
-          {/* -----------------------------------------------------------------
-              Page heading skeleton
-             ----------------------------------------------------------------- */}
-
           <div className="mb-7 space-y-2">
             <div className="h-7 w-28 animate-pulse rounded-lg bg-[var(--border-subtle)] sm:h-8" />
 
             <div className="h-4 w-64 animate-pulse rounded-md bg-[var(--border-subtle)]" />
           </div>
-
-          {/* -----------------------------------------------------------------
-              Profile content skeletons
-             ----------------------------------------------------------------- */}
 
           <div className="space-y-4">
             <div
@@ -485,10 +463,6 @@ function ProfileState({
     <main className="min-h-screen bg-[var(--background-brand)]">
       <Container size="lg" padded>
         <div className="py-6 sm:py-8 lg:py-10">
-          {/* -----------------------------------------------------------------
-              Heading
-             ----------------------------------------------------------------- */}
-
           <div className="mb-7">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--brand)]">
               sisiMove
@@ -498,10 +472,6 @@ function ProfileState({
               Profile
             </h1>
           </div>
-
-          {/* -----------------------------------------------------------------
-              State card
-             ----------------------------------------------------------------- */}
 
           <section
             className="
@@ -570,6 +540,10 @@ function ProfileState({
                   transition
                   hover:bg-[var(--brand-hover)]
                   active:translate-y-px
+                  focus-visible:outline-none
+                  focus-visible:ring-2
+                  focus-visible:ring-[var(--brand)]
+                  focus-visible:ring-offset-2
                 "
               >
                 Try again
@@ -655,13 +629,24 @@ export function ProfilePageContainer(): ReactNode {
   // ---------------------------------------------------------------------------
   // Avatar Asset
   // ---------------------------------------------------------------------------
+  //
+  // TravellerProfile owns the reference.
+  //
+  // Asset owns:
+  // - storage;
+  // - lifecycle;
+  // - visibility;
+  // - public delivery.
+  //
+  // The container simply composes the two read boundaries.
+  //
+  // ---------------------------------------------------------------------------
 
   const avatarAssetPublicId =
     profile?.avatarAssetPublicId ?? null;
 
   const {
     asset: avatarAsset,
-    isLoading: avatarLoading,
   } = usePublicAsset(
     avatarAssetPublicId,
   );
@@ -709,16 +694,38 @@ export function ProfilePageContainer(): ReactNode {
   // ---------------------------------------------------------------------------
   // Loading
   // ---------------------------------------------------------------------------
+  //
+  // IMPORTANT:
+  //
+  // Avatar loading is deliberately excluded from the blocking page loading
+  // state.
+  //
+  // The profile should render immediately with the Avatar fallback while the
+  // public Asset reference is resolving.
+  //
+  // Once `avatarAsset.url` becomes available, ProfileAvatar receives the URL
+  // and its shared Avatar primitive loads the image with `priority`.
+  //
+  // This prevents a slow Asset reference request from delaying the entire
+  // profile page.
+  //
+  // ---------------------------------------------------------------------------
 
   const isLoading =
     profileLoading ||
     verificationLoading ||
     requestsLoading ||
-    identityLoading ||
-    avatarLoading;
+    identityLoading;
 
   // ---------------------------------------------------------------------------
   // Error
+  // ---------------------------------------------------------------------------
+  //
+  // Avatar reference failures are intentionally NOT included here.
+  //
+  // A broken/missing public avatar should degrade to initials rather than
+  // making the authenticated profile unusable.
+  //
   // ---------------------------------------------------------------------------
 
   const error =
@@ -921,13 +928,14 @@ export function ProfilePageContainer(): ReactNode {
           verificationRequirements
         }
 
+
         avatarUrl={
           avatarAsset?.url ?? null
         }
 
         avatarAlt={
           avatarAsset?.alt ??
-          `@${profile.handle}`
+          `@${profile.handle} profile photo`
         }
 
         avatarFallback={

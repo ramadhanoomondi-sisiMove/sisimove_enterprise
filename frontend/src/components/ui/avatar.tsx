@@ -5,13 +5,42 @@
 // Reusable avatar primitive for the sisiMove design system.
 //
 // Responsibilities:
-// - Display optimized profile images through next/image
-// - Provide accessible fallback initials
-// - Support semantic sizes
-// - Handle broken image sources gracefully
-// - Provide responsive image sizing for optimized delivery
+// - Display public avatar images through the canonical Asset URL.
+// - Provide accessible fallback initials.
+// - Support semantic sizes.
+// - Handle broken image sources gracefully.
+// - Support direct Asset delivery without Next.js image optimization.
+// - Remain completely domain-agnostic.
 //
-// The component remains domain-agnostic.
+// Architectural note:
+// - The Asset bounded context owns public image delivery.
+// - This primitive receives a resolved URL.
+// - It does not know about AssetPublicId, TravellerProfile,
+//   Journey, JourneyDemand, or any other domain concept.
+// - Public sisiMove assets are rendered directly from their canonical
+//   delivery URL instead of being proxied through /_next/image.
+//
+// -----------------------------------------------------------------------------
+//
+// Why `unoptimized`?
+//
+// The sisiMove Asset API is already responsible for:
+// - public visibility,
+// - Asset lifecycle,
+// - MIME type,
+// - storage retrieval,
+// - public delivery.
+//
+// Next.js therefore does not need to become another Asset delivery boundary.
+//
+// This keeps the Avatar primitive independent from Next.js remote-image
+// optimizer configuration and ensures the same canonical Asset URL can be
+// used consistently across:
+// - profile headers,
+// - journey cards,
+// - demand cards,
+// - authenticated navigation,
+// - traveller identity surfaces.
 //
 // -----------------------------------------------------------------------------
 
@@ -52,8 +81,11 @@ export interface AvatarProps
   /**
    * Image source.
    *
-   * A URL is expected because public sisiMove assets are exposed
-   * through the application's asset API/CDN.
+   * A resolved public URL is expected.
+   *
+   * The Avatar primitive intentionally does not know how the URL
+   * was obtained. Asset reference resolution belongs outside this
+   * presentation primitive.
    */
   src?: string | null;
 
@@ -65,7 +97,7 @@ export interface AvatarProps
   alt?: string;
 
   /**
-   * Fallback content used to generate initials when the image
+   * Fallback identity used to generate initials when the image
    * is unavailable or fails to load.
    */
   fallback?: string;
@@ -79,6 +111,14 @@ export interface AvatarProps
    * Optional image error handler.
    */
   onError?: ImageProps['onError'];
+
+  /**
+   * Whether this avatar is an important above-the-fold image.
+   *
+   * The profile header should normally use `priority`.
+   * Journey and demand cards should normally leave this false.
+   */
+  priority?: boolean;
 }
 
 // -----------------------------------------------------------------------------
@@ -91,9 +131,6 @@ const sizeClasses: Record<AvatarSize, string> = {
   md: 'h-10 w-10 text-sm',
   lg: 'h-12 w-12 text-base',
   xl: 'h-16 w-16 text-lg',
-
-  // Large identity avatar used by profile headers and other
-  // primary traveller identity surfaces.
   '2xl': 'h-24 w-24 text-2xl',
 };
 
@@ -140,8 +177,31 @@ export function Avatar({
   className,
   onError,
   sizes,
+  priority = false,
   ...props
 }: AvatarProps) {
+  /**
+   * Store the exact source that failed.
+   *
+   * We intentionally do not reset this state inside an effect when `src`
+   * changes.
+   *
+   * Instead, whether the current image has failed is derived below by
+   * comparing the current source with the failed source.
+   *
+   * Example:
+   *
+   *     src = ASSET-A
+   *     ASSET-A fails
+   *     failedSource = ASSET-A
+   *
+   * Then:
+   *
+   *     src = ASSET-B
+   *
+   * `failedSource === source` becomes false automatically, so ASSET-B
+   * receives a fresh opportunity to render.
+   */
   const [failedSource, setFailedSource] = useState<string | null>(null);
 
   const source = src?.trim() || undefined;
@@ -153,6 +213,9 @@ export function Avatar({
   const showFallback =
     !source ||
     imageFailed;
+
+  const resolvedFallback =
+    fallback?.trim() || '?';
 
   const handleError: NonNullable<
     AvatarProps['onError']
@@ -187,7 +250,7 @@ export function Avatar({
           aria-hidden="true"
           className="flex h-full w-full items-center justify-center"
         >
-          {getInitials(fallback)}
+          {getInitials(resolvedFallback)}
         </span>
       ) : (
         <Image
@@ -196,6 +259,8 @@ export function Avatar({
           alt={alt}
           fill
           sizes={sizes ?? imageSizes[size]}
+          priority={priority}
+          unoptimized
           onError={handleError}
           className="object-cover"
         />

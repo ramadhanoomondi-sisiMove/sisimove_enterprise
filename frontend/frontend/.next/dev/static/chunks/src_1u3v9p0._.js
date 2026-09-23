@@ -46,6 +46,15 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist
 //     features/authentication/login/hooks
 //
 // -----------------------------------------------------------------------------
+//
+// Accessibility:
+// - The label explicitly identifies both accepted identifier types.
+// - Validation errors are announced through role="alert".
+// - aria-describedby connects the input to the validation message.
+// - inputMode="text" is intentional because the field accepts both email and
+//   phone-number input.
+//
+// -----------------------------------------------------------------------------
 'use client';
 ;
 function LoginCredentials({ value, onChange, error, disabled = false }) {
@@ -59,14 +68,14 @@ function LoginCredentials({ value, onChange, error, disabled = false }) {
                 children: "Email or phone number"
             }, void 0, false, {
                 fileName: "[project]/src/components/authentication/login/login-credentials.tsx",
-                lineNumber: 70,
+                lineNumber: 79,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
                 id: "login-email-or-phone",
                 name: "emailOrPhoneNumber",
                 type: "text",
-                inputMode: "email",
+                inputMode: "text",
                 value: value,
                 onChange: onChange,
                 disabled: disabled,
@@ -84,7 +93,7 @@ function LoginCredentials({ value, onChange, error, disabled = false }) {
                 ].join(' ')
             }, void 0, false, {
                 fileName: "[project]/src/components/authentication/login/login-credentials.tsx",
-                lineNumber: 77,
+                lineNumber: 86,
                 columnNumber: 7
             }, this),
             error ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -94,13 +103,13 @@ function LoginCredentials({ value, onChange, error, disabled = false }) {
                 children: error
             }, void 0, false, {
                 fileName: "[project]/src/components/authentication/login/login-credentials.tsx",
-                lineNumber: 102,
+                lineNumber: 111,
                 columnNumber: 9
             }, this) : null
         ]
     }, void 0, true, {
         fileName: "[project]/src/components/authentication/login/login-credentials.tsx",
-        lineNumber: 69,
+        lineNumber: 78,
         columnNumber: 5
     }, this);
 }
@@ -670,6 +679,7 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist
 var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$client$2f$app$2d$dir$2f$link$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/node_modules/next/dist/client/app-dir/link.js [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/node_modules/next/navigation.js [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$foundation$2f$routing$2f$index$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$locals$3e$__ = __turbopack_context__.i("[project]/src/foundation/routing/index.ts [app-client] (ecmascript) <locals>");
+var __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$foundation$2f$routing$2f$authenticated$2d$routes$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/src/foundation/routing/authenticated-routes.ts [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$foundation$2f$routing$2f$authentication$2d$routes$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/src/foundation/routing/authentication-routes.ts [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$components$2f$authentication$2f$login$2f$login$2d$form$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/src/components/authentication/login/login-form.tsx [app-client] (ecmascript)");
 ;
@@ -682,7 +692,7 @@ var _s = __turbopack_context__.k.signature();
 //
 // Responsibilities:
 // - Compose the public authentication layout.
-// - Present the SisiMove introduction/brand context.
+// - Present the sisiMove introduction/brand context.
 // - Provide navigation to registration.
 // - Render the LoginForm.
 // - Navigate the user to the authenticated marketplace after successful login.
@@ -697,6 +707,20 @@ var _s = __turbopack_context__.k.signature();
 // The LoginForm and authentication feature own the actual authentication
 // workflow. This component owns the page-level transition that occurs after
 // authentication succeeds.
+//
+// Navigation boundary:
+//
+//     LoginForm
+//          │
+//          │ authentication succeeds
+//          ▼
+//     onSuccess(response)
+//          │
+//          ▼
+//     LoginPage
+//          │
+//          ▼
+//     AUTHENTICATED_ROUTES.HOME
 //
 // -----------------------------------------------------------------------------
 'use client';
@@ -722,8 +746,8 @@ function LoginPage({ forgotPasswordHref }) {
     // navigation history.
     //
     // ---------------------------------------------------------------------------
-    const handleLoginSuccess = ()=>{
-        router.replace('/home');
+    const handleLoginSuccess = (_response)=>{
+        router.replace(__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$foundation$2f$routing$2f$authenticated$2d$routes$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["AUTHENTICATED_ROUTES"].HOME);
     };
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("main", {
         className: "min-h-[calc(100vh-4rem)] bg-white",
@@ -740,7 +764,7 @@ function LoginPage({ forgotPasswordHref }) {
                                 children: "WELCOME BACK"
                             }, void 0, false, {
                                 fileName: "[project]/src/components/authentication/login/login-page.tsx",
-                                lineNumber: 74,
+                                lineNumber: 95,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
@@ -753,7 +777,7 @@ function LoginPage({ forgotPasswordHref }) {
                                         children: "sisi"
                                     }, void 0, false, {
                                         fileName: "[project]/src/components/authentication/login/login-page.tsx",
-                                        lineNumber: 80,
+                                        lineNumber: 101,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -761,14 +785,14 @@ function LoginPage({ forgotPasswordHref }) {
                                         children: "Move"
                                     }, void 0, false, {
                                         fileName: "[project]/src/components/authentication/login/login-page.tsx",
-                                        lineNumber: 81,
+                                        lineNumber: 102,
                                         columnNumber: 15
                                     }, this),
                                     "."
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/src/components/authentication/login/login-page.tsx",
-                                lineNumber: 78,
+                                lineNumber: 99,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -776,7 +800,7 @@ function LoginPage({ forgotPasswordHref }) {
                                 children: "Sign in to explore journeys, find people travelling your way, and continue from where you left off."
                             }, void 0, false, {
                                 fileName: "[project]/src/components/authentication/login/login-page.tsx",
-                                lineNumber: 84,
+                                lineNumber: 105,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -786,27 +810,27 @@ function LoginPage({ forgotPasswordHref }) {
                                         children: "Discover journeys going your way."
                                     }, void 0, false, {
                                         fileName: "[project]/src/components/authentication/login/login-page.tsx",
-                                        lineNumber: 90,
+                                        lineNumber: 111,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                         children: "Find travel demand for the routes you need."
                                     }, void 0, false, {
                                         fileName: "[project]/src/components/authentication/login/login-page.tsx",
-                                        lineNumber: 91,
+                                        lineNumber: 112,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                         children: "Share a journey when you have a seat."
                                     }, void 0, false, {
                                         fileName: "[project]/src/components/authentication/login/login-page.tsx",
-                                        lineNumber: 92,
+                                        lineNumber: 113,
                                         columnNumber: 15
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/src/components/authentication/login/login-page.tsx",
-                                lineNumber: 89,
+                                lineNumber: 110,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -825,7 +849,7 @@ function LoginPage({ forgotPasswordHref }) {
                                                     children: "Join sisi"
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/components/authentication/login/login-page.tsx",
-                                                    lineNumber: 102,
+                                                    lineNumber: 123,
                                                     columnNumber: 19
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -833,35 +857,35 @@ function LoginPage({ forgotPasswordHref }) {
                                                     children: "Move"
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/components/authentication/login/login-page.tsx",
-                                                    lineNumber: 103,
+                                                    lineNumber: 124,
                                                     columnNumber: 19
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/src/components/authentication/login/login-page.tsx",
-                                            lineNumber: 98,
+                                            lineNumber: 119,
                                             columnNumber: 17
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/src/components/authentication/login/login-page.tsx",
-                                    lineNumber: 96,
+                                    lineNumber: 117,
                                     columnNumber: 15
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/src/components/authentication/login/login-page.tsx",
-                                lineNumber: 95,
+                                lineNumber: 116,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/src/components/authentication/login/login-page.tsx",
-                        lineNumber: 73,
+                        lineNumber: 94,
                         columnNumber: 11
                     }, this)
                 }, void 0, false, {
                     fileName: "[project]/src/components/authentication/login/login-page.tsx",
-                    lineNumber: 72,
+                    lineNumber: 93,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("section", {
@@ -873,28 +897,28 @@ function LoginPage({ forgotPasswordHref }) {
                             onSuccess: handleLoginSuccess
                         }, void 0, false, {
                             fileName: "[project]/src/components/authentication/login/login-page.tsx",
-                            lineNumber: 116,
+                            lineNumber: 137,
                             columnNumber: 13
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/src/components/authentication/login/login-page.tsx",
-                        lineNumber: 115,
+                        lineNumber: 136,
                         columnNumber: 11
                     }, this)
                 }, void 0, false, {
                     fileName: "[project]/src/components/authentication/login/login-page.tsx",
-                    lineNumber: 114,
+                    lineNumber: 135,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/src/components/authentication/login/login-page.tsx",
-            lineNumber: 67,
+            lineNumber: 88,
             columnNumber: 7
         }, this)
     }, void 0, false, {
         fileName: "[project]/src/components/authentication/login/login-page.tsx",
-        lineNumber: 66,
+        lineNumber: 87,
         columnNumber: 5
     }, this);
 }

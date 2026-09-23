@@ -7,28 +7,44 @@
 // Responsibilities:
 // - Adapt profile identity data to the shared Avatar primitive.
 // - Provide profile-specific fallback information.
-// - Keep profile presentation independent from image-fetching concerns.
+// - Mark the primary profile avatar as a high-priority image when requested.
 //
 // Non-responsibilities:
 // - Fetching profile data.
 // - Uploading/changing profile photos.
 // - Resolving asset URLs.
 // - Managing avatar state.
+// - Performing image delivery or optimization.
 //
 // Architecture:
-// - This component is a profile-specific presentation adapter.
-// - The shared Avatar primitive owns image rendering, sizing, shape, and
-//   fallback behavior.
-// - ProfileAvatar does not introduce profile-specific image state.
-// - The profile feature supplies already-resolved `src`, `alt`, and fallback
-//   values.
+//
+// ProfileAvatar
+//      │
+//      ▼
+// shared Avatar
+//      │
+//      └── already-resolved public Asset URL
+//
+// Asset resolution remains outside this component.
+//
+// The profile feature supplies:
+// - resolved avatar URL;
+// - accessible alt text;
+// - fallback identity;
+// - semantic size;
+// - optional loading priority.
 //
 // Visual language:
-// - Delegates sizing, shape, image treatment, and fallback styling entirely
-//   to the shared Avatar primitive.
-// - Supports the large `2xl` identity size used by primary profile headers.
+// - Delegates sizing, shape, image treatment, fallback styling, and image
+//   delivery entirely to the shared Avatar primitive.
+// - Supports the large `2xl` identity size used by the primary profile header.
 // - Allows profile compositions to provide local layout classes through
 //   `className` without coupling this adapter to a specific profile layout.
+//
+// Loading:
+// - The authenticated profile header sets `priority` because its avatar is
+//   the primary above-the-fold identity image.
+// - Journey and demand cards normally leave `priority` disabled.
 //
 // -----------------------------------------------------------------------------
 
@@ -54,15 +70,15 @@ export interface ProfileAvatarProps {
   readonly alt?: string;
 
   /**
-   * Profile-specific fallback content supplied to the shared Avatar.
+   * Profile identity used by the shared Avatar when no image is available.
    */
   readonly fallback?: string;
 
   /**
    * Shared Avatar size.
    *
-   * `2xl` is the large identity size used by profile headers and
-   * other primary traveller identity surfaces.
+   * `2xl` is the primary identity size used by the authenticated profile
+   * header.
    */
   readonly size?:
     | 'xs'
@@ -71,6 +87,14 @@ export interface ProfileAvatarProps {
     | 'lg'
     | 'xl'
     | '2xl';
+
+  /**
+   * Whether this avatar is an important above-the-fold image.
+   *
+   * The authenticated profile header should normally set this to `true`.
+   * Journey and demand cards should normally leave it disabled.
+   */
+  readonly priority?: boolean;
 
   /**
    * Optional layout/presentation classes supplied by the parent.
@@ -84,17 +108,25 @@ export interface ProfileAvatarProps {
 
 export function ProfileAvatar({
   src,
-  alt = '',
+  alt,
   fallback,
-  size = 'xl',
+  size = '2xl',
+  priority = false,
   className,
 }: ProfileAvatarProps): ReactNode {
+  const resolvedFallback =
+    fallback?.trim() || '?';
+
+  const resolvedAlt =
+    alt?.trim() || 'Traveller profile photo';
+
   return (
     <Avatar
       src={src}
-      alt={alt}
-      fallback={fallback}
+      alt={resolvedAlt}
+      fallback={resolvedFallback}
       size={size}
+      priority={priority}
       className={className}
     />
   );

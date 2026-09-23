@@ -3440,6 +3440,14 @@ __turbopack_context__.s([
 //    Output of the schema. `termsAccepted` is guaranteed to be `true` because
 //    registration is only valid after the user accepts the terms.
 //
+// Phone number:
+//
+// - Users must enter the phone number in international format.
+// - The value MUST begin with `+`.
+// - The frontend does NOT silently convert local numbers.
+// - Example:
+//       +254 700 000 000
+//
 // The API request is deliberately NOT defined by this schema.
 // The registration API model remains the authoritative HTTP contract.
 //
@@ -3450,7 +3458,7 @@ const registerUserSchema = __TURBOPACK__imported__module__$5b$project$5d2f$node_
     travellerName: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$zod$2f$v4$2f$classic$2f$external$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__$2a$__as__z$3e$__["z"].string().trim().min(2, 'Enter your name.').max(100, 'Your name is too long.'),
     countryCode: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$zod$2f$v4$2f$classic$2f$external$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__$2a$__as__z$3e$__["z"].string().trim().length(2, 'Select a valid country.').transform((value)=>value.toUpperCase()),
     email: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$zod$2f$v4$2f$classic$2f$external$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__$2a$__as__z$3e$__["z"].string().trim().email('Enter a valid email address.'),
-    phoneNumber: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$zod$2f$v4$2f$classic$2f$external$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__$2a$__as__z$3e$__["z"].string().trim().min(7, 'Enter a valid phone number.').max(20, 'Enter a valid phone number.'),
+    phoneNumber: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$zod$2f$v4$2f$classic$2f$external$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__$2a$__as__z$3e$__["z"].string().trim().min(1, 'Enter your phone number.').max(20, 'Your phone number is too long.').regex(/^\+[1-9][0-9\s()-]{6,18}[0-9]$/, 'Use international format, starting with +. Example: +254 700 000 000'),
     password: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$zod$2f$v4$2f$classic$2f$external$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__$2a$__as__z$3e$__["z"].string().min(8, 'Password must be at least 8 characters.').max(128, 'Password is too long.'),
     confirmPassword: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$zod$2f$v4$2f$classic$2f$external$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__$2a$__as__z$3e$__["z"].string().min(1, 'Confirm your password.'),
     termsAccepted: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$zod$2f$v4$2f$classic$2f$external$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__$2a$__as__z$3e$__["z"].literal(true, {

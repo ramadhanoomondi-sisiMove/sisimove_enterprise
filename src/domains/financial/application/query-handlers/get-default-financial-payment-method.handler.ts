@@ -18,7 +18,23 @@
 // Responsibilities:
 //
 // 1. Find the default Financial Payment Method for the Financial Account.
-// 2. Return the complete aggregate.
+// 2. Return the complete aggregate when one exists.
+// 3. Return null when the account has no default payment method.
+//
+// IMPORTANT:
+//
+// A Financial Account is NOT required to have a Financial Payment Method.
+//
+// Therefore:
+//
+// - no payment methods        → valid;
+// - no default payment method → valid;
+// - repository returns null    → valid query result.
+//
+// The handler MUST NOT convert the absence of a default payment method
+// into a FinancialPaymentMethodNotFoundException.
+//
+// A missing default is an expected state, not an exceptional state.
 //
 // The handler does NOT:
 //
@@ -66,19 +82,13 @@ import type { GetDefaultFinancialPaymentMethodQuery } from '../queries/get-defau
 // Aggregate
 // -----------------------------------------------------------------------------
 
-import { FinancialPaymentMethodAggregate } from '../../domain/aggregates/financial-payment-method.aggregate';
+import type { FinancialPaymentMethodAggregate } from '../../domain/aggregates/financial-payment-method.aggregate';
 
 // -----------------------------------------------------------------------------
 // Repository
 // -----------------------------------------------------------------------------
 
 import type { FinancialPaymentMethodRepository } from '../../domain/repositories/financial-payment-method.repository';
-
-// -----------------------------------------------------------------------------
-// Exceptions
-// -----------------------------------------------------------------------------
-
-import { FinancialPaymentMethodNotFoundException } from '../../domain/exceptions';
 
 // -----------------------------------------------------------------------------
 // Handler
@@ -88,7 +98,11 @@ import { FinancialPaymentMethodNotFoundException } from '../../domain/exceptions
  * Handles retrieval of the default Financial Payment Method for a
  * Financial Account.
  *
- * The repository rehydrates the complete Financial Payment Method aggregate.
+ * The repository rehydrates the complete Financial Payment Method aggregate
+ * when a default exists.
+ *
+ * When the Financial Account has no default payment method, the handler
+ * returns null because that is a valid Financial Account state.
  *
  * The handler does not load the Financial Account aggregate because the
  * account is represented only by its opaque public identity.
@@ -96,7 +110,7 @@ import { FinancialPaymentMethodNotFoundException } from '../../domain/exceptions
 @Injectable()
 export class GetDefaultFinancialPaymentMethodHandler implements QueryHandler<
   GetDefaultFinancialPaymentMethodQuery,
-  FinancialPaymentMethodAggregate
+  FinancialPaymentMethodAggregate | null
 > {
   // ===========================================================================
   // Constructor
@@ -113,37 +127,22 @@ export class GetDefaultFinancialPaymentMethodHandler implements QueryHandler<
 
   public async execute(
     query: GetDefaultFinancialPaymentMethodQuery,
-  ): Promise<FinancialPaymentMethodAggregate> {
+  ): Promise<FinancialPaymentMethodAggregate | null> {
     // -------------------------------------------------------------------------
-    // 1. Load default payment method
+    // Load default payment method
     // -------------------------------------------------------------------------
     //
     // The repository is responsible for:
     //
-    // - resolving the Financial Account public identity;
-    // - locating its default payment method;
-    // - rehydrating the complete aggregate.
+    // - resolving the Financial Account using its public identity;
+    // - locating an active default payment method;
+    // - rehydrating the complete aggregate when one exists;
+    // - returning null when no default exists.
+    //
+    // No default is a valid result.
     // -------------------------------------------------------------------------
 
-    const aggregate = await this.repository.findDefaultByAccountPublicId(
-      query.accountPublicId,
-    );
-
-    // -------------------------------------------------------------------------
-    // 2. Ensure default payment method exists
-    // -------------------------------------------------------------------------
-
-    if (aggregate === null) {
-      throw new FinancialPaymentMethodNotFoundException(
-        `No default Financial Payment Method exists for Financial Account "${query.accountPublicId.value}"`,
-      );
-    }
-
-    // -------------------------------------------------------------------------
-    // 3. Return aggregate
-    // -------------------------------------------------------------------------
-
-    return aggregate;
+    return this.repository.findDefaultByAccountPublicId(query.accountPublicId);
   }
 }
 

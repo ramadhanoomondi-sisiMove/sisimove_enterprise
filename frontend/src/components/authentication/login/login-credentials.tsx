@@ -35,6 +35,15 @@
 //     features/authentication/login/hooks
 //
 // -----------------------------------------------------------------------------
+//
+// Accessibility:
+// - The label explicitly identifies both accepted identifier types.
+// - Validation errors are announced through role="alert".
+// - aria-describedby connects the input to the validation message.
+// - inputMode="text" is intentional because the field accepts both email and
+//   phone-number input.
+//
+// -----------------------------------------------------------------------------
 
 'use client';
 
@@ -78,7 +87,7 @@ export function LoginCredentials({
         id="login-email-or-phone"
         name="emailOrPhoneNumber"
         type="text"
-        inputMode="email"
+        inputMode="text"
         value={value}
         onChange={onChange}
         disabled={disabled}
@@ -112,4 +121,3 @@ export function LoginCredentials({
 }
 
 export default LoginCredentials;
-

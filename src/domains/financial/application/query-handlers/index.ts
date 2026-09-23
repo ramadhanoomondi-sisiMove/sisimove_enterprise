@@ -20,6 +20,21 @@
 export * from './get-financial-account.handler';
 
 // -----------------------------------------------------------------------------
+// My Financial Account
+// -----------------------------------------------------------------------------
+//
+// Retrieves the Financial Account belonging to the currently authenticated
+// identity.
+//
+// The authenticated identity is resolved by the application layer. The
+// presentation layer must not supply or trust an arbitrary owner public ID
+// for this query.
+//
+// -----------------------------------------------------------------------------
+
+export * from './get-my-financial-account.handler';
+
+// -----------------------------------------------------------------------------
 // Financial Account Balance
 // -----------------------------------------------------------------------------
 

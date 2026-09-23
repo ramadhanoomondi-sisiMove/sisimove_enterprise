@@ -30,6 +30,14 @@
 // Validation remains owned by registerUserSchema.
 // Transport mapping remains owned by the registration form/application layer.
 //
+// Phone-number presentation:
+//
+// - The user is explicitly told that international format is required.
+// - The component does NOT silently convert local numbers.
+// - The leading `+` is required.
+// - Example: +254 700 000 000
+// - Actual validation remains owned by registerUserSchema.
+//
 // -----------------------------------------------------------------------------
 
 'use client';
@@ -60,6 +68,9 @@ export interface RegisterFormFieldsProps {
 
   /**
    * Traveller's phone number.
+   *
+   * The value is expected to be entered in international format,
+   * including the leading +.
    */
   readonly phoneNumber: string;
 
@@ -271,11 +282,14 @@ export function RegisterFormFields({
             inputMode="tel"
             disabled={disabled}
             aria-invalid={phoneNumberError ? true : undefined}
-            aria-describedby={
+            aria-describedby={[
+              'register-phone-number-help',
               phoneNumberError
                 ? 'register-phone-number-error'
-                : undefined
-            }
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' ')}
             placeholder="+254 700 000 000"
             className={[
               'block w-full rounded-xl border bg-white px-4 py-3',
@@ -289,6 +303,19 @@ export function RegisterFormFields({
                   : 'border-slate-300 focus:border-blue-600',
             ].join(' ')}
           />
+
+          <p
+            id="register-phone-number-help"
+            className="text-xs leading-5 text-slate-500"
+          >
+            Enter your phone number in international format, starting with
+            <span className="font-medium text-slate-700"> +</span>.
+            Example:
+            <span className="font-medium text-slate-700">
+              {' '}
+              +254 700 000 000
+            </span>
+          </p>
 
           {phoneNumberError ? (
             <p
@@ -360,3 +387,4 @@ export function RegisterFormFields({
 // -----------------------------------------------------------------------------
 
 export default RegisterFormFields;
+

@@ -993,9 +993,10 @@ export class AssetsController {
         visibility: {
           type: 'string',
           enum: [AssetVisibility.PUBLIC, AssetVisibility.PRIVATE],
-          example: AssetVisibility.PRIVATE,
-          default: AssetVisibility.PRIVATE,
-          description: 'Visibility of the Asset.',
+          example: AssetVisibility.PUBLIC,
+          default: AssetVisibility.PUBLIC,
+          description:
+            'Visibility of the Asset. Assets are public by default and may be explicitly made private.',
         },
       },
     },
@@ -1048,7 +1049,7 @@ export class AssetsController {
     const category = AssetCategory.create(dto.category);
 
     const visibility = AssetVisibility.create(
-      dto.visibility ?? AssetVisibility.PRIVATE,
+      dto.visibility ?? AssetVisibility.PUBLIC,
     );
 
     // -------------------------------------------------------------------------

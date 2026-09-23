@@ -14,6 +14,14 @@
 //    Output of the schema. `termsAccepted` is guaranteed to be `true` because
 //    registration is only valid after the user accepts the terms.
 //
+// Phone number:
+//
+// - Users must enter the phone number in international format.
+// - The value MUST begin with `+`.
+// - The frontend does NOT silently convert local numbers.
+// - Example:
+//       +254 700 000 000
+//
 // The API request is deliberately NOT defined by this schema.
 // The registration API model remains the authoritative HTTP contract.
 //
@@ -43,8 +51,12 @@ export const registerUserSchema = z
     phoneNumber: z
       .string()
       .trim()
-      .min(7, 'Enter a valid phone number.')
-      .max(20, 'Enter a valid phone number.'),
+      .min(1, 'Enter your phone number.')
+      .max(20, 'Your phone number is too long.')
+      .regex(
+        /^\+[1-9][0-9\s()-]{6,18}[0-9]$/,
+        'Use international format, starting with +. Example: +254 700 000 000',
+      ),
 
     password: z
       .string()
@@ -80,7 +92,7 @@ export const registerUserSchema = z
 //
 // That is correct for validated data but incorrect for an interactive
 // checkbox whose initial state is false.
-//
+// -----------------------------------------------------------------------------
 
 export interface RegisterUserFormValues {
   readonly travellerName: string;
@@ -97,7 +109,7 @@ export interface RegisterUserFormValues {
 // -----------------------------------------------------------------------------
 //
 // This is the type produced after successful schema validation.
-//
+// -----------------------------------------------------------------------------
 
 export type RegisterUserValidatedValues = z.infer<
   typeof registerUserSchema
