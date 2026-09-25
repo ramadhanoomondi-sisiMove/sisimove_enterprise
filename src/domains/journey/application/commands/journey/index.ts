@@ -8,7 +8,6 @@ export { AttachJourneyVehicleCommand } from './attach-journey-vehicle.command';
 export { AttachJourneyAssetCommand } from './attach-journey-asset.command';
 export { AttachJourneyCapacityCommand } from './attach-journey-capacity.command';
 
-
 export { AddJourneyWaypointCommand } from './add-journey-waypoint.command';
 
 export { CancelJourneyCommand } from './cancel-journey.command';

@@ -10,15 +10,30 @@ import { Command } from '../../../../../foundation/kernel/application/command';
 // Command
 // -----------------------------------------------------------------------------
 
+/**
+ * Cancels a Journey.
+ *
+ * Application-layer responsibility:
+ * - Carries primitive command input.
+ * - Identifies the Journey by public identifier.
+ * - Carries optional cancellation metadata.
+ * - Carries tracing identifiers.
+ *
+ * Domain-layer responsibility:
+ * - Resolves the Journey aggregate.
+ * - Validates whether the Journey can be cancelled.
+ * - Performs the cancellation transition.
+ * - Records the cancellation timestamp/reason through domain behavior.
+ */
 export class CancelJourneyCommand extends Command {
-  constructor(
+  public constructor(
     /**
      * Public identifier of the Journey to cancel.
      */
     public readonly journeyPublicId: string,
 
     /**
-     * Optional reason for cancellation.
+     * Optional reason supplied by the caller.
      */
     public readonly reason: string | undefined,
 
@@ -33,9 +48,10 @@ export class CancelJourneyCommand extends Command {
     public readonly causationId?: string,
 
     /**
-     * Effective cancellation timestamp.
+     * Optional effective cancellation timestamp.
      *
-     * Defaults to the handler execution time when omitted.
+     * When omitted, the application handler should use the current
+     * execution time.
      */
     public readonly cancelledAt?: Date,
   ) {

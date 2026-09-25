@@ -1,45 +1,38 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+
+import { IsNumber, IsString, MaxLength, Min } from 'class-validator';
 
 // -----------------------------------------------------------------------------
 // DTO
 // -----------------------------------------------------------------------------
 
+/**
+ * Request body for attaching pricing configuration to a Journey.
+ *
+ * The Journey public ID is supplied by the route:
+ *
+ *     POST /journeys/:journeyPublicId/pricing
+ *
+ * The JourneyPricing child entity is created by the application layer.
+ *
+ * Correlation and causation identifiers are application concerns and are
+ * therefore not supplied by the HTTP client.
+ */
 export class AttachPricingDto {
   @ApiProperty({
-    example: 'JRN-ABC12345',
-    description: 'Public ID of the Journey to update.',
+    example: 1500,
+    description:
+      'Passenger price for the Journey, expressed in the smallest unit of the configured currency.',
   })
-  @IsString()
-  @MinLength(3)
-  @MaxLength(100)
-  journeyPublicId!: string;
+  @IsNumber()
+  @Min(0)
+  amount!: number;
 
   @ApiProperty({
-    example: 'JPR-ABC12345',
-    description: 'Public ID of the Journey pricing configuration to attach.',
+    example: 'KES',
+    description: 'ISO currency code for the Journey price.',
   })
   @IsString()
-  @MinLength(3)
-  @MaxLength(100)
-  pricingPublicId!: string;
-
-  @ApiProperty({
-    example: 'corr-01J8XYZ123',
-    description: 'Correlation identifier for distributed tracing.',
-  })
-  @IsString()
-  @MinLength(1)
-  @MaxLength(200)
-  correlationId!: string;
-
-  @ApiPropertyOptional({
-    example: 'cmd-01J8XYZ456',
-    description: 'Optional causation identifier for distributed tracing.',
-  })
-  @IsOptional()
-  @IsString()
-  @MinLength(1)
-  @MaxLength(200)
-  causationId?: string;
+  @MaxLength(3)
+  currency!: string;
 }

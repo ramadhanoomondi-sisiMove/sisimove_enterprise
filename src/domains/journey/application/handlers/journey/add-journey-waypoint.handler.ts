@@ -4,20 +4,28 @@
 // sisiMove — Add Journey Waypoint Command Handler
 // -----------------------------------------------------------------------------
 //
-// Application-layer command handler for adding an existing Journey Waypoint
-// to a Journey aggregate.
+// Application-layer command handler responsible for creating a new Journey
+// Waypoint and attaching it to the Journey aggregate.
 //
 // Responsibilities:
 // - resolve the Journey aggregate through its public ID;
-// - resolve the existing Journey Waypoint within the Journey aggregate boundary;
-// - delegate the mutation to the Journey aggregate;
+// - construct the Journey Waypoint domain Value Objects;
+// - create the JourneyWaypointEntity;
+// - delegate attachment to the Journey aggregate;
 // - persist the mutated aggregate.
 //
 // The handler does NOT:
 // - access Prisma directly;
 // - perform HTTP concerns;
 // - construct infrastructure repositories;
+// - implement Journey business rules;
 // - mutate persistence models directly.
+//
+// The Journey aggregate remains responsible for:
+// - corridor existence;
+// - waypoint ownership;
+// - waypoint attachment;
+// - aggregate invariants.
 //
 // Dependency injection is resolved through the Journey application token
 // registry.
@@ -43,13 +51,30 @@ import type { CommandHandler } from '../../../../../foundation/kernel/applicatio
 import type { AddJourneyWaypointCommand } from '../../commands/journey/add-journey-waypoint.command';
 
 // -----------------------------------------------------------------------------
-// Domain
+// Domain — Entity
+// -----------------------------------------------------------------------------
+
+import { JourneyWaypointEntity } from '../../../domain/entities/journey-waypoint.entity';
+
+// -----------------------------------------------------------------------------
+// Domain — Repository
 // -----------------------------------------------------------------------------
 
 import type { JourneyRepository } from '../../../domain/repositories/journey.repository';
 
-import { JourneyPublicId } from '../../../domain/value-objects/journey-public-id.vo';
-import { JourneyWaypointPublicId } from '../../../domain/value-objects/journey-waypoint-public-id.vo';
+// -----------------------------------------------------------------------------
+// Domain — Value Objects
+// -----------------------------------------------------------------------------
+
+import {
+  JourneyLatitude,
+  JourneyLocationName,
+  JourneyLongitude,
+  JourneyPublicId,
+  JourneyWaypointPublicId,
+  JourneyWaypointSequence,
+  JourneyWaypointTypeValueObject,
+} from '../../../domain/value-objects';
 
 // -----------------------------------------------------------------------------
 // Application
@@ -79,6 +104,9 @@ export class AddJourneyWaypointHandler implements CommandHandler<AddJourneyWaypo
   public async execute(command: AddJourneyWaypointCommand): Promise<void> {
     // -------------------------------------------------------------------------
     // Resolve Journey Aggregate
+    //
+    // The command currently carries JourneyPublicId as a primitive, so the
+    // application boundary converts it into the Journey domain Value Object.
     // -------------------------------------------------------------------------
 
     const journeyPublicId = new JourneyPublicId(command.journeyPublicId);
@@ -91,37 +119,64 @@ export class AddJourneyWaypointHandler implements CommandHandler<AddJourneyWaypo
     }
 
     // -------------------------------------------------------------------------
-    // Resolve Waypoint Within Journey Aggregate Boundary
+    // Construct Waypoint Value Objects
+    //
+    // The handler translates primitive command input into domain types.
+    // Domain validation therefore remains inside the respective Value Objects.
     // -------------------------------------------------------------------------
-    //
-    // The waypoint is resolved through the Journey repository using the
-    // aggregate's internal identity. This keeps the waypoint subordinate to
-    // the Journey aggregate rather than treating it as an independent
-    // aggregate.
-    //
-    const waypointPublicId = new JourneyWaypointPublicId(
-      command.waypointPublicId,
-    );
 
-    const waypoint = await this.journeyRepository.findWaypointByPublicId(
-      journey.journeyId,
-      waypointPublicId,
-    );
+    const waypointPublicId = new JourneyWaypointPublicId();
 
-    if (waypoint === null) {
-      throw new Error(
-        `Journey waypoint '${command.waypointPublicId}' was not found ` +
-          `for Journey '${command.journeyPublicId}'.`,
-      );
-    }
+    const type = new JourneyWaypointTypeValueObject(command.type);
+
+    const sequence = new JourneyWaypointSequence(command.sequence);
+
+    const name = new JourneyLocationName(command.name);
+
+    const latitude = new JourneyLatitude(command.latitude);
+
+    const longitude = new JourneyLongitude(command.longitude);
 
     // -------------------------------------------------------------------------
-    // Domain Mutation
+    // Create Journey Waypoint Entity
     // -------------------------------------------------------------------------
     //
-    // All business invariants for adding the waypoint remain inside the
-    // Journey aggregate.
+    // The waypoint is a child entity of Journey.
     //
+    // Its public identity is generated here because this operation creates a
+    // new waypoint rather than attaching an existing one.
+    // -------------------------------------------------------------------------
+
+    const now = new Date();
+
+    const waypoint = JourneyWaypointEntity.create({
+      publicId: waypointPublicId,
+
+      type,
+      sequence,
+
+      name,
+
+      latitude,
+      longitude,
+
+      pickupAllowed: command.pickupAllowed,
+      dropoffAllowed: command.dropoffAllowed,
+
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // -------------------------------------------------------------------------
+    // Aggregate Mutation
+    // -------------------------------------------------------------------------
+    //
+    // The aggregate owns the business rules governing waypoint attachment.
+    //
+    // In particular, JourneyAggregate.addWaypoint() ensures that a Journey
+    // corridor exists before the waypoint can be attached.
+    //
+
     journey.addWaypoint(waypoint);
 
     // -------------------------------------------------------------------------

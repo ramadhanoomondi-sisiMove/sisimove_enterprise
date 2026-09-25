@@ -1,20 +1,34 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import {
+  IsEnum,
+  IsNumber,
+  IsString,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
+
+import { JourneyAssetType } from '../../../domain/value-objects/journey-asset-type.vo';
 
 // -----------------------------------------------------------------------------
 // DTO
 // -----------------------------------------------------------------------------
 
+/**
+ * Request body for attaching an external Asset to a Journey.
+ *
+ * The Journey public ID is supplied by the route:
+ *
+ *     POST /journeys/:journeyPublicId/assets
+ *
+ * The asset itself belongs to the Asset domain and is referenced by its
+ * public ID. The JourneyAsset child entity is created by the application
+ * layer and attached to the Journey aggregate.
+ *
+ * Correlation and causation identifiers are application concerns and are
+ * therefore not supplied by the HTTP client.
+ */
 export class AttachAssetDto {
-  @ApiProperty({
-    example: 'JRN-ABC12345',
-    description: 'Public ID of the Journey to update.',
-  })
-  @IsString()
-  @MinLength(3)
-  @MaxLength(100)
-  journeyPublicId!: string;
-
   @ApiProperty({
     example: 'AST-ABC12345',
     description: 'Public ID of the external Asset to attach to the Journey.',
@@ -25,21 +39,19 @@ export class AttachAssetDto {
   assetPublicId!: string;
 
   @ApiProperty({
-    example: 'corr-01J8XYZ123',
-    description: 'Correlation identifier for distributed tracing.',
+    enum: JourneyAssetType,
+    example: JourneyAssetType.GALLERY,
+    description: 'Role of the Asset within the Journey.',
   })
-  @IsString()
-  @MinLength(1)
-  @MaxLength(200)
-  correlationId!: string;
+  @IsEnum(JourneyAssetType)
+  type!: JourneyAssetType;
 
-  @ApiPropertyOptional({
-    example: 'cmd-01J8XYZ456',
-    description: 'Optional causation identifier for distributed tracing.',
+  @ApiProperty({
+    example: 0,
+    description:
+      'Zero-based display order of the Asset within the Journey assets.',
   })
-  @IsOptional()
-  @IsString()
-  @MinLength(1)
-  @MaxLength(200)
-  causationId?: string;
+  @IsNumber()
+  @Min(0)
+  sortOrder!: number;
 }

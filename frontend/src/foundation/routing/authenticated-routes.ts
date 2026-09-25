@@ -26,7 +26,8 @@
 // - define Next.js middleware.
 //
 // Those responsibilities belong to their respective application boundaries.
-//
+// -----------------------------------------------------------------------------
+
 // -----------------------------------------------------------------------------
 // Authenticated application
 // -----------------------------------------------------------------------------
@@ -40,36 +41,11 @@
 //     /my-demands
 //         Traveller's journey-demand management surface.
 //
-//     /journeys/create
-//         Journey creation entry point. Creates the draft exactly once and
-//         redirects to the first journey-creation step.
+//     /my-bookings
+//         Traveller's Journey Booking management surface.
 //
-//     /journeys/create/[journeyPublicId]
-//         Journey creation aggregate-specific root.
-//
-//     /journeys/create/[journeyPublicId]/route
-//         Journey creation — route step.
-//
-//     /journeys/create/[journeyPublicId]/schedule
-//         Journey creation — schedule step.
-//
-//     /journeys/create/[journeyPublicId]/vehicle
-//         Journey creation — vehicle step.
-//
-//     /journeys/create/[journeyPublicId]/seats
-//         Journey creation — capacity/seats step.
-//
-//     /journeys/create/[journeyPublicId]/pricing
-//         Journey creation — pricing step.
-//
-//     /journeys/create/[journeyPublicId]/preferences
-//         Journey creation — traveller preferences step.
-//
-//     /journeys/create/[journeyPublicId]/photos
-//         Journey creation — journey photos/assets step.
-//
-//     /journeys/create/[journeyPublicId]/review
-//         Journey creation — final review and publication step.
+//     /bookings/[journeyBookingPublicId]
+//         Authenticated Journey Booking detail surface.
 //
 //     /assets
 //         Traveller's generic Asset-management surface.
@@ -83,105 +59,11 @@
 //     /wallet
 //         Traveller's financial-account and wallet overview.
 //
-//     /wallet/top-up
-//         Wallet top-up flow.
-//
-//     /wallet/withdraw
-//         Wallet withdrawal flow.
-//
-//     /wallet/transactions
-//         Wallet transaction activity surface.
-//
-//     /wallet/transactions/[transactionPublicId]
-//         Individual financial transaction detail.
-//
-//     /wallet/payment-methods
-//         Wallet payment-method management surface.
-//
 //     /support
 //         Authenticated support surface.
 //
 //     /settings
 //         Authenticated application settings surface.
-//
-// -----------------------------------------------------------------------------
-// Next.js route-file mapping
-// -----------------------------------------------------------------------------
-//
-// The "(authenticated)" directory is a Next.js route group and therefore
-// does not appear in the public URL.
-//
-//     app/(authenticated)/home/page.tsx
-//         → /home
-//
-//     app/(authenticated)/my-journeys/page.tsx
-//         → /my-journeys
-//
-//     app/(authenticated)/my-demands/page.tsx
-//         → /my-demands
-//
-//     app/(authenticated)/journeys/create/page.tsx
-//         → /journeys/create
-//
-//     app/(authenticated)/journeys/create/[journeyPublicId]/page.tsx
-//         → /journeys/create/[journeyPublicId]
-//
-//     app/(authenticated)/journeys/create/[journeyPublicId]/route/page.tsx
-//         → /journeys/create/[journeyPublicId]/route
-//
-//     app/(authenticated)/journeys/create/[journeyPublicId]/schedule/page.tsx
-//         → /journeys/create/[journeyPublicId]/schedule
-//
-//     app/(authenticated)/journeys/create/[journeyPublicId]/vehicle/page.tsx
-//         → /journeys/create/[journeyPublicId]/vehicle
-//
-//     app/(authenticated)/journeys/create/[journeyPublicId]/seats/page.tsx
-//         → /journeys/create/[journeyPublicId]/seats
-//
-//     app/(authenticated)/journeys/create/[journeyPublicId]/pricing/page.tsx
-//         → /journeys/create/[journeyPublicId]/pricing
-//
-//     app/(authenticated)/journeys/create/[journeyPublicId]/preferences/page.tsx
-//         → /journeys/create/[journeyPublicId]/preferences
-//
-//     app/(authenticated)/journeys/create/[journeyPublicId]/photos/page.tsx
-//         → /journeys/create/[journeyPublicId]/photos
-//
-//     app/(authenticated)/journeys/create/[journeyPublicId]/review/page.tsx
-//         → /journeys/create/[journeyPublicId]/review
-//
-//     app/(authenticated)/assets/page.tsx
-//         → /assets
-//
-//     app/(authenticated)/profile/page.tsx
-//         → /profile
-//
-//     app/(authenticated)/profile/verification/page.tsx
-//         → /profile/verification
-//
-//     app/(authenticated)/wallet/page.tsx
-//         → /wallet
-//
-//     app/(authenticated)/wallet/top-up/page.tsx
-//         → /wallet/top-up
-//
-//     app/(authenticated)/wallet/withdraw/page.tsx
-//         → /wallet/withdraw
-//
-//     app/(authenticated)/wallet/transactions/page.tsx
-//         → /wallet/transactions
-//
-//     app/(authenticated)/wallet/transactions/[transactionPublicId]/page.tsx
-//         → /wallet/transactions/[transactionPublicId]
-//
-//     app/(authenticated)/wallet/payment-methods/page.tsx
-//         → /wallet/payment-methods
-//
-//     app/(authenticated)/support/page.tsx
-//         → /support
-//
-//     app/(authenticated)/settings/page.tsx
-//         → /settings
 //
 // -----------------------------------------------------------------------------
 
@@ -199,6 +81,8 @@ export const AUTHENTICATED_ROUTES = {
   MY_JOURNEYS: '/my-journeys',
 
   MY_DEMANDS: '/my-demands',
+
+  MY_BOOKINGS: '/my-bookings',
 
   ASSETS: '/assets',
 
@@ -243,6 +127,83 @@ export const AUTHENTICATED_ROUTES = {
 
   JOURNEY_CREATE_REVIEW: (journeyPublicId: string) =>
     `/journeys/create/${journeyPublicId}/review`,
+
+  // ---------------------------------------------------------------------------
+  // Journey detail
+  // ---------------------------------------------------------------------------
+
+  JOURNEY: (journeyPublicId: string) =>
+    `/journeys/${journeyPublicId}`,
+
+  // ---------------------------------------------------------------------------
+  // Journey-demand management
+  // ---------------------------------------------------------------------------
+
+  JOURNEY_DEMANDS: '/journey-demands',
+
+  JOURNEY_DEMAND_CREATE_START: '/journey-demands/create',
+
+  JOURNEY_DEMAND_CREATE: (journeyDemandPublicId: string) =>
+    `/journey-demands/create/${journeyDemandPublicId}`,
+
+  JOURNEY_DEMAND_CREATE_ROUTE: (journeyDemandPublicId: string) =>
+    `/journey-demands/create/${journeyDemandPublicId}/route`,
+
+  JOURNEY_DEMAND_CREATE_SCHEDULE: (journeyDemandPublicId: string) =>
+    `/journey-demands/create/${journeyDemandPublicId}/schedule`,
+
+  JOURNEY_DEMAND_CREATE_SEATS: (journeyDemandPublicId: string) =>
+    `/journey-demands/create/${journeyDemandPublicId}/seats`,
+
+  JOURNEY_DEMAND_CREATE_PRICING: (journeyDemandPublicId: string) =>
+    `/journey-demands/create/${journeyDemandPublicId}/pricing`,
+
+  JOURNEY_DEMAND_CREATE_REVIEW: (journeyDemandPublicId: string) =>
+    `/journey-demands/create/${journeyDemandPublicId}/review`,
+
+  // ---------------------------------------------------------------------------
+  // Journey-demand detail
+  // ---------------------------------------------------------------------------
+
+  JOURNEY_DEMAND: (journeyDemandPublicId: string) =>
+    `/journey-demands/${journeyDemandPublicId}`,
+
+  // ---------------------------------------------------------------------------
+  // Journey Booking
+  // ---------------------------------------------------------------------------
+  //
+  // IMPORTANT:
+  //
+  // These are UI routes, not backend API routes.
+  //
+  // Backend:
+  //
+  //     /journey-bookings/...
+  //
+  // Authenticated application:
+  //
+  //     /my-bookings
+  //     /bookings/[journeyBookingPublicId]
+  //
+  // The separation is intentional. The UI uses traveller-facing terminology
+  // while the HTTP API retains its bounded-context resource name.
+  //
+  // The booking identifier exposed in the URL is always JourneyBooking.publicId.
+  // Internal persistence IDs must never be exposed.
+  //
+  // Lifecycle operations remain mutations on the booking detail surface:
+  //
+  //     confirm
+  //     cancel
+  //     complete
+  //     expire
+  //
+  // They are not represented as artificial page routes.
+  //
+  // ---------------------------------------------------------------------------
+
+  BOOKING: (journeyBookingPublicId: string) =>
+    `/bookings/${journeyBookingPublicId}`,
 
   // ---------------------------------------------------------------------------
   // Traveller profile
@@ -300,5 +261,3 @@ export type AuthenticatedRoute = Extract<
   AuthenticatedRouteValue,
   string
 >;
-
-

@@ -1,3 +1,4 @@
+//frontend/src/features/authentication/http/authenticated-api-client.ts
 // -----------------------------------------------------------------------------
 // sisiMove — Authenticated API Client
 // -----------------------------------------------------------------------------

@@ -272,7 +272,6 @@ import {
   AttachVehicleDto,
   CancelJourneyDto,
   CompleteJourneyDto,
-  CreateJourneyDto,
   ExpireJourneyDto,
   PublishJourneyDto,
   StartJourneyDto,
@@ -321,35 +320,20 @@ import type { MyJourneyResponse } from '../../../application/responses/my-journe
 // -----------------------------------------------------------------------------
 // Journey — Domain Value Objects
 // -----------------------------------------------------------------------------
+//
+// Only public identifiers still required by the HTTP controller are imported.
+//
+// Configuration enums are deliberately NOT cast here. DTOs already expose
+// their domain enum types and therefore pass directly into commands.
+//
+// -----------------------------------------------------------------------------
 
 import {
   JourneyAssetPublicIdReference,
-  JourneyCapacityPublicId,
-  JourneyCorridorPublicId,
-  JourneyPreferencesPublicId,
-  JourneyPricingPublicId,
   JourneyPublicId,
-  JourneySchedulePublicId,
   JourneyStatus,
-  JourneyVehiclePublicId,
   JourneyWaypointPublicId,
-} from 'src/domains/journey/domain/value-objects';
-
-// -----------------------------------------------------------------------------
-// Journey — Internal HTTP Response Type
-// -----------------------------------------------------------------------------
-//
-// This response type belongs only to endpoints that intentionally expose the
-// existing internal Journey REST representation.
-//
-// The public marketplace and authenticated "my journeys" boundaries use their
-// own explicit application-facing contracts.
-//
-// -----------------------------------------------------------------------------
-
-type JourneyEntityResponse = ReturnType<
-  typeof JourneyResponseMapper.fromEntity
->;
+} from '../../../domain/value-objects';
 
 // =============================================================================
 // Controller
@@ -471,15 +455,6 @@ export class JourneyController {
     // =========================================================================
     // Authenticated Journey Queries
     // =========================================================================
-    //
-    // GET /journeys/me uses the current authenticated identity as the provider
-    // reference.
-    //
-    // No providerPublicId is accepted from the client.
-    //
-    // The repository/query boundary remains unchanged.
-    //
-    // =========================================================================
 
     @Inject(JOURNEY_TOKENS.QUERY_HANDLERS.GET_BY_PROVIDER)
     private readonly getJourneysByProviderQueryHandler: QueryHandler<
@@ -501,24 +476,6 @@ export class JourneyController {
 
     // =========================================================================
     // Public Journey Collection / Detail Query
-    // =========================================================================
-    //
-    // GetPublicJourneysQuery is intentionally the ONLY public Journey
-    // collection/detail query.
-    //
-    // Collection:
-    //
-    //     new GetPublicJourneysQuery(
-    //       undefined,
-    //       from,
-    //       to,
-    //       date,
-    //     )
-    //
-    // Detail:
-    //
-    //     new GetPublicJourneysQuery(publicId)
-    //
     // =========================================================================
 
     @Inject(JOURNEY_TOKENS.QUERY_HANDLERS.GET_PUBLIC_MANY)
@@ -700,7 +657,7 @@ export class JourneyController {
     @Query('from') from: string,
     @Query('to') to: string,
     @Query('date') date: string,
-  ): Promise<readonly JourneyEntityResponse[]> {
+  ): Promise<readonly ReturnType<typeof JourneyResponseMapper.fromEntity>[]> {
     const journeys = await this.searchPublishedJourneysQueryHandler.execute(
       new SearchPublishedJourneysQuery(from, to, date),
     );
@@ -714,30 +671,6 @@ export class JourneyController {
 
   // ---------------------------------------------------------------------------
   // Get My Journeys
-  // ---------------------------------------------------------------------------
-  //
-  // Authenticated Journey-management boundary.
-  //
-  //     GET /journeys/me
-  //
-  // Ownership:
-  //
-  //     JWT
-  //       ↓
-  //     AuthenticatedIdentity.identityPublicId
-  //       ↓
-  //     GetJourneysByProviderQuery
-  //
-  // The client cannot choose providerPublicId.
-  //
-  // The query handler still returns JourneyAggregate[] because that is the
-  // existing application query contract.
-  //
-  // The controller then converts those aggregates into MyJourneyResponse
-  // objects before crossing the HTTP boundary.
-  //
-  // This prevents the domain aggregate from becoming an accidental REST
-  // contract.
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -1044,6 +977,10 @@ export class JourneyController {
   // CORRIDOR
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Get Public Journey Corridor
+  // ---------------------------------------------------------------------------
+
   @ApiOperation({
     summary: 'Get public journey corridor',
     description: 'Returns the corridor of a publicly discoverable journey.',
@@ -1063,10 +1000,14 @@ export class JourneyController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Attach / Configure Corridor
+  // ---------------------------------------------------------------------------
+
   @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Attach corridor',
-    description: 'Attaches a corridor to a journey.',
+    summary: 'Configure journey corridor',
+    description: 'Creates and attaches a corridor configuration to a journey.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -1084,15 +1025,24 @@ export class JourneyController {
     await this.attachCorridorHandler.execute(
       new AttachJourneyCorridorCommand(
         new JourneyPublicId(journeyPublicId),
-        new JourneyCorridorPublicId(dto.corridorPublicId),
+        dto.originName,
+        dto.originLatitude,
+        dto.originLongitude,
+        dto.destinationName,
+        dto.destinationLatitude,
+        dto.destinationLongitude,
         randomUUID(),
       ),
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Remove Corridor
+  // ---------------------------------------------------------------------------
+
   @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Remove corridor',
+    summary: 'Remove journey corridor',
     description: 'Removes the corridor from a journey.',
   })
   @ApiParam({
@@ -1116,6 +1066,10 @@ export class JourneyController {
   // WAYPOINTS
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Get Public Journey Waypoints
+  // ---------------------------------------------------------------------------
+
   @ApiOperation({
     summary: 'Get public journey waypoints',
     description:
@@ -1135,6 +1089,10 @@ export class JourneyController {
       new GetJourneyWaypointsQuery(new JourneyPublicId(journeyPublicId)),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Get Public Journey Waypoint
+  // ---------------------------------------------------------------------------
 
   @ApiOperation({
     summary: 'Get public journey waypoint',
@@ -1166,10 +1124,15 @@ export class JourneyController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Add Journey Waypoint
+  // ---------------------------------------------------------------------------
+
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Add journey waypoint',
-    description: 'Adds a waypoint to a journey.',
+    description:
+      'Creates a waypoint from the supplied configuration and adds it to the journey corridor.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -1187,11 +1150,21 @@ export class JourneyController {
     await this.addWaypointHandler.execute(
       new AddJourneyWaypointCommand(
         journeyPublicId,
-        dto.waypointPublicId,
+        dto.type,
+        dto.sequence,
+        dto.name,
+        dto.latitude,
+        dto.longitude,
+        dto.pickupAllowed,
+        dto.dropoffAllowed,
         randomUUID(),
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Remove Journey Waypoint
+  // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -1230,6 +1203,10 @@ export class JourneyController {
   // SCHEDULE
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Get Public Journey Schedule
+  // ---------------------------------------------------------------------------
+
   @ApiOperation({
     summary: 'Get public journey schedule',
     description: 'Returns the schedule of a publicly discoverable journey.',
@@ -1249,10 +1226,14 @@ export class JourneyController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Attach / Configure Schedule
+  // ---------------------------------------------------------------------------
+
   @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Attach journey schedule',
-    description: 'Attaches a schedule to a journey.',
+    summary: 'Configure journey schedule',
+    description: 'Creates and attaches a schedule configuration to a journey.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -1270,11 +1251,17 @@ export class JourneyController {
     await this.attachScheduleHandler.execute(
       new AttachJourneyScheduleCommand(
         new JourneyPublicId(journeyPublicId),
-        new JourneySchedulePublicId(dto.schedulePublicId),
+        new Date(dto.departureAt),
+        dto.arrivalAt !== undefined ? new Date(dto.arrivalAt) : undefined,
+        dto.timezone,
         randomUUID(),
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Remove Journey Schedule
+  // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -1305,6 +1292,10 @@ export class JourneyController {
   // VEHICLE
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Get Public Journey Vehicle
+  // ---------------------------------------------------------------------------
+
   @ApiOperation({
     summary: 'Get public journey vehicle',
     description: 'Returns the vehicle of a publicly discoverable journey.',
@@ -1324,10 +1315,14 @@ export class JourneyController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Attach / Configure Vehicle
+  // ---------------------------------------------------------------------------
+
   @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Attach journey vehicle',
-    description: 'Attaches a vehicle to a journey.',
+    summary: 'Configure journey vehicle',
+    description: 'Creates and attaches a vehicle configuration to a journey.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -1345,11 +1340,20 @@ export class JourneyController {
     await this.attachVehicleHandler.execute(
       new AttachJourneyVehicleCommand(
         new JourneyPublicId(journeyPublicId),
-        new JourneyVehiclePublicId(dto.vehiclePublicId),
+        dto.make,
+        dto.model,
+        dto.year,
+        dto.color,
+        dto.registration,
+        dto.assetPublicId,
         randomUUID(),
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Remove Journey Vehicle
+  // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -1380,6 +1384,10 @@ export class JourneyController {
   // CAPACITY
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Get Public Journey Capacity
+  // ---------------------------------------------------------------------------
+
   @ApiOperation({
     summary: 'Get public journey capacity',
     description: 'Returns the capacity of a publicly discoverable journey.',
@@ -1399,10 +1407,15 @@ export class JourneyController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Attach / Configure Capacity
+  // ---------------------------------------------------------------------------
+
   @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Attach journey capacity',
-    description: 'Attaches capacity information to a journey.',
+    summary: 'Configure journey capacity',
+    description:
+      'Creates and attaches capacity information to a journey. A newly configured journey starts with zero booked seats.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -1420,11 +1433,16 @@ export class JourneyController {
     await this.attachCapacityHandler.execute(
       new AttachJourneyCapacityCommand(
         new JourneyPublicId(journeyPublicId),
-        new JourneyCapacityPublicId(dto.capacityPublicId),
+        dto.totalSeats,
+        dto.bookedSeats,
         randomUUID(),
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Remove Journey Capacity
+  // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -1452,6 +1470,10 @@ export class JourneyController {
   // PRICING
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Get Public Journey Pricing
+  // ---------------------------------------------------------------------------
+
   @ApiOperation({
     summary: 'Get public journey pricing',
     description: 'Returns pricing of a publicly discoverable journey.',
@@ -1471,10 +1493,14 @@ export class JourneyController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Attach / Configure Pricing
+  // ---------------------------------------------------------------------------
+
   @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Attach journey pricing',
-    description: 'Attaches pricing information to a journey.',
+    summary: 'Configure journey pricing',
+    description: 'Creates and attaches pricing information to a journey.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -1492,11 +1518,16 @@ export class JourneyController {
     await this.attachPricingHandler.execute(
       new AttachPricingCommand(
         new JourneyPublicId(journeyPublicId),
-        new JourneyPricingPublicId(dto.pricingPublicId),
+        dto.amount,
+        dto.currency,
         randomUUID(),
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Remove Journey Pricing
+  // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -1524,6 +1555,10 @@ export class JourneyController {
   // PREFERENCES
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Get Public Journey Preferences
+  // ---------------------------------------------------------------------------
+
   @ApiOperation({
     summary: 'Get public journey preferences',
     description: 'Returns preferences of a publicly discoverable journey.',
@@ -1543,10 +1578,15 @@ export class JourneyController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Attach / Configure Preferences
+  // ---------------------------------------------------------------------------
+
   @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Attach journey preferences',
-    description: 'Attaches preferences to a journey.',
+    summary: 'Configure journey preferences',
+    description:
+      'Creates and attaches travel preference configuration to a journey.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -1564,11 +1604,19 @@ export class JourneyController {
     await this.attachPreferencesHandler.execute(
       new AttachPreferencesCommand(
         new JourneyPublicId(journeyPublicId),
-        new JourneyPreferencesPublicId(dto.preferencesPublicId),
+        dto.smoking,
+        dto.pets,
+        dto.luggage,
+        dto.conversation,
+        dto.music,
         randomUUID(),
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Remove Journey Preferences
+  // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -1599,6 +1647,10 @@ export class JourneyController {
   // ASSETS
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Get Public Journey Assets
+  // ---------------------------------------------------------------------------
+
   @ApiOperation({
     summary: 'Get public journey assets',
     description: 'Returns assets belonging to a publicly discoverable journey.',
@@ -1618,6 +1670,10 @@ export class JourneyController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Get Public Journey Asset
+  // ---------------------------------------------------------------------------
+
   @ApiOperation({
     summary: 'Get public journey asset',
     description:
@@ -1633,7 +1689,7 @@ export class JourneyController {
     name: 'assetPublicId',
     type: String,
     required: true,
-    description: 'Public ID of the Journey asset.',
+    description: 'Public ID of the referenced Asset.',
   })
   @Get(':journeyPublicId/assets/:assetPublicId')
   public async getAsset(
@@ -1648,10 +1704,15 @@ export class JourneyController {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Attach / Configure Journey Asset
+  // ---------------------------------------------------------------------------
+
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Attach journey asset',
-    description: 'Attaches an asset to a journey.',
+    description:
+      'Creates a Journey-owned asset attachment referencing an existing Asset-domain resource.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -1670,15 +1731,21 @@ export class JourneyController {
       new AttachJourneyAssetCommand(
         new JourneyPublicId(journeyPublicId),
         new JourneyAssetPublicIdReference(dto.assetPublicId),
+        dto.type,
+        dto.sortOrder,
         randomUUID(),
       ),
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Remove Journey Asset
+  // ---------------------------------------------------------------------------
+
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Remove journey asset',
-    description: 'Removes an asset from a journey.',
+    description: 'Removes an asset attachment from a journey.',
   })
   @ApiParam({
     name: 'journeyPublicId',
@@ -1690,7 +1757,7 @@ export class JourneyController {
     name: 'assetPublicId',
     type: String,
     required: true,
-    description: 'Public ID of the Journey asset.',
+    description: 'Public ID of the referenced Asset.',
   })
   @Delete(':journeyPublicId/assets/:assetPublicId')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)

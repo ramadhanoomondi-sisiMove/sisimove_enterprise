@@ -4,23 +4,21 @@
 // sisiMove — Attach Journey Corridor Command Handler
 // -----------------------------------------------------------------------------
 //
-// Application-layer command handler for attaching an existing Journey Corridor
-// to a Journey aggregate.
+// Application-layer command handler for configuring the corridor of a Journey.
 //
 // Responsibilities:
 // - resolve the Journey aggregate;
-// - resolve the Journey Corridor within the Journey aggregate boundary;
-// - delegate the attachment mutation to the Journey aggregate;
+// - create a new Journey Corridor child entity from command data;
+// - attach the corridor to the Journey aggregate;
 // - persist the mutated aggregate.
-//
-// The command already contains JourneyPublicId and JourneyCorridorPublicId as
-// domain value objects. The handler therefore does not reconstruct them.
 //
 // The handler does NOT:
 // - access Prisma directly;
 // - perform HTTP concerns;
 // - mutate persistence models;
 // - implement Journey business rules.
+//
+// Journey owns the corridor child and its attachment relationship.
 //
 // -----------------------------------------------------------------------------
 
@@ -43,13 +41,27 @@ import type { CommandHandler } from '../../../../../foundation/kernel/applicatio
 import type { AttachJourneyCorridorCommand } from '../../commands/journey/attach-journey-corridor.command';
 
 // -----------------------------------------------------------------------------
-// Exceptions
+// Domain — Entity
+// -----------------------------------------------------------------------------
+
+import { JourneyCorridorEntity } from '../../../domain/entities/journey-corridor.entity';
+
+// -----------------------------------------------------------------------------
+// Domain — Exceptions
+// -----------------------------------------------------------------------------
+
+import { JourneyNotFoundException } from '../../../domain/exceptions';
+
+// -----------------------------------------------------------------------------
+// Domain — Value Objects
 // -----------------------------------------------------------------------------
 
 import {
-  JourneyInvalidCorridorException,
-  JourneyNotFoundException,
-} from '../../../domain/exceptions';
+  JourneyCorridorPublicId,
+  JourneyLatitude,
+  JourneyLocationName,
+  JourneyLongitude,
+} from '../../../domain/value-objects';
 
 // -----------------------------------------------------------------------------
 // Repository
@@ -102,31 +114,48 @@ export class AttachJourneyCorridorHandler implements CommandHandler<
     }
 
     // -------------------------------------------------------------------------
-    // Resolve Corridor
+    // Create Corridor
     //
-    // Corridor lookup is scoped to the Journey aggregate. The command already
-    // contains JourneyCorridorPublicId as a Value Object.
+    // JourneyCorridor is a Journey-owned child entity.
+    //
+    // The public ID is generated here because this command creates a new
+    // corridor rather than attaching an existing corridor.
+    //
+    // corridorKey is intentionally undefined at creation time. It is an
+    // optional derived/domain value and can be assigned later through the
+    // JourneyCorridorEntity mutation API when appropriate.
+    //
+    // Waypoints start empty because they are added through the Journey
+    // aggregate after the corridor has been attached.
     // -------------------------------------------------------------------------
 
-    const corridor = await this.journeyRepository.findCorridorByPublicId(
-      aggregate.journeyId,
-      command.corridorPublicId,
-    );
+    const now = new Date();
 
-    if (corridor === null) {
-      throw new JourneyInvalidCorridorException(
-        `Journey corridor '${command.corridorPublicId.value}' ` +
-          `was not found for Journey '${command.journeyPublicId.value}'.`,
-      );
-    }
+    const corridor = JourneyCorridorEntity.create({
+      publicId: new JourneyCorridorPublicId(),
+
+      originName: new JourneyLocationName(command.originName),
+      destinationName: new JourneyLocationName(command.destinationName),
+
+      originLatitude: new JourneyLatitude(command.originLatitude),
+      originLongitude: new JourneyLongitude(command.originLongitude),
+
+      destinationLatitude: new JourneyLatitude(command.destinationLatitude),
+      destinationLongitude: new JourneyLongitude(command.destinationLongitude),
+
+      corridorKey: undefined,
+
+      waypoints: [],
+
+      createdAt: now,
+      updatedAt: now,
+    });
 
     // -------------------------------------------------------------------------
     // Aggregate Mutation
+    //
+    // Journey owns the corridor attachment relationship.
     // -------------------------------------------------------------------------
-    //
-    // The Journey aggregate owns the business rules governing corridor
-    // attachment.
-    //
 
     aggregate.attachCorridor(corridor);
 

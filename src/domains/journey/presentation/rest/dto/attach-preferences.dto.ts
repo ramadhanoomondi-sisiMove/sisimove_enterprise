@@ -1,46 +1,66 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+
+import { IsEnum } from 'class-validator';
+
+import { JourneyConversationPreference } from '../../../domain/value-objects/journey-conversation-preference.vo';
+import { JourneyLuggagePolicy } from '../../../domain/value-objects/journey-luggage-policy.vo';
+import { JourneyMusicPreference } from '../../../domain/value-objects/journey-music-preference.vo';
+import { JourneyPetsPolicy } from '../../../domain/value-objects/journey-pets-policy.vo';
+import { JourneySmokingPolicy } from '../../../domain/value-objects/journey-smoking-policy.vo';
 
 // -----------------------------------------------------------------------------
 // DTO
 // -----------------------------------------------------------------------------
 
+/**
+ * Request body for attaching preference configuration to a Journey.
+ *
+ * The Journey public ID is supplied by the route:
+ *
+ *     POST /journeys/:journeyPublicId/preferences
+ *
+ * The JourneyPreferences child entity is created by the application layer.
+ *
+ * Correlation and causation identifiers are application concerns and are
+ * therefore not supplied by the HTTP client.
+ */
 export class AttachPreferencesDto {
   @ApiProperty({
-    example: 'JRN-ABC12345',
-    description: 'Public ID of the Journey to update.',
+    enum: JourneySmokingPolicy,
+    example: JourneySmokingPolicy.NOT_ALLOWED,
+    description: 'Smoking policy for the Journey.',
   })
-  @IsString()
-  @MinLength(3)
-  @MaxLength(100)
-  journeyPublicId!: string;
+  @IsEnum(JourneySmokingPolicy)
+  smoking!: JourneySmokingPolicy;
 
   @ApiProperty({
-    example: 'JPE-ABC12345',
-    description:
-      'Public ID of the Journey preferences configuration to attach.',
+    enum: JourneyPetsPolicy,
+    example: JourneyPetsPolicy.ALLOWED,
+    description: 'Pet policy for the Journey.',
   })
-  @IsString()
-  @MinLength(3)
-  @MaxLength(100)
-  preferencesPublicId!: string;
+  @IsEnum(JourneyPetsPolicy)
+  pets!: JourneyPetsPolicy;
 
   @ApiProperty({
-    example: 'corr-01J8XYZ123',
-    description: 'Correlation identifier for distributed tracing.',
+    enum: JourneyLuggagePolicy,
+    example: JourneyLuggagePolicy.STANDARD,
+    description: 'Luggage policy for the Journey.',
   })
-  @IsString()
-  @MinLength(1)
-  @MaxLength(200)
-  correlationId!: string;
+  @IsEnum(JourneyLuggagePolicy)
+  luggage!: JourneyLuggagePolicy;
 
-  @ApiPropertyOptional({
-    example: 'cmd-01J8XYZ456',
-    description: 'Optional causation identifier for distributed tracing.',
+  @ApiProperty({
+    enum: JourneyConversationPreference,
+    description: 'Preferred level of conversation during the Journey.',
   })
-  @IsOptional()
-  @IsString()
-  @MinLength(1)
-  @MaxLength(200)
-  causationId?: string;
+  @IsEnum(JourneyConversationPreference)
+  conversation!: JourneyConversationPreference;
+
+  @ApiProperty({
+    enum: JourneyMusicPreference,
+    example: JourneyMusicPreference.MODERATE,
+    description: 'Preferred music level during the Journey.',
+  })
+  @IsEnum(JourneyMusicPreference)
+  music!: JourneyMusicPreference;
 }

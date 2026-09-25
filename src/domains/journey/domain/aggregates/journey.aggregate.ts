@@ -25,8 +25,8 @@
 // - Journey lifecycle transitions;
 // - Journey component composition;
 // - Journey invariants;
-// - domain-event recording;
-// - aggregate-level identity and ownership checks.
+// - aggregate-level ownership checks;
+// - domain-event recording.
 //
 // Public discovery is intentionally NOT an aggregate concern.
 //
@@ -116,11 +116,24 @@ import type { JourneyAssetPublicIdReference } from '../value-objects/journey-ass
  * ├── JourneyPreferencesEntity?
  * └── JourneyAssetEntity[]
  *
+ * JourneyAggregate is the domain orchestration boundary for the complete
+ * Journey. Application handlers load the aggregate, invoke aggregate behavior,
+ * persist the aggregate, and publish its recorded domain events.
+ *
+ * The application layer must not independently coordinate:
+ *
+ *   JourneyEntity + JourneyCorridorEntity
+ *   JourneyEntity + JourneyWaypointEntity
+ *   JourneyEntity + JourneyScheduleEntity
+ *   etc.
+ *
+ * Those relationships belong to this aggregate.
+ *
  * Public discovery is deliberately outside this aggregate.
  *
  * The aggregate can answer questions about its own domain state, such as
- * whether the Journey is published. The repository/application read boundary
- * decides whether that state is exposed to anonymous consumers.
+ * whether the Journey is published or complete. The repository/application
+ * read boundary decides whether that state is exposed to external consumers.
  */
 export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   // ===========================================================================
@@ -138,7 +151,7 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   /**
    * Create a new Journey aggregate around an existing JourneyEntity.
    *
-   * JourneyEntity remains the canonical state container.
+   * JourneyEntity remains the single canonical state container.
    */
   public static create(journey: JourneyEntity): JourneyAggregate {
     return new JourneyAggregate(journey, journey.id);
@@ -148,9 +161,16 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
    * Rehydrate the complete Journey aggregate.
    *
    * Persistence reconstructs the aggregate by supplying the root entity and
-   * its owned child entities.
+   * all currently owned child entities.
    *
-   * JourneyEntity remains the single canonical aggregate state container.
+   * The aggregate re-establishes the ownership relationship between:
+   *
+   *   JourneyEntity
+   *       └── JourneyCorridorEntity
+   *               └── JourneyWaypointEntity[]
+   *
+   * The application/persistence layer therefore does not need to manually
+   * maintain child ownership after rehydration.
    */
   public static rehydrate(
     journey: JourneyEntity,
@@ -204,7 +224,7 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   /**
    * Return the canonical Journey entity owned by this aggregate.
    *
-   * The entity remains the single source of truth for Journey state.
+   * JourneyEntity remains the single source of truth for Journey state.
    */
   public get journey(): JourneyEntity {
     return this.props;
@@ -220,9 +240,8 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   /**
    * Return the Journey domain identifier.
    *
-   * JourneyId is constructed from the Journey's public identifier because the
-   * Journey domain exposes that identifier as its stable domain-facing
-   * identity.
+   * JourneyId is constructed from the Journey public identifier because that
+   * identifier is the stable domain-facing identity of the Journey.
    */
   public get journeyId(): JourneyId {
     return new JourneyId(this.publicId.value);
@@ -235,7 +254,7 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   /**
    * Provider identity associated with this Journey.
    *
-   * The provider remains an opaque cross-domain public identifier.
+   * This is an opaque cross-domain public identifier.
    */
   public get providerPublicId(): JourneyProviderPublicId {
     return this.journey.providerPublicId;
@@ -312,10 +331,19 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
     return this.journey.preferences;
   }
 
+  /**
+   * Return the waypoints owned by the Journey's corridor.
+   *
+   * Waypoints are not independently owned by the aggregate root; they are
+   * children of JourneyCorridorEntity, which itself is owned by JourneyEntity.
+   */
   public get waypoints(): readonly JourneyWaypointEntity[] {
     return this.journey.corridor?.waypoints ?? [];
   }
 
+  /**
+   * Return Journey-owned asset attachments.
+   */
   public get assets(): readonly JourneyAssetEntity[] {
     return this.journey.assets;
   }
@@ -327,8 +355,12 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   /**
    * Publish the Journey.
    *
-   * Publishing is allowed only when the Journey is in DRAFT state and all
-   * mandatory Journey components have been configured.
+   * Publishing is allowed only when:
+   *
+   * - the Journey is currently DRAFT; and
+   * - all mandatory Journey components are configured.
+   *
+   * The aggregate remains responsible for this invariant.
    */
   public publish(
     correlationId: string,
@@ -534,11 +566,23 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   // ===========================================================================
 
   /**
+   * A Journey may only be structurally configured while it is a draft.
+   *
+   * Once published, the Journey becomes an operational Journey and its
+   * structural components are no longer freely replaceable through the
+   * configuration operations.
+   *
+   * This keeps component mutation inside the aggregate lifecycle boundary.
+   */
+  public canModifyComponents(): boolean {
+    return this.isDraft();
+  }
+
+  /**
    * A Journey can become publicly discoverable only after all mandatory
    * Journey components have been configured.
    *
-   * Public visibility itself is still enforced by the repository's public
-   * query boundary.
+   * Public visibility itself remains outside the aggregate.
    */
   public canPublish(): boolean {
     return this.isDraft() && this.hasRequiredComponents();
@@ -564,11 +608,49 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   // Corridor
   // ===========================================================================
 
+  /**
+   * Attach or configure the Journey corridor.
+   *
+   * A corridor may be attached to a draft Journey when:
+   *
+   * - no corridor currently exists; or
+   * - the existing corridor has no waypoints.
+   *
+   * Replacing a corridor that already owns waypoints is intentionally
+   * prohibited. Such a replacement would implicitly orphan child entities.
+   * Waypoint removal must remain an explicit aggregate operation.
+   */
   public attachCorridor(corridor: JourneyCorridorEntity): void {
+    if (!this.canModifyComponents()) {
+      throw new Error(
+        `Cannot modify Journey '${this.publicId.value}' corridor while ` +
+          `the Journey is ${this.status.value}.`,
+      );
+    }
+
+    if (this.hasWaypoints()) {
+      throw new Error(
+        'Cannot replace JourneyCorridor while waypoints are attached.',
+      );
+    }
+
     this.journey.setCorridor(corridor);
   }
 
+  /**
+   * Remove the Journey corridor.
+   *
+   * A corridor cannot be removed while it owns waypoints because waypoints
+   * are children of the corridor and therefore must not be orphaned.
+   */
   public removeCorridor(): void {
+    if (!this.canModifyComponents()) {
+      throw new Error(
+        `Cannot modify Journey '${this.publicId.value}' corridor while ` +
+          `the Journey is ${this.status.value}.`,
+      );
+    }
+
     if (this.hasWaypoints()) {
       throw new Error(
         'Cannot remove JourneyCorridor while waypoints are attached.',
@@ -590,7 +672,21 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   // Waypoints
   // ===========================================================================
 
+  /**
+   * Add a waypoint to the Journey's corridor.
+   *
+   * The Journey aggregate owns the relationship between corridor and
+   * waypoint. The application layer therefore never attaches a waypoint
+   * directly to a corridor.
+   */
   public addWaypoint(waypoint: JourneyWaypointEntity): void {
+    if (!this.canModifyComponents()) {
+      throw new Error(
+        `Cannot modify Journey '${this.publicId.value}' waypoints while ` +
+          `the Journey is ${this.status.value}.`,
+      );
+    }
+
     const corridor = this.corridor;
 
     if (corridor === undefined) {
@@ -599,6 +695,12 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
       );
     }
 
+    /**
+     * Idempotent behavior for the same Journey-owned waypoint.
+     *
+     * The corridor remains responsible for determining whether it already
+     * contains the supplied child entity.
+     */
     if (corridor.containsWaypoint(waypoint)) {
       return;
     }
@@ -606,7 +708,20 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
     corridor.addWaypoint(waypoint);
   }
 
+  /**
+   * Remove a Journey-owned waypoint.
+   *
+   * The application layer supplies only the waypoint identity. The aggregate
+   * resolves the child and performs the actual removal.
+   */
   public removeWaypoint(waypointId: JourneyWaypointId): void {
+    if (!this.canModifyComponents()) {
+      throw new Error(
+        `Cannot modify Journey '${this.publicId.value}' waypoints while ` +
+          `the Journey is ${this.status.value}.`,
+      );
+    }
+
     const corridor = this.corridor;
 
     if (corridor === undefined) {
@@ -617,11 +732,16 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
       candidate.id.equals(waypointId),
     );
 
-    if (waypoint !== undefined) {
-      corridor.removeWaypoint(waypoint);
+    if (waypoint === undefined) {
+      return;
     }
+
+    corridor.removeWaypoint(waypoint);
   }
 
+  /**
+   * Resolve a Journey-owned waypoint by its domain identifier.
+   */
   public getWaypointById(
     waypointId: JourneyWaypointId,
   ): JourneyWaypointEntity | undefined {
@@ -646,11 +766,30 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   // Schedule
   // ===========================================================================
 
+  /**
+   * Attach or replace the Journey schedule.
+   *
+   * Schedule composition remains a Journey aggregate responsibility.
+   */
   public attachSchedule(schedule: JourneyScheduleEntity): void {
+    if (!this.canModifyComponents()) {
+      throw new Error(
+        `Cannot modify Journey '${this.publicId.value}' schedule while ` +
+          `the Journey is ${this.status.value}.`,
+      );
+    }
+
     this.journey.setSchedule(schedule);
   }
 
   public removeSchedule(): void {
+    if (!this.canModifyComponents()) {
+      throw new Error(
+        `Cannot modify Journey '${this.publicId.value}' schedule while ` +
+          `the Journey is ${this.status.value}.`,
+      );
+    }
+
     this.journey.setSchedule(undefined);
   }
 
@@ -666,11 +805,28 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   // Vehicle
   // ===========================================================================
 
+  /**
+   * Attach or replace the Journey vehicle.
+   */
   public attachVehicle(vehicle: JourneyVehicleEntity): void {
+    if (!this.canModifyComponents()) {
+      throw new Error(
+        `Cannot modify Journey '${this.publicId.value}' vehicle while ` +
+          `the Journey is ${this.status.value}.`,
+      );
+    }
+
     this.journey.setVehicle(vehicle);
   }
 
   public removeVehicle(): void {
+    if (!this.canModifyComponents()) {
+      throw new Error(
+        `Cannot modify Journey '${this.publicId.value}' vehicle while ` +
+          `the Journey is ${this.status.value}.`,
+      );
+    }
+
     this.journey.setVehicle(undefined);
   }
 
@@ -686,11 +842,28 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   // Capacity
   // ===========================================================================
 
+  /**
+   * Attach or replace Journey capacity configuration.
+   */
   public attachCapacity(capacity: JourneyCapacityEntity): void {
+    if (!this.canModifyComponents()) {
+      throw new Error(
+        `Cannot modify Journey '${this.publicId.value}' capacity while ` +
+          `the Journey is ${this.status.value}.`,
+      );
+    }
+
     this.journey.setCapacity(capacity);
   }
 
   public removeCapacity(): void {
+    if (!this.canModifyComponents()) {
+      throw new Error(
+        `Cannot modify Journey '${this.publicId.value}' capacity while ` +
+          `the Journey is ${this.status.value}.`,
+      );
+    }
+
     this.journey.setCapacity(undefined);
   }
 
@@ -706,11 +879,28 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   // Pricing
   // ===========================================================================
 
+  /**
+   * Attach or replace Journey pricing configuration.
+   */
   public attachPricing(pricing: JourneyPricingEntity): void {
+    if (!this.canModifyComponents()) {
+      throw new Error(
+        `Cannot modify Journey '${this.publicId.value}' pricing while ` +
+          `the Journey is ${this.status.value}.`,
+      );
+    }
+
     this.journey.setPricing(pricing);
   }
 
   public removePricing(): void {
+    if (!this.canModifyComponents()) {
+      throw new Error(
+        `Cannot modify Journey '${this.publicId.value}' pricing while ` +
+          `the Journey is ${this.status.value}.`,
+      );
+    }
+
     this.journey.setPricing(undefined);
   }
 
@@ -726,11 +916,31 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   // Preferences
   // ===========================================================================
 
+  /**
+   * Attach or replace Journey preferences.
+   *
+   * Preferences are optional, but when present they are still owned by the
+   * Journey aggregate.
+   */
   public attachPreferences(preferences: JourneyPreferencesEntity): void {
+    if (!this.canModifyComponents()) {
+      throw new Error(
+        `Cannot modify Journey '${this.publicId.value}' preferences while ` +
+          `the Journey is ${this.status.value}.`,
+      );
+    }
+
     this.journey.setPreferences(preferences);
   }
 
   public removePreferences(): void {
+    if (!this.canModifyComponents()) {
+      throw new Error(
+        `Cannot modify Journey '${this.publicId.value}' preferences while ` +
+          `the Journey is ${this.status.value}.`,
+      );
+    }
+
     this.journey.setPreferences(undefined);
   }
 
@@ -746,32 +956,75 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   // Assets
   // ===========================================================================
 
+  /**
+   * Attach a Journey-owned asset reference.
+   *
+   * The asset itself belongs to the Asset bounded context. Journey owns only
+   * its attachment entity and the opaque external asset reference.
+   */
   public attachAsset(asset: JourneyAssetEntity): void {
+    if (!this.canModifyComponents()) {
+      throw new Error(
+        `Cannot modify Journey '${this.publicId.value}' assets while ` +
+          `the Journey is ${this.status.value}.`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Prevent duplicate attachment of the same JourneyAsset entity.
+    // -------------------------------------------------------------------------
+
     if (this.journey.assets.some((existing) => existing.id.equals(asset.id))) {
       return;
     }
 
+    // -------------------------------------------------------------------------
+    // Prevent the same external Asset from being attached more than once.
+    //
+    // JourneyAsset is the Journey-owned attachment record.
+    // assetPublicId identifies the external Asset-domain resource.
+    // -------------------------------------------------------------------------
+
+    if (this.hasAssetReference(asset.assetPublicId)) {
+      throw new Error(
+        `Asset '${asset.assetPublicId.value}' is already attached to ` +
+          `Journey '${this.publicId.value}'.`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Attach the Journey-owned asset record.
+    // -------------------------------------------------------------------------
+
     this.journey.addAsset(asset);
   }
 
-  public removeAsset(assetId: JourneyAssetId): void {
-    const asset = this.getAssetById(assetId);
-
-    if (asset !== undefined) {
-      this.journey.removeAsset(asset);
-    }
+  /**
+   * Determine whether an external Asset reference is already attached.
+   */
+  public hasAssetReference(
+    assetPublicId: JourneyAssetPublicIdReference,
+  ): boolean {
+    return this.getAssetByReference(assetPublicId) !== undefined;
   }
 
   /**
-   * Remove a Journey asset using its public asset reference.
+   * Remove a Journey asset using its external asset reference.
    *
-   * The reference is resolved inside the aggregate boundary so that the
-   * application layer does not need to know how JourneyAssetEntity stores
-   * or matches its external asset reference.
+   * The reference is resolved inside the aggregate boundary so the
+   * application layer does not need to understand JourneyAssetEntity's
+   * internal representation.
    */
   public removeAssetByReference(
     assetPublicId: JourneyAssetPublicIdReference,
   ): void {
+    if (!this.canModifyComponents()) {
+      throw new Error(
+        `Cannot modify Journey '${this.publicId.value}' assets while ` +
+          `the Journey is ${this.status.value}.`,
+      );
+    }
+
     const asset = this.getAssetByReference(assetPublicId);
 
     if (asset === undefined) {
@@ -781,6 +1034,9 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
     this.journey.removeAsset(asset);
   }
 
+  /**
+   * Resolve a Journey-owned asset by its external Asset-domain reference.
+   */
   public getAssetById(assetId: JourneyAssetId): JourneyAssetEntity | undefined {
     return this.journey.assets.find((asset) => asset.id.equals(assetId));
   }
@@ -810,12 +1066,24 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   // ===========================================================================
 
   /**
-   * Determine whether the mandatory Journey components are present.
+   * Determine whether all mandatory Journey components are present.
    *
-   * Preferences and Journey assets remain optional.
+   * Required:
    *
-   * This invariant is intentionally concerned with Journey completeness,
-   * rather than HTTP/public-discovery concerns.
+   * - Corridor
+   * - Schedule
+   * - Vehicle
+   * - Capacity
+   * - Pricing
+   *
+   * Optional:
+   *
+   * - Preferences
+   * - Assets
+   * - Waypoints
+   *
+   * Waypoints remain optional because the corridor itself is the mandatory
+   * route component.
    */
   public hasRequiredComponents(): boolean {
     return (
@@ -834,9 +1102,11 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
   /**
    * Record an already-created Journey domain event.
    *
-   * This is useful when an application/domain orchestration operation needs
-   * to attach a domain event that was constructed outside the lifecycle
-   * methods above.
+   * This exists for aggregate-level orchestration cases where a domain event
+   * has already been constructed by domain/application infrastructure.
+   *
+   * Normal lifecycle events should continue to be recorded by the aggregate
+   * lifecycle methods themselves.
    */
   public recordDomainEvent(event: JourneyDomainEvent): void {
     this.addDomainEvent(event);

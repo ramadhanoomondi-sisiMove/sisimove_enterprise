@@ -4,23 +4,22 @@
 // sisiMove — Attach Journey Vehicle Command Handler
 // -----------------------------------------------------------------------------
 //
-// Application-layer command handler for attaching an existing Journey Vehicle
-// to a Journey aggregate.
+// Application-layer command handler for configuring the vehicle of a Journey.
 //
 // Responsibilities:
 // - resolve the Journey aggregate;
-// - resolve the Journey Vehicle within the Journey aggregate boundary;
-// - delegate the attachment mutation to the Journey aggregate;
+// - create a new Journey Vehicle child entity;
+// - convert primitive command values into domain value objects;
+// - attach the vehicle to the Journey aggregate;
 // - persist the mutated aggregate.
-//
-// The command already contains JourneyPublicId and JourneyVehiclePublicId as
-// domain value objects. The handler therefore does not reconstruct them.
 //
 // The handler does NOT:
 // - access Prisma directly;
 // - perform HTTP concerns;
 // - mutate persistence models;
 // - implement Journey business rules.
+//
+// Journey owns the vehicle child and its attachment relationship.
 //
 // -----------------------------------------------------------------------------
 
@@ -43,10 +42,30 @@ import type { CommandHandler } from '../../../../../foundation/kernel/applicatio
 import type { AttachJourneyVehicleCommand } from '../../commands/journey/attach-journey-vehicle.command';
 
 // -----------------------------------------------------------------------------
-// Exceptions
+// Domain — Entity
+// -----------------------------------------------------------------------------
+
+import { JourneyVehicleEntity } from '../../../domain/entities/journey-vehicle.entity';
+
+// -----------------------------------------------------------------------------
+// Domain — Exceptions
 // -----------------------------------------------------------------------------
 
 import { JourneyNotFoundException } from '../../../domain/exceptions';
+
+// -----------------------------------------------------------------------------
+// Domain — Value Objects
+// -----------------------------------------------------------------------------
+
+import {
+  JourneyVehiclePublicId,
+  JourneyVehicleMake,
+  JourneyVehicleModel,
+  JourneyVehicleYear,
+  JourneyVehicleColor,
+  JourneyVehicleRegistration,
+  JourneyVehicleAssetPublicId,
+} from '../../../domain/value-objects';
 
 // -----------------------------------------------------------------------------
 // Repository
@@ -87,7 +106,7 @@ export class AttachJourneyVehicleHandler implements CommandHandler<
     // Resolve Journey Aggregate
     //
     // command.journeyPublicId is already a JourneyPublicId Value Object.
-    // Do not construct another JourneyPublicId here.
+    // Do not reconstruct it here.
     // -------------------------------------------------------------------------
 
     const aggregate = await this.journeyRepository.findByPublicId(
@@ -99,31 +118,51 @@ export class AttachJourneyVehicleHandler implements CommandHandler<
     }
 
     // -------------------------------------------------------------------------
-    // Resolve Journey Vehicle
+    // Create Vehicle
     //
-    // command.vehiclePublicId is already a JourneyVehiclePublicId Value Object.
-    // The lookup is scoped to the owning Journey aggregate.
+    // JourneyVehicle is a Journey-owned child entity.
+    //
+    // Its public identity is generated when the child is created.
     // -------------------------------------------------------------------------
 
-    const vehicle = await this.journeyRepository.findVehicleByPublicId(
-      aggregate.journeyId,
-      command.vehiclePublicId,
-    );
+    const now = new Date();
 
-    if (vehicle === null) {
-      throw new Error(
-        `Journey vehicle '${command.vehiclePublicId.value}' ` +
-          `was not found for Journey '${command.journeyPublicId.value}'.`,
-      );
-    }
+    const vehicle = JourneyVehicleEntity.create({
+      publicId: new JourneyVehiclePublicId(),
+
+      make: new JourneyVehicleMake(command.make),
+
+      model: new JourneyVehicleModel(command.model),
+
+      year:
+        command.year !== undefined
+          ? new JourneyVehicleYear(command.year)
+          : undefined,
+
+      color:
+        command.color !== undefined
+          ? new JourneyVehicleColor(command.color)
+          : undefined,
+
+      registration:
+        command.registration !== undefined
+          ? new JourneyVehicleRegistration(command.registration)
+          : undefined,
+
+      assetPublicId:
+        command.assetPublicId !== undefined
+          ? new JourneyVehicleAssetPublicId(command.assetPublicId)
+          : undefined,
+
+      createdAt: now,
+      updatedAt: now,
+    });
 
     // -------------------------------------------------------------------------
     // Aggregate Mutation
+    //
+    // Journey owns the vehicle attachment relationship.
     // -------------------------------------------------------------------------
-    //
-    // The Journey aggregate owns the business rules governing vehicle
-    // attachment.
-    //
 
     aggregate.attachVehicle(vehicle);
 

@@ -1,45 +1,54 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+
+import {
+  IsDateString,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 // -----------------------------------------------------------------------------
 // DTO
 // -----------------------------------------------------------------------------
 
+/**
+ * Request body for attaching schedule configuration to a Journey.
+ *
+ * The Journey public ID is supplied by the route:
+ *
+ *     POST /journeys/:journeyPublicId/schedule
+ *
+ * The JourneySchedule child entity is created by the application layer.
+ *
+ * Correlation and causation identifiers are application concerns and are
+ * therefore not supplied by the HTTP client.
+ */
 export class AttachScheduleDto {
   @ApiProperty({
-    example: 'JRN-ABC12345',
-    description: 'Public ID of the Journey to update.',
+    example: '2026-10-15T07:00:00.000Z',
+    description: 'Scheduled Journey departure time in ISO 8601 format.',
   })
-  @IsString()
-  @MinLength(3)
-  @MaxLength(100)
-  journeyPublicId!: string;
-
-  @ApiProperty({
-    example: 'JSC-ABC12345',
-    description: 'Public ID of the Journey schedule to attach.',
-  })
-  @IsString()
-  @MinLength(3)
-  @MaxLength(100)
-  schedulePublicId!: string;
-
-  @ApiProperty({
-    example: 'corr-01J8XYZ123',
-    description: 'Correlation identifier for distributed tracing.',
-  })
-  @IsString()
-  @MinLength(1)
-  @MaxLength(200)
-  correlationId!: string;
+  @IsDateString()
+  departureAt!: string;
 
   @ApiPropertyOptional({
-    example: 'cmd-01J8XYZ456',
-    description: 'Optional causation identifier for distributed tracing.',
+    example: '2026-10-15T13:30:00.000Z',
+    nullable: true,
+    description:
+      'Expected Journey arrival time in ISO 8601 format. Optional when the arrival time is not known.',
   })
   @IsOptional()
+  @IsDateString()
+  arrivalAt?: string;
+
+  @ApiProperty({
+    example: 'Africa/Nairobi',
+    description:
+      'IANA timezone used to interpret and display the Journey schedule.',
+  })
   @IsString()
   @MinLength(1)
-  @MaxLength(200)
-  causationId?: string;
+  @MaxLength(100)
+  timezone!: string;
 }

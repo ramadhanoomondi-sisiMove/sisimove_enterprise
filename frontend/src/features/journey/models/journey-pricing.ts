@@ -2,21 +2,46 @@
 // sisiMove — Journey Pricing Model
 // -----------------------------------------------------------------------------
 //
-// Represents the Journey's cost-sharing price.
+// Frontend representation of Journey pricing exposed by the Journey HTTP API.
 //
-// amount is represented as an integer minor-unit amount, consistent with the
-// backend financial convention.
+// Pricing defines the cost associated with a passenger booking on a Journey.
+// Monetary amounts are represented as integer minor units, consistent with the
+// sisiMove financial model.
 //
-// For KES:
-//   1500 => KES 15.00
+// Internal database identifiers are intentionally excluded.
 //
-// The frontend should not use floating-point arithmetic for monetary operations.
 // -----------------------------------------------------------------------------
 
+/**
+ * Journey pricing.
+ */
 export interface JourneyPricing {
+  /**
+   * Public identifier of the pricing configuration.
+   */
   publicId: string;
 
+  /**
+   * Journey price in the currency's minor unit.
+   *
+   * For KES, this represents cents.
+   */
   amount: number;
 
+  /**
+   * ISO 4217 currency code.
+   *
+   * The backend defaults to `KES`.
+   */
   currency: string;
+
+  /**
+   * Creation timestamp returned by the API, when available.
+   */
+  createdAt?: string;
+
+  /**
+   * Last update timestamp returned by the API, when available.
+   */
+  updatedAt?: string;
 }

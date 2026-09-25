@@ -4,23 +4,21 @@
 // sisiMove — Attach Journey Schedule Command Handler
 // -----------------------------------------------------------------------------
 //
-// Application-layer command handler for attaching an existing Journey Schedule
-// to a Journey aggregate.
+// Application-layer command handler for configuring the schedule of a Journey.
 //
 // Responsibilities:
 // - resolve the Journey aggregate;
-// - resolve the Journey Schedule within the Journey aggregate boundary;
+// - create a new Journey Schedule child entity from command data;
 // - delegate the attachment mutation to the Journey aggregate;
 // - persist the mutated aggregate.
-//
-// The command already contains JourneyPublicId and JourneySchedulePublicId as
-// domain value objects. The handler therefore does not reconstruct them.
 //
 // The handler does NOT:
 // - access Prisma directly;
 // - perform HTTP concerns;
 // - mutate persistence models;
 // - implement Journey business rules.
+//
+// Journey owns the schedule child and its attachment relationship.
 //
 // -----------------------------------------------------------------------------
 
@@ -43,10 +41,27 @@ import type { CommandHandler } from '../../../../../foundation/kernel/applicatio
 import type { AttachJourneyScheduleCommand } from '../../commands/journey/attach-journey-schedule.command';
 
 // -----------------------------------------------------------------------------
-// Exceptions
+// Domain — Entity
+// -----------------------------------------------------------------------------
+
+import { JourneyScheduleEntity } from '../../../domain/entities/journey-schedule.entity';
+
+// -----------------------------------------------------------------------------
+// Domain — Exceptions
 // -----------------------------------------------------------------------------
 
 import { JourneyNotFoundException } from '../../../domain/exceptions';
+
+// -----------------------------------------------------------------------------
+// Domain — Value Objects
+// -----------------------------------------------------------------------------
+
+import {
+  JourneyArrivalAt,
+  JourneyDepartureAt,
+  JourneySchedulePublicId,
+  JourneyTimezone,
+} from '../../../domain/value-objects';
 
 // -----------------------------------------------------------------------------
 // Repository
@@ -87,7 +102,7 @@ export class AttachJourneyScheduleHandler implements CommandHandler<
     // Resolve Journey Aggregate
     //
     // command.journeyPublicId is already a JourneyPublicId Value Object.
-    // Do not construct another JourneyPublicId here.
+    // Do not reconstruct it here.
     // -------------------------------------------------------------------------
 
     const aggregate = await this.journeyRepository.findByPublicId(
@@ -99,31 +114,37 @@ export class AttachJourneyScheduleHandler implements CommandHandler<
     }
 
     // -------------------------------------------------------------------------
-    // Resolve Schedule
+    // Create Schedule
     //
-    // command.schedulePublicId is already a JourneySchedulePublicId Value
-    // Object. The lookup is scoped to the Journey aggregate.
+    // JourneySchedule is a Journey-owned child entity.
+    //
+    // The public ID is generated here because the command represents schedule
+    // configuration rather than attachment of an existing schedule.
     // -------------------------------------------------------------------------
 
-    const schedule = await this.journeyRepository.findScheduleByPublicId(
-      aggregate.journeyId,
-      command.schedulePublicId,
-    );
+    const now = new Date();
 
-    if (schedule === null) {
-      throw new Error(
-        `Journey schedule '${command.schedulePublicId.value}' ` +
-          `was not found for Journey '${command.journeyPublicId.value}'.`,
-      );
-    }
+    const schedule = JourneyScheduleEntity.create({
+      publicId: new JourneySchedulePublicId(),
+
+      departureAt: new JourneyDepartureAt(command.departureAt),
+
+      arrivalAt:
+        command.arrivalAt !== undefined
+          ? new JourneyArrivalAt(command.arrivalAt)
+          : undefined,
+
+      timezone: new JourneyTimezone(command.timezone),
+
+      createdAt: now,
+      updatedAt: now,
+    });
 
     // -------------------------------------------------------------------------
     // Aggregate Mutation
+    //
+    // Journey owns the schedule attachment relationship.
     // -------------------------------------------------------------------------
-    //
-    // The Journey aggregate owns the business rules governing schedule
-    // attachment.
-    //
 
     aggregate.attachSchedule(schedule);
 

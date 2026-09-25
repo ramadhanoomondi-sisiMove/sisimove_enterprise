@@ -1,168 +1,453 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Creation Progress
+// sisiMove — Journey Creation
+// Creation Progress
 // -----------------------------------------------------------------------------
 //
-// Compact progress indicator for the multi-step journey creation flow.
+// Compact progress indicator for the authenticated Journey creation workflow.
 //
-// Creation steps:
-//   1. Route
-//   2. Schedule
-//   3. Vehicle
-//   4. Seats
-//   5. Pricing
-//   6. Preferences
-//   7. Photos
-//   8. Review
+// Creation sequence:
+// 1. Route
+// 2. Schedule
+// 3. Vehicle
+// 4. Seats
+// 5. Pricing
+// 6. Preferences
+// 7. Photos
+// 8. Review
 //
 // Responsibilities:
-// - Display the current creation step.
-// - Display completed steps.
-// - Communicate progress accessibly.
+// - Communicate the user's current position in the creation workflow.
+// - Show completed, current, and upcoming steps.
+// - Provide accessible progress semantics.
 // - Remain presentation-only.
 //
-// Non-responsibilities:
-// - No routing.
-// - No navigation.
-// - No API calls.
-// - No form state.
-// - No lifecycle/business logic.
+// Architectural boundaries:
+// - Does NOT create or mutate a Journey.
+// - Does NOT persist creation state.
+// - Does NOT perform navigation.
+// - Does NOT inspect Journey lifecycle state.
+// - Does NOT call APIs.
 //
-// The parent route/container decides what "current" means.
+// The parent creation shell owns navigation and workflow state.
+//
+// Design boundaries:
+// - Mobile-first.
+// - Compact.
+// - Uses only frozen sisiMove design tokens.
+// - No gradients.
+// - No new colors.
+// - No component-specific design tokens.
 // -----------------------------------------------------------------------------
 
 import type { ReactNode } from 'react';
 
-// ----------------------------------------------------------------------------
-// Types
-// ----------------------------------------------------------------------------
 
-export interface JourneyCreationStep {
-  /**
-   * Stable identifier for the creation step.
-   */
-  id: string;
+// -----------------------------------------------------------------------------
+// Creation steps
+// -----------------------------------------------------------------------------
 
-  /**
-   * Human-readable step label.
-   */
-  label: string;
-}
+export const JOURNEY_CREATION_STEPS = [
+  {
+    key: 'route',
+    label: 'Route',
+  },
+  {
+    key: 'schedule',
+    label: 'Schedule',
+  },
+  {
+    key: 'vehicle',
+    label: 'Vehicle',
+  },
+  {
+    key: 'seats',
+    label: 'Seats',
+  },
+  {
+    key: 'pricing',
+    label: 'Pricing',
+  },
+  {
+    key: 'preferences',
+    label: 'Preferences',
+  },
+  {
+    key: 'photos',
+    label: 'Photos',
+  },
+  {
+    key: 'review',
+    label: 'Review',
+  },
+] as const;
+
+export type JourneyCreationStep =
+  (typeof JOURNEY_CREATION_STEPS)[number]['key'];
+
+
+// -----------------------------------------------------------------------------
+// Props
+// -----------------------------------------------------------------------------
 
 export interface JourneyCreationProgressProps {
   /**
-   * Ordered creation steps.
+   * Currently active creation step.
    */
-  steps: readonly JourneyCreationStep[];
+  currentStep: JourneyCreationStep;
 
   /**
-   * Zero-based index of the active step.
+   * Optional set of completed steps.
+   *
+   * A Set is accepted so the parent workflow can derive completion state from
+   * its own persisted or local creation state without this component making
+   * assumptions about workflow persistence.
    */
-  currentStep: number;
+  completedSteps?: ReadonlySet<JourneyCreationStep>;
 
   /**
-   * Optional content rendered alongside the progress indicator.
+   * Optional additional classes.
    */
-  trailing?: ReactNode;
+  className?: string;
+
+  /**
+   * Optional accessible label.
+   */
+  ariaLabel?: string;
 }
 
-// ----------------------------------------------------------------------------
-// Component
-// ----------------------------------------------------------------------------
 
-export function JourneyCreationProgress({
-  steps,
-  currentStep,
-  trailing,
-}: JourneyCreationProgressProps) {
-  const totalSteps = steps.length;
-  const safeCurrentStep =
-    totalSteps > 0
-      ? Math.min(Math.max(currentStep, 0), totalSteps - 1)
-      : 0;
+// -----------------------------------------------------------------------------
+// Step indicator
+// -----------------------------------------------------------------------------
 
-  const progressPercentage =
-    totalSteps > 1
-      ? (safeCurrentStep / (totalSteps - 1)) * 100
-      : 100;
+function StepIndicator({
+  index,
+  state,
+}: {
+  index: number;
+  state: 'completed' | 'current' | 'upcoming';
+}) {
+  const baseClasses = [
+    'flex',
+    'h-7',
+    'w-7',
+    'shrink-0',
+    'items-center',
+    'justify-center',
+    'rounded-full',
+    'text-xs',
+    'font-semibold',
+    'transition-colors',
+    'duration-150',
+    'ease-out',
+  ];
 
-  const activeStep = steps[safeCurrentStep];
+  if (state === 'completed') {
+    return (
+      <span
+        className={[
+          ...baseClasses,
+          'bg-[var(--brand)]',
+          'text-[var(--brand-foreground)]',
+        ].join(' ')}
+        aria-hidden="true"
+      >
+        <CheckIcon />
+      </span>
+    );
+  }
+
+  if (state === 'current') {
+    return (
+      <span
+        className={[
+          ...baseClasses,
+          'border-2',
+          'border-[var(--brand)]',
+          'bg-[var(--brand-soft)]',
+          'text-[var(--brand)]',
+        ].join(' ')}
+        aria-hidden="true"
+      >
+        {index + 1}
+      </span>
+    );
+  }
 
   return (
-    <div
-      aria-label="Journey creation progress"
-      className="space-y-3"
+    <span
+      className={[
+        ...baseClasses,
+        'border',
+        'border-[var(--border)]',
+        'bg-[var(--background-subtle)]',
+        'text-[var(--foreground-muted)]',
+      ].join(' ')}
+      aria-hidden="true"
     >
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
-            Step {totalSteps === 0 ? 0 : safeCurrentStep + 1} of {totalSteps}
-          </p>
+      {index + 1}
+    </span>
+  );
+}
 
-          {activeStep ? (
-            <p className="mt-0.5 truncate text-sm font-semibold text-[var(--foreground)]">
-              {activeStep.label}
-            </p>
-          ) : null}
-        </div>
 
-        {trailing ? (
-          <div className="shrink-0">
-            {trailing}
-          </div>
-        ) : null}
-      </div>
+// -----------------------------------------------------------------------------
+// Connector
+// -----------------------------------------------------------------------------
 
-      <div
-        aria-hidden="true"
-        className="h-1.5 overflow-hidden rounded-full bg-[var(--background-muted)]"
-      >
-        <div
-          className="h-full rounded-full bg-[var(--brand)] transition-[width] duration-200"
-          style={{ width: `${progressPercentage}%` }}
-        />
-      </div>
+function StepConnector({
+  completed,
+}: {
+  completed: boolean;
+}) {
+  return (
+    <span
+      className={[
+        'hidden',
+        'h-px',
+        'min-w-3',
+        'flex-1',
+        'sm:block',
+        completed
+          ? 'bg-[var(--brand)]'
+          : 'bg-[var(--border)]',
+      ].join(' ')}
+      aria-hidden="true"
+    />
+  );
+}
 
-      <ol className="hidden items-center justify-between gap-2 sm:flex">
-        {steps.map((step, index) => {
-          const isCompleted = index < safeCurrentStep;
-          const isCurrent = index === safeCurrentStep;
 
-          return (
-            <li
-              key={step.id}
-              className="min-w-0 flex-1"
-            >
-              <div className="flex items-center gap-2">
+// -----------------------------------------------------------------------------
+// Icons
+// -----------------------------------------------------------------------------
+
+function CheckIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path
+        d="m3.5 8 3 3 6-6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+
+// -----------------------------------------------------------------------------
+// Screen-reader progress description
+// -----------------------------------------------------------------------------
+
+function ProgressDescription({
+  currentIndex,
+}: {
+  currentIndex: number;
+}) {
+  const total =
+    JOURNEY_CREATION_STEPS.length;
+
+  const current =
+    JOURNEY_CREATION_STEPS[currentIndex];
+
+  if (!current) {
+    return null;
+  }
+
+  return (
+    <span className="sr-only">
+      Step {currentIndex + 1} of {total}:{' '}
+      {current.label}.
+    </span>
+  );
+}
+
+
+// -----------------------------------------------------------------------------
+// Journey Creation Progress
+// -----------------------------------------------------------------------------
+
+export function JourneyCreationProgress({
+  currentStep,
+  completedSteps,
+  className,
+  ariaLabel = 'Journey creation progress',
+}: JourneyCreationProgressProps) {
+  const currentIndex =
+    JOURNEY_CREATION_STEPS.findIndex(
+      (step) => step.key === currentStep,
+    );
+
+  /**
+   * A missing current step is a programming/configuration error rather than
+   * something the presentation layer should silently reinterpret.
+   *
+   * Keeping the fallback at the beginning makes the component resilient in
+   * production while preserving deterministic rendering.
+   */
+  const safeCurrentIndex =
+    currentIndex >= 0
+      ? currentIndex
+      : 0;
+
+  const completed =
+    completedSteps ?? new Set<JourneyCreationStep>();
+
+  return (
+    <nav
+      aria-label={ariaLabel}
+      className={[
+        'w-full',
+        className,
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
+      <ProgressDescription
+        currentIndex={safeCurrentIndex}
+      />
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Desktop / tablet step sequence                                      */}
+      {/* ------------------------------------------------------------------- */}
+
+      <ol className="hidden items-center gap-2 sm:flex">
+        {JOURNEY_CREATION_STEPS.map(
+          (step, index) => {
+            const isCurrent =
+              index === safeCurrentIndex;
+
+            const isCompleted =
+              completed.has(step.key) ||
+              index < safeCurrentIndex;
+
+            const state =
+              isCurrent
+                ? 'current'
+                : isCompleted
+                  ? 'completed'
+                  : 'upcoming';
+
+            return (
+              <li
+                key={step.key}
+                className="flex min-w-0 flex-1 items-center gap-2"
+                aria-current={
+                  isCurrent
+                    ? 'step'
+                    : undefined
+                }
+              >
+                <StepIndicator
+                  index={index}
+                  state={state}
+                />
+
                 <span
                   className={[
-                    'flex h-6 w-6 shrink-0 items-center justify-center rounded-full',
-                    'text-xs font-semibold',
-                    isCompleted || isCurrent
-                      ? 'bg-[var(--brand)] text-[var(--brand-foreground)]'
-                      : 'bg-[var(--background-muted)] text-[var(--foreground-muted)]',
-                  ].join(' ')}
-                  aria-hidden="true"
-                >
-                  {index + 1}
-                </span>
-
-                <span
-                  className={[
-                    'truncate text-xs',
+                    'min-w-0 truncate text-xs font-medium',
                     isCurrent
-                      ? 'font-semibold text-[var(--foreground)]'
+                      ? 'text-[var(--foreground)]'
                       : isCompleted
-                        ? 'font-medium text-[var(--foreground-secondary)]'
+                        ? 'text-[var(--foreground-secondary)]'
                         : 'text-[var(--foreground-muted)]',
                   ].join(' ')}
                 >
                   {step.label}
                 </span>
-              </div>
-            </li>
-          );
-        })}
+
+                {index <
+                  JOURNEY_CREATION_STEPS.length -
+                    1 && (
+                  <StepConnector
+                    completed={
+                      isCompleted
+                    }
+                  />
+                )}
+              </li>
+            );
+          },
+        )}
       </ol>
-    </div>
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Mobile progress                                                      */}
+      {/* ------------------------------------------------------------------- */}
+
+      <div className="sm:hidden">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <StepIndicator
+              index={safeCurrentIndex}
+              state="current"
+            />
+
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-[var(--foreground)]">
+                {
+                  JOURNEY_CREATION_STEPS[
+                    safeCurrentIndex
+                  ]?.label
+                }
+              </p>
+
+              <p className="text-xs text-[var(--foreground-muted)]">
+                Step {safeCurrentIndex + 1} of{' '}
+                {JOURNEY_CREATION_STEPS.length}
+              </p>
+            </div>
+          </div>
+
+          <span className="shrink-0 text-xs font-medium text-[var(--foreground-muted)]">
+            {Math.round(
+              ((safeCurrentIndex + 1) /
+                JOURNEY_CREATION_STEPS.length) *
+                100,
+            )}
+            %
+          </span>
+        </div>
+
+        <div
+          className="mt-3 h-1.5 overflow-hidden rounded-[var(--radius-full)] bg-[var(--background-muted)]"
+          role="progressbar"
+          aria-valuemin={1}
+          aria-valuemax={
+            JOURNEY_CREATION_STEPS.length
+          }
+          aria-valuenow={
+            safeCurrentIndex + 1
+          }
+          aria-valuetext={`Step ${
+            safeCurrentIndex + 1
+          } of ${
+            JOURNEY_CREATION_STEPS.length
+          }: ${
+            JOURNEY_CREATION_STEPS[
+              safeCurrentIndex
+            ]?.label
+          }`}
+        >
+          <span
+            className="block h-full rounded-[var(--radius-full)] bg-[var(--brand)] transition-[width] duration-200 ease-out"
+            style={{
+              width: `${
+                ((safeCurrentIndex + 1) /
+                  JOURNEY_CREATION_STEPS.length) *
+                100
+              }%`,
+            }}
+          />
+        </div>
+      </div>
+    </nav>
   );
 }

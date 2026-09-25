@@ -1,243 +1,487 @@
+// -----------------------------------------------------------------------------
+// sisiMove — Journey Seats Creation Page
+// -----------------------------------------------------------------------------
+//
+// Route:
+//   /journeys/create/[journeyPublicId]/seats
+//
+// Responsibilities:
+// - Load the Journey-owned capacity.
+// - Compose JourneySeatsStep and JourneySeatsForm.
+// - Provide persisted capacity to the presentation form.
+// - Track unsaved seat-count changes locally.
+// - Persist capacity through useAttachJourneyCapacity.
+// - Initialize bookedSeats to zero for a newly configured Journey.
+// - Remove an existing Journey capacity when explicitly requested.
+// - Navigate to the next Journey creation step.
+//
+// This page does NOT:
+// - Create a standalone Capacity resource.
+// - Generate capacity identifiers.
+// - Calculate available seats.
+// - Modify booked-seat state from the UI.
+// - Implement Journey domain invariants.
+// - Call the API from the form.
+// - Own aggregate persistence directly.
+// - Introduce navigation into the form component.
+//
+// The Journey aggregate remains the owner of capacity configuration.
+// -----------------------------------------------------------------------------
+
 'use client';
 
-// -----------------------------------------------------------------------------
-// sisiMove — Journey Seats Step
-// -----------------------------------------------------------------------------
-//
-// Provider seat-capacity selection for Journey creation.
-//
-// Architectural rules:
-// - The provider declares how many passenger seats they are offering.
-// - There is no capacity catalogue.
-// - The provider does not select a pre-existing capacity definition.
-// - `totalSeats` is provider-supplied Journey data.
-// - `bookedSeats` is server-owned lifecycle state and is never submitted here.
-// - The page owns orchestration only.
-// - JourneyCapacityForm remains presentation-only.
-// - The backend remains authoritative for validation and persistence.
-//
-// Workflow:
-//
-//     Journey draft
-//          ↓
-//     Route
-//          ↓
-//     Schedule
-//          ↓
-//     Vehicle
-//          ↓
-//     Seats  ← this step
-//          ↓
-//     Pricing
-//
-// -----------------------------------------------------------------------------
-
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import {
+  useCallback,
+  useMemo,
+  useState,
+} from 'react';
+import { useParams, useRouter } from 'next/navigation';
 
 import {
-  JourneyCapacityForm,
-  type JourneyCapacityFormValue,
-} from '@/components/journeys/capacity';
+  JourneySeatsForm,
+  JourneySeatsStep,
+  type JourneySeatsFormSubmitValue,
+} from '@/components/journeys/creation/seats';
 
-import { useJourneyCapacity } from '@/features/journey/hooks/use-journey-capacity';
-import { useAttachJourneyCapacity } from '@/features/journey/hooks/use-attach-journey-capacity';
+import {
+  useJourneyCapacity,
+} from '@/features/journey/hooks/queries';
 
-import { normalizeError } from '@/foundation/errors';
+import {
+  useAttachJourneyCapacity,
+  useRemoveJourneyCapacity,
+} from '@/features/journey/hooks/mutations';
+
 import { AUTHENTICATED_ROUTES } from '@/foundation/routing';
 
-// ----------------------------------------------------------------------------
-// Route props
-// ----------------------------------------------------------------------------
+import { Button } from '@/components/ui';
 
-interface JourneyCapacityPageProps {
-  params: Promise<{
-    journeyPublicId: string;
-  }>;
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+
+function isSameCapacity(
+  left: JourneySeatsFormSubmitValue,
+  right: JourneySeatsFormSubmitValue,
+): boolean {
+  return left.totalSeats === right.totalSeats;
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Page
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
-export default function JourneyCapacityPage({
-  params,
-}: JourneyCapacityPageProps) {
-  const [journeyPublicId, setJourneyPublicId] = useState<string | null>(
-    null,
-  );
-
-  void params.then(({ journeyPublicId: publicId }) => {
-    setJourneyPublicId((current) => current ?? publicId);
-  });
-
-  if (!journeyPublicId) {
-    return null;
-  }
-
-  return (
-    <JourneyCapacityStep journeyPublicId={journeyPublicId} />
-  );
-}
-
-// ----------------------------------------------------------------------------
-// Step
-// ----------------------------------------------------------------------------
-
-interface JourneyCapacityStepProps {
-  journeyPublicId: string;
-}
-
-function JourneyCapacityStep({
-  journeyPublicId,
-}: JourneyCapacityStepProps) {
+export default function JourneySeatsPage() {
   const router = useRouter();
 
-  // --------------------------------------------------------------------------
-  // Persisted Journey capacity
-  // --------------------------------------------------------------------------
-  //
-  // The Journey owns the selected capacity state.
-  //
-  // A null value means the provider has not yet supplied seat capacity.
-  //
-  const {
-    data: capacity,
-    isLoading,
-    error: queryError,
-    refetch,
-  } = useJourneyCapacity(journeyPublicId);
+  const params = useParams<{
+    journeyPublicId: string;
+  }>();
 
-  // --------------------------------------------------------------------------
-  // Capacity mutation
-  // --------------------------------------------------------------------------
+  const journeyPublicId =
+    params.journeyPublicId;
 
-  const attachCapacity = useAttachJourneyCapacity();
+  // ---------------------------------------------------------------------------
+  // Query
+  // ---------------------------------------------------------------------------
 
-  const [mutationError, setMutationError] = useState<string | null>(
-    null,
-  );
+  const capacityQuery =
+    useJourneyCapacity(journeyPublicId);
 
-  // --------------------------------------------------------------------------
-  // Submit
-  // --------------------------------------------------------------------------
-  //
-  // Only totalSeats is submitted.
-  //
-  // bookedSeats is deliberately excluded because it belongs to the
-  // Journey/Booking lifecycle and is server-owned.
-  //
-  async function handleSubmit(
-    value: JourneyCapacityFormValue,
-  ): Promise<void> {
-    if (attachCapacity.isPending) {
+  // ---------------------------------------------------------------------------
+  // Mutations
+  // ---------------------------------------------------------------------------
+
+  const attachCapacity =
+    useAttachJourneyCapacity();
+
+  const removeCapacity =
+    useRemoveJourneyCapacity();
+
+  // ---------------------------------------------------------------------------
+  // Local presentation state
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Holds only values changed by the user during the current page session.
+   *
+   * Server state remains the source of truth until the user edits the form.
+   * We intentionally do not mirror query data through an effect.
+   */
+  const [capacityDraft, setCapacityDraft] =
+    useState<
+      Partial<JourneySeatsFormSubmitValue>
+    >();
+
+  const [saveError, setSaveError] =
+    useState<string | null>(null);
+
+  // ---------------------------------------------------------------------------
+  // Persisted capacity
+  // ---------------------------------------------------------------------------
+
+  const persistedCapacity =
+    useMemo<
+      JourneySeatsFormSubmitValue | undefined
+    >(() => {
+      const capacity =
+        capacityQuery.data;
+
+      if (!capacity) {
+        return undefined;
+      }
+
+      return {
+        totalSeats:
+          capacity.totalSeats,
+      };
+    }, [capacityQuery.data]);
+
+  // ---------------------------------------------------------------------------
+  // Form value
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Once the user starts editing, the local draft takes precedence over the
+   * persisted server value.
+   */
+  const capacityValue = useMemo<
+    JourneySeatsFormSubmitValue | undefined
+  >(() => {
+    if (capacityDraft) {
+      return {
+        totalSeats:
+          capacityDraft.totalSeats ??
+          persistedCapacity?.totalSeats ??
+          0,
+      };
+    }
+
+    return persistedCapacity;
+  }, [
+    capacityDraft,
+    persistedCapacity,
+  ]);
+
+  // ---------------------------------------------------------------------------
+  // Form change
+  // ---------------------------------------------------------------------------
+
+  const handleCapacityChange =
+    useCallback(
+      (
+        value: Partial<JourneySeatsFormSubmitValue>,
+      ) => {
+        setSaveError(null);
+
+        setCapacityDraft((current) => ({
+          ...current,
+          ...value,
+        }));
+      },
+      [],
+    );
+
+  // ---------------------------------------------------------------------------
+  // Save capacity
+  // ---------------------------------------------------------------------------
+
+  const handleCapacitySubmit =
+    useCallback(
+      async (
+        capacity: JourneySeatsFormSubmitValue,
+      ) => {
+        setSaveError(null);
+
+        try {
+          const capacityNeedsPersistence =
+            !persistedCapacity ||
+            !isSameCapacity(
+              capacity,
+              persistedCapacity,
+            );
+
+          if (capacityNeedsPersistence) {
+            await attachCapacity.mutateAsync({
+              journeyPublicId,
+              totalSeats:
+                capacity.totalSeats,
+              bookedSeats: 0,
+            });
+          }
+
+          setCapacityDraft(
+            undefined,
+          );
+
+          router.push(
+            AUTHENTICATED_ROUTES.JOURNEY_CREATE_PRICING(
+              journeyPublicId,
+            ),
+          );
+        } catch (error) {
+          setSaveError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to save the Journey seat capacity. Please try again.',
+          );
+        }
+      },
+      [
+        attachCapacity,
+        journeyPublicId,
+        persistedCapacity,
+        router,
+      ],
+    );
+
+  // ---------------------------------------------------------------------------
+  // Remove capacity
+  // ---------------------------------------------------------------------------
+
+  const handleRemoveCapacity =
+    useCallback(
+      async () => {
+        setSaveError(null);
+
+        try {
+          await removeCapacity.mutateAsync({
+            journeyPublicId,
+          });
+
+          setCapacityDraft(
+            undefined,
+          );
+        } catch (error) {
+          setSaveError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to remove the Journey seat capacity. Please try again.',
+          );
+        }
+      },
+      [
+        journeyPublicId,
+        removeCapacity,
+      ],
+    );
+
+  // ---------------------------------------------------------------------------
+  // Navigation
+  // ---------------------------------------------------------------------------
+
+  const handleBack = useCallback(() => {
+    router.push(
+      AUTHENTICATED_ROUTES.JOURNEY_CREATE_VEHICLE(
+        journeyPublicId,
+      ),
+    );
+  }, [
+    journeyPublicId,
+    router,
+  ]);
+
+  const handleContinue = useCallback(() => {
+    const form = document.getElementById(
+      'journey-seats-form',
+    );
+
+    if (!(form instanceof HTMLFormElement)) {
       return;
     }
 
-    setMutationError(null);
+    form.requestSubmit();
+  }, []);
 
-    try {
-      await attachCapacity.mutateAsync({
-        journeyPublicId,
-        input: {
-          totalSeats: value.totalSeats,
-        },
-      });
+  // ---------------------------------------------------------------------------
+  // Loading state
+  // ---------------------------------------------------------------------------
 
-      router.push(
-        AUTHENTICATED_ROUTES.JOURNEY_CREATE_PRICING(
-          journeyPublicId,
-        ),
-      );
-    } catch (submitError: unknown) {
-      const normalizedError = normalizeError(submitError);
-
-      setMutationError(normalizedError.message);
-    }
-  }
-
-  // --------------------------------------------------------------------------
-  // Query error
-  // --------------------------------------------------------------------------
-
-  if (queryError) {
-    const normalizedError = normalizeError(queryError);
-
+  if (capacityQuery.isLoading) {
     return (
-      <main className="px-4 py-6 sm:px-6 sm:py-8">
-        <div className="mx-auto w-full max-w-2xl">
-          <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] p-5">
-            <p className="text-sm font-medium text-[var(--danger)]">
-              Unable to load passenger seats
-            </p>
-
-            <p className="mt-1 text-sm text-[var(--foreground-muted)]">
-              {normalizedError.message}
-            </p>
-
-            <button
-              type="button"
-              onClick={() => {
-                void refetch();
-              }}
-              className="mt-4 text-sm font-semibold text-[var(--brand)] hover:text-[var(--brand-hover)]"
-            >
-              Try again
-            </button>
-          </div>
+      <JourneySeatsStep>
+        <div
+          className={[
+            'rounded-[var(--radius-lg)]',
+            'border',
+            'border-[var(--border)]',
+            'bg-[var(--surface)]',
+            'p-5',
+          ].join(' ')}
+        >
+          <p className="text-sm text-[var(--foreground-muted)]">
+            Loading seat capacity…
+          </p>
         </div>
-      </main>
+      </JourneySeatsStep>
     );
   }
 
-  // --------------------------------------------------------------------------
-  // Loading
-  // --------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Query error
+  // ---------------------------------------------------------------------------
 
-  if (isLoading) {
-    return null;
+  if (capacityQuery.isError) {
+    return (
+      <JourneySeatsStep>
+        <div
+          role="alert"
+          className={[
+            'rounded-[var(--radius-lg)]',
+            'border',
+            'border-[var(--danger)]',
+            'bg-[var(--surface)]',
+            'p-5',
+          ].join(' ')}
+        >
+          <p className="text-sm font-medium text-[var(--danger)]">
+            Unable to load the Journey seat capacity.
+          </p>
+
+          <p className="mt-1 text-sm leading-6 text-[var(--foreground-secondary)]">
+            {capacityQuery.error instanceof Error
+              ? capacityQuery.error.message
+              : 'Please try again.'}
+          </p>
+
+          <div className="mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                capacityQuery.refetch()
+              }
+            >
+              Try again
+            </Button>
+          </div>
+        </div>
+      </JourneySeatsStep>
+    );
   }
 
-  // --------------------------------------------------------------------------
-  // Existing Journey capacity → form default
-  // --------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Mutation state
+  // ---------------------------------------------------------------------------
 
-  const defaultValue = capacity
-    ? {
-        totalSeats: capacity.totalSeats,
-      }
-    : undefined;
+  const isSaving =
+    attachCapacity.isPending ||
+    removeCapacity.isPending;
 
-  // --------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
   // Render
-  // --------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
 
   return (
-    <main className="px-4 py-6 sm:px-6 sm:py-8">
-      <div className="mx-auto w-full max-w-2xl">
-        <header className="mb-6">
-          <p className="text-sm font-medium text-[var(--brand)]">
-            Journey creation
-          </p>
-
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[var(--foreground)]">
-            Seats
-          </h1>
-
-          <p className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">
-            Choose how many passenger seats you are offering on this
-            journey.
-          </p>
-        </header>
-
-        <JourneyCapacityForm
-          defaultValue={defaultValue}
-          onSubmit={handleSubmit}
-          isLoading={attachCapacity.isPending}
-          error={mutationError}
+    <JourneySeatsStep>
+      <div className="space-y-6">
+        <JourneySeatsForm
+          key={journeyPublicId}
+          initialValue={capacityValue}
+          disabled={isSaving}
+          onChange={
+            handleCapacityChange
+          }
+          onSubmit={
+            handleCapacitySubmit
+          }
         />
+
+        {saveError && (
+          <div
+            role="alert"
+            className={[
+              'rounded-[var(--radius-md)]',
+              'border',
+              'border-[var(--danger)]',
+              'bg-[var(--surface)]',
+              'px-4',
+              'py-3',
+            ].join(' ')}
+          >
+            <p className="text-sm text-[var(--danger)]">
+              {saveError}
+            </p>
+          </div>
+        )}
+
+        {persistedCapacity && (
+          <div
+            className={[
+              'flex',
+              'items-center',
+              'justify-between',
+              'gap-4',
+              'border-t',
+              'border-[var(--border)]',
+              'pt-5',
+            ].join(' ')}
+          >
+            <div>
+              <p className="text-sm font-medium text-[var(--foreground)]">
+                Remove seat capacity
+              </p>
+
+              <p className="mt-1 text-sm text-[var(--foreground-muted)]">
+                Remove the current capacity configuration and set it again.
+              </p>
+            </div>
+
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              loading={
+                removeCapacity.isPending
+              }
+              disabled={
+                attachCapacity.isPending
+              }
+              onClick={
+                handleRemoveCapacity
+              }
+            >
+              Remove
+            </Button>
+          </div>
+        )}
+
+        <div
+          className={[
+            'flex',
+            'flex-col-reverse',
+            'gap-3',
+            'border-t',
+            'border-[var(--border)]',
+            'pt-5',
+            'sm:flex-row',
+            'sm:items-center',
+            'sm:justify-between',
+          ].join(' ')}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={isSaving}
+            onClick={handleBack}
+          >
+            Back
+          </Button>
+
+          <Button
+            type="button"
+            loading={
+              attachCapacity.isPending
+            }
+            disabled={
+              removeCapacity.isPending
+            }
+            onClick={handleContinue}
+          >
+            Save and continue
+          </Button>
+        </div>
       </div>
-    </main>
+    </JourneySeatsStep>
   );
 }
-

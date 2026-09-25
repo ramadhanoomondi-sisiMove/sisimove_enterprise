@@ -1,324 +1,498 @@
+// -----------------------------------------------------------------------------
+// sisiMove — Journey Pricing Creation Page
+// -----------------------------------------------------------------------------
+//
+// Route:
+//   /journeys/create/[journeyPublicId]/pricing
+//
+// Responsibilities:
+// - Load the Journey-owned pricing configuration.
+// - Compose JourneyPricingStep and JourneyPricingForm.
+// - Provide persisted pricing to the presentation form.
+// - Track unsaved pricing changes locally.
+// - Persist pricing through useAttachJourneyPricing.
+// - Remove the existing Journey pricing when explicitly requested.
+// - Navigate to the next Journey creation step.
+//
+// This page does NOT:
+// - Create a standalone Pricing resource.
+// - Generate pricing identifiers.
+// - Calculate commission.
+// - Calculate provider income.
+// - Convert currencies.
+// - Perform financial settlement calculations.
+// - Implement Journey domain invariants.
+// - Call the API from the form.
+// - Own aggregate persistence directly.
+// - Own navigation inside the form component.
+//
+// The Journey aggregate remains the owner of pricing configuration.
+// -----------------------------------------------------------------------------
+
 'use client';
 
-// -----------------------------------------------------------------------------
-// sisiMove — Journey Pricing Step
-// -----------------------------------------------------------------------------
-//
-// Pricing step in the Journey creation workflow.
-//
-// Architectural rules:
-// - JourneyPricing is a child entity of Journey.
-// - There is no pricing catalogue.
-// - The provider declares the passenger contribution for this Journey.
-// - The page owns query, mutation, error handling, and navigation.
-// - JourneyPricingForm is presentation-only.
-// - The frontend does not calculate commission, fees, or profit.
-// - The backend remains authoritative over monetary validation.
-//
-// Workflow:
-//
-// Route
-//   ↓
-// Schedule
-//   ↓
-// Vehicle
-//   ↓
-// Seats
-//   ↓
-// Pricing
-//   ↓
-// Preferences
-//
-// Backend operations:
-//
-// GET
-//   /journeys/:journeyPublicId/pricing
-//
-// POST
-//   /journeys/:journeyPublicId/pricing
-//   {
-//     amount,
-//     currency
-//   }
-//
-// -----------------------------------------------------------------------------
-
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import {
+  useCallback,
+  useMemo,
+  useState,
+} from 'react';
+import { useParams, useRouter } from 'next/navigation';
 
 import {
   JourneyPricingForm,
-  type JourneyPricingFormValue,
-} from '@/components/journeys/pricing';
+  JourneyPricingStep,
+  type JourneyPricingFormSubmitValue,
+} from '@/components/journeys/creation/pricing';
 
-import { useJourneyPricing } from '@/features/journey/hooks/use-journey-pricing';
-import { useAttachJourneyPricing } from '@/features/journey/hooks/use-attach-journey-pricing';
+import {
+  useJourneyPricing,
+} from '@/features/journey/hooks/queries';
 
-import { normalizeError } from '@/foundation/errors';
+import {
+  useAttachJourneyPricing,
+  useRemoveJourneyPricing,
+} from '@/features/journey/hooks/mutations';
+
 import { AUTHENTICATED_ROUTES } from '@/foundation/routing';
 
-// =============================================================================
-// Route Props
-// =============================================================================
+import { Button } from '@/components/ui';
 
-interface JourneyPricingPageProps {
-  params: Promise<{
-    journeyPublicId: string;
-  }>;
-}
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
 
-// =============================================================================
-// Page
-// =============================================================================
-
-export default function JourneyPricingPage({
-  params,
-}: JourneyPricingPageProps) {
-  const [journeyPublicId, setJourneyPublicId] = useState<string | null>(
-    null,
-  );
-
-  // ---------------------------------------------------------------------------
-  // Resolve the dynamic route parameter.
-  // ---------------------------------------------------------------------------
-  //
-  // This follows the existing Journey creation step pattern used by the
-  // working Route and Seats pages.
-  //
-
-  void params.then(({ journeyPublicId: publicId }) => {
-    setJourneyPublicId((current) => current ?? publicId);
-  });
-
-  if (!journeyPublicId) {
-    return null;
-  }
-
+function isSamePricing(
+  left: JourneyPricingFormSubmitValue,
+  right: JourneyPricingFormSubmitValue,
+): boolean {
   return (
-    <JourneyPricingStep journeyPublicId={journeyPublicId} />
+    left.amount === right.amount &&
+    left.currency === right.currency
   );
 }
 
-// =============================================================================
-// Pricing Step
-// =============================================================================
+// -----------------------------------------------------------------------------
+// Page
+// -----------------------------------------------------------------------------
 
-interface JourneyPricingStepProps {
-  journeyPublicId: string;
-}
-
-function JourneyPricingStep({
-  journeyPublicId,
-}: JourneyPricingStepProps) {
+export default function JourneyPricingPage() {
   const router = useRouter();
 
-  // ---------------------------------------------------------------------------
-  // Existing Journey pricing
-  // ---------------------------------------------------------------------------
-  //
-  // A draft may not have pricing yet, so the query intentionally supports
-  // JourneyPricing | null.
-  //
+  const params = useParams<{
+    journeyPublicId: string;
+  }>();
 
-  const {
-    data: pricing,
-    isLoading,
-    error: queryError,
-    refetch,
-  } = useJourneyPricing(journeyPublicId);
+  const journeyPublicId =
+    params.journeyPublicId;
 
   // ---------------------------------------------------------------------------
-  // Pricing mutation
-  // ---------------------------------------------------------------------------
-  //
-  // The mutation receives provider-declared pricing data:
-  //
-  // {
-  //   amount,
-  //   currency,
-  // }
-  //
-  // No pricing definition or catalogue identifier is involved.
-  //
-
-  const attachPricing = useAttachJourneyPricing();
-
-  // ---------------------------------------------------------------------------
-  // Mutation error
+  // Query
   // ---------------------------------------------------------------------------
 
-  const [mutationError, setMutationError] = useState<string | null>(
-    null,
-  );
+  const pricingQuery =
+    useJourneyPricing(journeyPublicId);
 
   // ---------------------------------------------------------------------------
-  // Submit
+  // Mutations
   // ---------------------------------------------------------------------------
-  //
-  // The form provides only provider-editable pricing fields.
-  //
-  // The page deliberately does not:
-  // - calculate commission;
-  // - calculate platform fees;
-  // - calculate provider income;
-  // - create a pricing catalogue entry;
-  // - submit JourneyPricing.publicId.
-  //
-  // Those concerns remain outside this presentation workflow and monetary
-  // validation remains authoritative in the backend.
-  //
 
-  async function handleSubmit(
-    value: JourneyPricingFormValue,
-  ): Promise<void> {
-    if (attachPricing.isPending) {
+  const attachPricing =
+    useAttachJourneyPricing();
+
+  const removePricing =
+    useRemoveJourneyPricing();
+
+  // ---------------------------------------------------------------------------
+  // Local presentation state
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Holds only values changed by the user during the current page session.
+   *
+   * Server state remains authoritative until the user starts editing.
+   * We intentionally do not mirror query data through an effect.
+   */
+  const [pricingDraft, setPricingDraft] =
+    useState<
+      Partial<JourneyPricingFormSubmitValue>
+    >();
+
+  const [saveError, setSaveError] =
+    useState<string | null>(null);
+
+  // ---------------------------------------------------------------------------
+  // Persisted pricing
+  // ---------------------------------------------------------------------------
+
+  const persistedPricing =
+    useMemo<
+      JourneyPricingFormSubmitValue | undefined
+    >(() => {
+      const pricing =
+        pricingQuery.data;
+
+      if (!pricing) {
+        return undefined;
+      }
+
+      return {
+        amount:
+          pricing.amount,
+        currency:
+          pricing.currency,
+      };
+    }, [pricingQuery.data]);
+
+  // ---------------------------------------------------------------------------
+  // Form value
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Once the user starts editing, the local draft takes precedence over the
+   * persisted server value.
+   */
+  const pricingValue = useMemo<
+    JourneyPricingFormSubmitValue | undefined
+  >(() => {
+    if (pricingDraft) {
+      return {
+        amount:
+          pricingDraft.amount ??
+          persistedPricing?.amount ??
+          0,
+        currency:
+          pricingDraft.currency ??
+          persistedPricing?.currency ??
+          'KES',
+      };
+    }
+
+    return persistedPricing;
+  }, [
+    pricingDraft,
+    persistedPricing,
+  ]);
+
+  // ---------------------------------------------------------------------------
+  // Form change
+  // ---------------------------------------------------------------------------
+
+  const handlePricingChange =
+    useCallback(
+      (
+        value: Partial<JourneyPricingFormSubmitValue>,
+      ) => {
+        setSaveError(null);
+
+        setPricingDraft((current) => ({
+          ...current,
+          ...value,
+        }));
+      },
+      [],
+    );
+
+  // ---------------------------------------------------------------------------
+  // Save pricing
+  // ---------------------------------------------------------------------------
+
+  const handlePricingSubmit =
+    useCallback(
+      async (
+        pricing: JourneyPricingFormSubmitValue,
+      ) => {
+        setSaveError(null);
+
+        try {
+          const pricingNeedsPersistence =
+            !persistedPricing ||
+            !isSamePricing(
+              pricing,
+              persistedPricing,
+            );
+
+          if (pricingNeedsPersistence) {
+            await attachPricing.mutateAsync({
+              journeyPublicId,
+              amount:
+                pricing.amount,
+              currency:
+                pricing.currency,
+            });
+          }
+
+          setPricingDraft(
+            undefined,
+          );
+
+          router.push(
+            AUTHENTICATED_ROUTES.JOURNEY_CREATE_PREFERENCES(
+              journeyPublicId,
+            ),
+          );
+        } catch (error) {
+          setSaveError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to save the Journey pricing. Please try again.',
+          );
+        }
+      },
+      [
+        attachPricing,
+        journeyPublicId,
+        persistedPricing,
+        router,
+      ],
+    );
+
+  // ---------------------------------------------------------------------------
+  // Remove pricing
+  // ---------------------------------------------------------------------------
+
+  const handleRemovePricing =
+    useCallback(
+      async () => {
+        setSaveError(null);
+
+        try {
+          await removePricing.mutateAsync({
+            journeyPublicId,
+          });
+
+          setPricingDraft(
+            undefined,
+          );
+        } catch (error) {
+          setSaveError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to remove the Journey pricing. Please try again.',
+          );
+        }
+      },
+      [
+        journeyPublicId,
+        removePricing,
+      ],
+    );
+
+  // ---------------------------------------------------------------------------
+  // Navigation
+  // ---------------------------------------------------------------------------
+
+  const handleBack = useCallback(() => {
+    router.push(
+      AUTHENTICATED_ROUTES.JOURNEY_CREATE_SEATS(
+        journeyPublicId,
+      ),
+    );
+  }, [
+    journeyPublicId,
+    router,
+  ]);
+
+  const handleContinue = useCallback(() => {
+    const form = document.getElementById(
+      'journey-pricing-form',
+    );
+
+    if (!(form instanceof HTMLFormElement)) {
       return;
     }
 
-    setMutationError(null);
+    form.requestSubmit();
+  }, []);
 
-    try {
-      await attachPricing.mutateAsync({
-        journeyPublicId,
-        input: {
-          amount: value.amount,
-          currency: value.currency,
-        },
-      });
+  // ---------------------------------------------------------------------------
+  // Loading state
+  // ---------------------------------------------------------------------------
 
-      // -----------------------------------------------------------------------
-      // Pricing has been persisted successfully.
-      //
-      // The URL is the workflow state. The Journey persisted on the backend is
-      // the data state. Continue to the next creation step.
-      // -----------------------------------------------------------------------
-
-      router.push(
-        AUTHENTICATED_ROUTES.JOURNEY_CREATE_PREFERENCES(
-          journeyPublicId,
-        ),
-      );
-    } catch (submitError: unknown) {
-      const normalizedError = normalizeError(submitError);
-
-      setMutationError(normalizedError.message);
-    }
+  if (pricingQuery.isLoading) {
+    return (
+      <JourneyPricingStep>
+        <div
+          className={[
+            'rounded-[var(--radius-lg)]',
+            'border',
+            'border-[var(--border)]',
+            'bg-[var(--surface)]',
+            'p-5',
+          ].join(' ')}
+        >
+          <p className="text-sm text-[var(--foreground-muted)]">
+            Loading pricing…
+          </p>
+        </div>
+      </JourneyPricingStep>
+    );
   }
 
   // ---------------------------------------------------------------------------
   // Query error
   // ---------------------------------------------------------------------------
 
-  if (queryError) {
-    const normalizedError = normalizeError(queryError);
-
+  if (pricingQuery.isError) {
     return (
-      <main className="min-h-[60vh] px-4 py-6 sm:px-6 sm:py-8">
-        <div className="mx-auto w-full max-w-2xl">
-          <section
-            aria-labelledby="journey-pricing-error-title"
-            className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)] p-5 sm:p-6"
-          >
-            <p className="text-sm font-medium text-[var(--brand)]">
-              Journey creation
-            </p>
+      <JourneyPricingStep>
+        <div
+          role="alert"
+          className={[
+            'rounded-[var(--radius-lg)]',
+            'border',
+            'border-[var(--danger)]',
+            'bg-[var(--surface)]',
+            'p-5',
+          ].join(' ')}
+        >
+          <p className="text-sm font-medium text-[var(--danger)]">
+            Unable to load the Journey pricing.
+          </p>
 
-            <h1
-              id="journey-pricing-error-title"
-              className="mt-1 text-lg font-semibold text-[var(--foreground)]"
-            >
-              Passenger contribution
-            </h1>
+          <p className="mt-1 text-sm leading-6 text-[var(--foreground-secondary)]">
+            {pricingQuery.error instanceof Error
+              ? pricingQuery.error.message
+              : 'Please try again.'}
+          </p>
 
-            <p className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">
-              We could not load the pricing for this journey.
-            </p>
-
-            <p
-              role="alert"
-              className="mt-4 rounded-xl bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger)]"
-            >
-              {normalizedError.message}
-            </p>
-
-            <button
+          <div className="mt-4">
+            <Button
               type="button"
-              onClick={() => {
-                void refetch();
-              }}
-              className="mt-5 rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--background-subtle)]"
+              variant="outline"
+              onClick={() =>
+                pricingQuery.refetch()
+              }
             >
               Try again
-            </button>
-          </section>
+            </Button>
+          </div>
         </div>
-      </main>
+      </JourneyPricingStep>
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Loading
+  // Mutation state
   // ---------------------------------------------------------------------------
-  //
-  // Next.js route loading UI handles route transitions, while this query
-  // loading state prevents rendering the form before existing pricing has
-  // been retrieved.
-  //
 
-  if (isLoading) {
-    return null;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Existing pricing → form default
-  // ---------------------------------------------------------------------------
-  //
-  // A draft may have no pricing.
-  //
-  // When pricing already exists, only its provider-editable fields are passed
-  // into the form.
-  //
-  // JourneyPricing.publicId is intentionally not passed because the provider
-  // does not select a pricing definition.
-  //
-
-  const defaultValue = pricing
-    ? {
-        amount: pricing.amount,
-        currency: pricing.currency,
-      }
-    : undefined;
+  const isSaving =
+    attachPricing.isPending ||
+    removePricing.isPending;
 
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
 
   return (
-    <main className="min-h-[60vh] px-4 py-6 sm:px-6 sm:py-8">
-      <div className="mx-auto w-full max-w-2xl">
-        <header className="mb-6">
-          <p className="text-sm font-medium text-[var(--brand)]">
-            Journey creation
-          </p>
-
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[var(--foreground)]">
-            Pricing
-          </h1>
-
-          <p className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">
-            Set the contribution each passenger will make toward
-            the shared cost of your journey.
-          </p>
-        </header>
-
+    <JourneyPricingStep>
+      <div className="space-y-6">
         <JourneyPricingForm
-          defaultValue={defaultValue}
-          onSubmit={handleSubmit}
-          isLoading={attachPricing.isPending}
-          error={mutationError}
+          key={journeyPublicId}
+          initialValue={pricingValue}
+          disabled={isSaving}
+          onChange={
+            handlePricingChange
+          }
+          onSubmit={
+            handlePricingSubmit
+          }
         />
+
+        {saveError && (
+          <div
+            role="alert"
+            className={[
+              'rounded-[var(--radius-md)]',
+              'border',
+              'border-[var(--danger)]',
+              'bg-[var(--surface)]',
+              'px-4',
+              'py-3',
+            ].join(' ')}
+          >
+            <p className="text-sm text-[var(--danger)]">
+              {saveError}
+            </p>
+          </div>
+        )}
+
+        {persistedPricing && (
+          <div
+            className={[
+              'flex',
+              'items-center',
+              'justify-between',
+              'gap-4',
+              'border-t',
+              'border-[var(--border)]',
+              'pt-5',
+            ].join(' ')}
+          >
+            <div>
+              <p className="text-sm font-medium text-[var(--foreground)]">
+                Remove pricing
+              </p>
+
+              <p className="mt-1 text-sm text-[var(--foreground-muted)]">
+                Remove the current pricing configuration and set it again.
+              </p>
+            </div>
+
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              loading={
+                removePricing.isPending
+              }
+              disabled={
+                attachPricing.isPending
+              }
+              onClick={
+                handleRemovePricing
+              }
+            >
+              Remove
+            </Button>
+          </div>
+        )}
+
+        <div
+          className={[
+            'flex',
+            'flex-col-reverse',
+            'gap-3',
+            'border-t',
+            'border-[var(--border)]',
+            'pt-5',
+            'sm:flex-row',
+            'sm:items-center',
+            'sm:justify-between',
+          ].join(' ')}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={isSaving}
+            onClick={handleBack}
+          >
+            Back
+          </Button>
+
+          <Button
+            type="button"
+            loading={
+              attachPricing.isPending
+            }
+            disabled={
+              removePricing.isPending
+            }
+            onClick={handleContinue}
+          >
+            Save and continue
+          </Button>
+        </div>
       </div>
-    </main>
+    </JourneyPricingStep>
   );
 }
-

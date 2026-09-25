@@ -4,32 +4,34 @@
 // sisiMove — Attach Journey Pricing Command Handler
 // -----------------------------------------------------------------------------
 //
-// Application-layer command handler responsible for attaching an existing
-// Journey Pricing child entity to its owning Journey aggregate.
+// Application-layer command handler for configuring Journey pricing.
 //
 // Responsibilities:
-// - resolve the Journey aggregate by its public identifier;
-// - resolve the Pricing child entity within that Journey aggregate boundary;
-// - delegate the attachment to the Journey aggregate;
+// - resolve the Journey aggregate;
+// - create a new Journey Pricing child entity;
+// - convert primitive command values into domain value objects;
+// - attach the pricing to the Journey aggregate;
 // - persist the mutated aggregate.
 //
-// Architectural rules:
-// - The command already contains Value Objects. The handler must not recreate
-//   them from primitives.
-// - Journey Pricing is a child entity of Journey, not an independent
-//   aggregate. Therefore, pricing resolution is scoped by the owning Journey's
-//   internal aggregate identifier.
-// - Business invariants remain inside the Journey aggregate.
-// - Persistence is performed through the application-level repository token.
-// - The handler contains orchestration only; it does not implement domain
-//   business rules.
+// The handler does NOT:
+// - access Prisma directly;
+// - perform HTTP concerns;
+// - mutate persistence models;
+// - implement Journey business rules.
+//
+// Journey owns the pricing child and its attachment relationship.
+//
 // -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
-
-import { Inject, Injectable } from '@nestjs/common';
 
 import type { CommandHandler } from '../../../../../foundation/kernel/application/command-handler';
 
@@ -40,10 +42,26 @@ import type { CommandHandler } from '../../../../../foundation/kernel/applicatio
 import type { AttachPricingCommand } from '../../commands/journey/attach-pricing.command';
 
 // -----------------------------------------------------------------------------
-// Exceptions
+// Domain — Entity
+// -----------------------------------------------------------------------------
+
+import { JourneyPricingEntity } from '../../../domain/entities/journey-pricing.entity';
+
+// -----------------------------------------------------------------------------
+// Domain — Exceptions
 // -----------------------------------------------------------------------------
 
 import { JourneyNotFoundException } from '../../../domain/exceptions';
+
+// -----------------------------------------------------------------------------
+// Domain — Value Objects
+// -----------------------------------------------------------------------------
+
+import {
+  JourneyPricingPublicId,
+  JourneyPricingAmount,
+  JourneyCurrency,
+} from '../../../domain/value-objects';
 
 // -----------------------------------------------------------------------------
 // Repository
@@ -66,32 +84,25 @@ export class AttachPricingHandler implements CommandHandler<
   AttachPricingCommand,
   void
 > {
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Constructor
-  // ---------------------------------------------------------------------------
-  //
-  // The repository is resolved through the Journey application token rather
-  // than relying on concrete-class/type-based NestJS dependency injection.
-  //
-  // This keeps the application layer dependent on the repository contract
-  // while infrastructure remains responsible for providing its implementation.
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public constructor(
     @Inject(JOURNEY_TOKENS.REPOSITORY)
     private readonly journeyRepository: JourneyRepository,
   ) {}
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Execute
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public async execute(command: AttachPricingCommand): Promise<void> {
     // -------------------------------------------------------------------------
     // Resolve Journey Aggregate
     //
     // command.journeyPublicId is already a JourneyPublicId Value Object.
-    // Do not reconstruct the Value Object in the handler.
+    // Do not reconstruct it here.
     // -------------------------------------------------------------------------
 
     const aggregate = await this.journeyRepository.findByPublicId(
@@ -103,34 +114,30 @@ export class AttachPricingHandler implements CommandHandler<
     }
 
     // -------------------------------------------------------------------------
-    // Resolve Journey Pricing
+    // Create Pricing
     //
-    // Pricing is a child entity within the Journey aggregate boundary.
+    // JourneyPricing is a Journey-owned child entity.
     //
-    // The lookup therefore uses:
-    //   1. the Journey's internal aggregate identifier; and
-    //   2. the Pricing public identifier.
-    //
-    // command.pricingPublicId is already a JourneyPricingPublicId Value Object.
+    // Its public identity is generated when the child is created.
     // -------------------------------------------------------------------------
 
-    const pricing = await this.journeyRepository.findPricingByPublicId(
-      aggregate.journeyId,
-      command.pricingPublicId,
-    );
+    const now = new Date();
 
-    if (pricing === null) {
-      throw new Error(
-        `Journey pricing '${command.pricingPublicId.value}' ` +
-          `was not found for Journey '${command.journeyPublicId.value}'.`,
-      );
-    }
+    const pricing = JourneyPricingEntity.create({
+      publicId: new JourneyPricingPublicId(),
+
+      amount: new JourneyPricingAmount(command.amount),
+
+      currency: new JourneyCurrency(command.currency),
+
+      createdAt: now,
+      updatedAt: now,
+    });
 
     // -------------------------------------------------------------------------
     // Aggregate Mutation
     //
-    // The aggregate owns the attachment operation and therefore remains
-    // responsible for enforcing all Journey-level invariants.
+    // Journey owns the pricing attachment relationship.
     // -------------------------------------------------------------------------
 
     aggregate.attachPricing(pricing);

@@ -21,3 +21,61 @@ export type { MyDemandsResultsProps } from './my-demands-results';
 export type { MyDemandsEmptyStateProps } from './my-demands-empty-state';
 export type { MyDemandsErrorStateProps } from './my-demands-error-state';
 export type { MyDemandCardProps } from './my-demand-card';
+
+// -----------------------------------------------------------------------------
+// sisiMove — Journey Demand Components
+// -----------------------------------------------------------------------------
+//
+// Public feature barrel for all Journey Demand presentation components.
+//
+// Application routes should import from this barrel rather than reaching into
+// management, creation, or detail implementation directories.
+// -----------------------------------------------------------------------------
+
+export {
+  JourneyDemandCard,
+  type JourneyDemandCardProps,
+  JourneyDemandList,
+  type JourneyDemandListProps,
+} from './management';
+
+export {
+  JourneyDemandCreationShell,
+  type JourneyDemandCreationShellProps,
+  JourneyDemandCreationProgress,
+  type JourneyDemandCreationProgressProps,
+  type JourneyDemandCreationStep,
+  JourneyDemandCreationNavigation,
+  type JourneyDemandCreationNavigationProps,
+  JourneyDemandCorridorForm,
+  type JourneyDemandCorridorFormProps,
+  JourneyDemandWaypointsForm,
+  type JourneyDemandWaypointsFormProps,
+  JourneyDemandRouteStep,
+  type JourneyDemandRouteStepProps,
+  JourneyDemandScheduleStep,
+  type JourneyDemandScheduleStepProps,
+  JourneyDemandSeatsStep,
+  type JourneyDemandSeatsStepProps,
+  JourneyDemandPricingStep,
+  type JourneyDemandPricingStepProps,
+  JourneyDemandReviewStep,
+  type JourneyDemandReviewStepProps,
+} from './creation';
+
+export {
+  JourneyDemandDetailContainer,
+  type JourneyDemandDetailContainerProps,
+  JourneyDemandDetailHeader,
+  type JourneyDemandDetailHeaderProps,
+  JourneyDemandDetailRoute,
+  type JourneyDemandDetailRouteProps,
+  JourneyDemandDetailSchedule,
+  type JourneyDemandDetailScheduleProps,
+  JourneyDemandDetailCapacity,
+  type JourneyDemandDetailCapacityProps,
+  JourneyDemandDetailPricing,
+  type JourneyDemandDetailPricingProps,
+  JourneyDemandDetailParticipants,
+  type JourneyDemandDetailParticipantsProps,
+} from './detail';

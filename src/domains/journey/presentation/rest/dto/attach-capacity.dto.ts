@@ -1,45 +1,49 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+// src/domains/journey/presentation/dtos/attach-capacity.dto.ts
+
+// -----------------------------------------------------------------------------
+// NestJS / Validation
+// -----------------------------------------------------------------------------
+
+import { ApiProperty } from '@nestjs/swagger';
+import { IsInt, Min } from 'class-validator';
 
 // -----------------------------------------------------------------------------
 // DTO
 // -----------------------------------------------------------------------------
 
+/**
+ * Configures the seat capacity of a Journey.
+ *
+ * The Journey aggregate owns its capacity child, so the caller supplies only
+ * the capacity configuration. The application layer generates the child
+ * public ID when creating JourneyCapacityEntity.
+ */
 export class AttachCapacityDto {
+  /**
+   * Total passenger seats available on the Journey.
+   */
   @ApiProperty({
-    example: 'JRN-ABC12345',
-    description: 'Public ID of the Journey to update.',
+    example: 4,
+    description: 'Total number of passenger seats available on the Journey.',
+    minimum: 1,
   })
-  @IsString()
-  @MinLength(3)
-  @MaxLength(100)
-  journeyPublicId!: string;
+  @IsInt()
+  @Min(1)
+  totalSeats!: number;
 
+  /**
+   * Number of seats already booked.
+   *
+   * This is normally zero during Journey creation, but the command supports
+   * an explicit value because the domain entity contains booked-seat state.
+   */
   @ApiProperty({
-    example: 'JCA-ABC12345',
-    description: 'Public ID of the Journey capacity configuration to attach.',
+    example: 0,
+    description: 'Number of passenger seats already booked.',
+    minimum: 0,
+    default: 0,
   })
-  @IsString()
-  @MinLength(3)
-  @MaxLength(100)
-  capacityPublicId!: string;
-
-  @ApiProperty({
-    example: 'corr-01J8XYZ123',
-    description: 'Correlation identifier for distributed tracing.',
-  })
-  @IsString()
-  @MinLength(1)
-  @MaxLength(200)
-  correlationId!: string;
-
-  @ApiPropertyOptional({
-    example: 'cmd-01J8XYZ456',
-    description: 'Optional causation identifier for distributed tracing.',
-  })
-  @IsOptional()
-  @IsString()
-  @MinLength(1)
-  @MaxLength(200)
-  causationId?: string;
+  @IsInt()
+  @Min(0)
+  bookedSeats!: number;
 }

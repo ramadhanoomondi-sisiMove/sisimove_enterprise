@@ -1,74 +1,38 @@
+//features/journey/hooks/index.ts
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Hooks
+// sisiMove — Journey
+// Hooks Barrel
 // -----------------------------------------------------------------------------
 //
-// Public barrel export for Journey feature hooks.
+// Public barrel export for all Journey React hooks.
+//
+// The Journey feature separates hooks into:
+//
+//     queries/
+//         Read-only server-state access.
+//
+//     mutations/
+//         Commands that change Journey state or associations.
+//
+// This barrel provides a single feature-level import surface:
+//
+//     import {
+//       useMyJourneys,
+//       useCreateJourney,
+//     } from '@/features/journey/hooks';
+//
+// Keeping the public exports here prevents consumers from depending directly
+// on the internal hooks directory structure.
 // -----------------------------------------------------------------------------
 
-export {
-  journeyQueryKeys,
-  useJourney,
-} from './use-journey';
+// -----------------------------------------------------------------------------
+// Query hooks
+// -----------------------------------------------------------------------------
 
-export {
-  myJourneysQueryKey,
-  useMyJourneys,
-} from './use-my-journeys';
+export * from './queries';
 
-export { useCreateJourney } from './use-create-journey';
+// -----------------------------------------------------------------------------
+// Mutation hooks
+// -----------------------------------------------------------------------------
 
-export {
-  journeyRouteQueryKeys,
-  useJourneyRoute,
-} from './use-journey-route';
-
-export {
-  journeyScheduleQueryKeys,
-  useJourneySchedule,
-} from './use-journey-schedule';
-
-export {
-  journeyVehicleQueryKeys,
-  useJourneyVehicle,
-} from './use-journey-vehicle';
-
-export {
-  journeyCapacityQueryKeys,
-  useJourneyCapacity,
-} from './use-journey-capacity';
-
-export {
-  journeyPricingQueryKeys,
-  useJourneyPricing,
-} from './use-journey-pricing';
-
-export {
-  journeyPreferencesQueryKeys,
-  useJourneyPreferences,
-} from './use-journey-preferences';
-
-export {
-  journeyAssetsQueryKeys,
-  useJourneyAssets,
-} from './use-journey-assets';
-
-export {
-  useAttachJourneyRoute,
-  type AttachJourneyRouteInput,
-} from './use-attach-journey-route';
-
-export { useAttachJourneySchedule } from './use-attach-journey-schedule';
-
-export { useAttachJourneyVehicle } from './use-attach-journey-vehicle';
-
-export { useAttachJourneyCapacity } from './use-attach-journey-capacity';
-
-export { useAttachJourneyPricing } from './use-attach-journey-pricing';
-
-export { useAttachJourneyPreferences } from './use-attach-journey-preferences';
-
-export { useAttachJourneyAsset } from './use-attach-journey-asset';
-
-export { useRemoveJourneyAsset } from './use-remove-journey-asset';
-
-export { usePublishJourney } from './use-publish-journey';
+export * from './mutations';

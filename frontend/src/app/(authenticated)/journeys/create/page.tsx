@@ -1,329 +1,288 @@
-//src/app/authenticated/journeys/create/page.ts
-
 'use client';
 
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Creation Entry
+// sisiMove — Create Journey Start Page
 // -----------------------------------------------------------------------------
 //
-// Entry point for the authenticated Journey creation workflow.
+// Journey creation entry point.
 //
-// This page creates the Journey draft exactly once for the current creation
-// attempt and then redirects to the first creation step.
+// Route:
 //
-// IMPORTANT
-// ---------
-// React lifecycle guards such as useRef are NOT the source of idempotency.
-//
-// A client-generated idempotency key is persisted in sessionStorage so that
-// the same browser tab reuses the same creation key across remounts.
-//
-// True idempotency remains a backend responsibility.
-//
-// The backend must treat:
-//
-//     idempotencyKey
-//
-// as the identity of the create request and return the previously-created
-// Journey when the same key is submitted again.
+//     /journeys/create
 //
 // Responsibilities:
-// - obtain a stable creation idempotency key;
-// - create the Journey draft;
-// - redirect to the route step;
-// - present an actionable mutation failure.
+// - Start a new Journey creation workflow.
+// - Create the initial Journey draft through the Journey feature layer.
+// - Navigate to the Journey creation workspace after creation succeeds.
+// - Present the initial loading/error state for draft creation.
+// - Allow the user to retry draft creation after a failure.
 //
-// Route-level loading and unexpected errors are delegated to:
+// Non-responsibilities:
+// - Journey creation form fields.
+// - Component attachment.
+// - Route configuration.
+// - Schedule configuration.
+// - Vehicle configuration.
+// - Capacity configuration.
+// - Pricing configuration.
+// - Preferences configuration.
+// - Photo management.
+// - Publishing.
 //
-//     loading.tsx
-//     error.tsx
+// The creation workspace owns those subsequent steps.
 //
-// This page intentionally does NOT:
-// - collect Journey details;
-// - manage route/schedule/vehicle/capacity/pricing/preferences state;
-// - attach Journey children;
-// - publish the Journey;
-// - supply provider/member/identity IDs.
+// Architectural boundary:
 //
+//     /journeys/create
+//            │
+//            ▼
+//     useCreateJourney()
+//            │
+//            ▼
+//     POST /journeys
+//            │
+//            ▼
+//     Journey draft
+//            │
+//            ▼
+//     /journeys/create/:journeyPublicId
+//
+// The backend derives the authenticated provider from the current session.
+// No provider identity is supplied by the frontend.
+//
+// IMPORTANT:
+//
+// This page intentionally creates only the Journey aggregate root.
+//
+// The Journey starts as a DRAFT with no configured child components.
+// Subsequent creation pages configure the aggregate one step at a time:
+//
+//     Route
+//       ↓
+//     Schedule
+//       ↓
+//     Vehicle
+//       ↓
+//     Seats
+//       ↓
+//     Pricing
+//       ↓
+//     Preferences
+//       ↓
+//     Photos
+//       ↓
+//     Review
+//       ↓
+//     Publish
+//
+// Each subsequent step persists its configuration before the workflow moves
+// forward.
+//
+// This page therefore acts as a workflow bootstrapper, not as a Journey
+// configuration screen.
 // -----------------------------------------------------------------------------
 
 import {
   useEffect,
-  useRef,
   useState,
 } from 'react';
 
-import { useRouter } from 'next/navigation';
+import {
+  useRouter,
+} from 'next/navigation';
+
+import {
+  AlertCircle,
+} from 'lucide-react';
 
 // -----------------------------------------------------------------------------
-// Journey feature
+// Shared UI
 // -----------------------------------------------------------------------------
 
-import { useCreateJourney } from '@/features/journey/hooks';
+import {
+  Button,
+  Spinner,
+} from '@/components/ui';
 
 // -----------------------------------------------------------------------------
-// Foundation
+// Journey — Feature
 // -----------------------------------------------------------------------------
 
-import { normalizeError } from '@/foundation/errors';
+import {
+  useCreateJourney,
+} from '@/features/journey/hooks/mutations';
 
 // -----------------------------------------------------------------------------
-// Routing
+// Routes
 // -----------------------------------------------------------------------------
 
-import { AUTHENTICATED_ROUTES } from '@/foundation/routing';
+import {
+  AUTHENTICATED_ROUTES,
+} from '@/foundation/routing/authenticated-routes';
 
-// -----------------------------------------------------------------------------
-// UI
-// -----------------------------------------------------------------------------
-
-import { Button } from '@/components/ui/button';
-
-// -----------------------------------------------------------------------------
-// Constants
-// -----------------------------------------------------------------------------
-
-const CREATION_IDEMPOTENCY_STORAGE_KEY =
-  'sisiMove.journeys.create.idempotency-key';
-
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
-
-function getOrCreateIdempotencyKey(): string {
-  const existingKey =
-    window.sessionStorage.getItem(
-      CREATION_IDEMPOTENCY_STORAGE_KEY,
-    );
-
-  if (existingKey) {
-    return existingKey;
-  }
-
-  const newKey = crypto.randomUUID();
-
-  window.sessionStorage.setItem(
-    CREATION_IDEMPOTENCY_STORAGE_KEY,
-    newKey,
-  );
-
-  return newKey;
-}
-
-function clearIdempotencyKey(): void {
-  window.sessionStorage.removeItem(
-    CREATION_IDEMPOTENCY_STORAGE_KEY,
-  );
-}
-
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Page
-// -----------------------------------------------------------------------------
+// =============================================================================
 
-export default function JourneyCreatePage() {
+export default function CreateJourneyPage() {
   const router = useRouter();
 
-  const createJourney = useCreateJourney();
+  const {
+    mutateAsync: createJourney,
+    isPending,
+  } = useCreateJourney();
 
-  const [error, setError] = useState<string | null>(null);
+  /**
+   * Creation attempt counter.
+   *
+   * The initial value represents the first automatic creation attempt.
+   *
+   * Incrementing this value explicitly starts another creation attempt after
+   * a failure.
+   *
+   * This is important because clearing local error state alone does not cause
+   * the creation effect to execute again.
+   */
+  const [creationAttempt, setCreationAttempt] = useState(0);
 
-  // ---------------------------------------------------------------------------
-  // Local lifecycle guard
-  // ---------------------------------------------------------------------------
-  //
-  // This prevents multiple creation calls from the same mounted component.
-  //
-  // IMPORTANT:
-  // This is NOT the idempotency mechanism.
-  //
-  // sessionStorage + backend idempotency remain the actual protection against
-  // duplicate Journey creation across remounts/retries.
-  // ---------------------------------------------------------------------------
-
-  const creationStartedRef = useRef(false);
-
-  // ---------------------------------------------------------------------------
-  // Create draft
-  // ---------------------------------------------------------------------------
-  //
-  // Notice that this function does not synchronously call setState before the
-  // asynchronous operation begins.
-  //
-  // This avoids the React "setState synchronously within an effect" warning
-  // when the initial creation is started from useEffect().
-  // ---------------------------------------------------------------------------
-
-  async function createDraft(): Promise<void> {
-    try {
-      const idempotencyKey =
-        getOrCreateIdempotencyKey();
-
-      const journey =
-        await createJourney.mutateAsync({
-          idempotencyKey,
-        });
-
-      // The Journey now exists and its public ID is authoritative for the
-      // remainder of the creation workflow.
-      //
-      // The key can only be removed after successful creation.
-      clearIdempotencyKey();
-
-      router.replace(
-        AUTHENTICATED_ROUTES.JOURNEY_CREATE_ROUTE(
-          journey.publicId,
-        ),
-      );
-    } catch (creationError: unknown) {
-      const normalizedError =
-        normalizeError(creationError);
-
-      setError(normalizedError.message);
-    }
-  }
+  /**
+   * Local workflow error.
+   *
+   * The mutation itself owns the request lifecycle, while this page owns
+   * whether the bootstrap workflow has failed and therefore whether the user
+   * should see the retry state.
+   */
+  const [error, setError] = useState<unknown>(null);
 
   // ---------------------------------------------------------------------------
-  // Initial creation
+  // Start creation workflow
   // ---------------------------------------------------------------------------
   //
-  // The initial creation attempt is started once for this mounted page.
+  // The entry route does not collect Journey data.
   //
-  // React Strict Mode may exercise the effect lifecycle more than once during
-  // development. The local ref prevents duplicate calls from this mounted
-  // instance, while sessionStorage + backend idempotency protect the request
-  // across remounts and ambiguous network failures.
+  // POST /journeys intentionally has no request body. The backend derives the
+  // authenticated provider from the current session and creates the initial
+  // Journey draft.
+  //
+  // The effect is keyed by `creationAttempt` so the retry action can
+  // explicitly start another creation request.
+  //
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
-    if (creationStartedRef.current) {
-      return;
-    }
+    let cancelled = false;
 
-    creationStartedRef.current = true;
+    const startCreation = async () => {
+      try {
+        setError(null);
 
-    void createDraft();
+        const journey = await createJourney();
 
-    // createDraft intentionally reads the latest mutation/router instances
-    // from this mounted page lifecycle.
-    //
-    // The creation itself is protected by the persisted idempotency key.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+        if (cancelled) {
+          return;
+        }
 
-  // ---------------------------------------------------------------------------
-  // Retry
-  // ---------------------------------------------------------------------------
-  //
-  // Retry deliberately reuses the existing idempotency key.
-  //
-  // If the original request reached the server but the response was lost,
-  // retrying with a new key could create a second Journey.
-  //
-  // Reusing the existing key allows the backend to return the original
-  // Journey.
-  // ---------------------------------------------------------------------------
+        router.replace(
+          AUTHENTICATED_ROUTES.JOURNEY_CREATE(
+            journey.publicId,
+          ),
+        );
+      } catch (creationError) {
+        if (!cancelled) {
+          setError(creationError);
+        }
+      }
+    };
 
-  function handleRetry(): void {
-    if (createJourney.isPending) {
-      return;
-    }
+    void startCreation();
 
-    setError(null);
-
-    void createDraft();
-  }
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    creationAttempt,
+    createJourney,
+    router,
+  ]);
 
   // ---------------------------------------------------------------------------
-  // Mutation failure
+  // Loading
   // ---------------------------------------------------------------------------
   //
-  // This is an expected application-level mutation failure.
+  // A creation attempt starts automatically when this page mounts.
   //
-  // It is intentionally different from error.tsx:
+  // While the request is pending, the user receives a simple workflow
+  // bootstrap state rather than a form. There is deliberately no partial
+  // Journey data to enter on this screen.
   //
-  //     page.tsx
-  //         Known create-mutation failure + retry.
+  // `!error` keeps the page in its initial/loading presentation until the
+  // current attempt either succeeds or records an error.
   //
-  //     error.tsx
-  //         Unexpected error thrown by the route tree.
   // ---------------------------------------------------------------------------
 
-  if (error) {
+  if (isPending || !error) {
     return (
-      <main className="min-h-[60vh] px-4 py-8 sm:px-6 sm:py-10">
-        <div className="mx-auto w-full max-w-2xl">
-          <section
-            aria-labelledby="journey-create-error-title"
-            className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-6"
-          >
-            <h1
-              id="journey-create-error-title"
-              className="text-lg font-semibold text-[var(--foreground)]"
-            >
-              We could not start your journey
-            </h1>
-
-            <p className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">
-              Your journey draft could not be started. You can safely try
-              again without creating another Journey.
-            </p>
-
-            <p
-              role="alert"
-              className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--background-subtle)] px-4 py-3 text-sm text-[var(--foreground)]"
-            >
-              {error}
-            </p>
-
-            <div className="mt-5">
-              <Button
-                type="button"
-                onClick={handleRetry}
-                disabled={createJourney.isPending}
-              >
-                {createJourney.isPending
-                  ? 'Trying again…'
-                  : 'Try again'}
-              </Button>
-            </div>
-          </section>
+      <main className="w-full">
+        <div className="mx-auto w-full px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+          <div className="mx-auto flex min-h-[24rem] w-full max-w-3xl items-center justify-center">
+            <Spinner
+              size="lg"
+              label="Starting your journey"
+            />
+          </div>
         </div>
       </main>
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Creation/loading state
+  // Error
   // ---------------------------------------------------------------------------
   //
-  // The actual route transition is handled by router.replace().
+  // At this point the bootstrap request has failed.
   //
-  // loading.tsx owns Next.js route-level loading UI. This fallback simply keeps
-  // the entry page non-empty while the client mutation is in progress.
+  // No Journey configuration should be attempted here. The only available
+  // recovery action is to explicitly start another Journey creation attempt.
+  //
   // ---------------------------------------------------------------------------
 
   return (
-    <main
-      aria-busy="true"
-      aria-label="Starting journey"
-      className="min-h-[60vh] px-4 py-8 sm:px-6 sm:py-10"
-    >
-      <div className="mx-auto flex w-full max-w-2xl flex-col items-center justify-center text-center">
-        <div
-          className="mb-5 h-8 w-8 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--brand)]"
-          aria-hidden="true"
-        />
+    <main className="w-full">
+      <div className="mx-auto w-full px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+        <div className="mx-auto flex min-h-[24rem] w-full max-w-md items-center justify-center">
+          <div className="w-full text-center">
+            <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-[var(--danger-soft)] text-[var(--danger)]">
+              <AlertCircle
+                aria-hidden="true"
+                className="h-5 w-5"
+              />
+            </div>
 
-        <h1 className="text-lg font-semibold text-[var(--foreground)]">
-          Starting your journey
-        </h1>
+            <h1 className="text-lg font-semibold text-[var(--foreground)]">
+              We could not start your journey
+            </h1>
 
-        <p className="mt-2 max-w-md text-sm leading-6 text-[var(--foreground-muted)]">
-          We are preparing your journey draft. You will choose the route,
-          schedule, vehicle, seats, pricing, and preferences next.
-        </p>
+            <p className="mt-2 text-sm leading-6 text-[var(--foreground-secondary)]">
+              Your Journey draft could not be created. Please try again.
+            </p>
+
+            <div className="mt-5 flex justify-center">
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => {
+                  setError(null);
+                  setCreationAttempt(
+                    (attempt) => attempt + 1,
+                  );
+                }}
+              >
+                Try again
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
     </main>
   );
 }
-

@@ -1,367 +1,501 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Creation — Schedule Step
+// sisiMove — Journey Schedule Creation Page
 // -----------------------------------------------------------------------------
 //
-// Schedule configuration step for an existing Journey draft.
-//
 // Route:
-//
-//   /authenticated/journeys/create/:journeyPublicId/schedule
+//   /journeys/create/[journeyPublicId]/schedule
 //
 // Responsibilities:
-// - Load the Journey's persisted schedule.
-// - Present the schedule form.
-// - Persist the selected schedule through the existing Journey API.
-// - Navigate to the Vehicle step after successful submission.
+// - Load the Journey-owned schedule.
+// - Compose the JourneyScheduleStep presentation component.
+// - Provide persisted schedule data to JourneyScheduleForm.
+// - Track unsaved form changes locally.
+// - Persist the schedule through the Journey aggregate API.
+// - Remove an existing Journey schedule when explicitly requested.
+// - Navigate to the next Journey creation step.
 //
-// Non-responsibilities:
-// - No Journey creation.
-// - No schedule definition creation.
-// - No workflow overview.
-// - No publishing.
-// - No direct HTTP implementation.
-// - No independent journeyPublicId state.
+// This page does NOT:
+// - Create a Journey.
+// - Create a standalone schedule resource.
+// - Implement schedule domain rules.
+// - Call the API from the form component.
+// - Own schedule business invariants.
+// - Introduce schedule update/patch semantics.
+// - Modify the Journey aggregate directly.
 //
-// Persistence model:
-//
-//   Journey
-//      └── JourneySchedule
-//
-// The Journey public ID comes exclusively from the route.
-//
-// IMPORTANT:
-// `useJourneySchedule()` reads the schedule currently attached to the Journey.
-// It is not a global schedule catalogue.
-//
-// Therefore this page does not invent a schedule catalogue endpoint.
-//
-// The current form contract requires:
-//
-//   schedules: readonly JourneyScheduleOption[]
-//
-// Until a separate schedule-catalogue API/hook is established, the currently
-// persisted schedule is exposed as the selectable option. This allows an
-// existing draft to be resumed without fabricating backend data.
-//
+// Schedule configuration belongs to the Journey aggregate. The page is the
+// application/UI orchestration boundary that invokes the existing Journey
+// schedule commands through the feature mutation hooks.
 // -----------------------------------------------------------------------------
 
 'use client';
 
 import {
+  useCallback,
   useMemo,
   useState,
 } from 'react';
-
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 
 import {
   JourneyScheduleForm,
-  type JourneyScheduleFormValue,
-  type JourneyScheduleOption,
-} from '@/components/journeys/schedule';
+  JourneyScheduleStep,
+  type JourneyScheduleFormSubmitValue,
+} from '@/components/journeys/creation/schedule';
 
 import {
   useJourneySchedule,
+} from '@/features/journey/hooks/queries';
+
+import {
   useAttachJourneySchedule,
-} from '@/features/journey/hooks';
+  useRemoveJourneySchedule,
+} from '@/features/journey/hooks/mutations';
 
-import {
-  normalizeError,
-} from '@/foundation/errors';
+import { AUTHENTICATED_ROUTES } from '@/foundation/routing';
 
-import {
-  AUTHENTICATED_ROUTES,
-} from '@/foundation/routing';
+import { Button } from '@/components/ui';
 
-// =============================================================================
-// Types
-// =============================================================================
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
 
-interface JourneySchedulePageProps {
-  params: Promise<{
-    journeyPublicId: string;
-  }>;
-}
-
-// =============================================================================
-// Page
-// =============================================================================
-
-export default function JourneySchedulePage({
-  params,
-}: JourneySchedulePageProps) {
-  const [journeyPublicId, setJourneyPublicId] =
-    useState<string | null>(null);
-
-  // ---------------------------------------------------------------------------
-  // The application currently supplies route params asynchronously.
-  //
-  // Resolve the Journey public ID from the route and keep it as the only
-  // Journey identifier used by this page.
-  // ---------------------------------------------------------------------------
-
-  void params.then(
-    ({
-      journeyPublicId: publicId,
-    }) => {
-      setJourneyPublicId(
-        (current) =>
-          current ?? publicId,
-      );
-    },
-  );
-
-  if (!journeyPublicId) {
-    return null;
-  }
-
+function isSameSchedule(
+  left: JourneyScheduleFormSubmitValue,
+  right: JourneyScheduleFormSubmitValue,
+): boolean {
   return (
-    <JourneyScheduleStep
-      journeyPublicId={journeyPublicId}
-    />
+    left.departureAt === right.departureAt &&
+    left.arrivalAt === right.arrivalAt &&
+    left.timezone === right.timezone
   );
 }
 
-// =============================================================================
-// Schedule step
-// =============================================================================
+// -----------------------------------------------------------------------------
+// Page
+// -----------------------------------------------------------------------------
 
-interface JourneyScheduleStepProps {
-  journeyPublicId: string;
-}
-
-function JourneyScheduleStep({
-  journeyPublicId,
-}: JourneyScheduleStepProps) {
+export default function JourneySchedulePage() {
   const router = useRouter();
 
-  // ---------------------------------------------------------------------------
-  // Load the Journey's persisted schedule.
-  // ---------------------------------------------------------------------------
+  const params = useParams<{
+    journeyPublicId: string;
+  }>();
 
-  const {
-    data: schedule,
-    isLoading,
-    error: queryError,
-    refetch,
-  } = useJourneySchedule(
-    journeyPublicId,
-  );
+  const journeyPublicId =
+    params.journeyPublicId;
 
   // ---------------------------------------------------------------------------
-  // Schedule attachment mutation.
+  // Query
+  // ---------------------------------------------------------------------------
+
+  const scheduleQuery =
+    useJourneySchedule(journeyPublicId);
+
+  // ---------------------------------------------------------------------------
+  // Mutations
   // ---------------------------------------------------------------------------
 
   const attachSchedule =
     useAttachJourneySchedule();
 
-  // ---------------------------------------------------------------------------
-  // Mutation error
-  // ---------------------------------------------------------------------------
-
-  const [
-    mutationError,
-    setMutationError,
-  ] = useState<string | null>(null);
+  const removeSchedule =
+    useRemoveJourneySchedule();
 
   // ---------------------------------------------------------------------------
-  // Saving state
+  // Local presentation state
   // ---------------------------------------------------------------------------
 
-  const [
-    isSaving,
-    setIsSaving,
-  ] = useState(false);
+  /**
+   * Holds only values changed by the user during the current page session.
+   *
+   * We intentionally do not mirror server state with an effect. The persisted
+   * schedule remains the source of truth until the user edits the form.
+   */
+  const [scheduleDraft, setScheduleDraft] =
+    useState<
+      Partial<JourneyScheduleFormSubmitValue>
+    >();
+
+  const [saveError, setSaveError] =
+    useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
-  // Form catalogue
-  // ---------------------------------------------------------------------------
-  //
-  // The current frontend contract provides the Journey's persisted schedule,
-  // not a global schedule catalogue.
-  //
-  // We therefore expose the persisted schedule as the available option.
-  //
-  // A future authoritative schedule-catalogue hook can replace this mapping
-  // without changing the form's responsibilities.
+  // Persisted schedule
   // ---------------------------------------------------------------------------
 
-  const schedules =
+  const persistedSchedule =
     useMemo<
-      readonly JourneyScheduleOption[]
-    >(
-      () => {
-        if (!schedule) {
-          return [];
-        }
+      JourneyScheduleFormSubmitValue | undefined
+    >(() => {
+      const schedule =
+        scheduleQuery.data;
 
-        return [
-          {
-            publicId:
-              schedule.publicId,
+      if (!schedule) {
+        return undefined;
+      }
 
-            departureAt:
-              schedule.departureAt,
+      return {
+        departureAt:
+          schedule.departureAt,
+        arrivalAt:
+          schedule.arrivalAt ?? null,
+        timezone:
+          schedule.timezone,
+      };
+    }, [scheduleQuery.data]);
 
-            arrivalAt:
-              schedule.arrivalAt,
+  // ---------------------------------------------------------------------------
+  // Form value
+  // ---------------------------------------------------------------------------
 
-            timezone:
-              schedule.timezone,
-          },
-        ];
+  /**
+   * The form receives either:
+   *
+   * 1. the user's current unsaved draft, or
+   * 2. the persisted Journey schedule.
+   *
+   * Once the user starts editing, their draft takes precedence until the page
+   * is successfully persisted or the draft is explicitly cleared.
+   */
+  const scheduleValue = useMemo<
+    Partial<JourneyScheduleFormSubmitValue> | undefined
+  >(() => {
+    if (scheduleDraft) {
+      return scheduleDraft;
+    }
+
+    return persistedSchedule;
+  }, [
+    scheduleDraft,
+    persistedSchedule,
+  ]);
+
+  // ---------------------------------------------------------------------------
+  // Form change
+  // ---------------------------------------------------------------------------
+
+  const handleScheduleChange =
+    useCallback(
+      (
+        value: Partial<JourneyScheduleFormSubmitValue>,
+      ) => {
+        setSaveError(null);
+
+        setScheduleDraft((current) => ({
+          ...current,
+          ...value,
+        }));
       },
-      [schedule],
+      [],
     );
 
   // ---------------------------------------------------------------------------
-  // Existing selection
+  // Save schedule
   // ---------------------------------------------------------------------------
 
-  const defaultValue =
-    schedule
-      ? {
-          schedulePublicId:
-            schedule.publicId,
+  const handleScheduleSubmit =
+    useCallback(
+      async (
+        schedule: JourneyScheduleFormSubmitValue,
+      ) => {
+        setSaveError(null);
+
+        try {
+          const scheduleNeedsPersistence =
+            !persistedSchedule ||
+            !isSameSchedule(
+              schedule,
+              persistedSchedule,
+            );
+
+          if (scheduleNeedsPersistence) {
+            await attachSchedule.mutateAsync({
+              journeyPublicId,
+              departureAt:
+                schedule.departureAt,
+              arrivalAt:
+                schedule.arrivalAt ??
+                undefined,
+              timezone:
+                schedule.timezone,
+            });
+          }
+
+          setScheduleDraft(
+            undefined,
+          );
+
+          router.push(
+            AUTHENTICATED_ROUTES.JOURNEY_CREATE_VEHICLE(
+              journeyPublicId,
+            ),
+          );
+        } catch (error) {
+          setSaveError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to save the Journey schedule. Please try again.',
+          );
         }
-      : undefined;
-
-  // ---------------------------------------------------------------------------
-  // Submit
-  // ---------------------------------------------------------------------------
-
-  async function handleSubmit(
-    value: JourneyScheduleFormValue,
-  ): Promise<void> {
-    if (
-      isSaving ||
-      attachSchedule.isPending
-    ) {
-      return;
-    }
-
-    setMutationError(null);
-    setIsSaving(true);
-
-    try {
-      await attachSchedule.mutateAsync({
+      },
+      [
+        attachSchedule,
         journeyPublicId,
-        input: {
-          schedulePublicId:
-            value.schedulePublicId,
-        },
-      });
+        persistedSchedule,
+        router,
+      ],
+    );
 
-      // -----------------------------------------------------------------------
-      // Schedule is persisted. Continue to Vehicle.
-      // -----------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Remove schedule
+  // ---------------------------------------------------------------------------
 
-      router.push(
-        AUTHENTICATED_ROUTES.JOURNEY_CREATE_VEHICLE(
-          journeyPublicId,
-        ),
-      );
-    } catch (submitError: unknown) {
-      const normalizedError =
-        normalizeError(
-          submitError,
-        );
+  const handleRemoveSchedule =
+    useCallback(
+      async () => {
+        setSaveError(null);
 
-      setMutationError(
-        normalizedError.message,
-      );
-    } finally {
-      setIsSaving(false);
-    }
+        try {
+          await removeSchedule.mutateAsync({
+            journeyPublicId,
+          });
+
+          setScheduleDraft(
+            undefined,
+          );
+        } catch (error) {
+          setSaveError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to remove the Journey schedule. Please try again.',
+          );
+        }
+      },
+      [
+        journeyPublicId,
+        removeSchedule,
+      ],
+    );
+
+  // ---------------------------------------------------------------------------
+  // Navigation
+  // ---------------------------------------------------------------------------
+
+  const handleBack = useCallback(() => {
+    router.push(
+      AUTHENTICATED_ROUTES.JOURNEY_CREATE_ROUTE(
+        journeyPublicId,
+      ),
+    );
+  }, [
+    journeyPublicId,
+    router,
+  ]);
+
+const handleContinue = useCallback(() => {
+  const form = document.getElementById(
+    'journey-schedule-form',
+  );
+
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
+
+  form.requestSubmit();
+}, []);
+
+  // ---------------------------------------------------------------------------
+  // Loading state
+  // ---------------------------------------------------------------------------
+
+  if (scheduleQuery.isLoading) {
+    return (
+      <JourneyScheduleStep>
+        <div
+          className={[
+            'rounded-[var(--radius-lg)]',
+            'border',
+            'border-[var(--border)]',
+            'bg-[var(--surface)]',
+            'p-5',
+          ].join(' ')}
+        >
+          <p className="text-sm text-[var(--foreground-muted)]">
+            Loading schedule…
+          </p>
+        </div>
+      </JourneyScheduleStep>
+    );
   }
 
   // ---------------------------------------------------------------------------
-  // Query failure
+  // Query error
   // ---------------------------------------------------------------------------
 
-  if (queryError) {
-    const normalizedError =
-      normalizeError(queryError);
-
+  if (scheduleQuery.isError) {
     return (
-      <main className="min-h-[60vh] px-4 py-8 sm:px-6 sm:py-10">
-        <div className="mx-auto w-full max-w-2xl">
-          <section
-            className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-6"
-            aria-labelledby="journey-schedule-error-title"
-          >
-            <h1
-              id="journey-schedule-error-title"
-              className="text-xl font-semibold text-[var(--foreground)]"
-            >
-              Schedule
-            </h1>
+      <JourneyScheduleStep>
+        <div
+          role="alert"
+          className={[
+            'rounded-[var(--radius-lg)]',
+            'border',
+            'border-[var(--danger)]',
+            'bg-[var(--surface)]',
+            'p-5',
+          ].join(' ')}
+        >
+          <p className="text-sm font-medium text-[var(--danger)]">
+            Unable to load the Journey schedule.
+          </p>
 
-            <p className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">
-              We could not load the schedule for this journey.
-            </p>
+          <p className="mt-1 text-sm leading-6 text-[var(--foreground-secondary)]">
+            {scheduleQuery.error instanceof Error
+              ? scheduleQuery.error.message
+              : 'Please try again.'}
+          </p>
 
-            <p
-              role="alert"
-              className="mt-4 rounded-xl bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger)]"
-            >
-              {normalizedError.message}
-            </p>
-
-            <button
+          <div className="mt-4">
+            <Button
               type="button"
-              onClick={() => {
-                void refetch();
-              }}
-              className="mt-5 rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--background-subtle)]"
+              variant="outline"
+              onClick={() =>
+                scheduleQuery.refetch()
+              }
             >
               Try again
-            </button>
-          </section>
+            </Button>
+          </div>
         </div>
-      </main>
+      </JourneyScheduleStep>
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Loading
-  //
-  // Route-level loading.tsx owns the visual loading state.
+  // Derived mutation state
   // ---------------------------------------------------------------------------
 
-  if (isLoading) {
-    return null;
-  }
+  const isSaving =
+    attachSchedule.isPending ||
+    removeSchedule.isPending;
 
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
 
   return (
-    <main className="min-h-[60vh] px-4 py-8 sm:px-6 sm:py-10">
-      <div className="mx-auto w-full max-w-2xl">
-        <header className="mb-6">
-          <p className="text-sm font-medium text-[var(--brand)]">
-            Journey creation
-          </p>
-
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[var(--foreground)]">
-            Schedule
-          </h1>
-
-          <p className="mt-2 text-sm leading-6 text-[var(--foreground-muted)]">
-            Choose when you plan to make this journey.
-          </p>
-        </header>
-
+    <JourneyScheduleStep
+      schedule={scheduleQuery.data}
+    >
+      <div className="space-y-6">
         <JourneyScheduleForm
-          schedules={schedules}
-          defaultValue={defaultValue}
-          onSubmit={handleSubmit}
-          isLoading={isSaving}
-          error={mutationError}
+          key={journeyPublicId}
+          initialValue={scheduleValue}
+          disabled={isSaving}
+          onChange={
+            handleScheduleChange
+          }
+          onSubmit={
+            handleScheduleSubmit
+          }
         />
+
+        {saveError && (
+          <div
+            role="alert"
+            className={[
+              'rounded-[var(--radius-md)]',
+              'border',
+              'border-[var(--danger)]',
+              'bg-[var(--surface)]',
+              'px-4',
+              'py-3',
+            ].join(' ')}
+          >
+            <p className="text-sm text-[var(--danger)]">
+              {saveError}
+            </p>
+          </div>
+        )}
+
+        {persistedSchedule && (
+          <div
+            className={[
+              'flex',
+              'items-center',
+              'justify-between',
+              'gap-4',
+              'border-t',
+              'border-[var(--border)]',
+              'pt-5',
+            ].join(' ')}
+          >
+            <div>
+              <p className="text-sm font-medium text-[var(--foreground)]">
+                Remove schedule
+              </p>
+
+              <p className="mt-1 text-sm text-[var(--foreground-muted)]">
+                You can remove the current schedule and configure it again.
+              </p>
+            </div>
+
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              loading={
+                removeSchedule.isPending
+              }
+              disabled={
+                attachSchedule.isPending
+              }
+              onClick={
+                handleRemoveSchedule
+              }
+            >
+              Remove
+            </Button>
+          </div>
+        )}
+
+        <div
+          className={[
+            'flex',
+            'flex-col-reverse',
+            'gap-3',
+            'border-t',
+            'border-[var(--border)]',
+            'pt-5',
+            'sm:flex-row',
+            'sm:items-center',
+            'sm:justify-between',
+          ].join(' ')}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={isSaving}
+            onClick={handleBack}
+          >
+            Back
+          </Button>
+
+          <Button
+            type="button"
+            loading={
+              attachSchedule.isPending
+            }
+            disabled={
+              removeSchedule.isPending
+            }
+            onClick={handleContinue}
+          >
+            Save and continue
+          </Button>
+        </div>
       </div>
-    </main>
+    </JourneyScheduleStep>
   );
 }

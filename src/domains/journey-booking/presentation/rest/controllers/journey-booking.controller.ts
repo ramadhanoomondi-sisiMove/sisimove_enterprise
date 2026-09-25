@@ -93,8 +93,6 @@ import type { JourneyBookingEntity } from '../../../domain/entities/journey-book
 
 import {
   JourneyBookingCancellationReason,
-  JourneyBookingCancelledByPublicId,
-  JourneyBookingCancellationReasonDescription,
   JourneyBookingJourneyPublicId,
   JourneyBookingPassengerPublicId,
   JourneyBookingPaymentFailureReason,

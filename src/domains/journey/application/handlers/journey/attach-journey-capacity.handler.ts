@@ -4,13 +4,11 @@
 // sisiMove — Attach Journey Capacity Command Handler
 // -----------------------------------------------------------------------------
 //
-// Application-layer command handler for attaching an existing Journey Capacity
-// to a Journey aggregate.
+// Application-layer command handler for configuring Journey capacity.
 //
 // Responsibilities:
 // - resolve the Journey aggregate;
-// - resolve the existing Journey Capacity within the Journey aggregate
-//   boundary;
+// - create a new Journey Capacity child entity from command data;
 // - delegate the attachment mutation to the Journey aggregate;
 // - persist the mutated aggregate.
 //
@@ -20,7 +18,7 @@
 // - mutate persistence models;
 // - implement Journey business rules.
 //
-// Journey owns the capacity attachment relationship and its invariants.
+// Journey owns the capacity child and its attachment relationship.
 //
 // -----------------------------------------------------------------------------
 
@@ -43,10 +41,26 @@ import type { CommandHandler } from '../../../../../foundation/kernel/applicatio
 import type { AttachJourneyCapacityCommand } from '../../commands/journey/attach-journey-capacity.command';
 
 // -----------------------------------------------------------------------------
+// Domain — Entity
+// -----------------------------------------------------------------------------
+
+import { JourneyCapacityEntity } from '../../../domain/entities/journey-capacity.entity';
+
+// -----------------------------------------------------------------------------
 // Exceptions
 // -----------------------------------------------------------------------------
 
 import { JourneyNotFoundException } from '../../../domain/exceptions';
+
+// -----------------------------------------------------------------------------
+// Domain — Value Objects
+// -----------------------------------------------------------------------------
+
+import {
+  JourneyCapacityPublicId,
+  JourneyBookedSeats,
+  JourneyTotalSeats,
+} from '../../../domain/value-objects';
 
 // -----------------------------------------------------------------------------
 // Repository
@@ -96,31 +110,32 @@ export class AttachJourneyCapacityHandler implements CommandHandler<
     }
 
     // -------------------------------------------------------------------------
-    // Resolve Capacity
+    // Create Capacity
     // -------------------------------------------------------------------------
     //
-    // Capacity is a child entity of the Journey aggregate. Resolve it through
-    // the repository using the owning Journey's internal aggregate identity.
+    // JourneyCapacity is a Journey-owned child entity.
+    //
+    // Its public ID is generated here because the caller is configuring a new
+    // child rather than attaching an existing capacity record.
+    //
+    // A newly configured Journey has no bookings, therefore booked seats start
+    // at zero.
     //
 
-    const capacity = await this.journeyRepository.findCapacityByPublicId(
-      journey.journeyId,
-      command.capacityPublicId,
-    );
-
-    if (capacity === null) {
-      throw new Error(
-        `Journey capacity '${command.capacityPublicId.value}' was not found ` +
-          `for Journey '${command.journeyPublicId.value}'.`,
-      );
-    }
+    const capacity = JourneyCapacityEntity.create({
+      publicId: new JourneyCapacityPublicId(),
+      totalSeats: new JourneyTotalSeats(command.totalSeats),
+      bookedSeats: new JourneyBookedSeats(0),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
 
     // -------------------------------------------------------------------------
     // Aggregate Mutation
     // -------------------------------------------------------------------------
     //
-    // The Journey aggregate owns the business rules governing capacity
-    // attachment.
+    // The Journey aggregate owns the capacity attachment relationship and
+    // remains responsible for enforcing its domain invariants.
     //
 
     journey.attachCapacity(capacity);

@@ -2,12 +2,23 @@
 // sisiMove — Journey Model
 // -----------------------------------------------------------------------------
 //
-// Frontend representation of the Journey aggregate.
+// Frontend representation of the Journey aggregate and its composed Journey
+// components.
 //
-// This model represents Journey state returned by the API. It does not expose
-// Prisma/database implementation details.
+// This model intentionally contains only externally consumable Journey data.
+// It does not mirror the Prisma persistence model and does not expose internal
+// database identifiers.
 //
-// Cross-domain references remain opaque public IDs.
+// IMPORTANT:
+//
+// Public marketplace responses must be mapped through the public Journey
+// mapper before reaching UI components. In particular, `providerPublicId`
+// belongs only to authenticated management representations and must never be
+// rendered as part of the public marketplace contract.
+//
+// Component resources remain independently addressable through their public
+// identifiers.
+//
 // -----------------------------------------------------------------------------
 
 import type { JourneyAsset } from './journey-asset';
@@ -16,45 +27,109 @@ import type { JourneyCorridor } from './journey-corridor';
 import type { JourneyPreferences } from './journey-preferences';
 import type { JourneyPricing } from './journey-pricing';
 import type { JourneySchedule } from './journey-schedule';
+import type { JourneyStatus } from './journey-status';
 import type { JourneyVehicle } from './journey-vehicle';
-import { JourneyStatus } from './journey-status';
 
+/**
+ * Journey aggregate representation used by authenticated Journey management
+ * surfaces.
+ */
 export interface Journey {
+  /**
+   * Public identifier of the Journey.
+   */
   publicId: string;
 
+  /**
+   * Public identifier of the authenticated Journey provider.
+   *
+   * This field is management-only and must not be exposed through public
+   * marketplace presentation models.
+   */
   providerPublicId: string;
 
+  /**
+   * Current lifecycle status of the Journey.
+   */
   status: JourneyStatus;
 
-  publishedAt: string | null;
+  /**
+   * Timestamp at which the Journey was published, when available.
+   */
+  publishedAt?: string | null;
 
-  startedAt: string | null;
+  /**
+   * Timestamp at which the Journey started, when available.
+   */
+  startedAt?: string | null;
 
-  completionRequestedAt: string | null;
+  /**
+   * Timestamp at which completion was requested, when available.
+   */
+  completionRequestedAt?: string | null;
 
-  completedAt: string | null;
+  /**
+   * Timestamp at which the Journey was completed, when available.
+   */
+  completedAt?: string | null;
 
-  cancelledAt: string | null;
+  /**
+   * Timestamp at which the Journey was cancelled, when available.
+   */
+  cancelledAt?: string | null;
 
-  expiredAt: string | null;
+  /**
+   * Timestamp at which the Journey expired, when available.
+   */
+  expiredAt?: string | null;
 
-  version: number;
+  /**
+   * Aggregate version returned by the API, when available.
+   */
+  version?: number;
 
-  corridor: JourneyCorridor | null;
+  /**
+   * Geographic corridor attached to the Journey.
+   */
+  corridor?: JourneyCorridor | null;
 
-  schedule: JourneySchedule | null;
+  /**
+   * Schedule attached to the Journey.
+   */
+  schedule?: JourneySchedule | null;
 
-  vehicle: JourneyVehicle | null;
+  /**
+   * Vehicle attached to the Journey.
+   */
+  vehicle?: JourneyVehicle | null;
 
-  capacity: JourneyCapacity | null;
+  /**
+   * Passenger capacity attached to the Journey.
+   */
+  capacity?: JourneyCapacity | null;
 
-  pricing: JourneyPricing | null;
+  /**
+   * Pricing attached to the Journey.
+   */
+  pricing?: JourneyPricing | null;
 
-  preferences: JourneyPreferences | null;
+  /**
+   * Journey environment and travel policies.
+   */
+  preferences?: JourneyPreferences | null;
 
+  /**
+   * Assets attached to the Journey.
+   */
   assets: JourneyAsset[];
 
-  createdAt: string;
+  /**
+   * Creation timestamp returned by the API, when available.
+   */
+  createdAt?: string;
 
-  updatedAt: string;
+  /**
+   * Last update timestamp returned by the API, when available.
+   */
+  updatedAt?: string;
 }

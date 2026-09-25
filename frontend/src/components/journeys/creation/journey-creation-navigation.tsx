@@ -1,177 +1,228 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Creation Navigation
+// sisiMove — Journey Creation
+// Creation Navigation
 // -----------------------------------------------------------------------------
 //
-// Navigation controls shared by all journey creation steps.
+// Navigation controls for the authenticated Journey creation workflow.
 //
 // Responsibilities:
-// - Render previous/next actions.
-// - Render an optional secondary action such as "Save & exit".
-// - Handle disabled/loading states.
-// - Remain independent of Next.js routing and API concerns.
+// - Present Back / Continue navigation.
+// - Present a final Review / Publish-oriented action when appropriate.
+// - Respect disabled/loading states supplied by the creation workflow.
+// - Keep route construction outside the component.
 //
-// Non-responsibilities:
-// - No router usage.
-// - No API calls.
-// - No form submission logic.
-// - No journey lifecycle logic.
+// Architectural boundaries:
+// - Does NOT call router.push().
+// - Does NOT create a Journey.
+// - Does NOT publish a Journey.
+// - Does NOT persist creation state.
+// - Does NOT validate domain data.
+// - Does NOT determine whether a step is complete.
 //
-// The parent step/page owns the actual handlers.
+// The parent creation shell owns workflow state, validation, navigation, and
+// route construction.
+//
+// Route conventions are supplied by AUTHENTICATED_ROUTES:
+//
+//     AUTHENTICATED_ROUTES.JOURNEY_CREATE_ROUTE(id)
+//     AUTHENTICATED_ROUTES.JOURNEY_CREATE_SCHEDULE(id)
+//     AUTHENTICATED_ROUTES.JOURNEY_CREATE_VEHICLE(id)
+//     AUTHENTICATED_ROUTES.JOURNEY_CREATE_SEATS(id)
+//     AUTHENTICATED_ROUTES.JOURNEY_CREATE_PRICING(id)
+//     AUTHENTICATED_ROUTES.JOURNEY_CREATE_PREFERENCES(id)
+//     AUTHENTICATED_ROUTES.JOURNEY_CREATE_PHOTOS(id)
+//     AUTHENTICATED_ROUTES.JOURNEY_CREATE_REVIEW(id)
+//
+// Design boundaries:
+// - Mobile-first.
+// - Compact.
+// - Uses only frozen sisiMove design tokens.
+// - No gradients.
+// - No new colors.
 // -----------------------------------------------------------------------------
 
-'use client';
+import {
+  Button,
+} from '@/components/ui';
 
-import type { ReactNode } from 'react';
 
-import { Button } from '@/components/ui/button';
-
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Props
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 export interface JourneyCreationNavigationProps {
   /**
-   * Called when the user wants to return to the previous step.
+   * Destination for the previous step.
+   *
+   * Null means the current step is the first step and therefore has no
+   * previous destination.
+   */
+  previousHref?: string | null;
+
+  /**
+   * Destination for the next step.
+   *
+   * Null means the current step has no ordinary next destination.
+   */
+  nextHref?: string | null;
+
+  /**
+   * Called when the user chooses to go back.
+   *
+   * The parent owns the actual navigation operation.
    */
   onBack?: () => void;
 
   /**
-   * Called when the user wants to continue to the next step.
+   * Called when the user chooses to continue.
    *
-   * The parent may use this for validation, persistence, or navigation.
+   * The parent owns validation and the actual navigation operation.
    */
   onNext?: () => void;
 
   /**
-   * Optional secondary action, normally used for saving progress
-   * without continuing to the next step.
-   */
-  onSaveAndExit?: () => void;
-
-  /**
-   * Label for the primary forward action.
+   * Optional final-step action.
    *
-   * Defaults to "Continue".
+   * The Review step can replace "Continue" with a publication/review action
+   * supplied by the parent workflow.
    */
-  nextLabel?: string;
+  finalAction?: {
+    label: string;
+    onClick: () => void;
+  };
 
   /**
-   * Label for the back action.
-   *
-   * Defaults to "Back".
-   */
-  backLabel?: string;
-
-  /**
-   * Label for the secondary save action.
-   *
-   * Defaults to "Save & exit".
-   */
-  saveAndExitLabel?: string;
-
-  /**
-   * Indicates that the current step is being persisted or submitted.
-   */
-  isLoading?: boolean;
-
-  /**
-   * Disables the back action.
+   * Prevents the Back action while the workflow is busy.
    */
   backDisabled?: boolean;
 
   /**
-   * Disables the primary forward action.
+   * Prevents the Continue action.
+   *
+   * Typically used when the current step has not satisfied its local
+   * requirements.
    */
   nextDisabled?: boolean;
 
   /**
-   * Indicates that this is the final step.
-   *
-   * The default final action label becomes "Publish journey".
+   * Indicates that the next operation is being performed.
    */
-  isLastStep?: boolean;
+  nextLoading?: boolean;
 
   /**
-   * Optional additional content rendered on the left side.
+   * Indicates that the final operation is being performed.
    */
-  leading?: ReactNode;
+  finalLoading?: boolean;
 
   /**
-   * Optional additional class names.
+   * Optional additional classes.
    */
   className?: string;
 }
 
-// ----------------------------------------------------------------------------
-// Component
-// ----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Journey Creation Navigation
+// -----------------------------------------------------------------------------
 
 export function JourneyCreationNavigation({
+  previousHref,
+  nextHref,
   onBack,
   onNext,
-  onSaveAndExit,
-  nextLabel,
-  backLabel = 'Back',
-  saveAndExitLabel = 'Save & exit',
-  isLoading = false,
+  finalAction,
   backDisabled = false,
   nextDisabled = false,
-  isLastStep = false,
-  leading,
+  nextLoading = false,
+  finalLoading = false,
   className,
 }: JourneyCreationNavigationProps) {
-  const resolvedNextLabel =
-    nextLabel ?? (isLastStep ? 'Publish journey' : 'Continue');
+  const hasBack =
+    Boolean(previousHref) ||
+    Boolean(onBack);
+
+  const hasNext =
+    Boolean(nextHref) ||
+    Boolean(onNext);
+
+  const showFinalAction =
+    Boolean(finalAction);
 
   return (
     <nav
       aria-label="Journey creation navigation"
       className={[
-        'flex flex-col gap-3',
-        'sm:flex-row sm:items-center sm:justify-between',
+        'flex',
+        'flex-col-reverse',
+        'gap-3',
+        'border-t',
+        'border-[var(--border-subtle)]',
+        'pt-4',
+        'sm:flex-row',
+        'sm:items-center',
+        'sm:justify-between',
         className,
       ]
         .filter(Boolean)
         .join(' ')}
     >
-      <div className="flex min-w-0 items-center gap-3">
-        {onBack ? (
+      {/* ------------------------------------------------------------------- */}
+      {/* Back                                                                 */}
+      {/* ------------------------------------------------------------------- */}
+
+      <div className="flex w-full sm:w-auto">
+        {hasBack ? (
           <Button
             type="button"
             variant="ghost"
+            size="md"
+            disabled={backDisabled}
             onClick={onBack}
-            disabled={backDisabled || isLoading}
           >
-            {backLabel}
+            Back
           </Button>
-        ) : null}
-
-        {leading ? (
-          <div className="min-w-0">
-            {leading}
-          </div>
-        ) : null}
+        ) : (
+          <span aria-hidden="true" />
+        )}
       </div>
 
-      <div className="flex items-center justify-end gap-2">
-        {onSaveAndExit ? (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onSaveAndExit}
-            disabled={isLoading}
-          >
-            {saveAndExitLabel}
-          </Button>
-        ) : null}
 
-        {onNext ? (
+      {/* ------------------------------------------------------------------- */}
+      {/* Forward actions                                                      */}
+      {/* ------------------------------------------------------------------- */}
+
+      <div className="flex w-full items-center gap-2 sm:w-auto">
+        {showFinalAction ? (
           <Button
             type="button"
-            onClick={onNext}
-            disabled={nextDisabled || isLoading}
+            variant="primary"
+            size="md"
+            loading={finalLoading}
+            disabled={
+              finalLoading ||
+              nextDisabled
+            }
+            onClick={
+              finalAction?.onClick
+            }
+            className="w-full sm:w-auto"
           >
-            {isLoading ? 'Saving…' : resolvedNextLabel}
+            {finalAction?.label}
+          </Button>
+        ) : hasNext ? (
+          <Button
+            type="button"
+            variant="primary"
+            size="md"
+            loading={nextLoading}
+            disabled={
+              nextDisabled ||
+              nextLoading
+            }
+            onClick={onNext}
+            className="w-full sm:w-auto"
+          >
+            Continue
           </Button>
         ) : null}
       </div>

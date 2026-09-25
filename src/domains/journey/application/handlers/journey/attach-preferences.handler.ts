@@ -4,23 +4,22 @@
 // sisiMove — Attach Journey Preferences Command Handler
 // -----------------------------------------------------------------------------
 //
-// Application-layer command handler for attaching existing Journey Preferences
-// to a Journey aggregate.
+// Application-layer command handler for configuring Journey Preferences.
 //
 // Responsibilities:
 // - resolve the Journey aggregate;
-// - resolve the Journey Preferences within the Journey aggregate boundary;
-// - delegate the attachment mutation to the Journey aggregate;
+// - create a new Journey Preferences child entity;
+// - convert primitive command values into domain value objects;
+// - attach the preferences to the Journey aggregate;
 // - persist the mutated aggregate.
-//
-// The command already contains JourneyPublicId and JourneyPreferencesPublicId
-// as domain value objects. The handler therefore does not reconstruct them.
 //
 // The handler does NOT:
 // - access Prisma directly;
 // - perform HTTP concerns;
 // - mutate persistence models;
 // - implement Journey business rules.
+//
+// Journey owns the preferences child and its attachment relationship.
 //
 // -----------------------------------------------------------------------------
 
@@ -43,10 +42,29 @@ import type { CommandHandler } from '../../../../../foundation/kernel/applicatio
 import type { AttachPreferencesCommand } from '../../commands/journey/attach-preferences.command';
 
 // -----------------------------------------------------------------------------
-// Exceptions
+// Domain — Entity
+// -----------------------------------------------------------------------------
+
+import { JourneyPreferencesEntity } from '../../../domain/entities/journey-preferences.entity';
+
+// -----------------------------------------------------------------------------
+// Domain — Exceptions
 // -----------------------------------------------------------------------------
 
 import { JourneyNotFoundException } from '../../../domain/exceptions';
+
+// -----------------------------------------------------------------------------
+// Domain — Value Objects
+// -----------------------------------------------------------------------------
+
+import {
+  JourneyPreferencesPublicId,
+  JourneySmokingPolicyValueObject,
+  JourneyPetsPolicyValueObject,
+  JourneyLuggagePolicyValueObject,
+  JourneyConversationPreferenceValueObject,
+  JourneyMusicPreferenceValueObject,
+} from '../../../domain/value-objects';
 
 // -----------------------------------------------------------------------------
 // Repository
@@ -87,7 +105,7 @@ export class AttachPreferencesHandler implements CommandHandler<
     // Resolve Journey Aggregate
     //
     // command.journeyPublicId is already a JourneyPublicId Value Object.
-    // Do not construct another JourneyPublicId here.
+    // Do not reconstruct it here.
     // -------------------------------------------------------------------------
 
     const aggregate = await this.journeyRepository.findByPublicId(
@@ -99,31 +117,39 @@ export class AttachPreferencesHandler implements CommandHandler<
     }
 
     // -------------------------------------------------------------------------
-    // Resolve Journey Preferences
+    // Create Preferences
     //
-    // command.preferencesPublicId is already a JourneyPreferencesPublicId
-    // Value Object. The lookup is scoped to the owning Journey aggregate.
+    // JourneyPreferences is a Journey-owned child entity.
+    //
+    // Its public identity is generated when the child is created.
     // -------------------------------------------------------------------------
 
-    const preferences = await this.journeyRepository.findPreferencesByPublicId(
-      aggregate.journeyId,
-      command.preferencesPublicId,
-    );
+    const now = new Date();
 
-    if (preferences === null) {
-      throw new Error(
-        `Journey preferences '${command.preferencesPublicId.value}' ` +
-          `were not found for Journey '${command.journeyPublicId.value}'.`,
-      );
-    }
+    const preferences = JourneyPreferencesEntity.create({
+      publicId: new JourneyPreferencesPublicId(),
+
+      smoking: new JourneySmokingPolicyValueObject(command.smoking),
+
+      pets: new JourneyPetsPolicyValueObject(command.pets),
+
+      luggage: new JourneyLuggagePolicyValueObject(command.luggage),
+
+      conversation: new JourneyConversationPreferenceValueObject(
+        command.conversation,
+      ),
+
+      music: new JourneyMusicPreferenceValueObject(command.music),
+
+      createdAt: now,
+      updatedAt: now,
+    });
 
     // -------------------------------------------------------------------------
     // Aggregate Mutation
+    //
+    // Journey owns the preferences attachment relationship.
     // -------------------------------------------------------------------------
-    //
-    // The Journey aggregate owns the business rules governing preferences
-    // attachment.
-    //
 
     aggregate.attachPreferences(preferences);
 
