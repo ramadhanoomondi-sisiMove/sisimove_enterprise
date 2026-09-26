@@ -19,7 +19,7 @@ import type {
   ReactNode,
 } from 'react';
 
-import { cn } from '../../foundation/utils/cn';
+import { cn } from '@/foundation/utils/cn';
 
 // -----------------------------------------------------------------------------
 // Types

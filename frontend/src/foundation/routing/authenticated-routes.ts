@@ -28,6 +28,7 @@
 // Those responsibilities belong to their respective application boundaries.
 // -----------------------------------------------------------------------------
 
+
 // -----------------------------------------------------------------------------
 // Authenticated application
 // -----------------------------------------------------------------------------
@@ -64,6 +65,27 @@
 //
 //     /settings
 //         Authenticated application settings surface.
+//
+// -----------------------------------------------------------------------------
+// Messaging
+// -----------------------------------------------------------------------------
+//
+//     /messages
+//         Authenticated Messaging conversation list.
+//
+//     /messages/[conversationPublicId]
+//         Authenticated Messaging conversation detail surface.
+//
+// Messaging is intentionally a separate authenticated application surface.
+//
+// The conversation public identifier is exposed in the URL because the
+// conversation is itself a navigable Messaging resource.
+//
+// Internal persistence identifiers must never be exposed.
+//
+// Message and conversation lifecycle operations remain mutations performed by
+// their respective action components. They are not represented as artificial
+// page routes.
 //
 // -----------------------------------------------------------------------------
 // Journey Boarding
@@ -149,6 +171,27 @@ export const AUTHENTICATED_ROUTES = {
   MY_BOOKINGS: '/my-bookings',
 
   ASSETS: '/assets',
+
+  // ---------------------------------------------------------------------------
+  // Messaging
+  // ---------------------------------------------------------------------------
+  //
+  // Authenticated Messaging conversation surface.
+  //
+  // The conversation identifier exposed by the UI is MessagingConversation's
+  // publicId. Internal persistence IDs are never exposed.
+  //
+  // Conversation and message lifecycle operations remain mutations performed
+  // by their respective Messaging components.
+  //
+  // ---------------------------------------------------------------------------
+
+  MESSAGES: '/messages',
+
+  MESSAGING_CONVERSATION: (
+    conversationPublicId: string,
+  ) =>
+    `/messages/${conversationPublicId}`,
 
   // ---------------------------------------------------------------------------
   // Journey creation
@@ -290,29 +333,43 @@ export const AUTHENTICATED_ROUTES = {
 
   JOURNEY_DEMAND_CREATE_START: '/journey-demands/create',
 
-  JOURNEY_DEMAND_CREATE: (journeyDemandPublicId: string) =>
+  JOURNEY_DEMAND_CREATE: (
+    journeyDemandPublicId: string,
+  ) =>
     `/journey-demands/create/${journeyDemandPublicId}`,
 
-  JOURNEY_DEMAND_CREATE_ROUTE: (journeyDemandPublicId: string) =>
+  JOURNEY_DEMAND_CREATE_ROUTE: (
+    journeyDemandPublicId: string,
+  ) =>
     `/journey-demands/create/${journeyDemandPublicId}/route`,
 
-  JOURNEY_DEMAND_CREATE_SCHEDULE: (journeyDemandPublicId: string) =>
+  JOURNEY_DEMAND_CREATE_SCHEDULE: (
+    journeyDemandPublicId: string,
+  ) =>
     `/journey-demands/create/${journeyDemandPublicId}/schedule`,
 
-  JOURNEY_DEMAND_CREATE_SEATS: (journeyDemandPublicId: string) =>
+  JOURNEY_DEMAND_CREATE_SEATS: (
+    journeyDemandPublicId: string,
+  ) =>
     `/journey-demands/create/${journeyDemandPublicId}/seats`,
 
-  JOURNEY_DEMAND_CREATE_PRICING: (journeyDemandPublicId: string) =>
+  JOURNEY_DEMAND_CREATE_PRICING: (
+    journeyDemandPublicId: string,
+  ) =>
     `/journey-demands/create/${journeyDemandPublicId}/pricing`,
 
-  JOURNEY_DEMAND_CREATE_REVIEW: (journeyDemandPublicId: string) =>
+  JOURNEY_DEMAND_CREATE_REVIEW: (
+    journeyDemandPublicId: string,
+  ) =>
     `/journey-demands/create/${journeyDemandPublicId}/review`,
 
   // ---------------------------------------------------------------------------
   // Journey-demand detail
   // ---------------------------------------------------------------------------
 
-  JOURNEY_DEMAND: (journeyDemandPublicId: string) =>
+  JOURNEY_DEMAND: (
+    journeyDemandPublicId: string,
+  ) =>
     `/journey-demands/${journeyDemandPublicId}`,
 
   // ---------------------------------------------------------------------------
@@ -335,7 +392,9 @@ export const AUTHENTICATED_ROUTES = {
   // The separation is intentional. The UI uses traveller-facing terminology
   // while the HTTP API retains its bounded-context resource name.
   //
-  // The booking identifier exposed in the URL is always JourneyBooking.publicId.
+  // The booking identifier exposed in the URL is always
+  // JourneyBooking.publicId.
+  //
   // Internal persistence IDs must never be exposed.
   //
   // Lifecycle operations remain mutations on the booking detail surface:
@@ -349,7 +408,9 @@ export const AUTHENTICATED_ROUTES = {
   //
   // ---------------------------------------------------------------------------
 
-  BOOKING: (journeyBookingPublicId: string) =>
+  BOOKING: (
+    journeyBookingPublicId: string,
+  ) =>
     `/bookings/${journeyBookingPublicId}`,
 
   // ---------------------------------------------------------------------------
@@ -372,7 +433,9 @@ export const AUTHENTICATED_ROUTES = {
 
   WALLET_TRANSACTIONS: '/wallet/transactions',
 
-  WALLET_TRANSACTION: (transactionPublicId: string) =>
+  WALLET_TRANSACTION: (
+    transactionPublicId: string,
+  ) =>
     `/wallet/transactions/${transactionPublicId}`,
 
   WALLET_PAYMENT_METHODS: '/wallet/payment-methods',
