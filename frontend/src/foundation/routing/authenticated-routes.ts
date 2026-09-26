@@ -28,7 +28,6 @@
 // Those responsibilities belong to their respective application boundaries.
 // -----------------------------------------------------------------------------
 
-
 // -----------------------------------------------------------------------------
 // Authenticated application
 // -----------------------------------------------------------------------------
@@ -65,6 +64,15 @@
 //
 //     /settings
 //         Authenticated application settings surface.
+//
+//     /notifications
+//         Authenticated notification collection.
+//
+//     /notifications/[notificationPublicId]
+//         Authenticated notification detail surface.
+//
+//     /settings/notifications
+//         Authenticated notification preference settings.
 //
 // -----------------------------------------------------------------------------
 // Messaging
@@ -140,8 +148,8 @@
 // lifecycle remains owned by the backend/domain workflow.
 //
 // -----------------------------------------------------------------------------
-//
 // Journey creation
+// -----------------------------------------------------------------------------
 //
 // Journey creation is a guided workflow around an already-created
 // server-side Journey aggregate in DRAFT status.
@@ -151,7 +159,6 @@
 // Every subsequent creation step is identified by journeyPublicId.
 //
 // -----------------------------------------------------------------------------
-
 
 export const AUTHENTICATED_ROUTES = {
   // ---------------------------------------------------------------------------
@@ -191,7 +198,46 @@ export const AUTHENTICATED_ROUTES = {
   MESSAGING_CONVERSATION: (
     conversationPublicId: string,
   ) =>
-    `/messages/${conversationPublicId}`,
+    `/messages/${encodeURIComponent(conversationPublicId)}`,
+
+  // ---------------------------------------------------------------------------
+  // Notifications
+  // ---------------------------------------------------------------------------
+  //
+  // Authenticated member-facing notification surfaces.
+  //
+  // Notification publicId is the only notification identifier exposed by the
+  // application URL.
+  //
+  // Internal persistence identifiers must never be exposed.
+  //
+  // Notification lifecycle operations remain mutations performed by their
+  // respective components. They are not represented as artificial page
+  // routes.
+  //
+  // ---------------------------------------------------------------------------
+
+  NOTIFICATIONS: '/notifications',
+
+  NOTIFICATION: (
+    notificationPublicId: string,
+  ) =>
+    `/notifications/${encodeURIComponent(notificationPublicId)}`,
+
+  // ---------------------------------------------------------------------------
+  // Notification preferences
+  // ---------------------------------------------------------------------------
+  //
+  // Member-facing notification preference settings.
+  //
+  // The preference aggregate publicId is intentionally not exposed in the
+  // settings URL because the authenticated member has one preference
+  // resource and the application resolves it through the authenticated
+  // member identity.
+  //
+  // ---------------------------------------------------------------------------
+
+  NOTIFICATION_SETTINGS: '/settings/notifications',
 
   // ---------------------------------------------------------------------------
   // Journey creation
@@ -208,39 +254,59 @@ export const AUTHENTICATED_ROUTES = {
 
   JOURNEY_CREATE_START: '/journeys/create',
 
-  JOURNEY_CREATE: (journeyPublicId: string) =>
-    `/journeys/create/${journeyPublicId}`,
+  JOURNEY_CREATE: (
+    journeyPublicId: string,
+  ) =>
+    `/journeys/create/${encodeURIComponent(journeyPublicId)}`,
 
-  JOURNEY_CREATE_ROUTE: (journeyPublicId: string) =>
-    `/journeys/create/${journeyPublicId}/route`,
+  JOURNEY_CREATE_ROUTE: (
+    journeyPublicId: string,
+  ) =>
+    `/journeys/create/${encodeURIComponent(journeyPublicId)}/route`,
 
-  JOURNEY_CREATE_SCHEDULE: (journeyPublicId: string) =>
-    `/journeys/create/${journeyPublicId}/schedule`,
+  JOURNEY_CREATE_SCHEDULE: (
+    journeyPublicId: string,
+  ) =>
+    `/journeys/create/${encodeURIComponent(journeyPublicId)}/schedule`,
 
-  JOURNEY_CREATE_VEHICLE: (journeyPublicId: string) =>
-    `/journeys/create/${journeyPublicId}/vehicle`,
+  JOURNEY_CREATE_VEHICLE: (
+    journeyPublicId: string,
+  ) =>
+    `/journeys/create/${encodeURIComponent(journeyPublicId)}/vehicle`,
 
-  JOURNEY_CREATE_SEATS: (journeyPublicId: string) =>
-    `/journeys/create/${journeyPublicId}/seats`,
+  JOURNEY_CREATE_SEATS: (
+    journeyPublicId: string,
+  ) =>
+    `/journeys/create/${encodeURIComponent(journeyPublicId)}/seats`,
 
-  JOURNEY_CREATE_PRICING: (journeyPublicId: string) =>
-    `/journeys/create/${journeyPublicId}/pricing`,
+  JOURNEY_CREATE_PRICING: (
+    journeyPublicId: string,
+  ) =>
+    `/journeys/create/${encodeURIComponent(journeyPublicId)}/pricing`,
 
-  JOURNEY_CREATE_PREFERENCES: (journeyPublicId: string) =>
-    `/journeys/create/${journeyPublicId}/preferences`,
+  JOURNEY_CREATE_PREFERENCES: (
+    journeyPublicId: string,
+  ) =>
+    `/journeys/create/${encodeURIComponent(journeyPublicId)}/preferences`,
 
-  JOURNEY_CREATE_PHOTOS: (journeyPublicId: string) =>
-    `/journeys/create/${journeyPublicId}/photos`,
+  JOURNEY_CREATE_PHOTOS: (
+    journeyPublicId: string,
+  ) =>
+    `/journeys/create/${encodeURIComponent(journeyPublicId)}/photos`,
 
-  JOURNEY_CREATE_REVIEW: (journeyPublicId: string) =>
-    `/journeys/create/${journeyPublicId}/review`,
+  JOURNEY_CREATE_REVIEW: (
+    journeyPublicId: string,
+  ) =>
+    `/journeys/create/${encodeURIComponent(journeyPublicId)}/review`,
 
   // ---------------------------------------------------------------------------
   // Journey detail
   // ---------------------------------------------------------------------------
 
-  JOURNEY: (journeyPublicId: string) =>
-    `/journeys/${journeyPublicId}`,
+  JOURNEY: (
+    journeyPublicId: string,
+  ) =>
+    `/journeys/${encodeURIComponent(journeyPublicId)}`,
 
   // ---------------------------------------------------------------------------
   // Journey Boarding
@@ -276,8 +342,10 @@ export const AUTHENTICATED_ROUTES = {
   //
   // ---------------------------------------------------------------------------
 
-  JOURNEY_BOARDING: (journeyPublicId: string) =>
-    `/journeys/${journeyPublicId}/boarding`,
+  JOURNEY_BOARDING: (
+    journeyPublicId: string,
+  ) =>
+    `/journeys/${encodeURIComponent(journeyPublicId)}/boarding`,
 
   // ---------------------------------------------------------------------------
   // Journey Completion
@@ -322,8 +390,10 @@ export const AUTHENTICATED_ROUTES = {
   //
   // ---------------------------------------------------------------------------
 
-  JOURNEY_COMPLETION: (journeyPublicId: string) =>
-    `/journeys/${journeyPublicId}/completion`,
+  JOURNEY_COMPLETION: (
+    journeyPublicId: string,
+  ) =>
+    `/journeys/${encodeURIComponent(journeyPublicId)}/completion`,
 
   // ---------------------------------------------------------------------------
   // Journey-demand management
@@ -336,32 +406,32 @@ export const AUTHENTICATED_ROUTES = {
   JOURNEY_DEMAND_CREATE: (
     journeyDemandPublicId: string,
   ) =>
-    `/journey-demands/create/${journeyDemandPublicId}`,
+    `/journey-demands/create/${encodeURIComponent(journeyDemandPublicId)}`,
 
   JOURNEY_DEMAND_CREATE_ROUTE: (
     journeyDemandPublicId: string,
   ) =>
-    `/journey-demands/create/${journeyDemandPublicId}/route`,
+    `/journey-demands/create/${encodeURIComponent(journeyDemandPublicId)}/route`,
 
   JOURNEY_DEMAND_CREATE_SCHEDULE: (
     journeyDemandPublicId: string,
   ) =>
-    `/journey-demands/create/${journeyDemandPublicId}/schedule`,
+    `/journey-demands/create/${encodeURIComponent(journeyDemandPublicId)}/schedule`,
 
   JOURNEY_DEMAND_CREATE_SEATS: (
     journeyDemandPublicId: string,
   ) =>
-    `/journey-demands/create/${journeyDemandPublicId}/seats`,
+    `/journey-demands/create/${encodeURIComponent(journeyDemandPublicId)}/seats`,
 
   JOURNEY_DEMAND_CREATE_PRICING: (
     journeyDemandPublicId: string,
   ) =>
-    `/journey-demands/create/${journeyDemandPublicId}/pricing`,
+    `/journeys/create/${encodeURIComponent(journeyDemandPublicId)}/pricing`,
 
   JOURNEY_DEMAND_CREATE_REVIEW: (
     journeyDemandPublicId: string,
   ) =>
-    `/journey-demands/create/${journeyDemandPublicId}/review`,
+    `/journey-demands/create/${encodeURIComponent(journeyDemandPublicId)}/review`,
 
   // ---------------------------------------------------------------------------
   // Journey-demand detail
@@ -370,7 +440,7 @@ export const AUTHENTICATED_ROUTES = {
   JOURNEY_DEMAND: (
     journeyDemandPublicId: string,
   ) =>
-    `/journey-demands/${journeyDemandPublicId}`,
+    `/journey-demands/${encodeURIComponent(journeyDemandPublicId)}`,
 
   // ---------------------------------------------------------------------------
   // Journey Booking
@@ -411,7 +481,7 @@ export const AUTHENTICATED_ROUTES = {
   BOOKING: (
     journeyBookingPublicId: string,
   ) =>
-    `/bookings/${journeyBookingPublicId}`,
+    `/bookings/${encodeURIComponent(journeyBookingPublicId)}`,
 
   // ---------------------------------------------------------------------------
   // Traveller profile
@@ -436,7 +506,7 @@ export const AUTHENTICATED_ROUTES = {
   WALLET_TRANSACTION: (
     transactionPublicId: string,
   ) =>
-    `/wallet/transactions/${transactionPublicId}`,
+    `/wallet/transactions/${encodeURIComponent(transactionPublicId)}`,
 
   WALLET_PAYMENT_METHODS: '/wallet/payment-methods',
 
@@ -471,3 +541,4 @@ export type AuthenticatedRoute = Extract<
   AuthenticatedRouteValue,
   string
 >;
+
