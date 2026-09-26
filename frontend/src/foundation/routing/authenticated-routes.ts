@@ -89,6 +89,35 @@
 //         Individual traveller booking lifecycle.
 //
 // -----------------------------------------------------------------------------
+// Journey Completion
+// -----------------------------------------------------------------------------
+//
+//     /journeys/[journeyPublicId]/completion
+//         Authenticated Journey Completion operational surface.
+//
+// Journey Completion is intentionally nested under the Journey detail route.
+//
+// The URL uses Journey.publicId rather than JourneyCompletion.publicId.
+//
+// The completion aggregate is associated with a Journey and is therefore
+// presented in Journey context.
+//
+// The surface may present:
+//
+//     - completion status;
+//     - confirmation progress;
+//     - passenger/provider confirmations;
+//     - completion disputes;
+//     - settlement status.
+//
+// Completion and settlement lifecycle operations remain domain mutations
+// performed by their respective action components. They are not represented
+// as artificial page routes.
+//
+// Settlement is observational on the completion surface. Financial settlement
+// lifecycle remains owned by the backend/domain workflow.
+//
+// -----------------------------------------------------------------------------
 //
 // Journey creation
 //
@@ -206,6 +235,52 @@ export const AUTHENTICATED_ROUTES = {
 
   JOURNEY_BOARDING: (journeyPublicId: string) =>
     `/journeys/${journeyPublicId}/boarding`,
+
+  // ---------------------------------------------------------------------------
+  // Journey Completion
+  // ---------------------------------------------------------------------------
+  //
+  // Authenticated operational surface for Journey Completion.
+  //
+  // The URL intentionally uses Journey.publicId rather than the internal
+  // JourneyCompletion persistence ID.
+  //
+  // Backend resources:
+  //
+  //     /journey-completions/...
+  //     /journey-settlements/...
+  //
+  // Authenticated UI:
+  //
+  //     /journeys/[journeyPublicId]/completion
+  //
+  // Completion is resolved in Journey context.
+  //
+  // The surface may display:
+  //
+  //     - completion lifecycle status;
+  //     - confirmation progress;
+  //     - completion confirmations;
+  //     - completion disputes;
+  //     - settlement status.
+  //
+  // Lifecycle mutations remain actions on this surface:
+  //
+  //     request completion
+  //     confirm completion
+  //     withdraw confirmation
+  //     cancel completion
+  //     report a problem
+  //     withdraw dispute
+  //
+  // Settlement lifecycle is not exposed as page routes. Settlement is
+  // observed from the completion surface while financial processing remains
+  // backend/domain-owned.
+  //
+  // ---------------------------------------------------------------------------
+
+  JOURNEY_COMPLETION: (journeyPublicId: string) =>
+    `/journeys/${journeyPublicId}/completion`,
 
   // ---------------------------------------------------------------------------
   // Journey-demand management
