@@ -2223,10 +2223,6 @@ model JourneyCompletion {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())
 
-  // ---------------------------------------------------------------------------
-  // Cross-domain references
-  // ---------------------------------------------------------------------------
-
   /// References Journey.publicId.
   /// Intentionally NOT a Prisma relation.
   journeyPublicId String @unique
@@ -2235,10 +2231,6 @@ model JourneyCompletion {
   /// Intentionally NOT a Prisma relation.
   providerPublicId String
 
-  // ---------------------------------------------------------------------------
-  // Lifecycle
-  // ---------------------------------------------------------------------------
-
   status JourneyCompletionStatus @default(PENDING)
 
   completionRequestedAt DateTime?
@@ -2246,37 +2238,17 @@ model JourneyCompletion {
   disputedAt            DateTime?
   cancelledAt           DateTime?
 
-  // ---------------------------------------------------------------------------
-  // Confirmation tracking
-  // ---------------------------------------------------------------------------
-
   requiredConfirmations Int @default(2)
   confirmedCount        Int @default(0)
 
-  // ---------------------------------------------------------------------------
-  // Aggregate version
-  // ---------------------------------------------------------------------------
-
   version Int @default(1)
-
-  // ---------------------------------------------------------------------------
-  // Internal Journey-domain relations
-  // ---------------------------------------------------------------------------
 
   confirmations JourneyCompletionConfirmation[]
   disputes      JourneyCompletionDispute[]
   settlement    JourneySettlement?
 
-  // ---------------------------------------------------------------------------
-  // Audit timestamps
-  // ---------------------------------------------------------------------------
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  // ---------------------------------------------------------------------------
-  // Indexes
-  // ---------------------------------------------------------------------------
 
   @@index([providerPublicId])
   @@index([status])
@@ -4270,10 +4242,6 @@ enum JourneyDemandStatus {
 // ASSET ENUMS
 // =============================================================================
 
-// -----------------------------------------------------------------------------
-// Asset Type
-// -----------------------------------------------------------------------------
-
 enum AssetType {
   IMAGE
   VIDEO
@@ -4281,10 +4249,6 @@ enum AssetType {
   DOCUMENT
   OTHER
 }
-
-// -----------------------------------------------------------------------------
-// Asset Category
-// -----------------------------------------------------------------------------
 
 enum AssetCategory {
   PROFILE_PHOTO
@@ -4302,10 +4266,6 @@ enum AssetCategory {
   OTHER
 }
 
-// -----------------------------------------------------------------------------
-// Asset Status
-// -----------------------------------------------------------------------------
-
 enum AssetStatus {
   UPLOADING
   UPLOADED
@@ -4314,18 +4274,10 @@ enum AssetStatus {
   DELETED
 }
 
-// -----------------------------------------------------------------------------
-// Asset Visibility
-// -----------------------------------------------------------------------------
-
 enum AssetVisibility {
   PUBLIC
   PRIVATE
 }
-
-// -----------------------------------------------------------------------------
-// Storage Provider
-// -----------------------------------------------------------------------------
 
 enum StorageProvider {
   LOCAL

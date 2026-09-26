@@ -66,6 +66,41 @@
 //         Authenticated application settings surface.
 //
 // -----------------------------------------------------------------------------
+// Journey Boarding
+// -----------------------------------------------------------------------------
+//
+//     /journeys/[journeyPublicId]/boarding
+//         Authenticated Journey Boarding operational surface.
+//
+// Journey Boarding is intentionally nested under the Journey detail route.
+//
+// The boarding identifier is not exposed in the URL because the operational
+// boarding surface is entered in the context of a specific Journey.
+//
+// The backend resolves the Journey Boarding aggregate from the journey's
+// public identifier.
+//
+// This route is distinct from Journey Booking:
+//
+//     /journeys/[journeyPublicId]/boarding
+//         Operational boarding of a Journey.
+//
+//     /bookings/[journeyBookingPublicId]
+//         Individual traveller booking lifecycle.
+//
+// -----------------------------------------------------------------------------
+//
+// Journey creation
+//
+// Journey creation is a guided workflow around an already-created
+// server-side Journey aggregate in DRAFT status.
+//
+// The entry route creates the draft exactly once.
+//
+// Every subsequent creation step is identified by journeyPublicId.
+//
+// -----------------------------------------------------------------------------
+
 
 export const AUTHENTICATED_ROUTES = {
   // ---------------------------------------------------------------------------
@@ -134,6 +169,43 @@ export const AUTHENTICATED_ROUTES = {
 
   JOURNEY: (journeyPublicId: string) =>
     `/journeys/${journeyPublicId}`,
+
+  // ---------------------------------------------------------------------------
+  // Journey Boarding
+  // ---------------------------------------------------------------------------
+  //
+  // Authenticated operational surface for boarding a specific Journey.
+  //
+  // The URL intentionally uses Journey.publicId rather than the internal
+  // JourneyBoarding persistence ID.
+  //
+  // Backend resource:
+  //
+  //     /journey-boardings/...
+  //
+  // Authenticated UI:
+  //
+  //     /journeys/[journeyPublicId]/boarding
+  //
+  // The boarding aggregate is resolved from the Journey public identifier.
+  //
+  // Lifecycle and participant mutations remain actions on this surface:
+  //
+  //     open
+  //     board provider
+  //     board passenger
+  //     mark passenger no-show
+  //     withdraw participant
+  //     remove participant
+  //     start journey
+  //     cancel boarding
+  //
+  // They are not represented as artificial page routes.
+  //
+  // ---------------------------------------------------------------------------
+
+  JOURNEY_BOARDING: (journeyPublicId: string) =>
+    `/journeys/${journeyPublicId}/boarding`,
 
   // ---------------------------------------------------------------------------
   // Journey-demand management
