@@ -1,3 +1,5 @@
+'use client';
+
 // -----------------------------------------------------------------------------
 // sisiMove — Authenticated Account Menu
 // -----------------------------------------------------------------------------
@@ -41,9 +43,17 @@
 //
 // `avatarSrc` is already a resolved public Asset URL.
 //
+// Route ownership:
+//
+//     AUTHENTICATED_ROUTES
+//              │
+//              ▼
+//     AuthenticatedAccountMenu
+//
+// All authenticated navigation is resolved through the canonical route map.
+// This component does not construct authenticated route paths itself.
+//
 // -----------------------------------------------------------------------------
-
-'use client';
 
 import {
   useEffect,
@@ -98,19 +108,27 @@ export interface AuthenticatedAccountMenuProps {
 const ACCOUNT_MENU_ITEMS = [
   {
     label: 'Profile',
-    href: '/profile',
+    href: AUTHENTICATED_ROUTES.PROFILE,
   },
   {
     label: 'Wallet',
-    href: '/wallet',
+    href: AUTHENTICATED_ROUTES.WALLET,
+  },
+  {
+    label: 'Notifications',
+    href: AUTHENTICATED_ROUTES.NOTIFICATIONS,
+  },
+  {
+    label: 'Notification settings',
+    href: AUTHENTICATED_ROUTES.NOTIFICATION_SETTINGS,
   },
   {
     label: 'Support',
-    href: '/support',
+    href: AUTHENTICATED_ROUTES.SUPPORT,
   },
   {
     label: 'Settings',
-    href: '/settings',
+    href: AUTHENTICATED_ROUTES.SETTINGS,
   },
 ] as const;
 
@@ -295,7 +313,7 @@ export function AuthenticatedAccountMenu({
         >
           <path
             fillRule="evenodd"
-            d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 1 1-1.08 1.04l4.25-4.5a.75.75 0 0 1 .02 1.06Z"
+            d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 1 1-1.08 1.04l4.25-4.5a.75.75 0 0 1 1.08 1.04l-4.25-4.5a.75.75 0 0 1 .02 1.06Z"
             clipRule="evenodd"
           />
         </svg>
@@ -314,7 +332,7 @@ export function AuthenticatedAccountMenu({
             'right-0',
             'z-50',
             'mt-2',
-            'w-52',
+            'w-56',
             'overflow-hidden',
             'rounded-[var(--radius-xl)]',
             'border',
@@ -407,3 +425,4 @@ export function AuthenticatedAccountMenu({
 }
 
 export default AuthenticatedAccountMenu;
+

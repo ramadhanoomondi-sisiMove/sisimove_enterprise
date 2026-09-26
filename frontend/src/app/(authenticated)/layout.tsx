@@ -5,9 +5,18 @@
 // Application route boundary for authenticated SisiMove surfaces.
 //
 // Responsibilities:
-// - Resolve the current Traveller Profile.
-// - Resolve the current Traveller Profile's public avatar Asset reference.
-// - Supply presentation-ready identity data to AuthenticatedShell.
+// - resolve the current Traveller Profile;
+// - resolve the Traveller Profile's public avatar Asset reference;
+// - supply presentation-ready traveller data to AuthenticatedShell.
+//
+// Non-responsibilities:
+// - authentication state management;
+// - session management;
+// - route authorization;
+// - notification fetching;
+// - notification state management;
+// - marketplace data fetching;
+// - rendering application pages.
 //
 // Data flow:
 //
@@ -27,12 +36,24 @@
 //                                  │
 //                                  ▼
 //                         AuthenticatedHeader
-//                                  │
-//                                  ▼
-//                    AuthenticatedAccountMenu
+//                           │              │
+//                           │              └── AuthenticatedAccountMenu
+//                           │
+//                           └── AuthenticatedNotifications
+//                                      │
+//                                      ▼
+//                                NotificationBell
+//                                      │
+//                                      ▼
+//                               useNotifications()
 //
-// The layout is the composition boundary. Header and shell components do not
-// fetch Traveller Profile or Asset data.
+// The layout is the composition boundary for current traveller presentation
+// data. Header and shell components do not fetch Traveller Profile or Asset
+// data.
+//
+// Notification state deliberately does not pass through this layout.
+// `NotificationBell` owns its notification query because notifications are
+// independent authenticated server state.
 //
 // -----------------------------------------------------------------------------
 
@@ -54,29 +75,24 @@ import { AuthenticatedShell } from '@/components/authenticated';
 // Traveller Profile
 // -----------------------------------------------------------------------------
 
-import {
-  useCurrentTravellerProfile,
-} from '@/features/traveller-profile';
+import { useCurrentTravellerProfile } from '@/features/traveller-profile';
 
 // -----------------------------------------------------------------------------
 // Assets
 // -----------------------------------------------------------------------------
 //
-// Use the existing public Asset reference hook.
-//
-// This hook resolves:
+// The Asset feature owns public Asset URL resolution.
 //
 //     avatarAssetPublicId
 //             ↓
-//     GET /assets/public/:assetPublicId/reference
+//     public Asset reference
 //             ↓
-//     public Asset URL
+//     avatar.url
 //
+// The layout never constructs an Asset URL itself.
 // -----------------------------------------------------------------------------
 
-import {
-  usePublicAsset,
-} from '@/features/assets';
+import { usePublicAsset } from '@/features/assets';
 
 // =============================================================================
 // Props
@@ -96,6 +112,17 @@ export interface AuthenticatedLayoutProps {
 export default function AuthenticatedLayout({
   children,
 }: AuthenticatedLayoutProps) {
+  // ---------------------------------------------------------------------------
+  // Current Traveller Profile
+  // ---------------------------------------------------------------------------
+  //
+  // The authenticated route boundary resolves the current Traveller Profile.
+  //
+  // Header and shell components receive presentation-ready values and remain
+  // independent from Traveller Profile data access.
+  //
+  // ---------------------------------------------------------------------------
+
   const {
     data: travellerProfile,
     isLoading: profileLoading,
@@ -108,14 +135,12 @@ export default function AuthenticatedLayout({
   //
   // TravellerProfile owns only the opaque Asset public ID.
   //
-  // It does not own Asset delivery and must not construct the URL itself.
-  //
   // The Asset feature owns resolution of:
   //
   //     avatarAssetPublicId → public delivery URL
   //
-  // Passing `null` while the profile is unavailable prevents an unnecessary
-  // Asset request.
+  // `null` is supplied while the profile is unavailable. The public Asset hook
+  // is responsible for treating a null identifier as a disabled query.
   //
   // ---------------------------------------------------------------------------
 
@@ -135,8 +160,8 @@ export default function AuthenticatedLayout({
       <div className="min-h-screen bg-background text-foreground">
         <div
           className="flex min-h-screen items-center justify-center px-4"
-          aria-live="polite"
           aria-busy="true"
+          aria-live="polite"
         >
           <p className="text-sm text-muted-foreground">
             Loading your profile…
@@ -149,12 +174,20 @@ export default function AuthenticatedLayout({
   // ---------------------------------------------------------------------------
   // Current Traveller Profile Failure
   // ---------------------------------------------------------------------------
+  //
+  // The authenticated shell requires a Traveller Profile because the header
+  // account boundary requires the public traveller handle.
+  //
+  // ---------------------------------------------------------------------------
 
   if (profileIsError || travellerProfile == null) {
     return (
       <div className="min-h-screen bg-background text-foreground">
         <div className="flex min-h-screen items-center justify-center px-4">
-          <div className="max-w-md text-center">
+          <div
+            className="max-w-md text-center"
+            role="alert"
+          >
             <h1 className="text-lg font-semibold">
               We could not load your profile
             </h1>
@@ -172,12 +205,14 @@ export default function AuthenticatedLayout({
   // Authenticated Application Shell
   // ---------------------------------------------------------------------------
   //
-  // The header receives the exact same resolved Asset URL that can be used by
-  // ProfileHeader.
+  // Avatar URL resolution is intentionally non-blocking.
   //
-  // Avatar resolution is intentionally non-blocking. Until `avatarAsset.url`
-  // is available, AuthenticatedAccountMenu passes `undefined` to Avatar and
-  // the shared Avatar primitive renders its initials fallback.
+  // If the Asset request is still loading or fails, `null` is passed to the
+  // account menu and the shared Avatar primitive can render its initials
+  // fallback.
+  //
+  // Notification state is intentionally absent from this composition boundary.
+  // The notification feature independently owns that server state.
   //
   // ---------------------------------------------------------------------------
 
@@ -190,3 +225,4 @@ export default function AuthenticatedLayout({
     </AuthenticatedShell>
   );
 }
+

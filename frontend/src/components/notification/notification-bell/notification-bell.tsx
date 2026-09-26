@@ -6,7 +6,7 @@
 //
 // Responsibilities:
 // - load the authenticated user's notifications;
-// - derive the unread state from backend notification status;
+// - derive unread state from backend-authoritative notification status;
 // - expose an accessible notification navigation control;
 // - display a compact unread indicator;
 // - navigate the user to the notification centre.
@@ -17,22 +17,22 @@
 //
 // PENDING is intentionally NOT considered unread.
 //
-// The NotificationEntity lifecycle is:
+// Notification lifecycle:
 //
 //     PENDING -> SENT -> READ
 //     PENDING -> FAILED
 //     PENDING -> CANCELLED
 //
-// Therefore the frontend must not invent an independent "unread" flag or
-// interpret PENDING as an unread notification.
+// The frontend must not invent an independent unread flag or interpret PENDING
+// as unread.
 //
 // Non-responsibilities:
-// - fetching notifications through a page;
 // - mutating notification state;
 // - deciding notification lifecycle rules;
 // - generating notification content;
 // - rendering the notification list;
-// - resolving notification reference destinations.
+// - resolving notification reference destinations;
+// - authentication or session management.
 //
 // Data ownership:
 //
@@ -40,24 +40,28 @@
 //         └── useNotifications()
 //
 // The bell owns its own query because it directly depends on notification
-// data. Consumers do not need to fetch notifications merely to render the
-// authenticated navigation.
+// collection state. Consumers do not need to fetch notifications merely to
+// render authenticated navigation.
+//
+// Error behavior:
+//
+// The notification control remains navigable when the notification query
+// fails. Notification loading is auxiliary to navigation to the notification
+// centre, so a failed collection request must not disable or remove the
+// navigation control.
 //
 // -----------------------------------------------------------------------------
 
 'use client';
 
-import {
-  useMemo,
-  type ComponentPropsWithoutRef,
-} from 'react';
+import type { ComponentPropsWithoutRef } from 'react';
 
 import Link from 'next/link';
 
 import { useNotifications } from '@/features/notification/hooks';
 import { isNotificationUnread } from '@/features/notification/models';
-
 import { cn } from '@/foundation/utils';
+import { AUTHENTICATED_ROUTES } from '@/foundation/routing';
 
 // -----------------------------------------------------------------------------
 // Types
@@ -67,10 +71,9 @@ import { cn } from '@/foundation/utils';
  * Props for the authenticated notification navigation control.
  *
  * The component renders a Next.js Link, therefore its public props are based
- * on anchor/link attributes rather than button attributes.
+ * on link attributes rather than button attributes.
  *
- * This is intentional: opening the notification centre is navigation, not a
- * button-controlled mutation or local modal action.
+ * Opening the notification centre is navigation, not a mutation.
  */
 export interface NotificationBellProps
   extends Omit<
@@ -80,34 +83,27 @@ export interface NotificationBellProps
   /**
    * Optional visual label shown beside the bell icon.
    *
-   * The default presentation is icon-only because the component is intended
-   * for the authenticated application shell.
+   * The authenticated application shell uses the compact icon-only form.
    */
-  showLabel?: boolean;
+  readonly showLabel?: boolean;
 
   /**
    * Destination for the notification centre.
    *
-   * Defaults to the canonical authenticated notifications route.
+   * Defaults to the canonical authenticated notification route.
    */
-  href?: string;
+  readonly href?: string;
 }
-
-// -----------------------------------------------------------------------------
-// Constants
-// -----------------------------------------------------------------------------
-
-const DEFAULT_NOTIFICATIONS_HREF = '/notifications';
 
 // -----------------------------------------------------------------------------
 // Icons
 // -----------------------------------------------------------------------------
 
 /**
- * Bell icon.
+ * Notification bell icon.
  *
- * Kept local to the feature because this is notification-specific presentation
- * rather than a reusable design-system icon primitive.
+ * Kept local because it is notification-specific presentation rather than a
+ * general-purpose design-system icon primitive.
  */
 function BellIcon() {
   return (
@@ -138,11 +134,10 @@ function BellIcon() {
 // -----------------------------------------------------------------------------
 
 /**
- * Lightweight loading indicator used while the notification collection is
- * initially loading.
+ * Lightweight loading indicator shown while the initial notification
+ * collection is loading.
  *
- * The bell remains usable as a navigation control while the query loads.
- * Loading therefore does not disable the navigation control.
+ * Navigation remains available while loading.
  */
 function LoadingIndicator() {
   return (
@@ -157,6 +152,8 @@ function LoadingIndicator() {
         'animate-pulse',
         'rounded-full',
         'bg-[var(--brand)]',
+        'ring-2',
+        'ring-[var(--surface)]',
       ].join(' ')}
     />
   );
@@ -169,11 +166,10 @@ function LoadingIndicator() {
 /**
  * Compact unread indicator.
  *
- * A dot is deliberately used instead of displaying an unread count.
+ * A dot is intentionally used instead of an unread count.
  *
- * The authenticated shell should remain compact, and the backend does not
- * provide a dedicated unread-count projection. Calculating and displaying a
- * count here would create unnecessary coupling to collection semantics.
+ * The notification backend does not expose a dedicated unread-count
+ * projection, and the authenticated shell should remain compact.
  */
 function UnreadIndicator() {
   return (
@@ -200,18 +196,19 @@ function UnreadIndicator() {
 
 export function NotificationBell({
   showLabel = false,
-  href = DEFAULT_NOTIFICATIONS_HREF,
+  href = AUTHENTICATED_ROUTES.NOTIFICATIONS,
   className,
+  'aria-label': ariaLabel,
   ...props
 }: NotificationBellProps) {
   // ---------------------------------------------------------------------------
-  // Query
+  // Notification Query
   // ---------------------------------------------------------------------------
   //
-  // The bell owns its notification query.
+  // Notification state belongs to the notification feature.
   //
-  // This keeps the authenticated shell independent from notification fetching
-  // details and allows the notification feature to evolve independently.
+  // The authenticated shell does not fetch, cache, count, or otherwise manage
+  // notification state.
   //
   // ---------------------------------------------------------------------------
 
@@ -224,31 +221,30 @@ export function NotificationBell({
   // Unread State
   // ---------------------------------------------------------------------------
   //
-  // Backend semantics:
+  // Backend-authoritative rule:
   //
   //     SENT = unread
   //
   // PENDING is intentionally excluded.
   //
-  // We do not calculate or persist another unread state in the frontend.
+  // No separate frontend unread state is introduced.
   //
   // ---------------------------------------------------------------------------
 
-  const hasUnreadNotifications = useMemo(
-    () =>
-      notifications?.some((notification) =>
-        isNotificationUnread(notification.status),
-      ) ?? false,
-    [notifications],
-  );
+  const hasUnreadNotifications =
+    notifications?.some((notification) =>
+      isNotificationUnread(notification.status),
+    ) ?? false;
 
   // ---------------------------------------------------------------------------
   // Accessible Label
   // ---------------------------------------------------------------------------
 
-  const accessibleLabel = hasUnreadNotifications
-    ? 'Open notifications. You have unread notifications.'
-    : 'Open notifications';
+  const accessibleLabel =
+    ariaLabel ??
+    (hasUnreadNotifications
+      ? 'Open notifications. You have unread notifications.'
+      : 'Open notifications');
 
   // ---------------------------------------------------------------------------
   // Render
@@ -258,7 +254,7 @@ export function NotificationBell({
     <Link
       {...props}
       href={href}
-      aria-label={props['aria-label'] ?? accessibleLabel}
+      aria-label={accessibleLabel}
       aria-busy={isLoading || undefined}
       className={cn(
         'relative',
@@ -288,17 +284,17 @@ export function NotificationBell({
       <span className="relative inline-flex shrink-0">
         <BellIcon />
 
-        {/* ----------------------------------------------------------------- */}
-        {/* Unread Indicator                                                  */}
-        {/* ----------------------------------------------------------------- */}
+        {/* --------------------------------------------------------------- */}
+        {/* Unread Indicator                                                */}
+        {/* --------------------------------------------------------------- */}
+
         {hasUnreadNotifications && <UnreadIndicator />}
 
-        {/* ----------------------------------------------------------------- */}
-        {/* Loading Indicator                                                 */}
-        {/* ----------------------------------------------------------------- */}
-        {!hasUnreadNotifications && isLoading && (
-          <LoadingIndicator />
-        )}
+        {/* --------------------------------------------------------------- */}
+        {/* Initial Loading Indicator                                       */}
+        {/* --------------------------------------------------------------- */}
+
+        {!hasUnreadNotifications && isLoading && <LoadingIndicator />}
       </span>
 
       {showLabel && (
@@ -307,9 +303,10 @@ export function NotificationBell({
         </span>
       )}
 
-      {/* ------------------------------------------------------------------- */}
-      {/* Screen-reader status                                                */}
-      {/* ------------------------------------------------------------------- */}
+      {/* ----------------------------------------------------------------- */}
+      {/* Screen-reader Status                                             */}
+      {/* ----------------------------------------------------------------- */}
+
       <span className="sr-only">
         {isLoading
           ? 'Loading notification status.'
@@ -320,3 +317,5 @@ export function NotificationBell({
     </Link>
   );
 }
+
+export default NotificationBell;
