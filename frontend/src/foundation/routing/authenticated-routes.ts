@@ -60,7 +60,13 @@
 //         Traveller's financial-account and wallet overview.
 //
 //     /support
-//         Authenticated support surface.
+//         Authenticated support case collection.
+//
+//     /support/new
+//         Authenticated Support case creation surface.
+//
+//     /support/cases/[supportCasePublicId]
+//         Authenticated Support case detail and conversation surface.
 //
 //     /settings
 //         Authenticated application settings surface.
@@ -159,6 +165,17 @@
 // Every subsequent creation step is identified by journeyPublicId.
 //
 // -----------------------------------------------------------------------------
+// Journey-demand creation
+// -----------------------------------------------------------------------------
+//
+// Journey-demand creation is a guided workflow around an already-created
+// server-side JourneyDemand aggregate.
+//
+// The entry route creates the demand exactly once.
+//
+// Every subsequent creation step is identified by journeyDemandPublicId.
+//
+// -----------------------------------------------------------------------------
 
 export const AUTHENTICATED_ROUTES = {
   // ---------------------------------------------------------------------------
@@ -182,16 +199,6 @@ export const AUTHENTICATED_ROUTES = {
   // ---------------------------------------------------------------------------
   // Messaging
   // ---------------------------------------------------------------------------
-  //
-  // Authenticated Messaging conversation surface.
-  //
-  // The conversation identifier exposed by the UI is MessagingConversation's
-  // publicId. Internal persistence IDs are never exposed.
-  //
-  // Conversation and message lifecycle operations remain mutations performed
-  // by their respective Messaging components.
-  //
-  // ---------------------------------------------------------------------------
 
   MESSAGES: '/messages',
 
@@ -202,19 +209,6 @@ export const AUTHENTICATED_ROUTES = {
 
   // ---------------------------------------------------------------------------
   // Notifications
-  // ---------------------------------------------------------------------------
-  //
-  // Authenticated member-facing notification surfaces.
-  //
-  // Notification publicId is the only notification identifier exposed by the
-  // application URL.
-  //
-  // Internal persistence identifiers must never be exposed.
-  //
-  // Notification lifecycle operations remain mutations performed by their
-  // respective components. They are not represented as artificial page
-  // routes.
-  //
   // ---------------------------------------------------------------------------
 
   NOTIFICATIONS: '/notifications',
@@ -227,29 +221,11 @@ export const AUTHENTICATED_ROUTES = {
   // ---------------------------------------------------------------------------
   // Notification preferences
   // ---------------------------------------------------------------------------
-  //
-  // Member-facing notification preference settings.
-  //
-  // The preference aggregate publicId is intentionally not exposed in the
-  // settings URL because the authenticated member has one preference
-  // resource and the application resolves it through the authenticated
-  // member identity.
-  //
-  // ---------------------------------------------------------------------------
 
   NOTIFICATION_SETTINGS: '/settings/notifications',
 
   // ---------------------------------------------------------------------------
   // Journey creation
-  // ---------------------------------------------------------------------------
-  //
-  // Journey creation is a guided workflow around an already-created
-  // server-side Journey aggregate in DRAFT status.
-  //
-  // The entry route creates the draft exactly once.
-  //
-  // Every subsequent creation step is identified by journeyPublicId.
-  //
   // ---------------------------------------------------------------------------
 
   JOURNEY_CREATE_START: '/journeys/create',
@@ -311,36 +287,6 @@ export const AUTHENTICATED_ROUTES = {
   // ---------------------------------------------------------------------------
   // Journey Boarding
   // ---------------------------------------------------------------------------
-  //
-  // Authenticated operational surface for boarding a specific Journey.
-  //
-  // The URL intentionally uses Journey.publicId rather than the internal
-  // JourneyBoarding persistence ID.
-  //
-  // Backend resource:
-  //
-  //     /journey-boardings/...
-  //
-  // Authenticated UI:
-  //
-  //     /journeys/[journeyPublicId]/boarding
-  //
-  // The boarding aggregate is resolved from the Journey public identifier.
-  //
-  // Lifecycle and participant mutations remain actions on this surface:
-  //
-  //     open
-  //     board provider
-  //     board passenger
-  //     mark passenger no-show
-  //     withdraw participant
-  //     remove participant
-  //     start journey
-  //     cancel boarding
-  //
-  // They are not represented as artificial page routes.
-  //
-  // ---------------------------------------------------------------------------
 
   JOURNEY_BOARDING: (
     journeyPublicId: string,
@@ -349,45 +295,6 @@ export const AUTHENTICATED_ROUTES = {
 
   // ---------------------------------------------------------------------------
   // Journey Completion
-  // ---------------------------------------------------------------------------
-  //
-  // Authenticated operational surface for Journey Completion.
-  //
-  // The URL intentionally uses Journey.publicId rather than the internal
-  // JourneyCompletion persistence ID.
-  //
-  // Backend resources:
-  //
-  //     /journey-completions/...
-  //     /journey-settlements/...
-  //
-  // Authenticated UI:
-  //
-  //     /journeys/[journeyPublicId]/completion
-  //
-  // Completion is resolved in Journey context.
-  //
-  // The surface may display:
-  //
-  //     - completion lifecycle status;
-  //     - confirmation progress;
-  //     - completion confirmations;
-  //     - completion disputes;
-  //     - settlement status.
-  //
-  // Lifecycle mutations remain actions on this surface:
-  //
-  //     request completion
-  //     confirm completion
-  //     withdraw confirmation
-  //     cancel completion
-  //     report a problem
-  //     withdraw dispute
-  //
-  // Settlement lifecycle is not exposed as page routes. Settlement is
-  // observed from the completion surface while financial processing remains
-  // backend/domain-owned.
-  //
   // ---------------------------------------------------------------------------
 
   JOURNEY_COMPLETION: (
@@ -426,7 +333,7 @@ export const AUTHENTICATED_ROUTES = {
   JOURNEY_DEMAND_CREATE_PRICING: (
     journeyDemandPublicId: string,
   ) =>
-    `/journeys/create/${encodeURIComponent(journeyDemandPublicId)}/pricing`,
+    `/journey-demands/create/${encodeURIComponent(journeyDemandPublicId)}/pricing`,
 
   JOURNEY_DEMAND_CREATE_REVIEW: (
     journeyDemandPublicId: string,
@@ -444,38 +351,6 @@ export const AUTHENTICATED_ROUTES = {
 
   // ---------------------------------------------------------------------------
   // Journey Booking
-  // ---------------------------------------------------------------------------
-  //
-  // IMPORTANT:
-  //
-  // These are UI routes, not backend API routes.
-  //
-  // Backend:
-  //
-  //     /journey-bookings/...
-  //
-  // Authenticated application:
-  //
-  //     /my-bookings
-  //     /bookings/[journeyBookingPublicId]
-  //
-  // The separation is intentional. The UI uses traveller-facing terminology
-  // while the HTTP API retains its bounded-context resource name.
-  //
-  // The booking identifier exposed in the URL is always
-  // JourneyBooking.publicId.
-  //
-  // Internal persistence IDs must never be exposed.
-  //
-  // Lifecycle operations remain mutations on the booking detail surface:
-  //
-  //     confirm
-  //     cancel
-  //     complete
-  //     expire
-  //
-  // They are not represented as artificial page routes.
-  //
   // ---------------------------------------------------------------------------
 
   BOOKING: (
@@ -513,8 +388,37 @@ export const AUTHENTICATED_ROUTES = {
   // ---------------------------------------------------------------------------
   // Application support
   // ---------------------------------------------------------------------------
+  //
+  // Support is a member-facing authenticated application surface.
+  //
+  // /support
+  //     Support case collection.
+  //
+  // /support/new
+  //     New Support case workflow.
+  //
+  // /support/cases/[supportCasePublicId]
+  //     Existing Support case detail and conversation.
+  //
+  // The only Support identifier exposed by the URL is SupportCase.publicId.
+  //
+  // Internal persistence IDs, case IDs, participant IDs, message IDs, note
+  // IDs, and other internal identifiers must never be exposed as route
+  // identifiers.
+  //
+  // Support mutations remain actions performed from the appropriate surface.
+  // They are not represented as artificial page routes.
+  //
+  // ---------------------------------------------------------------------------
 
   SUPPORT: '/support',
+
+  SUPPORT_NEW: '/support/new',
+
+  SUPPORT_CASE: (
+    supportCasePublicId: string,
+  ) =>
+    `/support/cases/${encodeURIComponent(supportCasePublicId)}`,
 
   // ---------------------------------------------------------------------------
   // Application settings
