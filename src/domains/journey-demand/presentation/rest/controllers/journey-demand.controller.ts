@@ -82,9 +82,34 @@
 //      v
 // MyJourneyDemandResponse[]
 //
+// GET /journey-demands/me/:journeyDemandPublicId
+//      |
+//      v
+// AuthenticatedIdentity.identityPublicId
+//      |
+//      v
+// RequesterPublicId
+//      |
+//      +--------------------------+
+//      |                          |
+//      v                          v
+// JourneyDemandPublicId     GetMyJourneyDemandQuery
+//                                  |
+//                                  v
+//                       GetMyJourneyDemandQueryHandler
+//                                  |
+//                                  v
+//                         JourneyDemandEntity
+//                                  |
+//                                  v
+//                         MyJourneyDemandMapper
+//                                  |
+//                                  v
+//                       MyJourneyDemandResponse
+//
 // IMPORTANT:
 //
-// The client does NOT provide requesterPublicId for /me.
+// The client does NOT provide requesterPublicId for either /me endpoint.
 //
 // The authenticated identity establishes the requester scope. This prevents
 // a caller from selecting another requester's Journey Demands by changing a
@@ -104,7 +129,10 @@
 //     -> anonymous public marketplace detail
 //
 // /journey-demands/me
-//     -> authenticated requester's own Journey Demands
+//     -> authenticated requester's Journey Demands
+//
+// /journey-demands/me/:journeyDemandPublicId
+//     -> authenticated requester's single Journey Demand
 //
 // -----------------------------------------------------------------------------
 //
@@ -134,6 +162,7 @@
 // Static collection routes such as:
 //
 //     /me
+//     /me/:journeyDemandPublicId
 //     /open
 //     /matchable
 //     /corridor/:corridorId
@@ -144,7 +173,8 @@
 //
 //     /:journeyDemandPublicId
 //
-// so that static paths cannot be interpreted as Journey Demand public IDs.
+// so that static and authenticated owner paths cannot be interpreted as
+// Journey Demand public IDs.
 //
 // -----------------------------------------------------------------------------
 //
@@ -157,7 +187,7 @@
 // supplied by CreateJourneyDemandDto because changing that command contract
 // would be a separate application-layer ownership refactor.
 //
-// The /me read boundary, however, is explicitly identity-derived and does
+// The /me read boundaries, however, are explicitly identity-derived and do
 // not accept requesterPublicId from the client.
 // -----------------------------------------------------------------------------
 
@@ -245,6 +275,7 @@ import {
   GetJourneyDemandPricingQuery,
   GetJourneyDemandScheduleQuery,
   GetJourneyDemandWaypointsQuery,
+  GetMyJourneyDemandQuery,
   GetMyJourneyDemandsQuery,
   GetPublicJourneyDemandQuery,
   GetPublicJourneyDemandsQuery,
@@ -524,6 +555,24 @@ export class JourneyDemandController {
       JourneyDemandEntity[]
     >,
 
+    /**
+     * Returns one Journey Demand belonging to the authenticated requester.
+     *
+     * The ownership boundary is established by the application query and
+     * repository using both:
+     *
+     * - the authenticated RequesterPublicId;
+     * - the requested JourneyDemandPublicId.
+     *
+     * The controller does not compare requester IDs and does not perform
+     * ownership checks itself.
+     */
+    @Inject(JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.GET_MY_ONE)
+    private readonly getMyJourneyDemandHandler: QueryHandler<
+      GetMyJourneyDemandQuery,
+      JourneyDemandEntity | null
+    >,
+
     @Inject(JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.FIND_OPEN)
     private readonly findOpenJourneyDemandsHandler: QueryHandler<
       FindOpenJourneyDemandsQuery,
@@ -735,6 +784,78 @@ export class JourneyDemandController {
   }
 
   // ===========================================================================
+  // AUTHENTICATED OWNER DETAIL
+  // ===========================================================================
+
+  /**
+   * Returns one Journey Demand belonging to the currently authenticated
+   * requester.
+   *
+   * Ownership flow:
+   *
+   *     JWT
+   *       ↓
+   *     AuthenticatedIdentity
+   *       ↓
+   *     identity.identityPublicId
+   *       ↓
+   *     RequesterPublicId
+   *       +
+   *     journeyDemandPublicId
+   *       ↓
+   *     GetMyJourneyDemandQuery
+   *       ↓
+   *     GetMyJourneyDemandQueryHandler
+   *       ↓
+   *     owner-scoped JourneyDemandEntity
+   *       ↓
+   *     MyJourneyDemandMapper
+   *       ↓
+   *     MyJourneyDemandResponse
+   *
+   * The client supplies only the Journey Demand public ID.
+   *
+   * The requester identity always comes from the authenticated JWT.
+   *
+   * The repository/application boundary is responsible for enforcing that
+   * both identifiers belong together. The controller does not perform an
+   * ownership check.
+   *
+   * A non-owned or nonexistent Journey Demand produces the same null result
+   * from the owner-scoped query, avoiding an ownership/existence disclosure
+   * at this transport boundary.
+   */
+  @Get('me/:journeyDemandPublicId')
+  @ApiBearerAuth('access-token')
+  @UseGuards(auth.JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Get my journey demand',
+    description:
+      'Returns one Journey Demand belonging to the currently authenticated requester.',
+  })
+  @ApiParam({
+    name: 'journeyDemandPublicId',
+    description: 'Public identifier of the Journey Demand.',
+  })
+  public async getMyJourneyDemand(
+    @auth.CurrentIdentity() identity: auth.AuthenticatedIdentity,
+    @Param('journeyDemandPublicId') journeyDemandPublicId: string,
+  ): Promise<MyJourneyDemandResponse | null> {
+    const entity = await this.getMyJourneyDemandHandler.execute(
+      new GetMyJourneyDemandQuery(
+        new RequesterPublicId(identity.identityPublicId),
+        new JourneyDemandPublicId(journeyDemandPublicId),
+      ),
+    );
+
+    if (entity === null) {
+      return null;
+    }
+
+    return MyJourneyDemandMapper.fromEntity(entity);
+  }
+
+  // ===========================================================================
   // OTHER PROTECTED COLLECTION QUERIES
   // ===========================================================================
 
@@ -936,6 +1057,11 @@ export class JourneyDemandController {
    *
    * This endpoint intentionally returns the public application read model.
    * It does not expose the Journey Demand aggregate directly.
+   *
+   * IMPORTANT:
+   *
+   * This route is declared after the authenticated /me/:journeyDemandPublicId
+   * route so the owner detail boundary remains explicit and unambiguous.
    */
   @Get(':journeyDemandPublicId')
   @ApiOperation({

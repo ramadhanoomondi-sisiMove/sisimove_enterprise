@@ -2,75 +2,87 @@
 // sisiMove — Journey Waypoint Model
 // -----------------------------------------------------------------------------
 //
-// Frontend representation of a Journey waypoint exposed by the Journey HTTP
-// API.
+// Frontend read-model contract for a Journey waypoint.
 //
-// A waypoint belongs to a Journey corridor and describes a location along the
-// route where the journey may originate, terminate, pick up, drop off, or
-// simply pass through.
+// A waypoint is owned by the Journey corridor. It is therefore represented as
+// part of the Journey route rather than as an independent frontend resource.
 //
-// The Journey controller exposes waypoint references and waypoint resources
-// through public IDs. Internal database IDs are never part of this model.
+// This model mirrors the backend public/My Journey projection rather than the
+// Prisma persistence model.
+//
+// Important:
+// - publicId is the frontend-visible identity;
+// - type does NOT determine pickup/dropoff permissions;
+// - pickupAllowed and dropoffAllowed are independent domain fields;
+// - sequence is supplied by the backend and represents route ordering;
+// - coordinates are represented as numbers at the frontend boundary;
+// - timestamps are included because the current MyJourney/Public Journey
+//   waypoint response contracts expose them where applicable.
+//
+// The frontend must not recreate JourneyWaypointEntity behavior.
 //
 // -----------------------------------------------------------------------------
 
 import type { JourneyWaypointType } from './journey-waypoint-type';
 
 /**
- * Journey waypoint.
- *
- * This model intentionally uses public identifiers only. It mirrors the
- * externally meaningful waypoint representation rather than the Prisma
- * persistence model.
+ * Journey waypoint read model.
  */
 export interface JourneyWaypoint {
   /**
-   * Public identifier of the waypoint.
+   * Public Journey waypoint identifier.
+   *
+   * Internal persistence identifiers are intentionally not exposed.
    */
-  publicId: string;
+  readonly publicId: string;
 
   /**
-   * Semantic role of the waypoint within the Journey corridor.
+   * Semantic type of the waypoint.
    */
-  type: JourneyWaypointType;
+  readonly type: JourneyWaypointType;
 
   /**
-   * Position of the waypoint within the corridor sequence.
+   * Position of the waypoint within the Journey corridor.
    */
-  sequence: number;
+  readonly sequence: number;
 
   /**
    * Human-readable waypoint name.
    */
-  name: string;
+  readonly name: string;
 
   /**
    * Geographic latitude.
    */
-  latitude: number;
+  readonly latitude: number;
 
   /**
    * Geographic longitude.
    */
-  longitude: number;
+  readonly longitude: number;
 
   /**
    * Whether passengers may be picked up at this waypoint.
+   *
+   * This is independent of `type`.
    */
-  pickupAllowed: boolean;
+  readonly pickupAllowed: boolean;
 
   /**
    * Whether passengers may be dropped off at this waypoint.
+   *
+   * This is independent of `type`.
    */
-  dropoffAllowed: boolean;
+  readonly dropoffAllowed: boolean;
 
   /**
-   * Creation timestamp returned by the API, when available.
+   * Backend creation timestamp represented as an ISO string at the frontend
+   * HTTP boundary.
    */
-  createdAt?: string;
+  readonly createdAt: string;
 
   /**
-   * Last update timestamp returned by the API, when available.
+   * Backend last-update timestamp represented as an ISO string.
    */
-  updatedAt?: string;
+  readonly updatedAt: string;
 }

@@ -2,49 +2,49 @@
 // sisiMove — Journey Capacity Model
 // -----------------------------------------------------------------------------
 //
-// Frontend representation of Journey capacity exposed by the Journey HTTP API.
+// Frontend projection of JourneyCapacity.
 //
-// Capacity describes the total passenger-seat capacity of a Journey and the
-// number of seats currently booked.
+// The backend JourneyCapacity entity owns:
+// - totalSeats
+// - bookedSeats
+// - derived availableSeats
 //
-// Internal database identifiers are intentionally excluded.
+// Important:
+// - `availableSeats` is derived by the backend.
+// - The frontend must never calculate or submit it as mutable state.
+// - `bookedSeats` represents operational booking state and should be treated
+//   as read-only by Journey configuration UI.
+// - Journey creation/configuration supplies the capacity configuration;
+//   booking operations belong to the Booking bounded context.
 //
+// This model intentionally contains only fields exposed by the Journey
+// read projections. It does not expose persistence IDs or timestamps.
 // -----------------------------------------------------------------------------
 
-/**
- * Journey passenger capacity.
- */
 export interface JourneyCapacity {
   /**
-   * Public identifier of the capacity configuration.
-   */
-  publicId: string;
-
-  /**
-   * Total passenger seats available for the Journey.
-   */
-  totalSeats: number;
-
-  /**
-   * Number of passenger seats currently booked.
-   */
-  bookedSeats: number;
-
-  /**
-   * Number of seats currently available.
+   * JourneyCapacity public identifier.
    *
-   * This is a derived frontend convenience value and should not be sent back
-   * to the API as authoritative state.
+   * This is an opaque public reference supplied by the backend.
+   */
+  readonly publicId: string;
+
+  /**
+   * Total passenger seats available on the journey.
+   */
+  readonly totalSeats: number;
+
+  /**
+   * Seats currently occupied by confirmed bookings.
+   *
+   * This is operational state and is not a Journey configuration field.
+   */
+  readonly bookedSeats: number;
+
+  /**
+   * Seats currently available for booking.
+   *
+   * Derived by the backend from the capacity/booking state.
    */
   readonly availableSeats: number;
-
-  /**
-   * Creation timestamp returned by the API, when available.
-   */
-  createdAt?: string;
-
-  /**
-   * Last update timestamp returned by the API, when available.
-   */
-  updatedAt?: string;
 }

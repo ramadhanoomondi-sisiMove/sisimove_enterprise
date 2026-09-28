@@ -2,114 +2,62 @@
 // sisiMove — Journey Waypoint Mapper
 // -----------------------------------------------------------------------------
 //
-// Maps the raw Journey waypoint API representation into the stable frontend
+// Maps the backend Journey Waypoint projection into the frontend
 // JourneyWaypoint model.
 //
-// Architectural boundary:
+// This mapper performs representation translation only.
 //
-//   HTTP API response
-//       │
-//       ▼
-//   mapJourneyWaypoint()
-//       │
-//       ▼
-//   JourneyWaypoint model
-//       │
-//       ▼
-//   Hooks / Components
+// It does not:
+// - validate domain invariants;
+// - infer pickup/dropoff permissions from waypoint type;
+// - reorder waypoints;
+// - create missing waypoints;
+// - apply Journey lifecycle rules.
 //
-// This mapper is responsible only for transport-to-model normalization:
+// Those responsibilities remain with the backend.
 //
-// - public identifiers remain opaque strings;
-// - geographic coordinates are normalized to numbers;
-// - lifecycle timestamps remain ISO-8601 strings;
-// - no UI formatting is performed;
-// - no persistence types are exposed.
-//
-// The Journey controller exposes waypoints through public identifiers. This
-// mapper therefore does not introduce internal database identifiers.
+// The mapper preserves the complete JourneyWaypoint projection exposed by the
+// backend, including lifecycle timestamps.
 //
 // -----------------------------------------------------------------------------
 
-import type { JourneyWaypoint } from '../models';
+import type { JourneyWaypoint } from "../models/journey-waypoint";
+import type { JourneyWaypointType } from "../models/journey-waypoint-type";
 
-/**
- * Raw Journey waypoint representation returned by the HTTP API.
- *
- * Geographic values may be serialized as numbers or decimal strings depending
- * on the backend serialization path.
- */
-export interface JourneyWaypointApiResponse {
-  /**
-   * Public identifier of the waypoint.
-   */
-  publicId: string;
-
-  /**
-   * Semantic waypoint type.
-   */
-  type: JourneyWaypoint['type'];
-
-  /**
-   * Position within the Journey corridor.
-   */
-  sequence: number;
-
-  /**
-   * Human-readable waypoint name.
-   */
-  name: string;
-
-  /**
-   * Geographic latitude.
-   */
-  latitude: number | string;
-
-  /**
-   * Geographic longitude.
-   */
-  longitude: number | string;
-
-  /**
-   * Whether passenger pickup is permitted.
-   */
-  pickupAllowed: boolean;
-
-  /**
-   * Whether passenger dropoff is permitted.
-   */
-  dropoffAllowed: boolean;
-
-  /**
-   * Creation timestamp, when provided.
-   */
-  createdAt?: string;
-
-  /**
-   * Last update timestamp, when provided.
-   */
-  updatedAt?: string;
+export interface JourneyWaypointResponse {
+  readonly publicId: string;
+  readonly type: string;
+  readonly sequence: number;
+  readonly name: string;
+  readonly latitude: number;
+  readonly longitude: number;
+  readonly pickupAllowed: boolean;
+  readonly dropoffAllowed: boolean;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
-/**
- * Map a raw Journey waypoint API representation into the frontend model.
- *
- * @param waypoint Raw waypoint representation returned by the Journey API.
- * @returns Stable frontend JourneyWaypoint model.
- */
-export function mapJourneyWaypoint(
-  waypoint: JourneyWaypointApiResponse,
-): JourneyWaypoint {
-  return {
-    publicId: waypoint.publicId,
-    type: waypoint.type,
-    sequence: waypoint.sequence,
-    name: waypoint.name,
-    latitude: Number(waypoint.latitude),
-    longitude: Number(waypoint.longitude),
-    pickupAllowed: waypoint.pickupAllowed,
-    dropoffAllowed: waypoint.dropoffAllowed,
-    createdAt: waypoint.createdAt,
-    updatedAt: waypoint.updatedAt,
-  };
-}
+export const JourneyWaypointMapper = {
+  fromResponse(response: JourneyWaypointResponse): JourneyWaypoint {
+    return {
+      publicId: response.publicId,
+      type: response.type as JourneyWaypointType,
+      sequence: response.sequence,
+      name: response.name,
+      latitude: response.latitude,
+      longitude: response.longitude,
+      pickupAllowed: response.pickupAllowed,
+      dropoffAllowed: response.dropoffAllowed,
+      createdAt: response.createdAt,
+      updatedAt: response.updatedAt,
+    };
+  },
+
+  fromResponses(
+    responses: readonly JourneyWaypointResponse[],
+  ): JourneyWaypoint[] {
+    return responses.map((response) =>
+      JourneyWaypointMapper.fromResponse(response),
+    );
+  },
+};

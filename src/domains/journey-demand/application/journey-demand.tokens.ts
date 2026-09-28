@@ -124,6 +124,17 @@ export const JOURNEY_DEMAND_TOKENS = {
      */
     GET_MY: Symbol('GetMyJourneyDemandsQueryHandler'),
 
+    /**
+     * Retrieves one Journey Demand belonging to the authenticated requester.
+     *
+     * Ownership is constrained by the requester public ID supplied by the
+     * authenticated application boundary together with the requested Journey
+     * Demand public ID.
+     *
+     * This is the single-resource counterpart to GET_MY.
+     */
+    GET_MY_ONE: Symbol('GetMyJourneyDemandQueryHandler'),
+
     // -------------------------------------------------------------------------
     // Internal Discovery
     // -------------------------------------------------------------------------

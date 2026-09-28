@@ -1,137 +1,63 @@
 // -----------------------------------------------------------------------------
-// sisiMove — useCancelJourney
+// sisiMove — Use Cancel Journey
 // -----------------------------------------------------------------------------
 //
-// React Query mutation hook for cancelling a Journey.
+// Cancels a Journey through the Journey aggregate.
 //
-// API boundary:
-//     POST /api/v1/journeys/:journeyPublicId/cancel
+// A cancellation reason is required by the backend command contract.
 //
-// Request body:
-//     {
-//       reason: string
-//       cancelledAt?: string
-//     }
-//
-// The Journey cancellation transition remains owned by the backend Journey
-// aggregate/application layer. The frontend only submits the values accepted
-// by the frozen controller.
-//
-// This hook is responsible for:
-// - Executing the Journey cancellation API.
-// - Managing mutation state through React Query.
-// - Mapping the returned Journey aggregate into the frontend Journey model.
-// - Invalidating affected Journey query caches.
-//
-// This hook intentionally does NOT:
-// - Change the Journey status locally.
-// - Validate cancellation rules.
-// - Decide whether cancellation is permitted.
-// - Perform booking or financial cancellation workflows directly.
-// - Perform authorization checks.
-// - Navigate to another route.
 // -----------------------------------------------------------------------------
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+"use client";
+
+import { useCallback, useState } from "react";
 
 import {
   cancelJourney,
   type CancelJourneyRequest,
-} from '../../api/lifecycle';
+} from "../../api/journeys/cancel-journey";
 
-import {
-  mapJourney,
-  type JourneyApiResponse,
-} from '../../mappers';
+export interface UseCancelJourneyResult {
+  readonly cancel: (
+    journeyPublicId: string,
+    request: CancelJourneyRequest,
+  ) => Promise<void>;
+  readonly isPending: boolean;
+  readonly error: Error | null;
+}
 
-import type { Journey } from '../../models';
+export function useCancelJourney(): UseCancelJourneyResult {
+  const [isPending, setIsPending] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
-import {
-  MY_JOURNEYS_QUERY_KEY,
-  JOURNEYS_BY_PROVIDER_QUERY_KEY,
-  JOURNEYS_BY_PROVIDER_STATUS_QUERY_KEY,
-  PUBLIC_JOURNEYS_QUERY_KEY,
-  SEARCH_PUBLISHED_JOURNEYS_QUERY_KEY,
-} from '../queries';
+  const cancel = useCallback(
+    async (
+      journeyPublicId: string,
+      request: CancelJourneyRequest,
+    ): Promise<void> => {
+      setIsPending(true);
+      setError(null);
 
-// -----------------------------------------------------------------------------
-// Variables
-// -----------------------------------------------------------------------------
+      try {
+        await cancelJourney(journeyPublicId, request);
+      } catch (cause) {
+        const nextError =
+          cause instanceof Error
+            ? cause
+            : new Error("Failed to cancel the journey.");
 
-/**
- * Variables accepted by the cancel mutation.
- *
- * `reason` is required by the frozen controller.
- *
- * `cancelledAt` is optional because the backend may determine the cancellation
- * timestamp when the client does not provide one.
- */
-export type CancelJourneyVariables = CancelJourneyRequest & {
-  journeyPublicId: string;
-};
-
-// -----------------------------------------------------------------------------
-// Mutation
-// -----------------------------------------------------------------------------
-
-/**
- * Cancels a Journey.
- */
-export function useCancelJourney() {
-  const queryClient = useQueryClient();
-
-  return useMutation<
-    Journey,
-    Error,
-    CancelJourneyVariables
-  >({
-    mutationFn: async ({
-      journeyPublicId,
-      reason,
-      cancelledAt,
-    }) => {
-      const response = await cancelJourney(
-        journeyPublicId,
-        {
-          reason,
-          cancelledAt,
-        },
-      );
-
-      return mapJourney(
-        response as JourneyApiResponse,
-      );
+        setError(nextError);
+        throw nextError;
+      } finally {
+        setIsPending(false);
+      }
     },
+    [],
+  );
 
-    onSuccess: async () => {
-      /**
-       * Cancellation changes the authenticated Journey lifecycle
-       * representation and may remove the Journey from public discovery.
-       *
-       * Invalidate the public collections as well so a previously cached
-       * published Journey is not treated as currently discoverable.
-       */
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: MY_JOURNEYS_QUERY_KEY,
-        }),
-
-        queryClient.invalidateQueries({
-          queryKey: JOURNEYS_BY_PROVIDER_QUERY_KEY,
-        }),
-
-        queryClient.invalidateQueries({
-          queryKey: JOURNEYS_BY_PROVIDER_STATUS_QUERY_KEY,
-        }),
-
-        queryClient.invalidateQueries({
-          queryKey: PUBLIC_JOURNEYS_QUERY_KEY,
-        }),
-
-        queryClient.invalidateQueries({
-          queryKey: SEARCH_PUBLISHED_JOURNEYS_QUERY_KEY,
-        }),
-      ]);
-    },
-  });
+  return {
+    cancel,
+    isPending,
+    error,
+  };
 }

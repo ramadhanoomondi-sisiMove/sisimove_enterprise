@@ -1,53 +1,59 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Demand Participant
+// sisiMove — Journey Demand Participant Model
 // -----------------------------------------------------------------------------
 //
-// Presentation/API model for a traveller participating in a JourneyDemand.
+// Frontend representation of JourneyDemandParticipantResponse.
 //
-// memberPublicId references Identity across the domain boundary.
-//
+// The member identity remains an opaque public identifier. The frontend does
+// not reconstruct the referenced Identity or TravellerProfile aggregate.
 // -----------------------------------------------------------------------------
 
 import type { JourneyDemandParticipantStatus } from './journey-demand-participant-status';
 
+/**
+ * Journey Demand participant response model.
+ */
 export interface JourneyDemandParticipant {
   /**
-   * Public identifier of this participation record.
+   * Stable public identifier of the participant record.
    */
-  publicId: string;
+  readonly publicId: string;
 
   /**
-   * Public identity/member identifier.
-   *
-   * This is intentionally an opaque cross-domain reference.
+   * Opaque public identifier of the participating member.
    */
-  memberPublicId: string;
+  readonly memberPublicId: string;
 
   /**
-   * Number of seats this participant contributes to the demand.
+   * Number of seats requested by this participant.
    */
-  seats: number;
+  readonly seats: number;
 
   /**
-   * Current participation lifecycle state.
+   * Current participant status.
    */
-  status: JourneyDemandParticipantStatus;
+  readonly status: JourneyDemandParticipantStatus;
 
   /**
-   * Time at which the participant joined.
+   * Participant lifecycle timestamps.
    */
-  joinedAt: string;
+  readonly joinedAt: Date;
+  readonly withdrawnAt: Date | undefined;
+  readonly removedAt: Date | undefined;
 
   /**
-   * Time at which the participant withdrew, if applicable.
+   * Backend-provided participant state.
    */
-  withdrawnAt: string | null;
+  readonly isActive: boolean;
+  readonly isWithdrawn: boolean;
+  readonly isRemoved: boolean;
+  readonly canParticipate: boolean;
+  readonly hasWithdrawn: boolean;
+  readonly hasBeenRemoved: boolean;
 
   /**
-   * Time at which the participant was removed, if applicable.
+   * Backend timestamps.
    */
-  removedAt: string | null;
-
-  createdAt: string;
-  updatedAt: string;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
 }

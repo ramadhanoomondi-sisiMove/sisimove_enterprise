@@ -1,39 +1,114 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Add Journey Demand Waypoint API
+// sisiMove — Journey Demand Waypoint API
 // -----------------------------------------------------------------------------
 //
-// Backend:
-//     POST /journey-demands/:journeyDemandPublicId/waypoints
+// HTTP adapter for adding a waypoint to a Journey Demand corridor.
 //
-// Authentication:
-//     Required.
+// Backend endpoint:
 //
-// IMPORTANT:
-//     The current backend AddJourneyDemandWaypointDto accepts:
+//   POST /journey-demands/:journeyDemandPublicId/waypoints
 //
-//         type
-//         sequence
-//         name
-//         latitude
-//         longitude
-//         correlationId
-//         causationId
+// Backend request:
 //
-//     pickupRequired/dropoffRequired are deliberately not sent because the
-//     current controller does not pass those fields into the command.
+//   AddJourneyDemandWaypointDto
 //
+// Backend response:
+//
+//   void
+//
+// The Journey Demand backend owns waypoint ordering, corridor consistency,
+// validation, and lifecycle rules. The frontend only submits the requested
+// waypoint values.
 // -----------------------------------------------------------------------------
 
-import { authenticatedApiClient } from '@/features/authentication/http';
+// -----------------------------------------------------------------------------
+// Authentication
+// -----------------------------------------------------------------------------
 
-import type { JourneyDemandWaypointInput } from '../../schemas';
+import { authenticatedApiClient } from '@/features/authentication';
 
+// -----------------------------------------------------------------------------
+// Models
+// -----------------------------------------------------------------------------
+
+import type { JourneyDemandWaypointType } from '../../models/journey-demand-waypoint-type';
+
+// -----------------------------------------------------------------------------
+// Request
+// -----------------------------------------------------------------------------
+
+/**
+ * Request payload for adding a Journey Demand waypoint.
+ *
+ * This mirrors the backend `AddJourneyDemandWaypointDto`.
+ *
+ * `journeyDemandPublicId` is intentionally excluded because it is represented
+ * by the URL resource parameter.
+ *
+ * The backend currently derives pickup/dropoff semantics from `type`, so the
+ * frontend must not send separate pickupRequired/dropoffRequired fields.
+ */
+export interface AddJourneyDemandWaypointRequest {
+  /**
+   * Type of waypoint.
+   */
+  readonly type: JourneyDemandWaypointType;
+
+  /**
+   * Position of the waypoint within the corridor.
+   *
+   * The backend requires a non-negative integer.
+   */
+  readonly sequence: number;
+
+  /**
+   * Human-readable waypoint name.
+   */
+  readonly name: string;
+
+  /**
+   * Latitude of the waypoint.
+   */
+  readonly latitude: number;
+
+  /**
+   * Longitude of the waypoint.
+   */
+  readonly longitude: number;
+
+  /**
+   * Correlation identifier for distributed tracing.
+   */
+  readonly correlationId: string;
+
+  /**
+   * Optional causation identifier for distributed tracing.
+   */
+  readonly causationId?: string;
+}
+
+// -----------------------------------------------------------------------------
+// Endpoint
+// -----------------------------------------------------------------------------
+
+const JOURNEY_DEMANDS_PATH = '/journey-demands';
+
+// -----------------------------------------------------------------------------
+// Mutation
+// -----------------------------------------------------------------------------
+
+/**
+ * Add a waypoint to a Journey Demand.
+ *
+ * The backend owns the resulting corridor state. No domain entity or
+ * aggregate is returned to the frontend.
+ */
 export async function addJourneyDemandWaypoint(
   journeyDemandPublicId: string,
-  input: JourneyDemandWaypointInput,
+  request: AddJourneyDemandWaypointRequest,
 ): Promise<void> {
-  await authenticatedApiClient.post(
-    `/journey-demands/${journeyDemandPublicId}/waypoints`,
-    input,
+  await authenticatedApiClient.post<void>(
+    `${JOURNEY_DEMANDS_PATH}/${encodeURIComponent(journeyDemandPublicId)}/waypoints`,
+    request,
   );
 }

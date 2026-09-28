@@ -1,99 +1,56 @@
 // -----------------------------------------------------------------------------
-// sisiMove — useCreateJourney
+// sisiMove — Use Create Journey
 // -----------------------------------------------------------------------------
 //
-// React Query mutation hook for creating a Journey.
+// Creates a new Journey draft.
 //
-// API boundary:
-//     POST /api/v1/journeys
+// The backend creates and owns the Journey aggregate. The frontend does not
+// construct a Journey entity or generate its public ID.
 //
-// IMPORTANT:
-// The frozen Journey controller accepts NO request body for Journey creation.
+// The current HTTP endpoint returns the aggregate directly, but its serialized
+// response contract is intentionally not assumed here. The API adapter
+// therefore exposes the result as unknown.
 //
-// The authenticated identity is obtained by the backend from the JWT:
-//
-//     CurrentIdentity
-//          │
-//          ▼
-//     identity.identityPublicId
-//          │
-//          ▼
-//     CreateJourneyCommand
-//
-// Therefore the frontend MUST NOT submit:
-// - providerPublicId
-// - identityPublicId
-// - Journey component data
-// - lifecycle state
-//
-// Journey creation establishes the Journey aggregate. Corridor, schedule,
-// vehicle, capacity, pricing, preferences, and assets are attached through
-// their dedicated controller endpoints afterward.
-//
-// This hook is responsible for:
-// - Executing the Journey creation API.
-// - Managing mutation state through React Query.
-// - Mapping the returned Journey aggregate into the frontend Journey model.
-// - Invalidating the authenticated My Journeys collection after creation.
-//
-// This hook intentionally does NOT:
-// - Build a request body.
-// - Accept provider identity from the caller.
-// - Create Journey components.
-// - Publish the Journey.
-// - Perform authorization checks.
-// - Navigate to a UI route.
 // -----------------------------------------------------------------------------
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+"use client";
 
-import { createJourney } from '../../api/lifecycle';
+import { useCallback, useState } from "react";
 
-import {
-  mapJourney,
-  type JourneyApiResponse,
-} from '../../mappers';
+import { createJourney } from "../../api/journeys/create-journey";
 
-import type { Journey } from '../../models';
+export interface UseCreateJourneyResult {
+  readonly create: () => Promise<unknown>;
+  readonly isPending: boolean;
+  readonly error: Error | null;
+}
 
-import {
-  MY_JOURNEYS_QUERY_KEY,
-} from '../queries';
+export function useCreateJourney(): UseCreateJourneyResult {
+  const [isPending, setIsPending] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
-// -----------------------------------------------------------------------------
-// Mutation
-// -----------------------------------------------------------------------------
+  const create = useCallback(async (): Promise<unknown> => {
+    setIsPending(true);
+    setError(null);
 
-/**
- * Creates a new Journey for the currently authenticated identity.
- *
- * No variables are required because the backend derives the provider identity
- * from the authenticated JWT and generates the command's public identifier
- * server-side/application-side according to the frozen controller contract.
- */
-export function useCreateJourney() {
-  const queryClient = useQueryClient();
+    try {
+      return await createJourney();
+    } catch (cause) {
+      const nextError =
+        cause instanceof Error
+          ? cause
+          : new Error("Failed to create the journey.");
 
-  return useMutation<Journey, Error, void>({
-    mutationFn: async () => {
-      const response = await createJourney();
+      setError(nextError);
+      throw nextError;
+    } finally {
+      setIsPending(false);
+    }
+  }, []);
 
-      return mapJourney(
-        response as JourneyApiResponse,
-      );
-    },
-
-    onSuccess: async () => {
-      /**
-       * The newly created Journey belongs to the authenticated user's
-       * management collection, so invalidate `/journeys/me`.
-       *
-       * We intentionally do not manually insert the returned Journey into the
-       * cache. The backend remains authoritative for the collection response.
-       */
-      await queryClient.invalidateQueries({
-        queryKey: MY_JOURNEYS_QUERY_KEY,
-      });
-    },
-  });
+  return {
+    create,
+    isPending,
+    error,
+  };
 }

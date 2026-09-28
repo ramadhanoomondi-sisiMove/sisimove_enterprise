@@ -1,61 +1,72 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Demand Waypoint
+// sisiMove — Journey Demand Waypoint Model
 // -----------------------------------------------------------------------------
 //
-// Presentation/API model for a waypoint belonging to a JourneyDemandCorridor.
+// Frontend representation of a Journey Demand waypoint.
 //
-// Coordinates are represented as numbers because the HTTP API serializes
-// backend Decimal values into JSON-compatible numeric values.
-//
-// Dates are represented as ISO-8601 strings.
-//
+// This model follows JourneyDemandWaypointResponse from the backend mapper.
+// Persistence identifiers such as id and corridorId are intentionally absent.
 // -----------------------------------------------------------------------------
 
 import type { JourneyDemandWaypointType } from './journey-demand-waypoint-type';
 
+/**
+ * Geographic coordinates represented as frontend primitives.
+ *
+ * The backend mapper converts its coordinate value objects into numbers before
+ * this contract reaches the frontend.
+ */
+export interface JourneyDemandWaypointCoordinates {
+  readonly latitude: number;
+  readonly longitude: number;
+}
+
+/**
+ * Journey Demand waypoint response model.
+ */
 export interface JourneyDemandWaypoint {
   /**
-   * Public identifier of the waypoint.
-   *
-   * Safe for frontend routes and API requests.
+   * Stable public identifier exposed by the backend.
    */
-  publicId: string;
+  readonly publicId: string;
 
   /**
-   * Semantic role of the waypoint.
+   * Semantic type of this waypoint.
    */
-  type: JourneyDemandWaypointType;
+  readonly type: JourneyDemandWaypointType;
 
   /**
-   * Ordering within the corridor.
+   * Position of the waypoint within the corridor.
    */
-  sequence: number;
+  readonly sequence: number;
 
   /**
-   * Human-readable location name.
+   * Human-readable waypoint name.
    */
-  name: string;
+  readonly name: string;
 
   /**
-   * Geographic latitude.
+   * Geographic position of the waypoint.
    */
-  latitude: number;
+  readonly coordinates: JourneyDemandWaypointCoordinates;
 
   /**
-   * Geographic longitude.
+   * Whether this waypoint is required for pickup.
    */
-  longitude: number;
+  readonly pickupRequired: boolean;
 
   /**
-   * Whether the requester requires a pickup at this location.
+   * Whether this waypoint is required for drop-off.
    */
-  pickupRequired: boolean;
+  readonly dropoffRequired: boolean;
 
   /**
-   * Whether the requester requires a drop-off at this location.
+   * Backend creation timestamp represented as a frontend Date.
    */
-  dropoffRequired: boolean;
+  readonly createdAt: Date;
 
-  createdAt: string;
-  updatedAt: string;
+  /**
+   * Backend last-update timestamp represented as a frontend Date.
+   */
+  readonly updatedAt: Date;
 }

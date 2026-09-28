@@ -1,101 +1,118 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Demand
+// sisiMove — Journey Demand Model
 // -----------------------------------------------------------------------------
 //
-// Primary frontend/API representation of the JourneyDemand aggregate.
+// Frontend representation of the generic JourneyDemandResponse contract.
 //
-// This model intentionally represents public/API-facing data rather than the
-// Prisma persistence model.
+// This is an application/HTTP model, not a frontend aggregate. No lifecycle
+// methods or domain transition logic belong here.
 //
-// Internal database identifiers are not exposed.
+// The backend remains responsible for:
 //
-// Cross-domain references remain opaque public IDs:
+// - lifecycle transitions;
+// - capacity consistency;
+// - matching;
+// - conversion;
+// - fulfilment;
+// - cancellation;
+// - expiration;
+// - authorization;
+// - aggregate invariants.
 //
-//     requesterPublicId
-//     matchedJourneyPublicId
-//
-// Aggregate components are represented as nested optional/null components.
-//
+// The frontend consumes the resulting state and backend-provided flags.
 // -----------------------------------------------------------------------------
 
-import type { JourneyDemandCapacity } from './journey-demand-capacity';
-import type { JourneyDemandCorridor } from './journey-demand-corridor';
-import type { JourneyDemandParticipant } from './journey-demand-participant';
-import type { JourneyDemandPricing } from './journey-demand-pricing';
-import type { JourneyDemandSchedule } from './journey-demand-schedule';
 import type { JourneyDemandStatus } from './journey-demand-status';
+import type { JourneyDemandCorridor } from './journey-demand-corridor';
+import type { JourneyDemandSchedule } from './journey-demand-schedule';
+import type { JourneyDemandCapacity } from './journey-demand-capacity';
+import type { JourneyDemandPricing } from './journey-demand-pricing';
+import type { JourneyDemandParticipant } from './journey-demand-participant';
 
+/**
+ * Generic Journey Demand response model.
+ */
 export interface JourneyDemand {
   /**
-   * Public identifier of the JourneyDemand aggregate.
+   * Stable public identifier.
    */
-  publicId: string;
+  readonly publicId: string;
 
   /**
-   * Public identity identifier of the requester.
-   *
-   * This references Identity.publicId across the bounded-context boundary.
+   * Opaque public identifier of the requester.
    */
-  requesterPublicId: string;
+  readonly requesterPublicId: string;
 
   /**
-   * Current JourneyDemand lifecycle status.
+   * Current backend lifecycle status.
    */
-  status: JourneyDemandStatus;
+  readonly status: JourneyDemandStatus;
 
   /**
-   * Public identifier of the Journey aggregate matched to this demand.
-   *
-   * Null until matching occurs.
+   * Public identifier of the matched Journey, when applicable.
    */
-  matchedJourneyPublicId: string | null;
+  readonly matchedJourneyPublicId: string | undefined;
 
   /**
-   * Requested travel corridor.
+   * Journey Demand-owned components.
    */
-  corridor: JourneyDemandCorridor | null;
+  readonly corridor: JourneyDemandCorridor | undefined;
+  readonly schedule: JourneyDemandSchedule | undefined;
+  readonly capacity: JourneyDemandCapacity | undefined;
+  readonly pricing: JourneyDemandPricing | undefined;
 
   /**
-   * Requested departure/arrival window.
+   * Participants associated with the demand.
    */
-  schedule: JourneyDemandSchedule | null;
+  readonly participants: readonly JourneyDemandParticipant[];
 
   /**
-   * Requested passenger capacity.
+   * Lifecycle timestamps supplied by the backend.
    */
-  capacity: JourneyDemandCapacity | null;
+  readonly publishedAt: Date | undefined;
+  readonly matchedAt: Date | undefined;
+  readonly convertedAt: Date | undefined;
+  readonly fulfilledAt: Date | undefined;
+  readonly cancelledAt: Date | undefined;
+  readonly expiredAt: Date | undefined;
 
   /**
-   * Requested price constraints.
+   * Backend aggregate/version information exposed by the response contract.
    */
-  pricing: JourneyDemandPricing | null;
+  readonly version: number;
 
   /**
-   * Travellers participating in the demand.
+   * Backend-provided lifecycle state.
    */
-  participants: JourneyDemandParticipant[];
+  readonly isDraft: boolean;
+  readonly isOpen: boolean;
+  readonly isMatched: boolean;
+  readonly isConverted: boolean;
+  readonly isFulfilled: boolean;
+  readonly isCancelled: boolean;
+  readonly isExpired: boolean;
+  readonly isPublished: boolean;
+  readonly isTerminal: boolean;
+  readonly isActive: boolean;
 
-  // ---------------------------------------------------------------------------
-  // Lifecycle timestamps
-  // ---------------------------------------------------------------------------
+  /**
+   * Backend-provided relationship state.
+   */
+  readonly hasMatchedJourney: boolean;
+  readonly hasCorridor: boolean;
+  readonly hasSchedule: boolean;
+  readonly hasCapacity: boolean;
+  readonly hasPricing: boolean;
+  readonly hasParticipants: boolean;
 
-  publishedAt: string | null;
+  /**
+   * Backend-provided participant count.
+   */
+  readonly participantCount: number;
 
-  matchedAt: string | null;
-
-  convertedAt: string | null;
-
-  fulfilledAt: string | null;
-
-  cancelledAt: string | null;
-
-  expiredAt: string | null;
-
-  // ---------------------------------------------------------------------------
-  // Audit
-  // ---------------------------------------------------------------------------
-
-  createdAt: string;
-
-  updatedAt: string;
+  /**
+   * Backend timestamps.
+   */
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
 }

@@ -1,22 +1,23 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Demand Participant Status
+// sisiMove — Journey Demand Participant Status Model
 // -----------------------------------------------------------------------------
 //
-// Frontend representation of JourneyDemandParticipantStatus.
+// Represents the participant statuses exposed by the backend.
 //
-// Mirrors the backend enum:
-//
-//     ACTIVE
-//     WITHDRAWN
-//     REMOVED
-//
+// Lifecycle behavior remains a backend responsibility.
 // -----------------------------------------------------------------------------
 
+/**
+ * Journey Demand participant statuses exposed by the backend.
+ */
 export const JOURNEY_DEMAND_PARTICIPANT_STATUSES = [
   'ACTIVE',
   'WITHDRAWN',
   'REMOVED',
 ] as const;
 
+/**
+ * Journey Demand participant status.
+ */
 export type JourneyDemandParticipantStatus =
   (typeof JOURNEY_DEMAND_PARTICIPANT_STATUSES)[number];

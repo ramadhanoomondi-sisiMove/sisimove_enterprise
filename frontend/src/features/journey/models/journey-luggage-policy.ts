@@ -1,24 +1,30 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Luggage Policy
+// sisiMove — Journey Luggage Policy Model
 // -----------------------------------------------------------------------------
 //
-// Stable frontend representation of the JourneyLuggagePolicy enum exposed by
-// the Journey HTTP API.
+// Frontend read-model contract for the Journey luggage policy.
 //
-// Backend:
+// This model mirrors the backend JourneyLuggagePolicy enum exactly.
 //
-//   NONE
-//   LIMITED
-//   STANDARD
-//   LARGE
+// The frontend uses this value for:
+// - displaying Journey preferences;
+// - preference editing controls;
+// - API response mapping.
 //
-// This model describes the luggage capacity policy configured for a Journey.
-// It does not represent a passenger's individual luggage requirements.
+// The frontend does not calculate luggage capacity or enforce luggage rules.
+// Those concerns remain within the backend Journey domain/application layer.
 //
 // -----------------------------------------------------------------------------
 
 /**
- * Luggage policy for a Journey.
+ * Journey luggage policy.
+ *
+ * Corresponds exactly to the backend JourneyLuggagePolicy enum:
+ *
+ *   NONE
+ *   LIMITED
+ *   STANDARD
+ *   LARGE
  */
 export type JourneyLuggagePolicy =
   | 'NONE'
@@ -27,10 +33,7 @@ export type JourneyLuggagePolicy =
   | 'LARGE';
 
 /**
- * All supported Journey luggage policies.
- *
- * Kept as a readonly tuple for runtime iteration, validation, filtering,
- * and UI option generation.
+ * Runtime collection of all supported luggage policies.
  */
 export const JOURNEY_LUGGAGE_POLICIES = [
   'NONE',
@@ -40,13 +43,10 @@ export const JOURNEY_LUGGAGE_POLICIES = [
 ] as const satisfies readonly JourneyLuggagePolicy[];
 
 /**
- * Runtime guard for JourneyLuggagePolicy.
+ * Runtime guard for values received from the API.
  */
 export function isJourneyLuggagePolicy(
-  value: unknown,
+  value: string,
 ): value is JourneyLuggagePolicy {
-  return (
-    typeof value === 'string' &&
-    (JOURNEY_LUGGAGE_POLICIES as readonly string[]).includes(value)
-  );
+  return (JOURNEY_LUGGAGE_POLICIES as readonly string[]).includes(value);
 }

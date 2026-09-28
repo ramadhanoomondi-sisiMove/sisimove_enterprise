@@ -1,27 +1,33 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Asset Type
+// sisiMove — Journey Asset Type Model
 // -----------------------------------------------------------------------------
 //
-// Stable frontend representation of the JourneyAssetType enum exposed by the
-// Journey HTTP API.
+// Frontend read-model contract for Journey-owned asset associations.
 //
-// Backend:
+// This model mirrors the backend JourneyAssetType enum exactly.
 //
-//   VEHICLE
-//   ROUTE
-//   OTHER
+// Important boundary:
 //
-// A JourneyAsset represents an asset attached to a Journey. The actual asset
-// resource belongs to the Assets domain and is referenced through
-// `assetPublicId`.
+// JourneyAsset does NOT own the underlying Asset.
+// Journey owns the association:
 //
-// This type therefore describes the Journey-level role of the asset, not the
-// underlying Asset domain resource type.
+//     JourneyAsset
+//          │
+//          └── assetPublicId ──> Asset bounded context
+//
+// Therefore this type describes the role of an asset within a Journey. It
+// does not describe the Asset itself, its URL, metadata, or storage details.
 //
 // -----------------------------------------------------------------------------
 
 /**
- * Semantic role of an asset attached to a Journey.
+ * Journey asset type.
+ *
+ * Corresponds exactly to the backend JourneyAssetType enum:
+ *
+ *   VEHICLE
+ *   ROUTE
+ *   OTHER
  */
 export type JourneyAssetType =
   | 'VEHICLE'
@@ -29,10 +35,13 @@ export type JourneyAssetType =
   | 'OTHER';
 
 /**
- * All supported Journey asset types.
+ * Runtime collection of all supported Journey asset types.
  *
- * Kept as a readonly tuple for runtime iteration, validation, filtering,
- * and UI option generation.
+ * Used by:
+ * - API response validation;
+ * - Journey mappers;
+ * - presentation configuration;
+ * - asset filtering where required.
  */
 export const JOURNEY_ASSET_TYPES = [
   'VEHICLE',
@@ -41,13 +50,10 @@ export const JOURNEY_ASSET_TYPES = [
 ] as const satisfies readonly JourneyAssetType[];
 
 /**
- * Runtime guard for JourneyAssetType.
+ * Runtime guard for values received from the API.
  */
 export function isJourneyAssetType(
-  value: unknown,
+  value: string,
 ): value is JourneyAssetType {
-  return (
-    typeof value === 'string' &&
-    (JOURNEY_ASSET_TYPES as readonly string[]).includes(value)
-  );
+  return (JOURNEY_ASSET_TYPES as readonly string[]).includes(value);
 }

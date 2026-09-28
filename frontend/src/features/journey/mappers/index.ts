@@ -1,104 +1,36 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Mappers Barrel
-// -----------------------------------------------------------------------------
-//
-// Public barrel export for all Journey frontend mappers.
-//
-// Mappers form the boundary between API transport representations and the
-// frontend feature models. Consumers should import mapper functions and their
-// API response types from this barrel rather than reaching into individual
-// mapper files.
-//
-// Responsibilities remain separated:
-//
-// - Component mappers
-//     Normalize corridor, waypoint, schedule, vehicle, capacity, pricing,
-//     preferences, and asset responses.
-//
-// - Journey mapper
-//     Normalizes the authenticated Journey representation.
-//
-// - My Journey mapper
-//     Normalizes the authenticated `/journeys/me` representation.
-//
-// - Public Journey mapper
-//     Normalizes the public marketplace representation without exposing
-//     providerPublicId.
-//
-// No API requests or UI logic belong in this barrel.
+// sisiMove — Journey Mappers
 // -----------------------------------------------------------------------------
 
-// -----------------------------------------------------------------------------
-// Journey Components
-// -----------------------------------------------------------------------------
+export { JourneyWaypointMapper } from "./journey-waypoint.mapper";
+export type { JourneyWaypointResponse } from "./journey-waypoint.mapper";
 
-export {
-  mapJourneyCorridor,
-  type JourneyCorridorApiResponse,
-} from './journey-corridor.mapper';
+export { JourneyRouteMapper } from "./journey-route.mapper";
+export type { JourneyRouteResponse } from "./journey-route.mapper";
 
-export {
-  mapJourneyWaypoint,
-  type JourneyWaypointApiResponse,
-} from './journey-waypoint.mapper';
+export { JourneyScheduleMapper } from "./journey-schedule.mapper";
+export type { JourneyScheduleResponse } from "./journey-schedule.mapper";
 
-export {
-  mapJourneySchedule,
-  type JourneyScheduleApiResponse,
-} from './journey-schedule.mapper';
+export { JourneyVehicleMapper } from "./journey-vehicle.mapper";
+export type { JourneyVehicleResponse } from "./journey-vehicle.mapper";
 
-export {
-  mapJourneyVehicle,
-  type JourneyVehicleApiResponse,
-} from './journey-vehicle.mapper';
+export { JourneyCapacityMapper } from "./journey-capacity.mapper";
+export type { JourneyCapacityResponse } from "./journey-capacity.mapper";
 
-export {
-  mapJourneyCapacity,
-  type JourneyCapacityApiResponse,
-} from './journey-capacity.mapper';
+export { JourneyPricingMapper } from "./journey-pricing.mapper";
+export type { JourneyPricingResponse } from "./journey-pricing.mapper";
 
-export {
-  mapJourneyPricing,
-  type JourneyPricingApiResponse,
-} from './journey-pricing.mapper';
+export { JourneyPreferencesMapper } from "./journey-preferences.mapper";
+export type { JourneyPreferencesResponse } from "./journey-preferences.mapper";
 
-export {
-  mapJourneyPreferences,
-  type JourneyPreferencesApiResponse,
-} from './journey-preferences.mapper';
+export { JourneyAssetMapper } from "./journey-asset.mapper";
+export type { JourneyAssetResponse } from "./journey-asset.mapper";
 
-export {
-  mapJourneyAsset,
-  type JourneyAssetApiResponse,
-} from './journey-asset.mapper';
+export { JourneyProviderMapper } from "./journey-provider.mapper";
+export type { JourneyProviderResponse } from "./journey-provider.mapper";
 
-// -----------------------------------------------------------------------------
-// Journey
-// -----------------------------------------------------------------------------
+export { PublicJourneyMapper } from "./public-journey.mapper";
+export type { PublicJourneyResponse } from "./public-journey.mapper";
 
-export {
-  mapJourney,
-  type JourneyApiResponse,
-} from './journey.mapper';
-
-// -----------------------------------------------------------------------------
-// My Journeys
-// -----------------------------------------------------------------------------
-
-export {
-  mapMyJourney,
-  mapMyJourneys,
-  type MyJourneyApiResponse,
-} from './my-journey.mapper';
-
-// -----------------------------------------------------------------------------
-// Public Journeys
-// -----------------------------------------------------------------------------
-
-export {
-  mapPublicJourney,
-  mapPublicJourneys,
-  type PublicJourney,
-  type PublicJourneyApiResponse,
-  type PublicJourneyProviderApiResponse,
-} from './public-journey.mapper';
+export { MyJourneyMapper } from "./my-journey.mapper";
+export type { MyJourneyResponse } from "./my-journey.mapper";

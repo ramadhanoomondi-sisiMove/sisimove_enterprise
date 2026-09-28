@@ -26,29 +26,10 @@ export {
 } from './boarding-summary';
 
 export {
-  JourneyBoardingProgress,
-  type JourneyBoardingProgressProps,
-} from './boarding-progress';
-
-export {
   JourneyBoardingProvider,
   type JourneyBoardingProviderProps,
 } from './boarding-provider';
 
-export {
-  JourneyBoardingParticipants,
-  type JourneyBoardingParticipantsProps,
-} from './boarding-participants';
-
-export {
-  JourneyBoardingParticipant,
-  type JourneyBoardingParticipantProps,
-} from './boarding-participant';
-
-export {
-  JourneyBoardingParticipantStatusBadge,
-  type JourneyBoardingParticipantStatusBadgeProps,
-} from './boarding-participant';
 
 export {
   JourneyBoardingActions,

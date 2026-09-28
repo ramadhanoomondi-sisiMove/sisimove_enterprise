@@ -76,7 +76,7 @@
 //
 // PUBLIC JOURNEY DEMAND QUERY BOUNDARY
 //
-// Two public query handlers are registered:
+// Public query handlers:
 //
 // - GET_PUBLIC:
 //     Retrieves one publicly discoverable Journey Demand by public ID.
@@ -84,21 +84,42 @@
 // - GET_PUBLIC_MANY:
 //     Retrieves the public Journey Demand marketplace collection.
 //
-// The collection query supports:
-//
-// - an empty query to retrieve all publicly discoverable demands;
-// - optional origin filtering;
-// - optional destination filtering;
-// - optional departure-date filtering;
-// - optional pagination.
-//
 // Both handlers return public read models rather than raw domain entities.
+//
+// -----------------------------------------------------------------------------
+//
+// AUTHENTICATED OWNER READ BOUNDARY
+//
+// Owner query handlers:
+//
+// - GET_MY:
+//     Retrieves the authenticated requester's Journey Demand collection.
+//
+// - GET_MY_ONE:
+//     Retrieves one Journey Demand belonging to the authenticated requester.
+//
+// The owner detail boundary is intentionally separate from the public detail
+// boundary.
+//
+// GET_MY_ONE must:
+//
+// - derive requester identity from the authenticated session;
+// - accept the Journey Demand public ID as the resource identifier;
+// - enforce requester ownership at the Journey Demand repository boundary;
+// - return the authenticated owner read model;
+//
+// It must not:
+//
+// - use the public Journey Demand query;
+// - accept requesterPublicId from the client;
+// - perform ownership checks against a public read model;
+// - expose another requester's private Journey Demand.
 //
 // -----------------------------------------------------------------------------
 //
 // MODULE DEPENDENCY DIRECTION
 //
-//     Journey Demand public read boundary
+//     Journey Demand read boundary
 //              │
 //              ├──────────────► SocialModule
 //              │                    │
@@ -126,6 +147,9 @@
 //
 // The public query handlers are responsible for projecting the Demand into
 // its public marketplace representation.
+//
+// Owner read models are a separate boundary and may expose authenticated
+// owner-specific state required by the owner's Journey Demand UI.
 //
 // -----------------------------------------------------------------------------
 //
@@ -231,6 +255,7 @@ import {
   GetJourneyDemandsQueryHandler,
   GetJourneyDemandScheduleQueryHandler,
   GetJourneyDemandWaypointsQueryHandler,
+  GetMyJourneyDemandQueryHandler,
   GetMyJourneyDemandsQueryHandler,
   GetPublicJourneyDemandQueryHandler,
   GetPublicJourneyDemandsQueryHandler,
@@ -500,17 +525,53 @@ import {
     },
 
     // =========================================================================
+    // Authenticated Owner Collection
+    // =========================================================================
+    //
+    // GET_MY retrieves the Journey Demands belonging to the authenticated
+    // requester.
+    //
+    // The requester identity is derived from the authenticated session by the
+    // presentation boundary and passed into the application query as an
+    // opaque RequesterPublicId value object.
+    // =========================================================================
+
+    {
+      provide: JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.GET_MY,
+      useClass: GetMyJourneyDemandsQueryHandler,
+    },
+
+    // =========================================================================
+    // Authenticated Owner Detail
+    // =========================================================================
+    //
+    // GET_MY_ONE retrieves exactly one Journey Demand for the authenticated
+    // requester.
+    //
+    // This is deliberately separate from GET_PUBLIC.
+    //
+    // The handler must use the requester identity supplied by the authenticated
+    // application boundary together with the Journey Demand public ID.
+    //
+    // Ownership is enforced by the Journey Demand repository query rather than
+    // by trusting a requesterPublicId supplied by the client.
+    //
+    // The handler returns the authenticated owner read model, not the public
+    // marketplace projection.
+    // =========================================================================
+
+    {
+      provide: JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.GET_MY_ONE,
+      useClass: GetMyJourneyDemandQueryHandler,
+    },
+
+    // =========================================================================
     // Internal Collections
     // =========================================================================
 
     {
       provide: JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.GET_ALL,
       useClass: GetJourneyDemandsQueryHandler,
-    },
-
-    {
-      provide: JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.GET_MY,
-      useClass: GetMyJourneyDemandsQueryHandler,
     },
 
     // =========================================================================

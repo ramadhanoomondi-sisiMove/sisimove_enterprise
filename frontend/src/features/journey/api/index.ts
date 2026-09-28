@@ -1,49 +1,35 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey API Barrel
+// sisiMove — Journey API
 // -----------------------------------------------------------------------------
 //
-// Public barrel export for the complete Journey frontend HTTP API surface.
+// Public API barrel for the Journey feature.
 //
-// The Journey API is organized into four capabilities:
+// The Journey API is organized by capability:
+// - journeys: lifecycle and journey-level queries
+// - corridor: journey corridor attachment/removal
+// - waypoints: corridor waypoint mutations
+// - schedule: journey schedule attachment/removal
+// - vehicle: journey vehicle attachment/removal
+// - capacity: journey capacity attachment/removal
+// - pricing: journey pricing attachment/removal
+// - preferences: journey preference attachment/removal
+// - assets: journey asset attachment/removal
 //
-//   Discovery
-//     Public marketplace discovery and published Journey search.
+// This file intentionally contains no API implementation. It only re-exports
+// the feature's public HTTP capabilities so consumers can import from:
 //
-//   Management
-//     Authenticated provider Journey retrieval.
+//   @/features/journey/api
 //
-//   Lifecycle
-//     Journey creation and lifecycle transitions.
-//
-//   Components
-//     Journey component retrieval, attachment, and removal.
-//
-// All HTTP transport remains encapsulated inside the individual API adapters.
-// Consumers should import Journey API functions from this barrel rather than
-// reaching into internal API directories.
+// rather than depending on the internal directory structure.
 //
 // -----------------------------------------------------------------------------
 
-// -----------------------------------------------------------------------------
-// Public discovery
-// -----------------------------------------------------------------------------
-
-export * from './discovery';
-
-// -----------------------------------------------------------------------------
-// Authenticated management
-// -----------------------------------------------------------------------------
-
-export * from './management';
-
-// -----------------------------------------------------------------------------
-// Journey lifecycle
-// -----------------------------------------------------------------------------
-
-export * from './lifecycle';
-
-// -----------------------------------------------------------------------------
-// Journey components
-// -----------------------------------------------------------------------------
-
-export * from './components';
+export * from "./journeys";
+export * from "./corridor";
+export * from "./waypoints";
+export * from "./schedule";
+export * from "./vehicle";
+export * from "./capacity";
+export * from "./pricing";
+export * from "./preferences";
+export * from "./assets";

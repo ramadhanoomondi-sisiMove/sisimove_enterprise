@@ -1,52 +1,42 @@
+import type { JourneyAssetType } from './journey-asset-type';
+
 // -----------------------------------------------------------------------------
 // sisiMove — Journey Asset Model
 // -----------------------------------------------------------------------------
 //
-// Frontend representation of a Journey asset attachment exposed by the
-// Journey HTTP API.
+// Frontend projection of JourneyAsset.
 //
-// A JourneyAsset connects a Journey to an existing Asset domain resource using
-// its public identifier. The underlying asset itself remains owned by the
-// Assets domain.
+// JourneyAsset is a Journey-owned association to an Asset bounded context.
+// `assetPublicId` is therefore an opaque reference to the Asset context; it
+// is not a URL and must not be treated as one.
 //
-// This model therefore represents the Journey-side attachment, not the full
-// Asset resource.
+// The Asset itself is resolved through the Asset bounded context / its public
+// projection when the UI needs asset data such as a URL.
 //
+// This model intentionally contains only fields exposed by the Journey
+// read projections. Persistence IDs and timestamps are not exposed.
 // -----------------------------------------------------------------------------
 
-import type { JourneyAssetType } from './journey-asset-type';
-
-/**
- * Asset attached to a Journey.
- */
 export interface JourneyAsset {
   /**
-   * Public identifier of the Journey asset attachment.
+   * JourneyAsset public identifier.
+   *
+   * This identifies the Journey-owned asset association.
    */
-  publicId: string;
+  readonly publicId: string;
 
   /**
-   * Public identifier of the underlying Asset domain resource.
+   * Opaque public identifier of the referenced Asset.
    */
-  assetPublicId: string;
+  readonly assetPublicId: string;
 
   /**
-   * Semantic role of the asset within the Journey.
+   * The role of the asset within the Journey.
    */
-  type: JourneyAssetType;
+  readonly type: JourneyAssetType;
 
   /**
-   * Display ordering of the asset within its Journey.
+   * Display ordering of this asset within the Journey asset collection.
    */
-  sortOrder: number;
-
-  /**
-   * Creation timestamp returned by the API, when available.
-   */
-  createdAt?: string;
-
-  /**
-   * Last update timestamp returned by the API, when available.
-   */
-  updatedAt?: string;
+  readonly sortOrder: number;
 }

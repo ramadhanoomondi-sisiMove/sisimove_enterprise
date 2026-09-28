@@ -1,81 +1,89 @@
 // -----------------------------------------------------------------------------
-// sisiMove — usePublicJourneys
+// sisiMove — Use Public Journeys
 // -----------------------------------------------------------------------------
 //
-// React Query hook for public Journey discovery.
+// Loads the public Journey marketplace projection.
 //
-// API boundary:
-//     GET /api/v1/journeys/public?from=&to=&date=
+// Responsibilities:
+// - execute the public Journey API query;
+// - expose loading/error/data state;
+// - provide an explicit refetch operation.
 //
-// This hook is responsible for:
-// - Executing the public Journey discovery API.
-// - Managing query caching and request lifecycle through React Query.
-// - Mapping API transport data into the public Journey frontend model.
+// The hook does not:
+// - construct Journey domain objects;
+// - apply Journey lifecycle rules;
+// - perform client-side filtering;
+// - create Journey domain behavior.
 //
-// This hook intentionally does NOT:
-// - Perform authenticated requests.
-// - Accept providerPublicId.
-// - Resolve Traveller Profile or Trust Profile.
-// - Construct Journey API URLs outside the API adapter.
-// - Format dates or currency.
-// - Implement marketplace presentation logic.
+// Query parameters are passed to the backend public Journey projection.
 //
-// Public Journey composition is owned by the backend's
-// GetPublicJourneysQueryHandler.
 // -----------------------------------------------------------------------------
 
-import { useQuery } from '@tanstack/react-query';
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
 
 import {
   getPublicJourneys,
-  type GetPublicJourneysParams,
-} from '../../api/discovery';
+  type GetPublicJourneysQuery,
+} from "../../api/journeys/get-public-journeys";
 
-import {
-  mapPublicJourneys,
-  type PublicJourney,
-} from '../../mappers';
+import type { PublicJourney } from "../../models/public-journey";
 
-// -----------------------------------------------------------------------------
-// Query Key
-// -----------------------------------------------------------------------------
+export interface UsePublicJourneysResult {
+  readonly journeys: PublicJourney[];
+  readonly isLoading: boolean;
+  readonly error: Error | null;
+  readonly refetch: () => Promise<void>;
+}
 
-/**
- * Stable query-key namespace for public Journey discovery.
- *
- * Search parameters are included in the key so React Query keeps separate
- * cached results for separate marketplace queries.
- */
-export const PUBLIC_JOURNEYS_QUERY_KEY = ['journeys', 'public'] as const;
-
-// -----------------------------------------------------------------------------
-// Hook
-// -----------------------------------------------------------------------------
-
-/**
- * Fetches publicly discoverable Journeys.
- *
- * When no filters are supplied, the backend returns the public Journey
- * collection according to its own discovery rules.
- *
- * `from`, `to`, and `date` are passed through to the API adapter without
- * frontend-side interpretation.
- */
 export function usePublicJourneys(
-  params?: GetPublicJourneysParams,
-) {
-  return useQuery<PublicJourney[], Error>({
-    queryKey: [
-      ...PUBLIC_JOURNEYS_QUERY_KEY,
-      params?.from ?? null,
-      params?.to ?? null,
-      params?.date ?? null,
-    ],
+  query: GetPublicJourneysQuery = {},
+): UsePublicJourneysResult {
+  const [journeys, setJourneys] = useState<PublicJourney[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
 
-    queryFn: async () => {
-      const response = await getPublicJourneys(params);
+  const from = query.from?.trim() ?? "";
+  const to = query.to?.trim() ?? "";
+  const date = query.date?.trim() ?? "";
 
-      return mapPublicJourneys(response);
-    },
-  });
+  const loadJourneys = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const result = await getPublicJourneys({
+        from: from || undefined,
+        to: to || undefined,
+        date: date || undefined,
+      });
+
+      setJourneys(result);
+    } catch (cause) {
+      const nextError =
+        cause instanceof Error
+          ? cause
+          : new Error("Failed to load public journeys.");
+
+      setError(nextError);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [from, to, date]);
+
+  useEffect(() => {
+    const task = Promise.resolve().then(loadJourneys);
+
+    return () => {
+      void task;
+    };
+  }, [loadJourneys]);
+
+  return {
+    journeys,
+    isLoading,
+    error,
+    refetch: loadJourneys,
+  };
 }

@@ -12,8 +12,7 @@
 //     AUTHENTICATION_ROUTES
 //         Registration and login entry points.
 //
-// The authenticated route group is responsible only for identifying the
-// canonical URL of an authenticated application surface.
+// This file identifies canonical authenticated application URLs only.
 //
 // This file does NOT:
 // - authenticate users,
@@ -26,154 +25,33 @@
 // - define Next.js middleware.
 //
 // Those responsibilities belong to their respective application boundaries.
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// Authenticated application
-// -----------------------------------------------------------------------------
-//
-//     /home
-//         Authenticated marketplace home.
-//
-//     /my-journeys
-//         Traveller's journey-management surface.
-//
-//     /my-demands
-//         Traveller's journey-demand management surface.
-//
-//     /my-bookings
-//         Traveller's Journey Booking management surface.
-//
-//     /bookings/[journeyBookingPublicId]
-//         Authenticated Journey Booking detail surface.
-//
-//     /assets
-//         Traveller's generic Asset-management surface.
-//
-//     /profile
-//         Authenticated Traveller Profile surface.
-//
-//     /profile/verification
-//         Identity / profile verification surface.
-//
-//     /wallet
-//         Traveller's financial-account and wallet overview.
-//
-//     /support
-//         Authenticated support case collection.
-//
-//     /support/new
-//         Authenticated Support case creation surface.
-//
-//     /support/cases/[supportCasePublicId]
-//         Authenticated Support case detail and conversation surface.
-//
-//     /settings
-//         Authenticated application settings surface.
-//
-//     /notifications
-//         Authenticated notification collection.
-//
-//     /notifications/[notificationPublicId]
-//         Authenticated notification detail surface.
-//
-//     /settings/notifications
-//         Authenticated notification preference settings.
 //
 // -----------------------------------------------------------------------------
-// Messaging
+//
+// IMPORTANT ROUTING RULE
 // -----------------------------------------------------------------------------
 //
-//     /messages
-//         Authenticated Messaging conversation list.
+// Public resources and authenticated owner-management resources must not create
+// ambiguous Next.js dynamic routes.
 //
-//     /messages/[conversationPublicId]
-//         Authenticated Messaging conversation detail surface.
+// For example:
 //
-// Messaging is intentionally a separate authenticated application surface.
+//     /demands/[publicId]
+//         Public Journey Demand detail.
 //
-// The conversation public identifier is exposed in the URL because the
-// conversation is itself a navigable Messaging resource.
+//     /my-demands/[publicId]
+//         Authenticated owner's Journey Demand detail.
 //
-// Internal persistence identifiers must never be exposed.
+// Likewise:
 //
-// Message and conversation lifecycle operations remain mutations performed by
-// their respective action components. They are not represented as artificial
-// page routes.
+//     /journeys/[publicId]
+//         Public Journey detail.
 //
-// -----------------------------------------------------------------------------
-// Journey Boarding
-// -----------------------------------------------------------------------------
+//     /my-journeys/[publicId]
+//         Authenticated owner's Journey management.
 //
-//     /journeys/[journeyPublicId]/boarding
-//         Authenticated Journey Boarding operational surface.
-//
-// Journey Boarding is intentionally nested under the Journey detail route.
-//
-// The boarding identifier is not exposed in the URL because the operational
-// boarding surface is entered in the context of a specific Journey.
-//
-// The backend resolves the Journey Boarding aggregate from the journey's
-// public identifier.
-//
-// This route is distinct from Journey Booking:
-//
-//     /journeys/[journeyPublicId]/boarding
-//         Operational boarding of a Journey.
-//
-//     /bookings/[journeyBookingPublicId]
-//         Individual traveller booking lifecycle.
-//
-// -----------------------------------------------------------------------------
-// Journey Completion
-// -----------------------------------------------------------------------------
-//
-//     /journeys/[journeyPublicId]/completion
-//         Authenticated Journey Completion operational surface.
-//
-// Journey Completion is intentionally nested under the Journey detail route.
-//
-// The URL uses Journey.publicId rather than JourneyCompletion.publicId.
-//
-// The completion aggregate is associated with a Journey and is therefore
-// presented in Journey context.
-//
-// The surface may present:
-//
-//     - completion status;
-//     - confirmation progress;
-//     - passenger/provider confirmations;
-//     - completion disputes;
-//     - settlement status.
-//
-// Completion and settlement lifecycle operations remain domain mutations
-// performed by their respective action components. They are not represented
-// as artificial page routes.
-//
-// Settlement is observational on the completion surface. Financial settlement
-// lifecycle remains owned by the backend/domain workflow.
-//
-// -----------------------------------------------------------------------------
-// Journey creation
-// -----------------------------------------------------------------------------
-//
-// Journey creation is a guided workflow around an already-created
-// server-side Journey aggregate in DRAFT status.
-//
-// The entry route creates the draft exactly once.
-//
-// Every subsequent creation step is identified by journeyPublicId.
-//
-// -----------------------------------------------------------------------------
-// Journey-demand creation
-// -----------------------------------------------------------------------------
-//
-// Journey-demand creation is a guided workflow around an already-created
-// server-side JourneyDemand aggregate.
-//
-// The entry route creates the demand exactly once.
-//
-// Every subsequent creation step is identified by journeyDemandPublicId.
+// Route groups do not distinguish dynamic URL patterns. Explicit /my-*
+// namespaces are therefore used for authenticated owner-management surfaces.
 //
 // -----------------------------------------------------------------------------
 
@@ -182,17 +60,210 @@ export const AUTHENTICATED_ROUTES = {
   // Marketplace
   // ---------------------------------------------------------------------------
 
+  /**
+   * Authenticated marketplace home.
+   *
+   * The authenticated home remains the central journey/demand marketplace
+   * surface after login.
+   */
   HOME: '/home',
 
   // ---------------------------------------------------------------------------
   // Traveller activity
   // ---------------------------------------------------------------------------
 
+  /**
+   * Authenticated traveller's Journey collection/management surface.
+   */
   MY_JOURNEYS: '/my-journeys',
 
+  /**
+   * Authenticated traveller's Journey detail/management surface.
+   */
+  MY_JOURNEY: (journeyPublicId: string) =>
+    `/my-journeys/${encodeURIComponent(journeyPublicId)}`,
+
+  /**
+   * Authenticated Journey editing surface.
+   */
+  MY_JOURNEY_EDIT: (journeyPublicId: string) =>
+    `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit`,
+
+  /**
+   * Authenticated traveller's Journey Demand collection/management surface.
+   */
   MY_DEMANDS: '/my-demands',
 
+  /**
+   * Authenticated Journey Demand creation entry point.
+   *
+   * This route creates the server-side JourneyDemand aggregate exactly once.
+   * Subsequent creation/editing steps are identified by journeyDemandPublicId.
+   */
+  MY_DEMAND_CREATE_START: '/my-demands/new',
+
+  /**
+   * Authenticated Journey Demand owner detail surface.
+   */
+  MY_DEMAND: (journeyDemandPublicId: string) =>
+    `/my-demands/${encodeURIComponent(journeyDemandPublicId)}`,
+
+  /**
+   * Authenticated Journey Demand editing surface.
+   */
+  MY_DEMAND_EDIT: (journeyDemandPublicId: string) =>
+    `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit`,
+
+  // ---------------------------------------------------------------------------
+  // Journey Demand creation
+  // ---------------------------------------------------------------------------
+  //
+  // Journey Demand creation is a guided workflow around an already-created
+  // server-side JourneyDemand aggregate.
+  //
+  // The entry route creates the demand exactly once.
+  //
+  // Every subsequent creation step is identified by journeyDemandPublicId.
+  //
+  // These routes intentionally live under /my-demands because they are
+  // authenticated owner-management surfaces.
+  //
+  // ---------------------------------------------------------------------------
+
+  JOURNEY_DEMAND_CREATE: (journeyDemandPublicId: string) =>
+    `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit`,
+
+  JOURNEY_DEMAND_CREATE_ROUTE: (journeyDemandPublicId: string) =>
+    `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit/route`,
+
+  JOURNEY_DEMAND_CREATE_SCHEDULE: (journeyDemandPublicId: string) =>
+    `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit/schedule`,
+
+  JOURNEY_DEMAND_CREATE_SEATS: (journeyDemandPublicId: string) =>
+    `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit/seats`,
+
+  JOURNEY_DEMAND_CREATE_PRICING: (journeyDemandPublicId: string) =>
+    `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit/pricing`,
+
+  JOURNEY_DEMAND_CREATE_REVIEW: (journeyDemandPublicId: string) =>
+    `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit/review`,
+
+  // ---------------------------------------------------------------------------
+  // Authenticated Journey Demand compatibility aliases
+  // ---------------------------------------------------------------------------
+  //
+  // These names describe the domain resource rather than the page namespace.
+  //
+  // They resolve to the canonical /my-demands URLs above.
+  //
+  // ---------------------------------------------------------------------------
+
+  JOURNEY_DEMAND: (journeyDemandPublicId: string) =>
+    `/my-demands/${encodeURIComponent(journeyDemandPublicId)}`,
+
+  JOURNEY_DEMAND_EDIT: (journeyDemandPublicId: string) =>
+    `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit`,
+
+  /**
+   * Generic authenticated Journey Demand collection namespace.
+   *
+   * The canonical owner-facing collection page is /my-demands.
+   */
+  JOURNEY_DEMANDS: '/my-demands',
+
+  // ---------------------------------------------------------------------------
+  // Journey creation
+  // ---------------------------------------------------------------------------
+  //
+  // Journey creation is a guided workflow around an already-created
+  // server-side Journey aggregate in DRAFT status.
+  //
+  // The entry route creates the draft exactly once.
+  //
+  // Every subsequent creation step is identified by journeyPublicId.
+  //
+  // ---------------------------------------------------------------------------
+
+  JOURNEY_CREATE_START: '/journeys/create',
+
+  JOURNEY_CREATE: (journeyPublicId: string) =>
+    `/journeys/create/${encodeURIComponent(journeyPublicId)}`,
+
+  JOURNEY_CREATE_ROUTE: (journeyPublicId: string) =>
+    `/journeys/create/${encodeURIComponent(journeyPublicId)}/route`,
+
+  JOURNEY_CREATE_SCHEDULE: (journeyPublicId: string) =>
+    `/journeys/create/${encodeURIComponent(journeyPublicId)}/schedule`,
+
+  JOURNEY_CREATE_VEHICLE: (journeyPublicId: string) =>
+    `/journeys/create/${encodeURIComponent(journeyPublicId)}/vehicle`,
+
+  JOURNEY_CREATE_SEATS: (journeyPublicId: string) =>
+    `/journeys/create/${encodeURIComponent(journeyPublicId)}/seats`,
+
+  JOURNEY_CREATE_PRICING: (journeyPublicId: string) =>
+    `/journeys/create/${encodeURIComponent(journeyPublicId)}/pricing`,
+
+  JOURNEY_CREATE_PREFERENCES: (journeyPublicId: string) =>
+    `/journeys/create/${encodeURIComponent(journeyPublicId)}/preferences`,
+
+  JOURNEY_CREATE_PHOTOS: (journeyPublicId: string) =>
+    `/journeys/create/${encodeURIComponent(journeyPublicId)}/photos`,
+
+  JOURNEY_CREATE_REVIEW: (journeyPublicId: string) =>
+    `/journeys/create/${encodeURIComponent(journeyPublicId)}/review`,
+
+  // ---------------------------------------------------------------------------
+  // Journey detail
+  // ---------------------------------------------------------------------------
+  //
+  // Authenticated Journey detail is namespaced under /my-journeys to avoid
+  // colliding with the public /journeys/[publicId] route.
+  //
+  // ---------------------------------------------------------------------------
+
+  JOURNEY: (journeyPublicId: string) =>
+    `/my-journeys/${encodeURIComponent(journeyPublicId)}`,
+
+  JOURNEY_EDIT: (journeyPublicId: string) =>
+    `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit`,
+
+  // ---------------------------------------------------------------------------
+  // Journey Boarding
+  // ---------------------------------------------------------------------------
+
+  JOURNEY_BOARDING: (journeyPublicId: string) =>
+    `/my-journeys/${encodeURIComponent(journeyPublicId)}/boarding`,
+
+  // ---------------------------------------------------------------------------
+  // Journey Completion
+  // ---------------------------------------------------------------------------
+  //
+  // Completion is presented in Journey context.
+  //
+  // Journey.publicId is used instead of JourneyCompletion.publicId because the
+  // completion workflow belongs to the Journey operational surface.
+  //
+  // Settlement remains observational on this surface; financial lifecycle
+  // operations remain owned by their backend/domain workflow.
+  //
+  // ---------------------------------------------------------------------------
+
+  JOURNEY_COMPLETION: (journeyPublicId: string) =>
+    `/my-journeys/${encodeURIComponent(journeyPublicId)}/completion`,
+
+  // ---------------------------------------------------------------------------
+  // Journey Booking
+  // ---------------------------------------------------------------------------
+
   MY_BOOKINGS: '/my-bookings',
+
+  BOOKING: (journeyBookingPublicId: string) =>
+    `/bookings/${encodeURIComponent(journeyBookingPublicId)}`,
+
+  // ---------------------------------------------------------------------------
+  // Generic assets
+  // ---------------------------------------------------------------------------
 
   ASSETS: '/assets',
 
@@ -202,9 +273,7 @@ export const AUTHENTICATED_ROUTES = {
 
   MESSAGES: '/messages',
 
-  MESSAGING_CONVERSATION: (
-    conversationPublicId: string,
-  ) =>
+  MESSAGING_CONVERSATION: (conversationPublicId: string) =>
     `/messages/${encodeURIComponent(conversationPublicId)}`,
 
   // ---------------------------------------------------------------------------
@@ -213,9 +282,7 @@ export const AUTHENTICATED_ROUTES = {
 
   NOTIFICATIONS: '/notifications',
 
-  NOTIFICATION: (
-    notificationPublicId: string,
-  ) =>
+  NOTIFICATION: (notificationPublicId: string) =>
     `/notifications/${encodeURIComponent(notificationPublicId)}`,
 
   // ---------------------------------------------------------------------------
@@ -223,140 +290,6 @@ export const AUTHENTICATED_ROUTES = {
   // ---------------------------------------------------------------------------
 
   NOTIFICATION_SETTINGS: '/settings/notifications',
-
-  // ---------------------------------------------------------------------------
-  // Journey creation
-  // ---------------------------------------------------------------------------
-
-  JOURNEY_CREATE_START: '/journeys/create',
-
-  JOURNEY_CREATE: (
-    journeyPublicId: string,
-  ) =>
-    `/journeys/create/${encodeURIComponent(journeyPublicId)}`,
-
-  JOURNEY_CREATE_ROUTE: (
-    journeyPublicId: string,
-  ) =>
-    `/journeys/create/${encodeURIComponent(journeyPublicId)}/route`,
-
-  JOURNEY_CREATE_SCHEDULE: (
-    journeyPublicId: string,
-  ) =>
-    `/journeys/create/${encodeURIComponent(journeyPublicId)}/schedule`,
-
-  JOURNEY_CREATE_VEHICLE: (
-    journeyPublicId: string,
-  ) =>
-    `/journeys/create/${encodeURIComponent(journeyPublicId)}/vehicle`,
-
-  JOURNEY_CREATE_SEATS: (
-    journeyPublicId: string,
-  ) =>
-    `/journeys/create/${encodeURIComponent(journeyPublicId)}/seats`,
-
-  JOURNEY_CREATE_PRICING: (
-    journeyPublicId: string,
-  ) =>
-    `/journeys/create/${encodeURIComponent(journeyPublicId)}/pricing`,
-
-  JOURNEY_CREATE_PREFERENCES: (
-    journeyPublicId: string,
-  ) =>
-    `/journeys/create/${encodeURIComponent(journeyPublicId)}/preferences`,
-
-  JOURNEY_CREATE_PHOTOS: (
-    journeyPublicId: string,
-  ) =>
-    `/journeys/create/${encodeURIComponent(journeyPublicId)}/photos`,
-
-  JOURNEY_CREATE_REVIEW: (
-    journeyPublicId: string,
-  ) =>
-    `/journeys/create/${encodeURIComponent(journeyPublicId)}/review`,
-
-  // ---------------------------------------------------------------------------
-  // Journey detail
-  // ---------------------------------------------------------------------------
-
-  JOURNEY: (
-    journeyPublicId: string,
-  ) =>
-    `/journeys/${encodeURIComponent(journeyPublicId)}`,
-
-  // ---------------------------------------------------------------------------
-  // Journey Boarding
-  // ---------------------------------------------------------------------------
-
-  JOURNEY_BOARDING: (
-    journeyPublicId: string,
-  ) =>
-    `/journeys/${encodeURIComponent(journeyPublicId)}/boarding`,
-
-  // ---------------------------------------------------------------------------
-  // Journey Completion
-  // ---------------------------------------------------------------------------
-
-  JOURNEY_COMPLETION: (
-    journeyPublicId: string,
-  ) =>
-    `/journeys/${encodeURIComponent(journeyPublicId)}/completion`,
-
-  // ---------------------------------------------------------------------------
-  // Journey-demand management
-  // ---------------------------------------------------------------------------
-
-  JOURNEY_DEMANDS: '/journey-demands',
-
-  JOURNEY_DEMAND_CREATE_START: '/journey-demands/create',
-
-  JOURNEY_DEMAND_CREATE: (
-    journeyDemandPublicId: string,
-  ) =>
-    `/journey-demands/create/${encodeURIComponent(journeyDemandPublicId)}`,
-
-  JOURNEY_DEMAND_CREATE_ROUTE: (
-    journeyDemandPublicId: string,
-  ) =>
-    `/journey-demands/create/${encodeURIComponent(journeyDemandPublicId)}/route`,
-
-  JOURNEY_DEMAND_CREATE_SCHEDULE: (
-    journeyDemandPublicId: string,
-  ) =>
-    `/journey-demands/create/${encodeURIComponent(journeyDemandPublicId)}/schedule`,
-
-  JOURNEY_DEMAND_CREATE_SEATS: (
-    journeyDemandPublicId: string,
-  ) =>
-    `/journey-demands/create/${encodeURIComponent(journeyDemandPublicId)}/seats`,
-
-  JOURNEY_DEMAND_CREATE_PRICING: (
-    journeyDemandPublicId: string,
-  ) =>
-    `/journey-demands/create/${encodeURIComponent(journeyDemandPublicId)}/pricing`,
-
-  JOURNEY_DEMAND_CREATE_REVIEW: (
-    journeyDemandPublicId: string,
-  ) =>
-    `/journey-demands/create/${encodeURIComponent(journeyDemandPublicId)}/review`,
-
-  // ---------------------------------------------------------------------------
-  // Journey-demand detail
-  // ---------------------------------------------------------------------------
-
-  JOURNEY_DEMAND: (
-    journeyDemandPublicId: string,
-  ) =>
-    `/journey-demands/${encodeURIComponent(journeyDemandPublicId)}`,
-
-  // ---------------------------------------------------------------------------
-  // Journey Booking
-  // ---------------------------------------------------------------------------
-
-  BOOKING: (
-    journeyBookingPublicId: string,
-  ) =>
-    `/bookings/${encodeURIComponent(journeyBookingPublicId)}`,
 
   // ---------------------------------------------------------------------------
   // Traveller profile
@@ -378,9 +311,7 @@ export const AUTHENTICATED_ROUTES = {
 
   WALLET_TRANSACTIONS: '/wallet/transactions',
 
-  WALLET_TRANSACTION: (
-    transactionPublicId: string,
-  ) =>
+  WALLET_TRANSACTION: (transactionPublicId: string) =>
     `/wallet/transactions/${encodeURIComponent(transactionPublicId)}`,
 
   WALLET_PAYMENT_METHODS: '/wallet/payment-methods',
@@ -388,8 +319,6 @@ export const AUTHENTICATED_ROUTES = {
   // ---------------------------------------------------------------------------
   // Application support
   // ---------------------------------------------------------------------------
-  //
-  // Support is a member-facing authenticated application surface.
   //
   // /support
   //     Support case collection.
@@ -400,14 +329,7 @@ export const AUTHENTICATED_ROUTES = {
   // /support/cases/[supportCasePublicId]
   //     Existing Support case detail and conversation.
   //
-  // The only Support identifier exposed by the URL is SupportCase.publicId.
-  //
-  // Internal persistence IDs, case IDs, participant IDs, message IDs, note
-  // IDs, and other internal identifiers must never be exposed as route
-  // identifiers.
-  //
-  // Support mutations remain actions performed from the appropriate surface.
-  // They are not represented as artificial page routes.
+  // Only SupportCase.publicId is exposed as a route identifier.
   //
   // ---------------------------------------------------------------------------
 
@@ -415,9 +337,7 @@ export const AUTHENTICATED_ROUTES = {
 
   SUPPORT_NEW: '/support/new',
 
-  SUPPORT_CASE: (
-    supportCasePublicId: string,
-  ) =>
+  SUPPORT_CASE: (supportCasePublicId: string) =>
     `/support/cases/${encodeURIComponent(supportCasePublicId)}`,
 
   // ---------------------------------------------------------------------------
@@ -433,8 +353,16 @@ export const AUTHENTICATED_ROUTES = {
 //
 // Static routes are represented directly.
 //
-// Dynamic route builders are excluded because they require arguments and
-// therefore are functions rather than concrete route strings.
+// Dynamic route builders are functions and therefore are intentionally excluded
+// from AuthenticatedRoute.
+//
+// Example:
+//
+//     const route: AuthenticatedRoute = AUTHENTICATED_ROUTES.HOME;
+//
+// Dynamic builders remain callable:
+//
+//     AUTHENTICATED_ROUTES.MY_DEMAND(publicId);
 //
 // -----------------------------------------------------------------------------
 

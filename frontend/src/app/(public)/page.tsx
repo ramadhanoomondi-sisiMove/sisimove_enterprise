@@ -1,60 +1,21 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Public Marketplace Route
+// sisiMove — Public Landing Route
 // -----------------------------------------------------------------------------
 //
-// Public entry point for the sisiMove marketplace.
+// The route entry point delegates the landing-page composition to LandingPage.
 //
-// Route:
+// The public route layout owns the public shell:
 //
-//   /
+// - SiteHeader;
+// - <main>;
+// - SiteFooter.
 //
-// This file belongs to the `(public)` route group:
+// This route therefore contains no marketplace logic.
 //
-//   src/app/(public)/page.tsx
-//
-// The `(public)` segment is a Next.js route group and does not appear in the
-// URL. Therefore this page still resolves to:
-//
-//   /
-//
-// The route intentionally contains no marketplace data-fetching, filtering,
-// sorting, or presentation logic. Those responsibilities belong to the
-// Public Marketplace application boundary and its presentation components.
-//
-// Flow:
-//
-//   /
-//    │
-//    ▼
-//   PublicMarketplaceContent
-//    │
-//    ├── owns marketplace query state
-//    ├── composes public Journey + Journey Demand data
-//    ├── resolves marketplace actions/routes
-//    │
-//    ▼
-//   LandingPage
-//    │
-//    ├── Hero
-//    ├── Marketplace
-//    ├── Create Demand CTA
-//    ├── Publish Journey CTA
-//    └── How It Works
-//
-// The surrounding `(public)/layout.tsx` provides the shared public shell:
-//
-//   SiteHeader
-//   <main>
-//     └── PublicMarketplaceContent
-//   </main>
-//   SiteFooter
-//
-// Keeping this route thin allows the App Router to remain a routing boundary
-// while the marketplace feature owns its application behavior.
 // -----------------------------------------------------------------------------
 
-import { PublicMarketplaceContent } from '@/components/landing/marketplace/public-marketplace-content';
+import { LandingPage } from "@/components/landing/landing-page";
 
 export default function Page() {
-  return <PublicMarketplaceContent />;
+  return <LandingPage />;
 }

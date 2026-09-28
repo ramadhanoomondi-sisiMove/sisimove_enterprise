@@ -669,13 +669,6 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
         is: {
           ...existingScheduleFilter,
 
-          // A departure window overlaps the requested date when:
-          //
-          //   earliestDeparture <= endOfDay
-          //   AND
-          //   latestDeparture >= startOfDay
-          //
-          // This handles flexible Journey Demand departure windows correctly.
           earliestDeparture: {
             lte: end,
           },
@@ -690,11 +683,7 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
     // -------------------------------------------------------------------------
     // Pagination
     // -------------------------------------------------------------------------
-    //
-    // Pagination is intentionally applied at the persistence boundary so the
-    // repository does not load the entire public marketplace into memory.
-    //
-    // Defensive normalization prevents negative values from reaching Prisma.
+
     const limit =
       filters?.limit === undefined
         ? undefined
@@ -892,6 +881,46 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
   ): Promise<JourneyDemandEntity | null> {
     const record = await this.prisma.journeyDemand.findUnique({
       where: {
+        publicId: publicId.value,
+      },
+    });
+
+    return record === null ? null : JourneyDemandPrismaMapper.toDomain(record);
+  }
+
+  /**
+   * Ownership-scoped Journey Demand root lookup.
+   *
+   * The requester public ID and Journey Demand public ID are applied together
+   * in the Prisma query.
+   *
+   * This is intentionally different from findJourneyDemandByPublicId():
+   *
+   *   findJourneyDemandByPublicId()
+   *       -> generic lookup by public ID
+   *
+   *   findJourneyDemandByRequesterAndPublicId()
+   *       -> requester-owned lookup by requester + public ID
+   *
+   * The combined predicate prevents the application layer from retrieving an
+   * arbitrary Journey Demand and performing ownership filtering afterward.
+   *
+   * A null result deliberately does not distinguish between:
+   *
+   *   - a missing Journey Demand; and
+   *   - a Journey Demand belonging to another requester.
+   *
+   * This keeps ownership information from leaking through the repository
+   * boundary.
+   */
+  public async findJourneyDemandByRequesterAndPublicId(
+    requesterPublicId: RequesterPublicId,
+    publicId: JourneyDemandPublicId,
+  ): Promise<JourneyDemandEntity | null> {
+    const record = await this.prisma.journeyDemand.findFirst({
+      where: {
+        requesterPublicId: requesterPublicId.value,
+
         publicId: publicId.value,
       },
     });

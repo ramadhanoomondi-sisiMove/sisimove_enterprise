@@ -1,26 +1,36 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Waypoint Type
+// sisiMove — Journey Waypoint Type Model
 // -----------------------------------------------------------------------------
 //
-// Stable frontend representation of the JourneyWaypointType enum exposed by
-// the Journey HTTP API.
+// Frontend read-model contract for Journey waypoint types.
 //
-// Backend:
+// This model mirrors the backend JourneyWaypointType enum exactly.
 //
-//   ORIGIN
-//   DESTINATION
-//   PICKUP
-//   DROPOFF
-//   WAYPOINT
+// The frontend uses these values for:
+// - rendering waypoint labels;
+// - distinguishing origin/destination/pickup/dropoff/ordinary waypoints;
+// - mapping API responses into frontend models.
 //
-// This type describes the semantic role of a waypoint within a Journey
-// corridor. It does not describe whether pickup or dropoff is currently
-// permitted; those capabilities belong to the waypoint model itself.
+// The frontend must NOT infer pickup/dropoff permissions from the waypoint
+// type. Those permissions are independent fields on JourneyWaypoint:
+//   - pickupAllowed
+//   - dropoffAllowed
+//
+// The backend aggregate remains authoritative for waypoint invariants and
+// mutation rules.
 //
 // -----------------------------------------------------------------------------
 
 /**
- * Semantic type of a Journey waypoint.
+ * Journey waypoint type.
+ *
+ * Corresponds exactly to the backend JourneyWaypointType enum:
+ *
+ *   ORIGIN
+ *   DESTINATION
+ *   PICKUP
+ *   DROPOFF
+ *   WAYPOINT
  */
 export type JourneyWaypointType =
   | 'ORIGIN'
@@ -30,10 +40,10 @@ export type JourneyWaypointType =
   | 'WAYPOINT';
 
 /**
- * All supported Journey waypoint types.
+ * Runtime collection of all supported Journey waypoint types.
  *
- * Kept as a readonly tuple for safe runtime iteration, validation, filtering,
- * and UI option generation.
+ * Keeping the values in one place allows API mappers and UI configuration
+ * to validate external values without importing backend/domain code.
  */
 export const JOURNEY_WAYPOINT_TYPES = [
   'ORIGIN',
@@ -44,13 +54,10 @@ export const JOURNEY_WAYPOINT_TYPES = [
 ] as const satisfies readonly JourneyWaypointType[];
 
 /**
- * Runtime guard for JourneyWaypointType.
+ * Runtime guard for values received from the API.
  */
 export function isJourneyWaypointType(
-  value: unknown,
+  value: string,
 ): value is JourneyWaypointType {
-  return (
-    typeof value === 'string' &&
-    (JOURNEY_WAYPOINT_TYPES as readonly string[]).includes(value)
-  );
+  return (JOURNEY_WAYPOINT_TYPES as readonly string[]).includes(value);
 }

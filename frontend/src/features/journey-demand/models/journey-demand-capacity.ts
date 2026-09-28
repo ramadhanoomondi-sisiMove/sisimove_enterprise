@@ -1,29 +1,49 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Demand Capacity
+// sisiMove — Journey Demand Capacity Model
 // -----------------------------------------------------------------------------
 //
-// Presentation/API model for the number of seats requested by a demand.
+// Frontend representation of JourneyDemandCapacityResponse.
 //
+// Capacity state is supplied by the backend. The frontend consumes the
+// convenience flags rather than recreating capacity rules.
 // -----------------------------------------------------------------------------
 
+/**
+ * Journey Demand capacity response model.
+ */
 export interface JourneyDemandCapacity {
   /**
-   * Public identifier of the capacity component.
+   * Stable public identifier exposed by the backend.
    */
-  publicId: string;
+  readonly publicId: string;
 
   /**
    * Number of seats requested by the demand.
    */
-  requestedSeats: number;
+  readonly requestedSeats: number;
 
   /**
-   * Number of requested seats currently matched.
-   *
-   * Backend default: 0.
+   * Number of requested seats already matched.
    */
-  matchedSeats: number;
+  readonly matchedSeats: number;
 
-  createdAt: string;
-  updatedAt: string;
+  /**
+   * Number of seats still available to be matched.
+   */
+  readonly remainingSeats: number;
+
+  /**
+   * Backend-provided capacity state.
+   */
+  readonly hasCapacity: boolean;
+  readonly isFull: boolean;
+  readonly isEmpty: boolean;
+  readonly isPartiallyMatched: boolean;
+  readonly isFullyMatched: boolean;
+
+  /**
+   * Backend timestamps.
+   */
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
 }

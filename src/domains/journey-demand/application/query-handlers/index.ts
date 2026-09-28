@@ -14,6 +14,8 @@ export * from './get-journey-demands.handler';
 
 export * from './get-my-journey-demands.handler';
 
+export * from './get-my-journey-demand.handler';
+
 // -----------------------------------------------------------------------------
 // Public Marketplace Discovery
 // -----------------------------------------------------------------------------

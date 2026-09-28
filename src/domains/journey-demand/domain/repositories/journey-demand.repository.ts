@@ -286,6 +286,30 @@ export interface JourneyDemandRepository {
   ): Promise<JourneyDemandEntity | null>;
 
   /**
+   * Find only the JourneyDemand root entity by public ID when it belongs to
+   * the specified requester.
+   *
+   * This is the ownership-scoped counterpart to
+   * findJourneyDemandByPublicId().
+   *
+   * The requester constraint is part of the repository lookup itself so that
+   * the application layer never loads an arbitrary JourneyDemand and then
+   * performs an ownership check after retrieval.
+   *
+   * A null result means either:
+   *
+   * - the JourneyDemand does not exist; or
+   * - the JourneyDemand does not belong to the requester.
+   *
+   * The repository deliberately does not distinguish those cases at this
+   * boundary.
+   */
+  findJourneyDemandByRequesterAndPublicId(
+    requesterPublicId: RequesterPublicId,
+    publicId: JourneyDemandPublicId,
+  ): Promise<JourneyDemandEntity | null>;
+
+  /**
    * Find all JourneyDemand root entities.
    *
    * This does not rehydrate the aggregate and is therefore not the public

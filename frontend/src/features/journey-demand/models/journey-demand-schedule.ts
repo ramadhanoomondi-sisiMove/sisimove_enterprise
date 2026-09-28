@@ -1,49 +1,64 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Demand Schedule
+// sisiMove — Journey Demand Schedule Model
 // -----------------------------------------------------------------------------
 //
-// Presentation/API model for the flexible departure/arrival window requested
-// by a traveller.
+// Frontend representation of JourneyDemandScheduleResponse.
 //
-// Date values are ISO-8601 strings at the API boundary.
-//
+// Convenience flags are preserved because they are backend-provided facts.
+// The frontend must not independently reconstruct these flags from dates.
 // -----------------------------------------------------------------------------
 
+export interface JourneyDemandScheduleWindow {
+  readonly earliestDeparture: Date;
+  readonly latestDeparture: Date;
+}
+
+export interface JourneyDemandArrivalWindow {
+  readonly targetArrival: Date | undefined;
+  readonly maximumArrival: Date | undefined;
+}
+
+/**
+ * Journey Demand schedule response model.
+ */
 export interface JourneyDemandSchedule {
   /**
-   * Public identifier of the schedule.
+   * Stable public identifier exposed by the backend.
    */
-  publicId: string;
+  readonly publicId: string;
 
   /**
-   * Earliest acceptable departure.
+   * Allowed departure window.
    */
-  earliestDeparture: string;
+  readonly scheduleWindow: JourneyDemandScheduleWindow;
 
   /**
-   * Latest acceptable departure.
+   * Optional arrival constraints.
    */
-  latestDeparture: string;
+  readonly arrivalWindow: JourneyDemandArrivalWindow;
 
   /**
-   * Preferred/target arrival time.
+   * IANA timezone supplied by the backend.
    */
-  targetArrival: string | null;
+  readonly timezone: string;
 
   /**
-   * Latest acceptable arrival time.
+   * Backend-provided schedule semantics.
    */
-  maximumArrival: string | null;
+  readonly hasTargetArrival: boolean;
+  readonly hasMaximumArrival: boolean;
+  readonly hasArrivalConstraint: boolean;
+  readonly hasDepartureWindow: boolean;
 
   /**
-   * IANA timezone identifier.
-   *
-   * Backend default:
-   *
-   *     Africa/Nairobi
+   * Backend-provided convenience flags describing exactness.
    */
-  timezone: string;
+  readonly isExactDepartureTime: boolean;
+  readonly isExactArrivalTime: boolean;
 
-  createdAt: string;
-  updatedAt: string;
+  /**
+   * Backend timestamps.
+   */
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
 }

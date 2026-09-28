@@ -1,63 +1,66 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Demand Corridor
+// sisiMove — Journey Demand Corridor Model
 // -----------------------------------------------------------------------------
 //
-// Presentation/API model for the route component of a JourneyDemand.
+// Frontend representation of JourneyDemandCorridorResponse.
 //
-// A corridor owns its ordered waypoints.
-//
+// The backend owns corridor semantics and persistence. The frontend consumes
+// the already-composed response contract.
 // -----------------------------------------------------------------------------
 
 import type { JourneyDemandWaypoint } from './journey-demand-waypoint';
 
+export interface JourneyDemandCorridorCoordinates {
+  readonly latitude: number;
+  readonly longitude: number;
+}
+
+/**
+ * Journey Demand corridor response model.
+ */
 export interface JourneyDemandCorridor {
   /**
-   * Public identifier of the corridor.
+   * Stable public identifier exposed by the backend.
    */
-  publicId: string;
+  readonly publicId: string;
 
   /**
    * Human-readable origin.
    */
-  originName: string;
+  readonly originName: string;
 
   /**
    * Human-readable destination.
    */
-  destinationName: string;
+  readonly destinationName: string;
 
   /**
-   * Origin latitude.
+   * Origin geographic coordinates.
    */
-  originLatitude: number;
+  readonly originCoordinates: JourneyDemandCorridorCoordinates;
 
   /**
-   * Origin longitude.
+   * Destination geographic coordinates.
    */
-  originLongitude: number;
+  readonly destinationCoordinates: JourneyDemandCorridorCoordinates;
 
   /**
-   * Destination latitude.
+   * Optional normalized corridor identifier.
    */
-  destinationLatitude: number;
+  readonly corridorKey: string | undefined;
 
   /**
-   * Destination longitude.
+   * Ordered waypoint collection supplied by the backend.
    */
-  destinationLongitude: number;
+  readonly waypoints: readonly JourneyDemandWaypoint[];
 
   /**
-   * Stable discovery/matching identifier.
-   *
-   * This is NOT a foreign key to JourneyCorridor.
+   * Backend creation timestamp.
    */
-  corridorKey: string | null;
+  readonly createdAt: Date;
 
   /**
-   * Ordered intermediate locations associated with the corridor.
+   * Backend last-update timestamp.
    */
-  waypoints: JourneyDemandWaypoint[];
-
-  createdAt: string;
-  updatedAt: string;
+  readonly updatedAt: Date;
 }

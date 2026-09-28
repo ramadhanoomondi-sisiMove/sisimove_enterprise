@@ -1,47 +1,93 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Update Journey Demand Waypoint API
+// sisiMove — Journey Demand Waypoint API
 // -----------------------------------------------------------------------------
 //
-// Backend:
-//     PUT /journey-demands/:journeyDemandPublicId/waypoints/:waypointPublicId
+// HTTP adapter for updating an existing Journey Demand waypoint.
 //
-// Authentication:
-//     Required.
+// Backend endpoint:
 //
-// IMPORTANT:
-//     The current backend update command supports:
+//   PUT /journey-demands/:journeyDemandPublicId/waypoints/:waypointPublicId
 //
-//         name
-//         latitude
-//         longitude
-//         sequence
+// Backend request:
 //
-//     It does not currently update:
+//   UpdateJourneyDemandWaypointDto
 //
-//         type
-//         pickupRequired
-//         dropoffRequired
+// Backend response:
 //
+//   void
+//
+// The waypoint public identifier is part of the URL. Only fields accepted by
+// the backend DTO are sent in the request body.
 // -----------------------------------------------------------------------------
 
-import { authenticatedApiClient } from '@/features/authentication/http';
+import { authenticatedApiClient } from '@/features/authentication';
 
-export interface UpdateJourneyDemandWaypointInput {
-  name: string;
-  latitude: number;
-  longitude: number;
-  sequence: number;
-  correlationId?: string;
-  causationId?: string;
+// -----------------------------------------------------------------------------
+// Request
+// -----------------------------------------------------------------------------
+
+/**
+ * Request payload for updating a Journey Demand waypoint.
+ *
+ * Every waypoint property is optional because the backend supports partial
+ * waypoint changes. At least the command correlation metadata remains
+ * required.
+ */
+export interface UpdateJourneyDemandWaypointRequest {
+  /**
+   * Updated waypoint name.
+   */
+  readonly name?: string;
+
+  /**
+   * Updated waypoint latitude.
+   */
+  readonly latitude?: number;
+
+  /**
+   * Updated waypoint longitude.
+   */
+  readonly longitude?: number;
+
+  /**
+   * Updated waypoint sequence.
+   */
+  readonly sequence?: number;
+
+  /**
+   * Correlation identifier for distributed tracing.
+   */
+  readonly correlationId: string;
+
+  /**
+   * Optional causation identifier for distributed tracing.
+   */
+  readonly causationId?: string;
 }
 
+// -----------------------------------------------------------------------------
+// Endpoint
+// -----------------------------------------------------------------------------
+
+const JOURNEY_DEMANDS_PATH = '/journey-demands';
+
+// -----------------------------------------------------------------------------
+// Mutation
+// -----------------------------------------------------------------------------
+
+/**
+ * Update a Journey Demand waypoint.
+ *
+ * The backend aggregate/application layer owns the actual mutation and any
+ * corridor consistency rules resulting from the change.
+ */
 export async function updateJourneyDemandWaypoint(
   journeyDemandPublicId: string,
   waypointPublicId: string,
-  input: UpdateJourneyDemandWaypointInput,
+  request: UpdateJourneyDemandWaypointRequest,
 ): Promise<void> {
-  await authenticatedApiClient.put(
-    `/journey-demands/${journeyDemandPublicId}/waypoints/${waypointPublicId}`,
-    input,
+  await authenticatedApiClient.put<void>(
+    `${JOURNEY_DEMANDS_PATH}/${encodeURIComponent(journeyDemandPublicId)}/waypoints/${encodeURIComponent(waypointPublicId)}`,
+    request,
   );
 }

@@ -2,54 +2,52 @@
 // sisiMove — Journey Schedule Model
 // -----------------------------------------------------------------------------
 //
-// Frontend representation of a Journey schedule exposed by the Journey HTTP
-// API.
+// Frontend read-model contract for a Journey schedule.
 //
-// A schedule defines when a Journey departs and, when known, when it is
-// expected to arrive.
+// This model mirrors the public/My Journey response projection rather than
+// the JourneyScheduleEntity persistence model.
 //
-// Internal database identifiers are intentionally excluded. The frontend uses
-// the public schedule identifier exposed by the API.
+// Important:
+// - departureAt is required;
+// - arrivalAt is optional;
+// - timezone is part of the backend contract and must be preserved;
+// - publicId is the JourneySchedule public identifier;
+// - dates are represented as ISO strings at the frontend HTTP boundary.
+//
+// The frontend does not recreate schedule validation or Journey aggregate
+// mutation rules.
 //
 // -----------------------------------------------------------------------------
 
 /**
- * Journey schedule.
+ * Journey schedule read model.
  */
 export interface JourneySchedule {
   /**
-   * Public identifier of the schedule.
-   */
-  publicId: string;
-
-  /**
-   * Journey departure timestamp.
+   * Public Journey schedule identifier.
    *
-   * Expected to be an ISO-8601 timestamp returned by the API.
+   * Internal persistence identifiers are intentionally not exposed.
    */
-  departureAt: string;
+  readonly publicId: string;
 
   /**
-   * Expected arrival timestamp, when provided.
+   * Scheduled Journey departure time.
    *
-   * The backend allows this value to be absent.
+   * Expected to be an ISO-8601 date-time string from the API.
    */
-  arrivalAt?: string | null;
+  readonly departureAt: string;
 
   /**
-   * IANA timezone used to interpret the schedule timestamps.
+   * Optional scheduled arrival time.
    *
-   * The backend defaults this to `Africa/Nairobi`.
+   * A Journey may legitimately have no arrival time.
    */
-  timezone: string;
+  readonly arrivalAt: string | null;
 
   /**
-   * Creation timestamp returned by the API, when available.
+   * IANA timezone used for the Journey schedule.
+   *
+   * The backend currently defaults this to `Africa/Nairobi`.
    */
-  createdAt?: string;
-
-  /**
-   * Last update timestamp returned by the API, when available.
-   */
-  updatedAt?: string;
+  readonly timezone: string;
 }

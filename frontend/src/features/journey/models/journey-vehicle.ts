@@ -2,67 +2,68 @@
 // sisiMove — Journey Vehicle Model
 // -----------------------------------------------------------------------------
 //
-// Frontend representation of a Journey vehicle exposed by the Journey HTTP
-// API.
+// Frontend read-model contract for the Journey vehicle.
 //
-// A vehicle is an independently identifiable Journey component. The Journey
-// references it through its public identifier.
+// JourneyVehicle is a Journey-domain entity. The frontend therefore models
+// the HTTP projection of that entity rather than recreating the backend
+// entity/value-object structure.
 //
-// Internal database identifiers are intentionally excluded.
+// Important:
+// - publicId is the public JourneyVehicle identifier;
+// - vehicle details are owned by the Journey context;
+// - assetPublicId is an opaque reference to the Asset bounded context;
+// - assetPublicId is NOT an image URL;
+// - optional vehicle fields remain nullable;
+// - the frontend does not create or manage the underlying Asset through this
+//   model.
 //
 // -----------------------------------------------------------------------------
 
 /**
- * Journey vehicle.
+ * Journey vehicle read model.
  */
 export interface JourneyVehicle {
   /**
-   * Public identifier of the vehicle.
+   * Public Journey vehicle identifier.
+   *
+   * Internal persistence identifiers are intentionally not exposed.
    */
-  publicId: string;
+  readonly publicId: string;
 
   /**
-   * Vehicle manufacturer.
+   * Vehicle manufacturer/make.
    */
-  make: string;
+  readonly make: string;
 
   /**
    * Vehicle model.
    */
-  model: string;
+  readonly model: string;
 
   /**
-   * Manufacturing model year, when available.
+   * Optional vehicle manufacturing/model year.
    */
-  year?: number | null;
+  readonly year: number | null;
 
   /**
-   * Vehicle exterior color, when provided.
+   * Optional vehicle color.
    */
-  color?: string | null;
+  readonly color: string | null;
 
   /**
-   * Vehicle registration identifier, when provided.
+   * Optional vehicle registration.
    *
-   * The backend may intentionally omit this from public representations
-   * depending on the API surface and privacy rules.
+   * Note:
+   * The backend public projection currently exposes this field, but public
+   * registration visibility should remain subject to the SisiMove privacy
+   * contract before the marketplace UI renders it.
    */
-  registration?: string | null;
+  readonly registration: string | null;
 
   /**
-   * Public identifier of the vehicle's associated asset, when available.
+   * Optional reference to an Asset owned by the Asset bounded context.
    *
-   * The underlying asset belongs to the Assets domain.
+   * This is an opaque public identifier, not a URL.
    */
-  assetPublicId?: string | null;
-
-  /**
-   * Creation timestamp returned by the API, when available.
-   */
-  createdAt?: string;
-
-  /**
-   * Last update timestamp returned by the API, when available.
-   */
-  updatedAt?: string;
+  readonly assetPublicId: string | null;
 }

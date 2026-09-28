@@ -1,24 +1,30 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Music Preference
+// sisiMove — Journey Music Preference Model
 // -----------------------------------------------------------------------------
 //
-// Stable frontend representation of the JourneyMusicPreference enum exposed
-// by the Journey HTTP API.
+// Frontend read-model contract for the Journey music preference.
 //
-// Backend:
+// This model mirrors the backend JourneyMusicPreference enum exactly.
 //
-//   NONE
-//   LOW
-//   MODERATE
-//   ANY
+// The frontend uses this value for:
+// - displaying Journey preferences;
+// - preference editing controls;
+// - API response mapping.
 //
-// This model describes the music environment preferred for a Journey. It does
-// not represent a user's permanent music preference.
+// The frontend does not enforce the preference as a domain rule. The backend
+// Journey aggregate/application layer remains authoritative.
 //
 // -----------------------------------------------------------------------------
 
 /**
- * Music preference for a Journey.
+ * Journey music preference.
+ *
+ * Corresponds exactly to the backend JourneyMusicPreference enum:
+ *
+ *   NONE
+ *   LOW
+ *   MODERATE
+ *   ANY
  */
 export type JourneyMusicPreference =
   | 'NONE'
@@ -27,10 +33,7 @@ export type JourneyMusicPreference =
   | 'ANY';
 
 /**
- * All supported Journey music preferences.
- *
- * Kept as a readonly tuple for runtime iteration, validation, filtering,
- * and UI option generation.
+ * Runtime collection of all supported music preferences.
  */
 export const JOURNEY_MUSIC_PREFERENCES = [
   'NONE',
@@ -40,13 +43,10 @@ export const JOURNEY_MUSIC_PREFERENCES = [
 ] as const satisfies readonly JourneyMusicPreference[];
 
 /**
- * Runtime guard for JourneyMusicPreference.
+ * Runtime guard for values received from the API.
  */
 export function isJourneyMusicPreference(
-  value: unknown,
+  value: string,
 ): value is JourneyMusicPreference {
-  return (
-    typeof value === 'string' &&
-    (JOURNEY_MUSIC_PREFERENCES as readonly string[]).includes(value)
-  );
+  return (JOURNEY_MUSIC_PREFERENCES as readonly string[]).includes(value);
 }

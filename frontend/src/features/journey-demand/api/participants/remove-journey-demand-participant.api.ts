@@ -1,35 +1,84 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Remove Journey Demand Participant API
+// sisiMove — Journey Demand Participant API
 // -----------------------------------------------------------------------------
 //
-// Backend:
-//     DELETE /journey-demands/:journeyDemandPublicId/participants/:participantPublicId
+// HTTP adapter for removing a Journey Demand participant.
 //
-// Authentication:
-//     Required.
+// Backend endpoint:
 //
-// IMPORTANT:
-//     The backend currently declares RemoveJourneyDemandParticipantDto as
-//     @Body(), while AuthenticatedApiClient.delete() intentionally does not
-//     accept a body.
+//   DELETE /journey-demands/:journeyDemandPublicId/participants/:participantPublicId
 //
-//     See the architectural note accompanying the waypoint removal API.
+// Backend request:
 //
+//   RemoveJourneyDemandParticipantDto
+//
+// Backend response:
+//
+//   void
+//
+// IMPORTANT CONTRACT NOTE:
+//
+// The backend removal DTO requires correlationId and optional causationId,
+// while the current frontend DELETE abstraction does not support request
+// bodies.
+//
+// The command metadata is therefore encoded as query parameters rather than
+// being silently discarded.
 // -----------------------------------------------------------------------------
 
-import { authenticatedApiClient } from '@/features/authentication/http';
+import { authenticatedApiClient } from '@/features/authentication';
 
-export interface RemoveJourneyDemandParticipantInput {
-  correlationId?: string;
-  causationId?: string;
+// -----------------------------------------------------------------------------
+// Request
+// -----------------------------------------------------------------------------
+
+/**
+ * Request payload for removing a Journey Demand participant.
+ */
+export interface RemoveJourneyDemandParticipantRequest {
+  /**
+   * Correlation identifier for distributed tracing.
+   */
+  readonly correlationId: string;
+
+  /**
+   * Optional causation identifier for distributed tracing.
+   */
+  readonly causationId?: string;
 }
 
+// -----------------------------------------------------------------------------
+// Endpoint
+// -----------------------------------------------------------------------------
+
+const JOURNEY_DEMANDS_PATH = '/journey-demands';
+
+// -----------------------------------------------------------------------------
+// Mutation
+// -----------------------------------------------------------------------------
+
+/**
+ * Remove a participant from a Journey Demand.
+ *
+ * The participant public identifier is represented in the URL.
+ *
+ * Because the current authenticated HTTP client does not support DELETE
+ * request bodies, correlation/causation metadata is sent as query parameters.
+ */
 export async function removeJourneyDemandParticipant(
   journeyDemandPublicId: string,
   participantPublicId: string,
-  _input: RemoveJourneyDemandParticipantInput = {},
+  request: RemoveJourneyDemandParticipantRequest,
 ): Promise<void> {
-  await authenticatedApiClient.delete(
-    `/journey-demands/${journeyDemandPublicId}/participants/${participantPublicId}`,
+  const query = new URLSearchParams({
+    correlationId: request.correlationId,
+  });
+
+  if (request.causationId !== undefined) {
+    query.set('causationId', request.causationId);
+  }
+
+  await authenticatedApiClient.delete<void>(
+    `${JOURNEY_DEMANDS_PATH}/${encodeURIComponent(journeyDemandPublicId)}/participants/${encodeURIComponent(participantPublicId)}?${query.toString()}`,
   );
 }

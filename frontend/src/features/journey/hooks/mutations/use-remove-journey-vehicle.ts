@@ -1,120 +1,41 @@
 // -----------------------------------------------------------------------------
-// sisiMove — useRemoveJourneyVehicle
-// -----------------------------------------------------------------------------
-//
-// React Query mutation hook for removing the attached Vehicle from a Journey.
-//
-// API boundary:
-//     DELETE /api/v1/journeys/:journeyPublicId/vehicle
-//
-// Request body:
-//     None
-//
-// IMPORTANT:
-//
-// The frozen Journey controller removes the Journey-side Vehicle attachment.
-// It does NOT delete the underlying Vehicle resource.
-//
-// Therefore this hook:
-// - Identifies the Journey using its public identifier.
-// - Sends no request body.
-// - Delegates the removal operation to the backend.
-//
-// The backend remains authoritative for whether the Vehicle can be removed.
-//
-// This hook is responsible for:
-// - Executing the Vehicle removal API.
-// - Managing mutation state through React Query.
-// - Invalidating affected Journey Vehicle queries.
-// - Invalidating authenticated Journey collections.
-//
-// This hook intentionally does NOT:
-// - Delete the Vehicle itself.
-// - Modify Vehicle details.
-// - Validate Vehicle ownership.
-// - Validate Journey lifecycle rules.
-// - Perform authorization checks.
-// - Navigate to another route.
+// sisiMove — Use Remove Journey Vehicle
 // -----------------------------------------------------------------------------
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+"use client";
 
-import { removeJourneyVehicle } from '../../api/components/vehicle';
+import { useCallback, useState } from "react";
 
-import {
-  JOURNEY_VEHICLE_QUERY_KEY,
-  MY_JOURNEYS_QUERY_KEY,
-  JOURNEYS_BY_PROVIDER_QUERY_KEY,
-  JOURNEYS_BY_PROVIDER_STATUS_QUERY_KEY,
-} from '../queries';
+import { removeJourneyVehicle } from "../../api/vehicle/remove-journey-vehicle";
 
-// -----------------------------------------------------------------------------
-// Variables
-// -----------------------------------------------------------------------------
-
-/**
- * Variables accepted by the Vehicle removal mutation.
- *
- * `journeyPublicId` identifies the Journey whose Vehicle attachment should
- * be removed.
- */
-export interface RemoveJourneyVehicleVariables {
-  journeyPublicId: string;
+export interface UseRemoveJourneyVehicleResult {
+  readonly remove: (journeyPublicId: string) => Promise<void>;
+  readonly isPending: boolean;
+  readonly error: Error | null;
 }
 
-// -----------------------------------------------------------------------------
-// Mutation
-// -----------------------------------------------------------------------------
+export function useRemoveJourneyVehicle(): UseRemoveJourneyVehicleResult {
+  const [isPending, setIsPending] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
-/**
- * Removes the attached Vehicle from a Journey.
- */
-export function useRemoveJourneyVehicle() {
-  const queryClient = useQueryClient();
+  const remove = useCallback(async (journeyPublicId: string) => {
+    setIsPending(true);
+    setError(null);
 
-  return useMutation<
-    unknown,
-    Error,
-    RemoveJourneyVehicleVariables
-  >({
-    mutationFn: async ({
-      journeyPublicId,
-    }) => {
-      return removeJourneyVehicle(
-        journeyPublicId,
-      );
-    },
+    try {
+      await removeJourneyVehicle(journeyPublicId);
+    } catch (cause) {
+      const nextError =
+        cause instanceof Error
+          ? cause
+          : new Error("Failed to remove the journey vehicle.");
 
-    onSuccess: async () => {
-      /**
-       * `JOURNEY_VEHICLE_QUERY_KEY` is a static query-key namespace:
-       *
-       *     ['journeys', 'vehicle']
-       *
-       * It is intentionally passed directly to React Query rather than
-       * invoked as a function.
-       *
-       * This invalidates Journey-specific Vehicle queries such as:
-       *
-       *     ['journeys', 'vehicle', journeyPublicId]
-       */
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: JOURNEY_VEHICLE_QUERY_KEY,
-        }),
+      setError(nextError);
+      throw nextError;
+    } finally {
+      setIsPending(false);
+    }
+  }, []);
 
-        queryClient.invalidateQueries({
-          queryKey: MY_JOURNEYS_QUERY_KEY,
-        }),
-
-        queryClient.invalidateQueries({
-          queryKey: JOURNEYS_BY_PROVIDER_QUERY_KEY,
-        }),
-
-        queryClient.invalidateQueries({
-          queryKey: JOURNEYS_BY_PROVIDER_STATUS_QUERY_KEY,
-        }),
-      ]);
-    },
-  });
+  return { remove, isPending, error };
 }

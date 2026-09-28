@@ -1,23 +1,29 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Pets Policy
+// sisiMove — Journey Pets Policy Model
 // -----------------------------------------------------------------------------
 //
-// Stable frontend representation of the JourneyPetsPolicy enum exposed by
-// the Journey HTTP API.
+// Frontend read-model contract for the Journey pets policy.
 //
-// Backend:
+// This model mirrors the backend JourneyPetsPolicy enum exactly.
 //
-//   ALLOWED
-//   NOT_ALLOWED
-//   SERVICE_ANIMALS_ONLY
+// The frontend uses this value for:
+// - displaying Journey preferences;
+// - preference editing controls;
+// - API response mapping.
 //
-// This model describes the pet policy configured for a Journey. It does not
-// represent a passenger's personal needs or preferences.
+// The frontend does not interpret or enforce the policy beyond presentation
+// and input selection. Domain validation remains a backend responsibility.
 //
 // -----------------------------------------------------------------------------
 
 /**
- * Pets policy for a Journey.
+ * Journey pets policy.
+ *
+ * Corresponds exactly to the backend JourneyPetsPolicy enum:
+ *
+ *   ALLOWED
+ *   NOT_ALLOWED
+ *   SERVICE_ANIMALS_ONLY
  */
 export type JourneyPetsPolicy =
   | 'ALLOWED'
@@ -25,10 +31,7 @@ export type JourneyPetsPolicy =
   | 'SERVICE_ANIMALS_ONLY';
 
 /**
- * All supported Journey pets policies.
- *
- * Kept as a readonly tuple for runtime iteration, validation, filtering,
- * and UI option generation.
+ * Runtime collection of all supported pets policies.
  */
 export const JOURNEY_PETS_POLICIES = [
   'ALLOWED',
@@ -37,13 +40,10 @@ export const JOURNEY_PETS_POLICIES = [
 ] as const satisfies readonly JourneyPetsPolicy[];
 
 /**
- * Runtime guard for JourneyPetsPolicy.
+ * Runtime guard for values received from the API.
  */
 export function isJourneyPetsPolicy(
-  value: unknown,
+  value: string,
 ): value is JourneyPetsPolicy {
-  return (
-    typeof value === 'string' &&
-    (JOURNEY_PETS_POLICIES as readonly string[]).includes(value)
-  );
+  return (JOURNEY_PETS_POLICIES as readonly string[]).includes(value);
 }

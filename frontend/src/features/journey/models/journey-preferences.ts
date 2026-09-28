@@ -1,66 +1,46 @@
+import type { JourneySmokingPolicy } from './journey-smoking-policy';
+import type { JourneyPetsPolicy } from './journey-pets-policy';
+import type { JourneyLuggagePolicy } from './journey-luggage-policy';
+import type { JourneyConversationPreference } from './journey-conversation-preference';
+import type { JourneyMusicPreference } from './journey-music-preference';
+
 // -----------------------------------------------------------------------------
 // sisiMove — Journey Preferences Model
 // -----------------------------------------------------------------------------
 //
-// Frontend representation of Journey preferences exposed by the Journey HTTP
-// API.
+// Frontend projection of JourneyPreferences.
 //
-// Preferences describe the environment and policies configured for a Journey.
+// Preferences are explicit backend domain values. The frontend should render
+// these values rather than reconstructing them from booleans or UI-specific
+// assumptions.
 //
-// The individual preference values are represented by their corresponding
-// frontend enum types rather than arbitrary strings.
-//
-// Internal database identifiers are intentionally excluded.
-//
+// Preferences are optional on a Journey projection because the Journey
+// aggregate can exist without this component.
 // -----------------------------------------------------------------------------
 
-import type { JourneyConversationPreference } from './journey-conversation-preference';
-import type { JourneyLuggagePolicy } from './journey-luggage-policy';
-import type { JourneyMusicPreference } from './journey-music-preference';
-import type { JourneyPetsPolicy } from './journey-pets-policy';
-import type { JourneySmokingPolicy } from './journey-smoking-policy';
-
-/**
- * Journey preferences.
- */
 export interface JourneyPreferences {
   /**
-   * Public identifier of the preferences configuration.
+   * Smoking policy for the journey.
    */
-  publicId: string;
+  readonly smoking: JourneySmokingPolicy;
 
   /**
-   * Smoking policy for the Journey.
+   * Pet policy for the journey.
    */
-  smoking: JourneySmokingPolicy;
+  readonly pets: JourneyPetsPolicy;
 
   /**
-   * Pets policy for the Journey.
+   * Permitted luggage level.
    */
-  pets: JourneyPetsPolicy;
+  readonly luggage: JourneyLuggagePolicy;
 
   /**
-   * Luggage policy for the Journey.
+   * Preferred conversation level.
    */
-  luggage: JourneyLuggagePolicy;
+  readonly conversation: JourneyConversationPreference;
 
   /**
-   * Preferred conversation environment for the Journey.
+   * Preferred music level.
    */
-  conversation: JourneyConversationPreference;
-
-  /**
-   * Preferred music environment for the Journey.
-   */
-  music: JourneyMusicPreference;
-
-  /**
-   * Creation timestamp returned by the API, when available.
-   */
-  createdAt?: string;
-
-  /**
-   * Last update timestamp returned by the API, when available.
-   */
-  updatedAt?: string;
+  readonly music: JourneyMusicPreference;
 }

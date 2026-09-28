@@ -1,95 +1,75 @@
 // -----------------------------------------------------------------------------
-// sisiMove — useMyJourneys
+// sisiMove — Use My Journeys
 // -----------------------------------------------------------------------------
 //
-// React Query hook for the authenticated user's Journeys.
-//
-// API boundary:
-//
-//     GET /api/v1/journeys/me
-//
-// The backend derives the provider/member identity from the authenticated
-// request context. The frontend therefore does NOT submit providerPublicId.
-//
-// -----------------------------------------------------------------------------
-//
-// Read-model boundary
-// -----------------------------------------------------------------------------
-//
-// This hook returns the authenticated Journey management read model:
-//
-//     MyJourney[]
-//
-// It must not expose the general `Journey` discovery model. The management
-// endpoint has its own presentation/read-model contract.
-//
-// The conversion from API transport data to MyJourney is performed by
-// `mapMyJourneys()`.
-//
-// -----------------------------------------------------------------------------
+// Loads the authenticated user's Journey projections.
 //
 // Responsibilities:
-// - Execute the authenticated My Journeys API.
-// - Map API transport responses into MyJourney.
-// - Manage request state and caching through React Query.
+// - execute the authenticated My Journeys API query;
+// - expose loading/error/data state;
+// - provide an explicit refetch operation.
 //
-// Non-responsibilities:
-// - Accept providerPublicId.
-// - Determine ownership.
-// - Resolve Traveller Profile or Trust Profile.
-// - Perform lifecycle mutations.
-// - Format data for a specific UI component.
+// Authentication is handled by authenticatedApiClient.
+// This hook does not access session storage directly.
+//
+// The returned Journey state is authoritative backend projection data.
+// The hook does not recreate Journey domain behavior or lifecycle rules.
+//
 // -----------------------------------------------------------------------------
 
-import { useQuery } from '@tanstack/react-query';
+"use client";
 
-import { getMyJourneys } from '../../api/management';
+import { useCallback, useEffect, useState } from "react";
 
-import {
-  mapMyJourneys,
-  type MyJourneyApiResponse,
-} from '../../mappers';
+import { getMyJourneys } from "../../api/journeys/get-my-journeys";
+import type { MyJourney } from "../../models/my-journey";
 
-import type { MyJourney } from '@/features/journeys/models';
+export interface UseMyJourneysResult {
+  readonly journeys: MyJourney[];
+  readonly isLoading: boolean;
+  readonly error: Error | null;
+  readonly refetch: () => Promise<void>;
+}
 
-// -----------------------------------------------------------------------------
-// Query Key
-// -----------------------------------------------------------------------------
+export function useMyJourneys(): UseMyJourneysResult {
+  const [journeys, setJourneys] = useState<MyJourney[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
 
-/**
- * Stable query-key namespace for the authenticated user's Journeys.
- *
- * The authenticated identity is intentionally not included because ownership
- * is derived by the backend from the authenticated session.
- */
-export const MY_JOURNEYS_QUERY_KEY = [
-  'journeys',
-  'me',
-] as const;
+  const loadJourneys = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
 
-// -----------------------------------------------------------------------------
-// Hook
-// -----------------------------------------------------------------------------
+    try {
+      const result = await getMyJourneys();
 
-/**
- * Fetches the Journeys belonging to the currently authenticated user.
- *
- * The query must return MyJourney[], because this is an authenticated
- * management read model rather than the general Journey discovery model.
- */
-export function useMyJourneys() {
-  return useQuery<MyJourney[], Error>({
-    queryKey: MY_JOURNEYS_QUERY_KEY,
+      setJourneys(result);
+    } catch (cause) {
+      const nextError =
+        cause instanceof Error
+          ? cause
+          : new Error("Failed to load your journeys.");
 
-    queryFn: async (): Promise<MyJourney[]> => {
-      const response = await getMyJourneys();
+      setError(nextError);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-      const apiJourneys =
-        response as MyJourneyApiResponse[];
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadJourneys();
+    }, 0);
 
-      return mapMyJourneys(
-        apiJourneys,
-      ) as MyJourney[];
-    },
-  });
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [loadJourneys]);
+
+  return {
+    journeys,
+    isLoading,
+    error,
+    refetch: loadJourneys,
+  };
 }

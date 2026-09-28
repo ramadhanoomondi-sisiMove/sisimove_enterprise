@@ -81,7 +81,7 @@
 import { useMemo } from "react";
 
 import { usePublicJourneys } from "../../journeys/hooks";
-import { useJourneyDemands } from "../../journey-demands/hooks";
+import { useJourneyDemands } from "../../journey-demand/hooks/hooks";
 
 import type { PublicJourney } from "../../journeys/models/public-journey";
 import type { PublicJourneyDemand } from "../../journey-demands/models/public-journey-demand";

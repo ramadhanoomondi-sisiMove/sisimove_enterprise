@@ -1,82 +1,90 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Models Barrel
+// sisiMove — Journey Models Index
 // -----------------------------------------------------------------------------
 //
-// Public barrel export for all Journey frontend models.
+// Public barrel for Journey feature models.
+//
+// This file provides a stable import boundary for Journey models while keeping
+// individual model files responsible for their own contracts.
 //
 // Consumers should import Journey models from this barrel rather than reaching
-// into individual model files. This keeps the feature's public model surface
-// stable if the internal file structure changes.
+// into numbered implementation files.
 //
 // -----------------------------------------------------------------------------
 
-// -----------------------------------------------------------------------------
-// Aggregate
-// -----------------------------------------------------------------------------
+export type {
+  JourneyStatus,
+} from "./journey-status";
 
-export type { Journey } from './journey';
+export type {
+  JourneyWaypointType,
+} from "./journey-waypoint-type";
 
-// -----------------------------------------------------------------------------
-// Component models
-// -----------------------------------------------------------------------------
+export type {
+  JourneyAssetType,
+} from "./journey-asset-type";
 
-export type { JourneyAsset } from './journey-asset';
-export type { JourneyCapacity } from './journey-capacity';
-export type { JourneyCorridor } from './journey-corridor';
-export type { JourneyPreferences } from './journey-preferences';
-export type { JourneyPricing } from './journey-pricing';
-export type { JourneySchedule } from './journey-schedule';
-export type { JourneyVehicle } from './journey-vehicle';
-export type { JourneyWaypoint } from './journey-waypoint';
+export type {
+  JourneySmokingPolicy,
+} from "./journey-smoking-policy";
 
-// -----------------------------------------------------------------------------
-// Lifecycle and component enums
-// -----------------------------------------------------------------------------
+export type {
+  JourneyPetsPolicy,
+} from "./journey-pets-policy";
 
-export {
-  JOURNEY_ASSET_TYPES,
-  isJourneyAssetType,
-} from './journey-asset-type';
-export type { JourneyAssetType } from './journey-asset-type';
+export type {
+  JourneyLuggagePolicy,
+} from "./journey-luggage-policy";
 
-export {
-  JOURNEY_CONVERSATION_PREFERENCES,
-  isJourneyConversationPreference,
-} from './journey-conversation-preference';
-export type { JourneyConversationPreference } from './journey-conversation-preference';
+export type {
+  JourneyConversationPreference,
+} from "./journey-conversation-preference";
 
-export {
-  JOURNEY_LUGGAGE_POLICIES,
-  isJourneyLuggagePolicy,
-} from './journey-luggage-policy';
-export type { JourneyLuggagePolicy } from './journey-luggage-policy';
+export type {
+  JourneyMusicPreference,
+} from "./journey-music-preference";
 
-export {
-  JOURNEY_MUSIC_PREFERENCES,
-  isJourneyMusicPreference,
-} from './journey-music-preference';
-export type { JourneyMusicPreference } from './journey-music-preference';
+export type {
+  JourneyWaypoint,
+} from "./journey-waypoint";
 
-export {
-  JOURNEY_PETS_POLICIES,
-  isJourneyPetsPolicy,
-} from './journey-pets-policy';
-export type { JourneyPetsPolicy } from './journey-pets-policy';
+export type {
+  JourneyRoute,
+  JourneyRoutePoint,
+} from "./journey-route";
 
-export {
-  JOURNEY_SMOKING_POLICIES,
-  isJourneySmokingPolicy,
-} from './journey-smoking-policy';
-export type { JourneySmokingPolicy } from './journey-smoking-policy';
+export type {
+  JourneySchedule,
+} from "./journey-schedule";
 
-export {
-  JOURNEY_STATUSES,
-  isJourneyStatus,
-} from './journey-status';
-export type { JourneyStatus } from './journey-status';
+export type {
+  JourneyVehicle,
+} from "./journey-vehicle";
 
-export {
-  JOURNEY_WAYPOINT_TYPES,
-  isJourneyWaypointType,
-} from './journey-waypoint-type';
-export type { JourneyWaypointType } from './journey-waypoint-type';
+export type {
+  JourneyCapacity,
+} from "./journey-capacity";
+
+export type {
+  JourneyPricing,
+} from "./journey-pricing";
+
+export type {
+  JourneyPreferences,
+} from "./journey-preferences";
+
+export type {
+  JourneyAsset,
+} from "./journey-asset";
+
+export type {
+  JourneyProvider,
+} from "./journey-provider";
+
+export type {
+  PublicJourney,
+} from "./public-journey";
+
+export type {
+  MyJourney,
+} from "./my-journey";

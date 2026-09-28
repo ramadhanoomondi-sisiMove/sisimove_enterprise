@@ -1,32 +1,35 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Smoking Policy
+// sisiMove — Journey Smoking Policy Model
 // -----------------------------------------------------------------------------
 //
-// Stable frontend representation of the JourneySmokingPolicy enum exposed by
-// the Journey HTTP API.
+// Frontend read-model contract for the Journey smoking policy.
 //
-// Backend:
+// This model mirrors the backend JourneySmokingPolicy enum exactly.
 //
-//   ALLOWED
-//   NOT_ALLOWED
+// The frontend uses this value to:
+// - display the provider's Journey preference;
+// - populate preference presentation/editing controls;
+// - map API responses safely.
 //
-// This model describes the smoking policy configured for a Journey. It is a
-// Journey preference and does not represent a user's personal preference.
+// It does NOT determine whether a policy may be changed. Journey component
+// mutation rules remain owned by the backend Journey aggregate.
 //
 // -----------------------------------------------------------------------------
 
 /**
- * Smoking policy for a Journey.
+ * Journey smoking policy.
+ *
+ * Corresponds exactly to the backend JourneySmokingPolicy enum:
+ *
+ *   ALLOWED
+ *   NOT_ALLOWED
  */
 export type JourneySmokingPolicy =
   | 'ALLOWED'
   | 'NOT_ALLOWED';
 
 /**
- * All supported Journey smoking policies.
- *
- * Kept as a readonly tuple for runtime iteration, validation, and UI option
- * generation.
+ * Runtime collection of all supported smoking policies.
  */
 export const JOURNEY_SMOKING_POLICIES = [
   'ALLOWED',
@@ -34,13 +37,10 @@ export const JOURNEY_SMOKING_POLICIES = [
 ] as const satisfies readonly JourneySmokingPolicy[];
 
 /**
- * Runtime guard for JourneySmokingPolicy.
+ * Runtime guard for values received from the API.
  */
 export function isJourneySmokingPolicy(
-  value: unknown,
+  value: string,
 ): value is JourneySmokingPolicy {
-  return (
-    typeof value === 'string' &&
-    (JOURNEY_SMOKING_POLICIES as readonly string[]).includes(value)
-  );
+  return (JOURNEY_SMOKING_POLICIES as readonly string[]).includes(value);
 }

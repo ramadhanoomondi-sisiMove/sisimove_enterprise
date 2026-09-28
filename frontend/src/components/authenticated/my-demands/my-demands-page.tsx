@@ -92,7 +92,7 @@ import { useRouter } from 'next/navigation';
 // Journey Demand — Feature
 // -----------------------------------------------------------------------------
 
-import { useMyJourneyDemands } from '@/features/journey-demands/hooks';
+import { useMyJourneyDemands } from '@/features/journey-demand/hooks/hooks';
 
 import type {
   MyJourneyDemand,

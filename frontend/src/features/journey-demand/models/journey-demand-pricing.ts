@@ -1,46 +1,57 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Demand Pricing
+// sisiMove — Journey Demand Pricing Model
 // -----------------------------------------------------------------------------
 //
-// Presentation/API model for the requester's price constraints.
+// Frontend representation of JourneyDemandPricingResponse.
 //
-// Monetary values are represented as integer minor units.
-//
-// For KES:
-//
-//     150000 = KES 1,500.00
-//
-// The exact money-display conversion belongs to the presentation layer.
-//
+// Pricing interpretation and constraints are determined by the backend.
+// The frontend consumes the supplied values and convenience flags.
 // -----------------------------------------------------------------------------
 
+/**
+ * Journey Demand pricing response model.
+ */
 export interface JourneyDemandPricing {
   /**
-   * Public identifier of the pricing component.
+   * Stable public identifier exposed by the backend.
    */
-  publicId: string;
+  readonly publicId: string;
 
   /**
-   * Maximum amount the requester is willing to pay per seat.
-   *
-   * Integer minor units.
+   * Maximum acceptable price per seat.
    */
-  maximumPricePerSeat: number | null;
+  readonly maximumPricePerSeat: number | undefined;
 
   /**
-   * Preferred amount the requester would like to pay per seat.
-   *
-   * Integer minor units.
+   * Preferred price per seat, when supplied.
    */
-  preferredPricePerSeat: number | null;
+  readonly preferredPricePerSeat: number | undefined;
 
   /**
-   * ISO currency code.
-   *
-   * Backend default: KES.
+   * Currency supplied by the backend.
    */
-  currency: string;
+  readonly currency: string;
 
-  createdAt: string;
-  updatedAt: string;
+  /**
+   * Backend-provided pricing state.
+   */
+  readonly hasMaximumPrice: boolean;
+  readonly hasPreferredPrice: boolean;
+  readonly hasPriceConstraint: boolean;
+  readonly hasMaximumPriceConstraint: boolean;
+  readonly hasPreferredPriceConstraint: boolean;
+
+  /**
+   * Backend-provided pricing interpretation flags.
+   */
+  readonly isUnconstrained: boolean;
+  readonly isPreferredPriceOnly: boolean;
+  readonly isMaximumPriceOnly: boolean;
+  readonly hasPreferredAndMaximumPrice: boolean;
+
+  /**
+   * Backend timestamps.
+   */
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
 }

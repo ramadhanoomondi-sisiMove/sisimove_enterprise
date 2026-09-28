@@ -1,151 +1,56 @@
-// src/features/journey/hooks/mutations/index.ts
-
-
 // -----------------------------------------------------------------------------
-// Journey creation
-// -----------------------------------------------------------------------------
-
-export {
-  useCreateJourney,
-} from './use-create-journey';
-
-// -----------------------------------------------------------------------------
-// Journey lifecycle
-// -----------------------------------------------------------------------------
-
-export {
-  usePublishJourney,
-  type PublishJourneyVariables,
-} from './use-publish-journey';
-
-export {
-  useStartJourney,
-  type StartJourneyVariables,
-} from './use-start-journey';
-
-export {
-  useCompleteJourney,
-  type CompleteJourneyVariables,
-} from './use-complete-journey';
-
-export {
-  useCancelJourney,
-  type CancelJourneyVariables,
-} from './use-cancel-journey';
-
-export {
-  useExpireJourney,
-  type ExpireJourneyVariables,
-} from './use-expire-journey';
-
-// -----------------------------------------------------------------------------
-// Corridor
-// -----------------------------------------------------------------------------
-
-export {
-  useAttachJourneyCorridor,
-  type AttachJourneyCorridorVariables,
-} from './use-attach-journey-corridor';
-
-export {
-  useRemoveJourneyCorridor,
-  type RemoveJourneyCorridorVariables,
-} from './use-remove-journey-corridor';
-
-
-export {
-  useAddJourneyWaypoint,
-  type AddJourneyWaypointVariables,
-} from './use-add-journey-waypoint';
-
-export {
-  useRemoveJourneyWaypoint,
-  type RemoveJourneyWaypointVariables,
-} from './use-remove-journey-waypoint';
-
-// -----------------------------------------------------------------------------
-// Schedule
-// -----------------------------------------------------------------------------
-
-export {
-  useAttachJourneySchedule,
-  type AttachJourneyScheduleVariables,
-} from './use-attach-journey-schedule';
-
-export {
-  useRemoveJourneySchedule,
-  type RemoveJourneyScheduleVariables,
-} from './use-remove-journey-schedule';
-
-// -----------------------------------------------------------------------------
-// Vehicle
-// -----------------------------------------------------------------------------
-
-export {
-  useAttachJourneyVehicle,
-  type AttachJourneyVehicleVariables,
-} from './use-attach-journey-vehicle';
-
-export {
-  useRemoveJourneyVehicle,
-  type RemoveJourneyVehicleVariables,
-} from './use-remove-journey-vehicle';
-
-// -----------------------------------------------------------------------------
-// Capacity
-// -----------------------------------------------------------------------------
-
-export {
-  useAttachJourneyCapacity,
-  type AttachJourneyCapacityVariables,
-} from './use-attach-journey-capacity';
-
-export {
-  useRemoveJourneyCapacity,
-  type RemoveJourneyCapacityVariables,
-} from './use-remove-journey-capacity';
-
-// -----------------------------------------------------------------------------
-// Pricing
-// -----------------------------------------------------------------------------
-
-export {
-  useAttachJourneyPricing,
-  type AttachJourneyPricingVariables,
-} from './use-attach-journey-pricing';
-
-export {
-  useRemoveJourneyPricing,
-  type RemoveJourneyPricingVariables,
-} from './use-remove-journey-pricing';
-
-// -----------------------------------------------------------------------------
-// Preferences
-// -----------------------------------------------------------------------------
-
-export {
-  useAttachJourneyPreferences,
-  type AttachJourneyPreferencesVariables,
-} from './use-attach-journey-preferences';
-
-export {
-  useRemoveJourneyPreferences,
-  type RemoveJourneyPreferencesVariables,
-} from './use-remove-journey-preferences';
-
-// -----------------------------------------------------------------------------
-// Assets
+// sisiMove — Journey Mutation Hooks
 // -----------------------------------------------------------------------------
 //
-// Journey asset mutations attach/remove an existing Asset reference.
-// They do NOT upload or delete the underlying Asset.
+// Barrel exports for all Journey mutation hooks.
+//
+// Mutation hooks are intentionally thin:
+// - they expose the UI-facing mutation operation;
+// - they delegate to the exact Journey HTTP command;
+// - they do not recreate Journey domain logic;
+// - they do not locally mutate Journey state;
+// - successful mutations should be followed by refetching the relevant Journey
+//   projection at the consuming component/query boundary.
+//
+// The individual hooks remain responsible for their own loading/error state.
+// -----------------------------------------------------------------------------
 
-export {
-  useAttachJourneyAsset,
-  type AttachJourneyAssetVariables,
-} from './use-attach-journey-asset';
+// Lifecycle mutations.
+export * from "./use-create-journey";
+export * from "./use-publish-journey";
+export * from "./use-start-journey";
+export * from "./use-complete-journey";
+export * from "./use-cancel-journey";
+export * from "./use-expire-journey";
 
-export {
-  useRemoveJourneyAsset,
-  type RemoveJourneyAssetVariables,
-} from './use-remove-journey-asset';
+// Corridor mutations.
+export * from "./use-attach-journey-corridor";
+export * from "./use-remove-journey-corridor";
+
+// Waypoint mutations.
+export * from "./use-add-journey-waypoint";
+export * from "./use-remove-journey-waypoint";
+
+// Schedule mutations.
+export * from "./use-attach-journey-schedule";
+export * from "./use-remove-journey-schedule";
+
+// Vehicle mutations.
+export * from "./use-attach-journey-vehicle";
+export * from "./use-remove-journey-vehicle";
+
+// Capacity mutations.
+export * from "./use-attach-journey-capacity";
+export * from "./use-remove-journey-capacity";
+
+// Pricing mutations.
+export * from "./use-attach-journey-pricing";
+export * from "./use-remove-journey-pricing";
+
+// Preferences mutations.
+export * from "./use-attach-journey-preferences";
+export * from "./use-remove-journey-preferences";
+
+// Journey asset mutations.
+export * from "./use-attach-journey-asset";
+export * from "./use-remove-journey-asset";

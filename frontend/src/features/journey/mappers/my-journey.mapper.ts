@@ -2,75 +2,112 @@
 // sisiMove — My Journey Mapper
 // -----------------------------------------------------------------------------
 //
-// Maps the authenticated "My Journeys" response into the frontend Journey
-// model.
+// Maps the authenticated MyJourneyResponse projection into the frontend
+// MyJourney model.
 //
-// Architectural responsibility:
-// - Normalize Journey records returned by the authenticated management API.
-// - Reuse the canonical Journey mapper.
-// - Keep authenticated management concerns separate from public marketplace
-//   presentation.
+// Unlike the public Journey projection, this projection contains the owner's
+// Journey lifecycle state and timestamps.
 //
-// The backend `/journeys/me` endpoint derives the provider from the
-// authenticated identity. The frontend therefore does NOT provide or infer
-// the provider identity when requesting this collection.
+// Null component projections remain null. The frontend must not fabricate
+// missing components or infer that a Journey is ready for publication.
 //
-// This mapper intentionally does NOT:
-// - Resolve Traveller Profile or Trust Profile data.
-// - Make additional API requests.
-// - Construct public marketplace models.
-// - Remove providerPublicId.
-// - Format dates, prices, or status labels.
-// - Apply lifecycle or authorization rules.
 // -----------------------------------------------------------------------------
 
-import type { Journey } from '../models';
+import type { MyJourney } from "../models/my-journey";
+import type { JourneyStatus } from "../models/journey-status";
 
-import {
-  mapJourney,
-  type JourneyApiResponse,
-} from './journey.mapper';
+import { JourneyRouteMapper } from "./journey-route.mapper";
+import type { JourneyRouteResponse } from "./journey-route.mapper";
 
-// -----------------------------------------------------------------------------
-// API Response
-// -----------------------------------------------------------------------------
+import { JourneyScheduleMapper } from "./journey-schedule.mapper";
+import type { JourneyScheduleResponse } from "./journey-schedule.mapper";
 
-/**
- * Transport representation returned by the authenticated `/journeys/me`
- * endpoint.
- *
- * The My Journeys endpoint returns authenticated Journey management data.
- * Its individual Journey records use the same transport shape as the
- * canonical Journey mapper.
- */
-export type MyJourneyApiResponse = JourneyApiResponse;
+import { JourneyVehicleMapper } from "./journey-vehicle.mapper";
+import type { JourneyVehicleResponse } from "./journey-vehicle.mapper";
 
-// -----------------------------------------------------------------------------
-// Mapper
-// -----------------------------------------------------------------------------
+import { JourneyCapacityMapper } from "./journey-capacity.mapper";
+import type { JourneyCapacityResponse } from "./journey-capacity.mapper";
 
-/**
- * Maps one authenticated My Journey API response into the frontend Journey
- * model.
- *
- * Keeping this as a dedicated mapper gives the My Journeys feature a stable
- * mapping boundary while allowing the underlying Journey representation to
- * remain centralized.
- */
-export function mapMyJourney(
-  journey: MyJourneyApiResponse,
-): Journey {
-  return mapJourney(journey);
+import { JourneyPricingMapper } from "./journey-pricing.mapper";
+import type { JourneyPricingResponse } from "./journey-pricing.mapper";
+
+import { JourneyPreferencesMapper } from "./journey-preferences.mapper";
+import type { JourneyPreferencesResponse } from "./journey-preferences.mapper";
+
+import { JourneyAssetMapper } from "./journey-asset.mapper";
+import type { JourneyAssetResponse } from "./journey-asset.mapper";
+
+export interface MyJourneyResponse {
+  readonly publicId: string;
+  readonly status: string;
+  readonly publishedAt: string | null;
+  readonly startedAt: string | null;
+  readonly completionRequestedAt: string | null;
+  readonly completedAt: string | null;
+  readonly cancelledAt: string | null;
+  readonly expiredAt: string | null;
+
+  readonly route: JourneyRouteResponse | null;
+  readonly schedule: JourneyScheduleResponse | null;
+  readonly vehicle: JourneyVehicleResponse | null;
+  readonly capacity: JourneyCapacityResponse | null;
+  readonly pricing: JourneyPricingResponse | null;
+  readonly preferences: JourneyPreferencesResponse | null;
+  readonly assets: readonly JourneyAssetResponse[];
+
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
-/**
- * Maps a collection returned by `/journeys/me`.
- *
- * Collection mapping deliberately delegates each item to `mapMyJourney`
- * rather than duplicating Journey normalization logic.
- */
-export function mapMyJourneys(
-  journeys: MyJourneyApiResponse[],
-): Journey[] {
-  return journeys.map(mapMyJourney);
-}
+export const MyJourneyMapper = {
+  fromResponse(response: MyJourneyResponse): MyJourney {
+    return {
+      publicId: response.publicId,
+      status: response.status as JourneyStatus,
+
+      publishedAt: response.publishedAt,
+      startedAt: response.startedAt,
+      completionRequestedAt: response.completionRequestedAt,
+      completedAt: response.completedAt,
+      cancelledAt: response.cancelledAt,
+      expiredAt: response.expiredAt,
+
+      route: response.route
+        ? JourneyRouteMapper.fromResponse(response.route)
+        : null,
+
+      schedule: response.schedule
+        ? JourneyScheduleMapper.fromResponse(response.schedule)
+        : null,
+
+      vehicle: response.vehicle
+        ? JourneyVehicleMapper.fromResponse(response.vehicle)
+        : null,
+
+      capacity: response.capacity
+        ? JourneyCapacityMapper.fromResponse(response.capacity)
+        : null,
+
+      pricing: response.pricing
+        ? JourneyPricingMapper.fromResponse(response.pricing)
+        : null,
+
+      preferences: response.preferences
+        ? JourneyPreferencesMapper.fromResponse(response.preferences)
+        : null,
+
+      assets: JourneyAssetMapper.fromResponses(response.assets),
+
+      createdAt: response.createdAt,
+      updatedAt: response.updatedAt,
+    };
+  },
+
+  fromResponses(
+    responses: readonly MyJourneyResponse[],
+  ): MyJourney[] {
+    return responses.map((response) =>
+      MyJourneyMapper.fromResponse(response),
+    );
+  },
+};

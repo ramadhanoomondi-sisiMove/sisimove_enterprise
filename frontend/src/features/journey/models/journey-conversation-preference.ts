@@ -1,23 +1,29 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Conversation Preference
+// sisiMove — Journey Conversation Preference Model
 // -----------------------------------------------------------------------------
 //
-// Stable frontend representation of the JourneyConversationPreference enum
-// exposed by the Journey HTTP API.
+// Frontend read-model contract for the Journey conversation preference.
 //
-// Backend:
+// This model mirrors the backend JourneyConversationPreference enum exactly.
 //
-//   QUIET
-//   MODERATE
-//   SOCIAL
+// The frontend uses this value for:
+// - displaying Journey preferences;
+// - preference editing controls;
+// - API response mapping.
 //
-// This model describes the conversation environment preferred for a Journey.
-// It does not represent a user's permanent communication preference.
+// It does not determine or enforce Journey behavior. The backend remains the
+// authoritative source for Journey preference validation and mutation rules.
 //
 // -----------------------------------------------------------------------------
 
 /**
- * Conversation preference for a Journey.
+ * Journey conversation preference.
+ *
+ * Corresponds exactly to the backend JourneyConversationPreference enum:
+ *
+ *   QUIET
+ *   MODERATE
+ *   SOCIAL
  */
 export type JourneyConversationPreference =
   | 'QUIET'
@@ -25,10 +31,7 @@ export type JourneyConversationPreference =
   | 'SOCIAL';
 
 /**
- * All supported Journey conversation preferences.
- *
- * Kept as a readonly tuple for runtime iteration, validation, filtering,
- * and UI option generation.
+ * Runtime collection of all supported conversation preferences.
  */
 export const JOURNEY_CONVERSATION_PREFERENCES = [
   'QUIET',
@@ -37,13 +40,12 @@ export const JOURNEY_CONVERSATION_PREFERENCES = [
 ] as const satisfies readonly JourneyConversationPreference[];
 
 /**
- * Runtime guard for JourneyConversationPreference.
+ * Runtime guard for values received from the API.
  */
 export function isJourneyConversationPreference(
-  value: unknown,
+  value: string,
 ): value is JourneyConversationPreference {
-  return (
-    typeof value === 'string' &&
-    (JOURNEY_CONVERSATION_PREFERENCES as readonly string[]).includes(value)
+  return (JOURNEY_CONVERSATION_PREFERENCES as readonly string[]).includes(
+    value,
   );
 }

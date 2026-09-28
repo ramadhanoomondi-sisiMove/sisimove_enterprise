@@ -2,46 +2,41 @@
 // sisiMove — Journey Pricing Model
 // -----------------------------------------------------------------------------
 //
-// Frontend representation of Journey pricing exposed by the Journey HTTP API.
+// Frontend projection of JourneyPricing.
 //
-// Pricing defines the cost associated with a passenger booking on a Journey.
-// Monetary amounts are represented as integer minor units, consistent with the
-// sisiMove financial model.
+// The backend JourneyPricing entity owns:
+// - amount
+// - currency
 //
-// Internal database identifiers are intentionally excluded.
+// `amount` is represented exactly as supplied by the backend.
+// The frontend must not reinterpret the value as a decimal monetary amount
+// or introduce its own minor-unit conversion rules.
 //
+// Pricing is a Journey component. The frontend submits pricing configuration
+// through the backend's attach-pricing command and reads the resulting pricing
+// projection from Journey responses.
+//
+// This model intentionally contains only fields exposed by the Journey
+// read projections. It does not expose persistence IDs or timestamps.
 // -----------------------------------------------------------------------------
 
-/**
- * Journey pricing.
- */
 export interface JourneyPricing {
   /**
-   * Public identifier of the pricing configuration.
-   */
-  publicId: string;
-
-  /**
-   * Journey price in the currency's minor unit.
+   * JourneyPricing public identifier.
    *
-   * For KES, this represents cents.
+   * This is an opaque public reference supplied by the backend.
    */
-  amount: number;
+  readonly publicId: string;
 
   /**
-   * ISO 4217 currency code.
+   * Journey price amount as supplied by the backend.
+   */
+  readonly amount: number;
+
+  /**
+   * ISO-style currency code supplied by the backend.
    *
-   * The backend defaults to `KES`.
+   * The current backend default is KES.
    */
-  currency: string;
-
-  /**
-   * Creation timestamp returned by the API, when available.
-   */
-  createdAt?: string;
-
-  /**
-   * Last update timestamp returned by the API, when available.
-   */
-  updatedAt?: string;
+  readonly currency: string;
 }
