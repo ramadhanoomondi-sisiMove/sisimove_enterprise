@@ -47,9 +47,9 @@ import type { PublicTraveller } from './public-traveller';
 
 import type { PublicTravellerTrust } from '@/features/trust/models/public-traveller-trust';
 
-import type { PublicJourney } from '@/features/journeys/models/public-journey';
+import type { PublicJourney } from '@/features/journey/models';
 
-import type { PublicJourneyDemand } from '@/features/journey-demands/models/public-journey-demand';
+import type { PublicJourneyDemand } from '@/features/journey-demand/models';
 
 // -----------------------------------------------------------------------------
 // Public Traveller Profile

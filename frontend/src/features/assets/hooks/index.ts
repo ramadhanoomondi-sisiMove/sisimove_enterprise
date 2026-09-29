@@ -68,3 +68,11 @@ export type {
 export {
   usePublicAsset,
 } from './use-public-asset';
+
+export type { UsePublicAssetResult } from "./use-public-asset";
+
+export { usePublicAssets } from "./use-public-assets";
+export type {
+  PublicAssetReferenceInput,
+  UsePublicAssetsResult,
+} from "./use-public-assets";

@@ -13,6 +13,7 @@
 //
 // The frontend must NOT infer pickup/dropoff permissions from the waypoint
 // type. Those permissions are independent fields on JourneyWaypoint:
+//
 //   - pickupAllowed
 //   - dropoffAllowed
 //
@@ -33,11 +34,11 @@
  *   WAYPOINT
  */
 export type JourneyWaypointType =
-  | 'ORIGIN'
-  | 'DESTINATION'
-  | 'PICKUP'
-  | 'DROPOFF'
-  | 'WAYPOINT';
+  | "ORIGIN"
+  | "DESTINATION"
+  | "PICKUP"
+  | "DROPOFF"
+  | "WAYPOINT";
 
 /**
  * Runtime collection of all supported Journey waypoint types.
@@ -46,15 +47,16 @@ export type JourneyWaypointType =
  * to validate external values without importing backend/domain code.
  */
 export const JOURNEY_WAYPOINT_TYPES = [
-  'ORIGIN',
-  'DESTINATION',
-  'PICKUP',
-  'DROPOFF',
-  'WAYPOINT',
+  "ORIGIN",
+  "DESTINATION",
+  "PICKUP",
+  "DROPOFF",
+  "WAYPOINT",
 ] as const satisfies readonly JourneyWaypointType[];
 
 /**
- * Runtime guard for values received from the API.
+ * Runtime guard for values received from an external boundary such as
+ * an API response.
  */
 export function isJourneyWaypointType(
   value: string,

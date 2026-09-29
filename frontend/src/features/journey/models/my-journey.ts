@@ -26,7 +26,7 @@
 // -----------------------------------------------------------------------------
 
 import type { JourneyStatus } from "./journey-status";
-import type { JourneyRoute } from "./Journey-route";
+import type { JourneyRoute } from "./journey-route";
 import type { JourneySchedule } from "./journey-schedule";
 import type { JourneyVehicle } from "./journey-vehicle";
 import type { JourneyCapacity } from "./journey-capacity";
