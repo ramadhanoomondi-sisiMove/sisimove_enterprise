@@ -4,6 +4,13 @@
 //
 // Application shell for authenticated SisiMove routes.
 //
+// Product message:
+//
+//     PLAN → PUBLISH → DISCOVER → MATCH → TRAVEL → COMPLETE
+//
+// The authenticated application continues the same SisiMove marketplace
+// experience established by the public application.
+//
 // Shell structure:
 //
 //     AuthenticatedShell
@@ -20,6 +27,7 @@
 //
 // Responsibilities:
 // - Establish the authenticated application's visual shell.
+// - Preserve the SisiMove marketplace visual language.
 // - Compose the authenticated header.
 // - Provide the page-content boundary.
 // - Compose the authenticated footer.
@@ -79,7 +87,21 @@
 //
 // The shell does not know how the avatar URL was resolved.
 //
+// Visual language:
+//
+// The authenticated shell deliberately continues the public SisiMove
+// marketplace rather than introducing a separate "dashboard" aesthetic.
+//
+// - White primary surfaces.
+// - Very light brand-tinted application background.
+// - SisiMove blue as the primary navigation/accent colour.
+// - Subtle borders and restrained shadows.
+// - Dense, purposeful layout.
+// - Journey marketplace remains the product centre.
+// - Individual pages own their cards and content surfaces.
+//
 // -----------------------------------------------------------------------------
+
 
 import type { ReactNode } from "react";
 
@@ -130,7 +152,7 @@ export function AuthenticatedShell({
     <div
       className={[
         "min-h-screen",
-        "bg-[var(--background)]",
+        "bg-[var(--background-brand)]",
         "text-[var(--foreground)]",
       ].join(" ")}
     >
@@ -140,7 +162,13 @@ export function AuthenticatedShell({
           travellerAvatarUrl={travellerAvatarUrl}
         />
 
-        <main className="min-w-0 flex-1">
+        <main
+          className={[
+            "min-w-0",
+            "flex-1",
+            "bg-[var(--background-brand)]",
+          ].join(" ")}
+        >
           {children}
         </main>
 
@@ -149,3 +177,5 @@ export function AuthenticatedShell({
     </div>
   );
 }
+
+export default AuthenticatedShell;

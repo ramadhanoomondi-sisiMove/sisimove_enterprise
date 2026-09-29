@@ -1,43 +1,17 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Preferences Summary
-// -----------------------------------------------------------------------------
-//
-// Compact read-only presentation of Journey preferences.
-//
-// Responsibilities:
-// - Present the explicit JourneyPreferences projection.
-// - Translate backend policy values into human-readable labels.
-// - Keep backend enum values intact at the model boundary.
-// - Provide a compact summary suitable for Journey cards and detail views.
-//
-// This component does NOT:
-// - reconstruct preferences from booleans;
-// - infer policies from other Journey fields;
-// - mutate preferences;
-// - validate domain rules;
-// - decide whether a preference is required;
-// - recreate JourneyPreferences domain behavior.
-//
-// The Journey backend remains authoritative for the actual preference values.
-//
-// -----------------------------------------------------------------------------
-//
-// JourneyPreferences
-//      │
-//      ├── smoking
-//      ├── pets
-//      ├── luggage
-//      ├── conversation
-//      └── music
-//              │
-//              ▼
-//      JourneyPreferencesSummary
-//              │
-//              └── human-readable presentation
-//
+// Path: src/features/journey/components/shared/JourneyPreferencesSummary.tsx
 // -----------------------------------------------------------------------------
 
+import {
+  Cigarette,
+  Luggage,
+  MessageCircle,
+  Music,
+  PawPrint,
+} from "lucide-react";
+
 import type { JourneyPreferences } from "@/features/journey/models";
+
 import { cn } from "@/foundation/utils/cn";
 
 // -----------------------------------------------------------------------------
@@ -45,14 +19,7 @@ import { cn } from "@/foundation/utils/cn";
 // -----------------------------------------------------------------------------
 
 export interface JourneyPreferencesSummaryProps {
-  /**
-   * Backend-projected Journey preferences.
-   */
   readonly preferences: JourneyPreferences;
-
-  /**
-   * Optional additional CSS classes.
-   */
   readonly className?: string;
 }
 
@@ -63,6 +30,7 @@ export interface JourneyPreferencesSummaryProps {
 interface PreferenceItem {
   readonly label: string;
   readonly value: string;
+  readonly icon: typeof Cigarette;
 }
 
 function getPreferenceItems(
@@ -72,33 +40,33 @@ function getPreferenceItems(
     {
       label: "Smoking",
       value: getSmokingLabel(preferences.smoking),
+      icon: Cigarette,
     },
     {
       label: "Pets",
       value: getPetsLabel(preferences.pets),
+      icon: PawPrint,
     },
     {
       label: "Luggage",
       value: getLuggageLabel(preferences.luggage),
+      icon: Luggage,
     },
     {
       label: "Conversation",
       value: getConversationLabel(preferences.conversation),
+      icon: MessageCircle,
     },
     {
       label: "Music",
       value: getMusicLabel(preferences.music),
+      icon: Music,
     },
   ];
 }
 
 // -----------------------------------------------------------------------------
 // Policy labels
-// -----------------------------------------------------------------------------
-//
-// These functions intentionally perform presentation mapping only.
-//
-// They do not alter, normalize, or reinterpret the backend values.
 // -----------------------------------------------------------------------------
 
 function getSmokingLabel(
@@ -194,29 +162,60 @@ export function JourneyPreferencesSummary({
       className={cn(
         "grid",
         "grid-cols-2",
-        "gap-x-4",
-        "gap-y-3",
+        "gap-x-3",
+        "gap-y-2.5",
         "sm:grid-cols-3",
         className,
       )}
     >
-      {items.map((item) => (
-        <div
-          key={item.label}
-          className={cn(
-            "min-w-0",
-            "space-y-0.5",
-          )}
-        >
-          <dt className="text-xs text-[var(--foreground-muted)]">
-            {item.label}
-          </dt>
+      {items.map((item) => {
+        const Icon = item.icon;
 
-          <dd className="truncate text-sm font-medium text-[var(--foreground)]">
-            {item.value}
-          </dd>
-        </div>
-      ))}
+        return (
+          <div
+            key={item.label}
+            className={cn(
+              "min-w-0",
+              "flex",
+              "items-start",
+              "gap-2",
+            )}
+          >
+            <Icon
+              className={cn(
+                "mt-0.5",
+                "size-3.5",
+                "shrink-0",
+                "text-[var(--foreground-muted)]",
+              )}
+              aria-hidden="true"
+            />
+
+            <div className="min-w-0">
+              <dt
+                className={cn(
+                  "text-[0.65rem]",
+                  "font-medium",
+                  "text-[var(--foreground-muted)]",
+                )}
+              >
+                {item.label}
+              </dt>
+
+              <dd
+                className={cn(
+                  "truncate",
+                  "text-xs",
+                  "font-medium",
+                  "text-[var(--foreground)]",
+                )}
+              >
+                {item.value}
+              </dd>
+            </div>
+          </div>
+        );
+      })}
     </dl>
   );
 }

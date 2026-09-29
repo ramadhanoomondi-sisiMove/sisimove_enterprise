@@ -22,12 +22,17 @@
 // - determine schedule flexibility;
 // - infer business state;
 // - modify schedule values.
+//
+// Marketplace presentation:
+// - Departure window is the primary schedule fact.
+// - Compact enough for the marketplace card.
+// - Arrival constraints remain secondary.
+// - Does not introduce a nested surface.
 // -----------------------------------------------------------------------------
 
 import type { PublicJourneyDemandSchedule } from '@/features/journey-demand/models';
 
-import { formatTime } from '@/foundation';
-import { cn } from '@/foundation';
+import { cn, formatTime } from '@/foundation';
 
 // -----------------------------------------------------------------------------
 // Props
@@ -66,13 +71,22 @@ export function JourneyDemandScheduleSummary({
     hasTargetArrival || hasMaximumArrival;
 
   return (
-    <div className={cn('min-w-0', className)}>
+    <div
+      className={cn(
+        'min-w-0',
+        className,
+      )}
+    >
       <dl
         className={cn(
-          'flex min-w-0 flex-col',
-          isCompact ? 'gap-1' : 'gap-1.5',
+          'flex min-w-0 items-center',
+          isCompact ? 'gap-2' : 'gap-3',
         )}
       >
+        {/* -----------------------------------------------------------------
+            Departure
+            ----------------------------------------------------------------- */}
+
         <div className="min-w-0">
           <dt className="sr-only">
             Departure window
@@ -80,51 +94,47 @@ export function JourneyDemandScheduleSummary({
 
           <dd
             className={cn(
-              'text-foreground',
-              isCompact
-                ? 'text-sm font-medium'
-                : 'text-sm font-semibold',
+              'truncate font-semibold leading-tight',
+              'text-[var(--foreground)]',
+              isCompact ? 'text-xs' : 'text-sm',
             )}
           >
             {departureWindow}
           </dd>
         </div>
 
+        {/* -----------------------------------------------------------------
+            Arrival constraints
+            ----------------------------------------------------------------- */}
+
         {showArrival && hasArrivalConstraint && (
           <>
-            {hasTargetArrival && (
-              <div className="min-w-0">
-                <dt className="sr-only">
-                  Target arrival
-                </dt>
+            <span
+              aria-hidden="true"
+              className="shrink-0 text-[var(--foreground-subtle)]"
+            >
+              ·
+            </span>
 
-                <dd
-                  className={cn(
-                    'text-foreground-muted',
-                    isCompact ? 'text-xs' : 'text-sm',
-                  )}
-                >
-                  Target arrival {formatTime(targetArrival)}
-                </dd>
-              </div>
-            )}
+            <div
+              className={cn(
+                'min-w-0 truncate',
+                isCompact ? 'text-[10px]' : 'text-xs',
+                'text-[var(--foreground-muted)]',
+              )}
+            >
+              {hasTargetArrival && (
+                <span className="mr-2 whitespace-nowrap">
+                  Target {formatTime(targetArrival)}
+                </span>
+              )}
 
-            {hasMaximumArrival && (
-              <div className="min-w-0">
-                <dt className="sr-only">
-                  Latest acceptable arrival
-                </dt>
-
-                <dd
-                  className={cn(
-                    'text-foreground-muted',
-                    isCompact ? 'text-xs' : 'text-sm',
-                  )}
-                >
-                  Latest arrival {formatTime(maximumArrival)}
-                </dd>
-              </div>
-            )}
+              {hasMaximumArrival && (
+                <span className="whitespace-nowrap">
+                  Latest {formatTime(maximumArrival)}
+                </span>
+              )}
+            </div>
           </>
         )}
       </dl>

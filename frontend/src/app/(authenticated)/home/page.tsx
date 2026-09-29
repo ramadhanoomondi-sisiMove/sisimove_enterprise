@@ -8,10 +8,10 @@
 //
 //     /home
 //
-// The authenticated Home page exposes the same core marketplace concept as
-// the public landing surface.
+// The authenticated Home page exposes the same core marketplace as the public
+// SisiMove experience.
 //
-// SisiMove's marketplace is a core product surface:
+// SisiMove has two first-class marketplace surfaces:
 //
 //     Journeys  → available travel supply
 //     Demands   → expressed travel need
@@ -22,9 +22,8 @@
 // marketplace:
 //
 //     Publish a journey
-//     Create travel demand
-//     View authenticated journey capabilities
-//     Book / continue through the corresponding Journey flow
+//     Express travel demand
+//     Continue through authenticated Journey capabilities
 //
 // -----------------------------------------------------------------------------
 //
@@ -33,11 +32,9 @@
 //
 //     /home
 //       │
-//       ├── Page heading
-//       │
 //       ├── AuthenticatedMarketplaceActions
 //       │     ├── Publish a journey
-//       │     └── Create travel demand
+//       │     └── Express travel demand
 //       │
 //       ├── JourneyMarketplace
 //       │     ├── JourneyMarketplaceFilters
@@ -102,10 +99,10 @@
 //          ▼
 //     Publish a journey
 //
-//     Journey not found
+//     Suitable journey not found
 //          │
 //          ▼
-//     Create travel demand
+//     Express travel demand
 //
 // The action component is presentation-only.
 //
@@ -116,7 +113,7 @@
 //          ▼
 //     /my-journeys/new
 //
-//     Create travel demand
+//     Express travel demand
 //          │
 //          ▼
 //     /my-demands/new
@@ -172,31 +169,34 @@
 //
 // Those belonged to the previous unified marketplace composition.
 //
-// The canonical marketplace now reuses the actual Journey and Journey Demand
+// The canonical marketplace reuses the actual Journey and Journey Demand
 // marketplace feature components on both public and authenticated surfaces.
 //
 // -----------------------------------------------------------------------------
 //
-// HEADING HIERARCHY
+// PAGE COMPOSITION
 // -----------------------------------------------------------------------------
 //
-// The page owns the document-level heading:
+// The Home page intentionally has no additional:
 //
-//     h1 — The Journey Market
+//     "The Journey Market"
 //
-// Individual marketplace components own their section headings:
+// heading or:
 //
-//     h2 — Journeys
-//     h2 — Travel needs
+//     "See where people are going..."
 //
-// AuthenticatedMarketplaceActions uses:
+// explanatory copy.
 //
-//     h2 — What are you looking to do?
+// Those messages are now expressed directly by the marketplace surfaces:
 //
-// This keeps the action prompt and both marketplace surfaces below the page
-// heading in the document hierarchy.
+//     Find available journeys
+//     Real travel demand
+//
+// This keeps the page concise and prevents the same marketplace message from
+// being repeated at multiple levels of the interface.
 //
 // -----------------------------------------------------------------------------
+
 
 import { AuthenticatedMarketplaceActions } from "@/components/authenticated";
 
@@ -213,24 +213,17 @@ export default function HomePage() {
   return (
     <div className="w-full min-w-0">
       {/* ------------------------------------------------------------------- */}
-      {/* Page heading                                                        */}
-      {/* ------------------------------------------------------------------- */}
-
-      <header className="border-b border-[var(--border-subtle)] bg-[var(--surface)]">
-        <div className="page-container py-5">
-          <h1 className="text-xl font-semibold tracking-tight text-[var(--foreground)] sm:text-2xl">
-            The Journey Market
-          </h1>
-
-          <p className="mt-1 max-w-2xl text-sm leading-5 text-[var(--foreground-secondary)]">
-            See where people are going and where people are looking to go.
-          </p>
-        </div>
-      </header>
-
-      {/* ------------------------------------------------------------------- */}
       {/* Authenticated marketplace participation                             */}
       {/* ------------------------------------------------------------------- */}
+      {/*
+        Authentication adds participation capabilities around the same
+        marketplace that is available publicly.
+
+        The component communicates the two sides of SisiMove:
+
+            Journey supply
+            Travel demand
+      */}
 
       <AuthenticatedMarketplaceActions
         publishJourneyHref={AUTHENTICATED_ROUTES.MY_JOURNEY_NEW}
@@ -271,4 +264,3 @@ export default function HomePage() {
     </div>
   );
 }
-

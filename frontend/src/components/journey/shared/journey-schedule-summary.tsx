@@ -1,19 +1,27 @@
 // -----------------------------------------------------------------------------
+// Path: src/features/journey/components/shared/JourneyScheduleSummary.tsx
+// -----------------------------------------------------------------------------
+//
 // sisiMove — Journey Schedule Summary
 // -----------------------------------------------------------------------------
 //
 // Compact presentation of a Journey's scheduled travel window.
 //
-// Example:
+// Marketplace presentation:
 //
-//   Monday, 16th November 2026
-//   8:30 AM — 1:45 PM
+//        📅
+//       TUE
+//        11
+//    AUG 2026
+//    ─────────
+//    🕐 8:30 AM
 //
 // Responsibilities:
 // - Present departure date and time.
 // - Present arrival time when supplied by the backend.
 // - Preserve the Journey schedule timezone as supporting metadata.
 // - Reuse the shared JourneyDate component and foundation time formatter.
+// - Provide subtle Lucide icons for date and travel time.
 //
 // This component does NOT:
 // - calculate journey duration;
@@ -22,7 +30,10 @@
 // - recreate JourneySchedule domain validation.
 // -----------------------------------------------------------------------------
 
+import { Clock3 } from "lucide-react";
+
 import type { JourneySchedule } from "@/features/journey/models";
+
 import { formatTime } from "@/foundation/formatters";
 import { cn } from "@/foundation/utils/cn";
 
@@ -52,58 +63,141 @@ export function JourneyScheduleSummary({
   schedule,
   className,
 }: JourneyScheduleSummaryProps) {
-  const departureTime = formatTime(schedule.departureAt);
+  const departureTime = formatTime(
+    schedule.departureAt,
+  );
 
-  const arrivalTime = schedule.arrivalAt
-    ? formatTime(schedule.arrivalAt)
-    : null;
+  const arrivalAt = schedule.arrivalAt;
+
+  const arrivalTime =
+    arrivalAt !== null
+      ? formatTime(arrivalAt)
+      : null;
 
   return (
     <div
       className={cn(
+        "flex",
         "min-w-0",
-        "space-y-1",
+        "flex-col",
+        "items-center",
+        "text-center",
         className,
       )}
     >
-      <JourneyDate schedule={schedule} />
+      {/* ------------------------------------------------------------------ */}
+      {/* Departure Date                                                     */}
+      {/* ------------------------------------------------------------------ */}
+
+      <JourneyDate
+        schedule={schedule}
+        className="w-full"
+      />
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Schedule Divider                                                   */}
+      {/* ------------------------------------------------------------------ */}
+
+      <div
+        aria-hidden="true"
+        className={cn(
+          "my-[clamp(0.45rem,0.9vw,0.7rem)]",
+          "h-px",
+          "w-[clamp(2rem,4vw,3.25rem)]",
+          "bg-[var(--border-subtle)]",
+        )}
+      />
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Travel Time                                                        */}
+      {/* ------------------------------------------------------------------ */}
 
       <div
         className={cn(
           "flex",
           "min-w-0",
-          "flex-wrap",
+          "max-w-full",
+          "flex-col",
           "items-center",
-          "gap-x-2",
-          "gap-y-1",
+          "gap-[clamp(0.2rem,0.4vw,0.3rem)]",
         )}
       >
-        <time
-          dateTime={schedule.departureAt}
-          className="text-sm font-semibold text-[var(--foreground)]"
+        <div
+          className={cn(
+            "flex",
+            "min-w-0",
+            "max-w-full",
+            "items-center",
+            "justify-center",
+            "gap-[clamp(0.25rem,0.5vw,0.4rem)]",
+          )}
         >
-          {departureTime}
-        </time>
+          <Clock3
+            className={cn(
+              "size-[clamp(0.65rem,1.05vw,0.85rem)]",
+              "shrink-0",
+              "text-[var(--brand)]",
+            )}
+            aria-hidden="true"
+          />
 
-        {arrivalTime && (
-          <>
-            <span
-              aria-hidden="true"
-              className="text-[var(--foreground-subtle)]"
-            >
-              —
-            </span>
+          <time
+            dateTime={schedule.departureAt}
+            className={cn(
+              "truncate",
+              "text-[clamp(0.62rem,1vw,0.82rem)]",
+              "font-semibold",
+              "leading-tight",
+              "text-[var(--foreground)]",
+            )}
+          >
+            {departureTime}
+          </time>
 
-            <time
-              dateTime={schedule.arrivalAt ?? undefined}
-              className="text-sm text-[var(--foreground-secondary)]"
-            >
-              {arrivalTime}
-            </time>
-          </>
-        )}
+          {arrivalAt !== null && arrivalTime !== null ? (
+            <>
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "shrink-0",
+                  "text-[clamp(0.55rem,0.85vw,0.7rem)]",
+                  "text-[var(--foreground-subtle)]",
+                )}
+              >
+                —
+              </span>
 
-        <span className="text-xs text-[var(--foreground-muted)]">
+              <time
+                dateTime={arrivalAt}
+                className={cn(
+                  "truncate",
+                  "text-[clamp(0.55rem,0.85vw,0.72rem)]",
+                  "leading-tight",
+                  "text-[var(--foreground-secondary)]",
+                )}
+              >
+                {arrivalTime}
+              </time>
+            </>
+          ) : null}
+        </div>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Timezone                                                         */}
+        {/* ---------------------------------------------------------------- */}
+
+        <span
+          className={cn(
+            "max-w-full",
+            "truncate",
+            "text-[clamp(0.42rem,0.65vw,0.55rem)]",
+            "font-medium",
+            "uppercase",
+            "tracking-wide",
+            "leading-tight",
+            "text-[var(--foreground-muted)]",
+          )}
+        >
           {schedule.timezone}
         </span>
       </div>

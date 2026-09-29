@@ -2,32 +2,46 @@
 // sisiMove — Authenticated Marketplace Actions
 // -----------------------------------------------------------------------------
 //
-// Secondary participation prompt for the authenticated marketplace.
+// Authenticated participation entry point for the SisiMove marketplace.
 //
-// The SisiMove marketplaces themselves are the primary product surfaces:
+// The authenticated Home presents two connected marketplace surfaces:
 //
-//     JourneyMarketplace
-//     JourneyDemandMarketplace
+//     JOURNEYS
+//     Available travel supply.
 //
-// This component provides additional authenticated entry points for members
-// who want to participate in the marketplace by:
+//     TRAVEL DEMAND
+//     Expressed travel need.
 //
-// - publishing available seats through a Journey;
-// - creating a Journey Demand when they cannot find the Journey they need.
+// This component sits immediately above those surfaces and provides the
+// authenticated member with the corresponding participation paths.
+//
+// Product relationship:
+//
+//     Publish a journey
+//             │
+//             ▼
+//     Journey marketplace
+//
+//     Express travel demand
+//             │
+//             ▼
+//     Travel demand marketplace
+//
+// The component is intentionally compact. The marketplace components below
+// remain responsible for explaining and presenting the actual marketplace.
 //
 // This component is presentation-only.
 //
 // Responsibilities:
 // - present authenticated marketplace participation actions;
-// - navigate to the supplied Journey creation destination;
-// - navigate to the supplied Journey Demand creation destination.
+// - provide the supplied navigation destinations;
+// - visually connect supply and demand participation.
 //
 // Non-responsibilities:
 // - no marketplace search;
 // - no marketplace data fetching;
 // - no matching;
 // - no booking;
-// - no joining a Journey Demand;
 // - no notification delivery;
 // - no authorization;
 // - no Journey creation;
@@ -35,10 +49,8 @@
 // - no route construction;
 // - no authentication-state management.
 //
-// Navigation destinations are supplied by the composition boundary so this
-// component remains independent of application routing.
-//
 // -----------------------------------------------------------------------------
+
 
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -91,6 +103,7 @@ function MarketplaceAction({
     <Link
       href={href}
       className={cn(
+        "group",
         "inline-flex",
         "min-h-10",
         "items-center",
@@ -101,7 +114,7 @@ function MarketplaceAction({
         "py-2",
         "text-sm",
         "font-semibold",
-        "transition-colors",
+        "transition-all",
         "duration-150",
         "ease-out",
         "focus-visible:outline-none",
@@ -110,17 +123,32 @@ function MarketplaceAction({
         "focus-visible:ring-offset-2",
         "focus-visible:ring-offset-[var(--background-brand)]",
 
+        // -------------------------------------------------------------------
+        // Publish a Journey
+        //
+        // Brand-led without becoming a large blue block.
+        // -------------------------------------------------------------------
+
         variant === "primary" && [
-          "bg-[var(--brand)]",
-          "text-[var(--brand-foreground)]",
-          "hover:bg-[var(--brand-hover)]",
+          "border",
+          "border-[var(--brand)]",
+          "bg-[var(--surface)]",
+          "text-[var(--brand)]",
+          "shadow-[var(--shadow-sm)]",
+          "hover:bg-[var(--brand-soft)]",
+          "hover:shadow-[var(--shadow-md)]",
         ].join(" "),
+
+        // -------------------------------------------------------------------
+        // Express Travel Demand
+        // -------------------------------------------------------------------
 
         variant === "secondary" && [
           "border",
           "border-[var(--border-strong)]",
-          "bg-[var(--surface)]",
+          "bg-[var(--background-subtle)]",
           "text-[var(--foreground)]",
+          "shadow-[var(--shadow-sm)]",
           "hover:border-[var(--brand)]",
           "hover:bg-[var(--brand-soft)]",
           "hover:text-[var(--brand)]",
@@ -152,78 +180,198 @@ export function AuthenticatedMarketplaceActions({
         className,
       )}
     >
-      <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
+      <div
+        className={cn(
+          "mx-auto",
+          "w-full",
+          "max-w-7xl",
+          "px-4",
+          "py-4",
+          "sm:px-6",
+          "sm:py-5",
+          "lg:px-8",
+        )}
+      >
         <div
           className={cn(
-            "flex flex-col gap-4",
-            "sm:flex-row sm:items-center sm:justify-between",
+            "relative",
+            "overflow-hidden",
+            "rounded-[var(--radius-xl)]",
+            "border",
+            "border-[var(--border)]",
+            "bg-[var(--surface)]",
+            "shadow-[var(--shadow-sm)]",
           )}
         >
           {/* -----------------------------------------------------------------
-              Message
+              SisiMove brand rail
               ----------------------------------------------------------------- */}
 
-          <div className="min-w-0">
-            <h2
-              id="authenticated-marketplace-actions-heading"
+          <div
+            aria-hidden="true"
+            className={cn(
+              "absolute",
+              "inset-y-0",
+              "left-0",
+              "w-1",
+              "bg-[var(--brand)]",
+            )}
+          />
+
+          <div
+            className={cn(
+              "flex",
+              "flex-col",
+              "gap-4",
+              "px-5",
+              "py-4",
+              "pl-6",
+              "sm:px-6",
+              "sm:py-5",
+              "sm:pl-7",
+              "lg:flex-row",
+              "lg:items-center",
+              "lg:justify-between",
+              "lg:gap-8",
+            )}
+          >
+            {/* ---------------------------------------------------------------
+                Marketplace participation message
+                --------------------------------------------------------------- */}
+
+            <div className="min-w-0">
+              <h2
+                id="authenticated-marketplace-actions-heading"
+                className={cn(
+                  "text-base",
+                  "font-bold",
+                  "tracking-tight",
+                  "text-[var(--foreground)]",
+                  "sm:text-lg",
+                )}
+              >
+                Be part of the journey marketplace.
+              </h2>
+
+              <p
+                className={cn(
+                  "mt-1",
+                  "max-w-2xl",
+                  "text-sm",
+                  "leading-5",
+                  "text-[var(--foreground-secondary)]",
+                )}
+              >
+                Have available seats? Publish your journey. Can&apos;t find a
+                suitable journey? Express where you want to travel.
+              </p>
+
+              {/* -------------------------------------------------------------
+                  Supply / demand relationship
+                  ------------------------------------------------------------- */}
+
+              <div
+                className={cn(
+                  "mt-2.5",
+                  "flex",
+                  "flex-wrap",
+                  "items-center",
+                  "gap-x-3",
+                  "gap-y-1",
+                  "text-xs",
+                  "font-medium",
+                  "text-[var(--foreground-muted)]",
+                )}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <CarFront
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 text-[var(--brand)]"
+                  />
+
+                  <span>
+                    Available journeys
+                  </span>
+                </span>
+
+                <span
+                  aria-hidden="true"
+                  className="text-[var(--border-strong)]"
+                >
+                  ↔
+                </span>
+
+                <span className="inline-flex items-center gap-1.5">
+                  <UsersRound
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 text-[var(--brand)]"
+                  />
+
+                  <span>
+                    Travel demand
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            {/* ---------------------------------------------------------------
+                Participation actions
+                --------------------------------------------------------------- */}
+
+            <div
               className={cn(
-                "text-lg font-semibold tracking-tight",
-                "text-[var(--foreground)]",
-                "sm:text-xl",
+                "flex",
+                "shrink-0",
+                "flex-col",
+                "gap-2",
+                "sm:flex-row",
+                "sm:items-center",
               )}
             >
-              What are you looking to do?
-            </h2>
+              <MarketplaceAction
+                href={publishJourneyHref}
+                variant="primary"
+              >
+                <CarFront
+                  aria-hidden="true"
+                  className="h-4 w-4"
+                />
 
-            <p
-              className={cn(
-                "mt-1 max-w-2xl",
-                "text-sm leading-5",
-                "text-[var(--foreground-secondary)]",
-              )}
-            >
-              Have available seats? Publish your journey and make your trip
-              discoverable. Can&apos;t find the journey you need? Create a
-              travel demand so your travel need is visible to the marketplace.
-            </p>
-          </div>
+                <span>
+                  Publish a journey
+                </span>
+              </MarketplaceAction>
 
-          {/* -----------------------------------------------------------------
-              Marketplace actions
-              ----------------------------------------------------------------- */}
+              <MarketplaceAction
+                href={createDemandHref}
+                variant="secondary"
+              >
+                <UsersRound
+                  aria-hidden="true"
+                  className="h-4 w-4"
+                />
 
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <MarketplaceAction
-              href={publishJourneyHref}
-              variant="primary"
-            >
-              <CarFront
-                aria-hidden="true"
-                className="h-4 w-4"
-              />
+                <span>
+                  Express travel demand
+                </span>
 
-              <span>Publish a journey</span>
-            </MarketplaceAction>
-
-            <MarketplaceAction
-              href={createDemandHref}
-              variant="secondary"
-            >
-              <UsersRound
-                aria-hidden="true"
-                className="h-4 w-4"
-              />
-
-              <span>Create travel demand</span>
-
-              <ArrowRight
-                aria-hidden="true"
-                className="h-4 w-4"
-              />
-            </MarketplaceAction>
+                <ArrowRight
+                  aria-hidden="true"
+                  className={cn(
+                    "h-4",
+                    "w-4",
+                    "transition-transform",
+                    "duration-150",
+                    "group-hover:translate-x-0.5",
+                  )}
+                />
+              </MarketplaceAction>
+            </div>
           </div>
         </div>
       </div>
     </section>
   );
 }
+
+export default AuthenticatedMarketplaceActions;

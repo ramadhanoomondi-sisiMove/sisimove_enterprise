@@ -1,15 +1,22 @@
 // -----------------------------------------------------------------------------
+// Path: src/features/journey/components/shared/JourneyPrice.tsx
+// -----------------------------------------------------------------------------
+//
 // sisiMove — Journey Price
 // -----------------------------------------------------------------------------
 //
-// Reusable presentation of Journey pricing.
+// Compact presentation of Journey pricing.
+//
+// Marketplace presentation:
+//
+//   💰 KES 2,500
 //
 // Responsibilities:
-// - Present the Journey price using the shared currency formatter.
-// - Preserve the backend-supplied amount without reinterpretation.
-// - Preserve the backend-supplied currency code.
-// - Provide a compact pricing presentation for Journey marketplace and detail
-//   surfaces.
+// - present the Journey price using the shared currency formatter;
+// - preserve the backend-supplied amount;
+// - preserve the backend-supplied currency code;
+// - provide a compact but visually prominent marketplace price;
+// - provide a subtle Lucide visual cue for the price.
 //
 // This component does NOT:
 // - convert minor units;
@@ -21,7 +28,10 @@
 // The backend Journey pricing projection remains the source of truth.
 // -----------------------------------------------------------------------------
 
+import { Banknote } from "lucide-react";
+
 import type { JourneyPricing } from "@/features/journey/models";
+
 import { formatCurrency } from "@/foundation/formatters/currency";
 import { cn } from "@/foundation/utils/cn";
 
@@ -52,13 +62,38 @@ export function JourneyPrice({
   return (
     <span
       className={cn(
-        "text-sm",
-        "font-semibold",
-        "text-[var(--foreground)]",
+        "inline-flex",
+        "min-w-0",
+        "items-center",
+        "gap-[clamp(0.3rem,0.6vw,0.5rem)]",
+        "whitespace-nowrap",
         className,
       )}
     >
-      {formatCurrency(pricing.amount, pricing.currency)}
+      <Banknote
+        className={cn(
+          "size-[clamp(0.7rem,1.25vw,1rem)]",
+          "shrink-0",
+          "text-[var(--brand)]",
+        )}
+        aria-hidden="true"
+      />
+
+      <span
+        className={cn(
+          "min-w-0",
+          "text-[clamp(0.8rem,1.5vw,1.15rem)]",
+          "font-bold",
+          "leading-tight",
+          "tracking-tight",
+          "text-[var(--foreground)]",
+        )}
+      >
+        {formatCurrency(
+          pricing.amount,
+          pricing.currency,
+        )}
+      </span>
     </span>
   );
 }

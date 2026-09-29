@@ -17,9 +17,9 @@
 // The hook also exposes `refetch` so a parent component can explicitly retry
 // the current marketplace request after an error.
 //
-// Request cancellation and request IDs prevent stale responses from replacing
-// newer marketplace results when filters, pagination, or an explicit retry
-// change the active request.
+// Request cancellation and request generations prevent stale responses from
+// replacing newer marketplace results when filters, pagination, or an explicit
+// retry changes the active request.
 //
 // The API already returns the frontend PublicJourneyDemand representation.
 // There is therefore no mapper layer here. A mapper should only be introduced
@@ -71,7 +71,13 @@ export function useJourneyDemands(
    */
   const [refetchVersion, setRefetchVersion] = useState(0);
 
-  const requestIdRef = useRef(0);
+  /**
+   * Monotonically increasing request generation.
+   *
+   * The ref is intentionally used for request identity rather than render
+   * state. A newer request invalidates every older request immediately.
+   */
+  const requestGenerationRef = useRef(0);
 
   // ---------------------------------------------------------------------------
   // Query Dependencies
@@ -104,7 +110,8 @@ export function useJourneyDemands(
 
   useEffect(() => {
     let cancelled = false;
-    const requestId = ++requestIdRef.current;
+
+    const requestGeneration = ++requestGenerationRef.current;
 
     const load = async (): Promise<void> => {
       setIsLoading(true);
@@ -125,20 +132,32 @@ export function useJourneyDemands(
         //
         // A visitor can change marketplace filters or explicitly retry while
         // another request is still in flight. An older request must never
-        // overwrite the state produced by the current request.
+        // overwrite state produced by the current request.
         // ---------------------------------------------------------------------
 
-        if (cancelled || requestId !== requestIdRef.current) {
+        if (
+          cancelled ||
+          requestGeneration !== requestGenerationRef.current
+        ) {
           return;
         }
 
+        // ---------------------------------------------------------------------
+        // Public API → frontend model
+        // ---------------------------------------------------------------------
+        //
         // The public API already returns PublicJourneyDemand objects.
         //
         // No mapper is required because there is currently no API-to-frontend
         // transformation at this boundary.
+        // ---------------------------------------------------------------------
+
         setData(journeyDemands);
       } catch (cause) {
-        if (cancelled || requestId !== requestIdRef.current) {
+        if (
+          cancelled ||
+          requestGeneration !== requestGenerationRef.current
+        ) {
           return;
         }
 
@@ -148,7 +167,10 @@ export function useJourneyDemands(
             : new Error('Unable to load public Journey Demands.'),
         );
       } finally {
-        if (!cancelled && requestId === requestIdRef.current) {
+        if (
+          !cancelled &&
+          requestGeneration === requestGenerationRef.current
+        ) {
           setIsLoading(false);
         }
       }

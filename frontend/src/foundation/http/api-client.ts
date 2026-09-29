@@ -1,4 +1,3 @@
-//frontend/src/foundation/http/api-clients.ts
 // -----------------------------------------------------------------------------
 // API Client
 // -----------------------------------------------------------------------------
@@ -75,17 +74,28 @@ export class ApiClient {
     return this.request<T>('DELETE', path, options);
   }
 
+  // ===========================================================================
+  // Request
+  // ===========================================================================
+
   private async request<T>(
     method: string,
     path: string,
     options: RequestOptions & { body?: unknown } = {},
   ): Promise<T> {
-    const url = this.buildUrl(path, options.query);
+    const url = this.buildUrl(
+      path,
+      options.query,
+    );
 
     const headers = new Headers({
       ...apiConfig.headers,
       ...options.headers,
     });
+
+    // -------------------------------------------------------------------------
+    // Authentication
+    // -------------------------------------------------------------------------
 
     if (options.context?.accessToken) {
       headers.set(
@@ -94,6 +104,10 @@ export class ApiClient {
       );
     }
 
+    // -------------------------------------------------------------------------
+    // Correlation ID
+    // -------------------------------------------------------------------------
+
     if (options.context?.correlationId) {
       headers.set(
         'X-Correlation-ID',
@@ -101,43 +115,62 @@ export class ApiClient {
       );
     }
 
-    /**
-     * FormData must be passed directly to fetch().
-     *
-     * JSON.stringify(FormData) would discard the multipart fields and
-     * prevent Nest's multipart parser from populating @Body() and
-     * @UploadedFile().
-     *
-     * The browser automatically generates the correct:
-     *
-     *     Content-Type: multipart/form-data; boundary=...
-     *
-     * header when the body is FormData.
-     *
-     * Therefore Content-Type is removed when sending FormData.
-     */
-    const requestBody = this.prepareRequestBody(
-      options.body,
-      headers,
-    );
+    // -------------------------------------------------------------------------
+    // Request Body
+    // -------------------------------------------------------------------------
 
-    const controller = new AbortController();
+    const requestBody =
+      this.prepareRequestBody(
+        options.body,
+        headers,
+      );
+
+    // -------------------------------------------------------------------------
+    // Timeout Controller
+    // -------------------------------------------------------------------------
+    //
+    // The timeout controller is always created.
+    //
+    // An external signal may additionally cancel the request. The two signals
+    // are combined below so that:
+    //
+    // - caller cancellation still works;
+    // - API timeout still works;
+    // - either one can terminate the request.
+    //
+    // -------------------------------------------------------------------------
+
+    const timeoutController =
+      new AbortController();
 
     const timeout = setTimeout(() => {
-      controller.abort();
+      timeoutController.abort();
     }, apiConfig.timeoutMs);
 
-    try {
-      const response = await fetch(url, {
-        method,
-        headers,
-        signal:
-          options.context?.signal ?? controller.signal,
-        credentials: 'include',
-        body: requestBody,
-      });
+    const signal =
+      this.combineAbortSignals(
+        timeoutController.signal,
+        options.context?.signal,
+      );
 
-      const payload = await this.parseResponse(response);
+    // =========================================================================
+    // Fetch
+    // =========================================================================
+
+    try {
+      const response = await fetch(
+        url,
+        {
+          method,
+          headers,
+          signal,
+          credentials: 'include',
+          body: requestBody,
+        },
+      );
+
+      const payload =
+        await this.parseResponse(response);
 
       if (!response.ok) {
         throw new ApiError(
@@ -148,11 +181,21 @@ export class ApiClient {
         );
       }
 
-      return this.unwrapResponse<T>(payload);
+      return this.unwrapResponse<T>(
+        payload,
+      );
     } catch (error) {
+      // -----------------------------------------------------------------------
+      // Preserve standardized API errors.
+      // -----------------------------------------------------------------------
+
       if (error instanceof ApiError) {
         throw error;
       }
+
+      // -----------------------------------------------------------------------
+      // Abort / timeout / cancellation.
+      // -----------------------------------------------------------------------
 
       if (
         error instanceof DOMException &&
@@ -165,6 +208,10 @@ export class ApiClient {
         );
       }
 
+      // -----------------------------------------------------------------------
+      // Network failure.
+      // -----------------------------------------------------------------------
+
       throw new ApiError(
         'Unable to connect to the SisiMove service.',
         0,
@@ -175,6 +222,85 @@ export class ApiClient {
       clearTimeout(timeout);
     }
   }
+
+  // ===========================================================================
+  // Abort Signals
+  // ===========================================================================
+
+  private combineAbortSignals(
+    timeoutSignal: AbortSignal,
+    externalSignal?: AbortSignal,
+  ): AbortSignal {
+    // -------------------------------------------------------------------------
+    // No external signal.
+    // -------------------------------------------------------------------------
+
+    if (!externalSignal) {
+      return timeoutSignal;
+    }
+
+    // -------------------------------------------------------------------------
+    // AbortSignal.any()
+    // -------------------------------------------------------------------------
+    //
+    // Modern browsers support AbortSignal.any(), allowing the request to abort
+    // when either the timeout or external signal aborts.
+    //
+    // -------------------------------------------------------------------------
+
+    if (
+      typeof AbortSignal.any === 'function'
+    ) {
+      return AbortSignal.any([
+        timeoutSignal,
+        externalSignal,
+      ]);
+    }
+
+    // -------------------------------------------------------------------------
+    // Compatibility fallback.
+    // -------------------------------------------------------------------------
+    //
+    // This fallback creates a combined signal without mutating either source
+    // signal.
+    //
+    // -------------------------------------------------------------------------
+
+    const controller =
+      new AbortController();
+
+    const abort = (): void => {
+      if (!controller.signal.aborted) {
+        controller.abort();
+      }
+    };
+
+    if (timeoutSignal.aborted) {
+      abort();
+    } else {
+      timeoutSignal.addEventListener(
+        'abort',
+        abort,
+        { once: true },
+      );
+    }
+
+    if (externalSignal.aborted) {
+      abort();
+    } else {
+      externalSignal.addEventListener(
+        'abort',
+        abort,
+        { once: true },
+      );
+    }
+
+    return controller.signal;
+  }
+
+  // ===========================================================================
+  // Request Body
+  // ===========================================================================
 
   private prepareRequestBody(
     body: unknown,
@@ -203,9 +329,7 @@ export class ApiClient {
       return body;
     }
 
-    if (
-      typeof body === 'string'
-    ) {
+    if (typeof body === 'string') {
       return body;
     }
 
@@ -217,16 +341,24 @@ export class ApiClient {
     return JSON.stringify(body);
   }
 
+  // ===========================================================================
+  // URL
+  // ===========================================================================
+
   private buildUrl(
     path: string,
     query?: RequestOptions['query'],
   ): string {
     const normalizedBase =
-      this.baseUrl.replace(/\/+$/, '');
+      this.baseUrl.replace(
+        /\/+$/,
+        '',
+      );
 
-    const normalizedPath = path.startsWith('/')
-      ? path
-      : `/${path}`;
+    const normalizedPath =
+      path.startsWith('/')
+        ? path
+        : `/${path}`;
 
     const url = new URL(
       `${normalizedBase}${normalizedPath}`,
@@ -234,7 +366,10 @@ export class ApiClient {
     );
 
     if (query) {
-      for (const [key, value] of Object.entries(query)) {
+      for (
+        const [key, value]
+        of Object.entries(query)
+      ) {
         if (
           value !== undefined &&
           value !== null &&
@@ -251,19 +386,28 @@ export class ApiClient {
     return url.toString();
   }
 
+  // ===========================================================================
+  // Response Parsing
+  // ===========================================================================
+
   private async parseResponse(
     response: Response,
   ): Promise<unknown> {
     const contentType =
-      response.headers.get('content-type') ?? '';
+      response.headers.get(
+        'content-type',
+      ) ?? '';
 
     if (
-      contentType.includes('application/json')
+      contentType.includes(
+        'application/json',
+      )
     ) {
       return response.json();
     }
 
-    const text = await response.text();
+    const text =
+      await response.text();
 
     if (!text) {
       return null;
@@ -271,6 +415,10 @@ export class ApiClient {
 
     return text;
   }
+
+  // ===========================================================================
+  // Response Unwrapping
+  // ===========================================================================
 
   private unwrapResponse<T>(
     payload: unknown,
@@ -281,12 +429,18 @@ export class ApiClient {
       'data' in payload
     ) {
       return (
-        payload as { data: T }
+        payload as {
+          data: T;
+        }
       ).data;
     }
 
     return payload as T;
   }
+
+  // ===========================================================================
+  // Error Message
+  // ===========================================================================
 
   private extractErrorMessage(
     payload: unknown,
@@ -315,4 +469,9 @@ export class ApiClient {
   }
 }
 
-export const apiClient = new ApiClient();
+// =============================================================================
+// Singleton
+// =============================================================================
+
+export const apiClient =
+  new ApiClient();

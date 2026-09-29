@@ -1,14 +1,23 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Public Journey List
+// Path: src/features/journey/components/journey-list.tsx
 // -----------------------------------------------------------------------------
 //
-// Presents a collection of public Journey marketplace projections.
+// sisiMove — Public Journey List
+//
+// Presents a dense collection of public Journey marketplace projections.
+//
+// Responsive philosophy:
+// - JourneyList remains a simple full-width collection.
+// - JourneyCard owns all internal responsive scaling.
+// - JourneyCards retain the same horizontal composition at every viewport.
+// - Cards contract proportionally rather than switching to stacked layouts.
+// - Vertical spacing remains stable and intentionally compact.
 //
 // Responsibilities:
 // - render a collection of PublicJourney projections;
 // - delegate individual Journey presentation to JourneyCard;
-// - expose parent-owned View Journey and Book Journey callbacks;
-// - provide responsive vertical marketplace spacing.
+// - expose parent-owned View, Share, and Book Journey callbacks;
+// - provide consistent marketplace collection spacing.
 //
 // Non-responsibilities:
 // - no data fetching;
@@ -20,7 +29,7 @@
 // - no route construction;
 // - no Journey state reconstruction;
 // - no marketplace ownership;
-// - no import of JourneyMarketplace.
+// - no responsive reconstruction of JourneyCard.
 //
 // Component hierarchy:
 //
@@ -60,6 +69,9 @@ export interface JourneyListProps {
 
   /**
    * Controls the information density of each JourneyCard.
+   *
+   * Compact is the default for the public marketplace so more Journeys
+   * remain visible on screen at once.
    */
   readonly emphasis?: "compact" | "default";
 
@@ -75,6 +87,14 @@ export interface JourneyListProps {
    * not decide how navigation is performed.
    */
   readonly onView?: (journey: PublicJourney) => void;
+
+  /**
+   * Parent-owned Share Journey action.
+   *
+   * The JourneyList supplies the selected Journey to the callback but does
+   * not perform the sharing itself.
+   */
+  readonly onShare?: (journey: PublicJourney) => void;
 
   /**
    * Parent-owned Book Journey action.
@@ -98,6 +118,11 @@ export interface JourneyListProps {
   readonly viewDisabled?: boolean;
 
   /**
+   * Allows the parent to disable Share actions.
+   */
+  readonly shareDisabled?: boolean;
+
+  /**
    * Allows the parent to disable Book actions.
    */
   readonly bookDisabled?: boolean;
@@ -106,6 +131,7 @@ export interface JourneyListProps {
    * Optional action labels passed consistently to every JourneyCard.
    */
   readonly viewLabel?: string;
+  readonly shareLabel?: string;
   readonly bookLabel?: string;
   readonly bookingLabel?: string;
 }
@@ -116,24 +142,25 @@ export interface JourneyListProps {
 
 export function JourneyList({
   journeys,
-  emphasis = "default",
+  emphasis = "compact",
   className,
   onView,
+  onShare,
   onBook,
   bookingJourneyPublicId = null,
   viewDisabled = false,
+  shareDisabled = false,
   bookDisabled = false,
-  viewLabel = "View Journey",
-  bookLabel = "Book Journey",
+  viewLabel = "View",
+  shareLabel = "Share",
+  bookLabel = "Book",
   bookingLabel = "Booking…",
 }: JourneyListProps) {
   return (
     <div
       className={cn(
-        "grid",
-        "grid-cols-1",
-        "gap-3",
-        "sm:gap-4",
+        "w-full",
+        "space-y-2",
         className,
       )}
       aria-label="Available Journeys"
@@ -161,6 +188,13 @@ export function JourneyList({
                   }
                 : undefined
             }
+            onShare={
+              onShare
+                ? () => {
+                    onShare(journey);
+                  }
+                : undefined
+            }
             onBook={
               onBook
                 ? () => {
@@ -170,8 +204,10 @@ export function JourneyList({
             }
             isBooking={isBooking}
             viewDisabled={viewDisabled}
+            shareDisabled={shareDisabled}
             bookDisabled={bookDisabled}
             viewLabel={viewLabel}
+            shareLabel={shareLabel}
             bookLabel={bookLabel}
             bookingLabel={bookingLabel}
           />

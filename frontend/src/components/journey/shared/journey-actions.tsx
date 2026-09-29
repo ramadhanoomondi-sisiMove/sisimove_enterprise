@@ -1,30 +1,25 @@
-//src/components/journey/shared/journey-actions.tsx
 // -----------------------------------------------------------------------------
+// Path: src/features/journey/components/shared/JourneyActions.tsx
+// -----------------------------------------------------------------------------
+//
 // sisiMove — Journey Actions
-// -----------------------------------------------------------------------------
 //
-// Shared action row for Journey presentation surfaces.
+// Fluid horizontal action group for Journey marketplace surfaces.
 //
-// Responsibilities:
-// - present optional View Journey and Book Journey actions;
-// - provide consistent Journey action styling;
-// - expose loading/disabled state supplied by the parent;
-// - remain reusable by marketplace and detail presentation components.
-//
-// Non-responsibilities:
-// - no navigation;
-// - no authorization decisions;
-// - no verification checks;
-// - no booking eligibility calculation;
-// - no mutation handling;
-// - no route construction;
-// - no Journey lifecycle interpretation.
-//
-// The consuming component owns the callbacks and all business behavior.
-//
+// Design:
+// - Actions remain horizontal at every viewport size.
+// - Button width, height, padding, typography and icons scale together.
+// - No mobile-only stacking.
+// - Designed for the dedicated JourneyCard footer.
 // -----------------------------------------------------------------------------
 
 "use client";
+
+import {
+  ArrowRight,
+  BookOpen,
+  Share2,
+} from "lucide-react";
 
 import { Button } from "@/components/ui";
 import { cn } from "@/foundation/utils/cn";
@@ -34,102 +29,24 @@ import { cn } from "@/foundation/utils/cn";
 // -----------------------------------------------------------------------------
 
 export interface JourneyActionsProps {
-  /**
-   * Opens the public Journey detail surface.
-   *
-   * Navigation remains owned by the parent.
-   */
   readonly onView?: () => void;
-
-  /**
-   * Starts the Journey booking action.
-   *
-   * Authorization, verification, capability checks, and mutation handling
-   * remain owned by the parent.
-   */
+  readonly onShare?: () => void;
   readonly onBook?: () => void;
 
-  /**
-   * Whether the booking operation is currently processing.
-   */
   readonly isBooking?: boolean;
 
-  /**
-   * Allows the parent to disable the View action.
-   */
   readonly viewDisabled?: boolean;
-
-  /**
-   * Allows the parent to disable the Book action.
-   */
+  readonly shareDisabled?: boolean;
   readonly bookDisabled?: boolean;
 
-  /**
-   * Controls information density.
-   *
-   * Compact is appropriate for marketplace cards.
-   * Default provides the normal Journey action treatment.
-   */
   readonly emphasis?: "compact" | "default";
 
-  /**
-   * Optional action labels.
-   */
   readonly viewLabel?: string;
+  readonly shareLabel?: string;
   readonly bookLabel?: string;
   readonly bookingLabel?: string;
 
-  /**
-   * Optional additional classes for the action row.
-   */
   readonly className?: string;
-}
-
-// -----------------------------------------------------------------------------
-// Icons
-// -----------------------------------------------------------------------------
-
-function ArrowRightIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      className="size-4"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M5 12h14M13 6l6 6-6 6"
-      />
-    </svg>
-  );
-}
-
-function BookIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      className="size-4"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M5 4.5h10.5A3.5 3.5 0 0 1 19 8v11.5H8.5A3.5 3.5 0 0 1 5 16V4.5Z"
-      />
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M5 16a3.5 3.5 0 0 1 3.5-3.5H19"
-      />
-    </svg>
-  );
 }
 
 // -----------------------------------------------------------------------------
@@ -138,61 +55,148 @@ function BookIcon() {
 
 export function JourneyActions({
   onView,
+  onShare,
   onBook,
   isBooking = false,
   viewDisabled = false,
+  shareDisabled = false,
   bookDisabled = false,
   emphasis = "default",
   viewLabel = "View Journey",
+  shareLabel = "Share",
   bookLabel = "Book Journey",
   bookingLabel = "Booking…",
   className,
 }: JourneyActionsProps) {
-  if (!onView && !onBook) {
+  if (!onView && !onShare && !onBook) {
     return null;
   }
 
   const isCompact = emphasis === "compact";
 
+  const actionHeight = isCompact
+    ? "h-[clamp(1.65rem,3vw,2.25rem)]"
+    : "h-[clamp(1.9rem,3.4vw,2.5rem)]";
+
+  const actionPadding = isCompact
+    ? "px-[clamp(0.45rem,1vw,0.75rem)]"
+    : "px-[clamp(0.55rem,1.15vw,0.9rem)]";
+
+  const actionGap =
+    "gap-[clamp(0.25rem,0.55vw,0.45rem)]";
+
+  const actionText = isCompact
+    ? "text-[clamp(0.48rem,0.75vw,0.66rem)]"
+    : "text-[clamp(0.52rem,0.82vw,0.72rem)]";
+
+  const actionIcon =
+    "size-[clamp(0.58rem,0.95vw,0.76rem)]";
+
   return (
     <div
       className={cn(
         "flex",
-        "flex-col-reverse",
-        "gap-2",
-        "border-t",
-        "border-[var(--border-subtle)]",
-        "pt-3",
-        "sm:flex-row",
-        "sm:items-center",
-        "sm:justify-end",
+        "min-w-0",
+        "shrink-0",
+        "items-center",
+        "justify-end",
+        actionGap,
         className,
       )}
     >
+      {/* ------------------------------------------------------------------- */}
+      {/* View                                                                */}
+      {/* ------------------------------------------------------------------- */}
+
       {onView && (
         <Button
           type="button"
           variant="outline"
-          size={isCompact ? "sm" : "md"}
-          leadingIcon={<ArrowRightIcon />}
+          size="sm"
+          leadingIcon={
+            <ArrowRight
+              aria-hidden="true"
+              className={actionIcon}
+            />
+          }
           onClick={onView}
           disabled={viewDisabled}
-          className="w-full sm:w-auto"
+          className={cn(
+            "w-auto",
+            "min-w-0",
+            "shrink-0",
+            actionHeight,
+            actionPadding,
+            actionText,
+            "leading-none",
+            "whitespace-nowrap",
+          )}
         >
           {viewLabel}
         </Button>
       )}
 
+      {/* ------------------------------------------------------------------- */}
+      {/* Share                                                               */}
+      {/* ------------------------------------------------------------------- */}
+
+      {onShare && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          leadingIcon={
+            <Share2
+              aria-hidden="true"
+              className={actionIcon}
+            />
+          }
+          onClick={onShare}
+          disabled={shareDisabled}
+          className={cn(
+            "w-auto",
+            "min-w-0",
+            "shrink-0",
+            actionHeight,
+            actionPadding,
+            actionText,
+            "leading-none",
+            "whitespace-nowrap",
+          )}
+        >
+          {shareLabel}
+        </Button>
+      )}
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Book                                                                */}
+      {/* ------------------------------------------------------------------- */}
+
       {onBook && (
         <Button
           type="button"
           variant="primary"
-          size={isCompact ? "sm" : "md"}
-          leadingIcon={<BookIcon />}
+          size="sm"
+          leadingIcon={
+            <BookOpen
+              aria-hidden="true"
+              className={actionIcon}
+            />
+          }
           onClick={onBook}
           loading={isBooking}
-          disabled={bookDisabled}
-          className="w-full sm:w-auto"
+          disabled={bookDisabled || isBooking}
+          className={cn(
+            "w-auto",
+            "min-w-0",
+            "shrink-0",
+            actionHeight,
+            actionPadding,
+            actionText,
+            "font-semibold",
+            "leading-none",
+            "whitespace-nowrap",
+          )}
         >
           {isBooking ? bookingLabel : bookLabel}
         </Button>

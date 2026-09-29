@@ -1,4 +1,3 @@
-
 // src/features/journey-demands/components/shared/journey-demand-date.tsx
 
 // -----------------------------------------------------------------------------
@@ -25,12 +24,16 @@
 // The departure-time window is presented separately by
 // JourneyDemandScheduleSummary.
 //
+// Marketplace presentation:
+// - Dense and visually lightweight.
+// - Optimized for the compact Journey Demand card.
+// - Avoids nested surfaces and unnecessary padding.
+// - Uses the frozen design-token variables.
 // -----------------------------------------------------------------------------
 
 import type { PublicJourneyDemandSchedule } from '@/features/journey-demand/models';
 
-import { formatDate } from '@/foundation';
-import { cn } from '@/foundation';
+import { cn, formatDate } from '@/foundation';
 
 // -----------------------------------------------------------------------------
 // Types
@@ -65,19 +68,25 @@ export function JourneyDemandDate({
   className,
   emphasis = 'default',
 }: JourneyDemandDateProps) {
+  const isCompact = emphasis === 'compact';
+
   return (
-    <div className={cn('min-w-0', className)}>
-      <div
+    <div
+      className={cn(
+        'min-w-0',
+        className,
+      )}
+    >
+      <time
+        dateTime={schedule.earliestDeparture}
         className={cn(
-          'truncate text-foreground',
-          emphasis === 'compact'
-            ? 'text-sm font-medium'
-            : 'text-base font-semibold',
+          'block truncate font-semibold leading-tight',
+          'text-[var(--foreground)]',
+          isCompact ? 'text-sm' : 'text-base',
         )}
       >
         {formatDate(schedule.earliestDeparture)}
-      </div>
+      </time>
     </div>
   );
 }
-

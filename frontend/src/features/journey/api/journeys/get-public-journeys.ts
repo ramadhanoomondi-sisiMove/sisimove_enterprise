@@ -53,7 +53,7 @@
 // - enforce Journey lifecycle rules.
 //
 // The backend public query is the source of truth for the public Journey
-// projection.
+// projection and marketplace filtering.
 // -----------------------------------------------------------------------------
 
 import {
@@ -71,23 +71,61 @@ export interface GetPublicJourneysQuery {
   /**
    * Optional origin search/filter value.
    *
-   * Passed directly to the backend `from` query parameter.
+   * Passed to the backend `from` query parameter.
+   *
+   * The backend performs case-insensitive partial matching.
+   *
+   * Examples:
+   *
+   *   "N"   → Nairobi
+   *   "Na"  → Nairobi
+   *   "Nai" → Nairobi
    */
   readonly from?: string;
 
   /**
    * Optional destination search/filter value.
    *
-   * Passed directly to the backend `to` query parameter.
+   * Passed to the backend `to` query parameter.
+   *
+   * The backend performs case-insensitive partial matching.
+   *
+   * Examples:
+   *
+   *   "M"    → Mombasa
+   *   "Mom"  → Mombasa
+   *   "Momb" → Mombasa
    */
   readonly to?: string;
 
   /**
    * Optional journey date filter.
    *
-   * Passed directly to the backend `date` query parameter.
+   * Passed to the backend `date` query parameter.
    */
   readonly date?: string;
+}
+
+// -----------------------------------------------------------------------------
+// Query Parameters
+// -----------------------------------------------------------------------------
+
+function buildQuery(
+  query: GetPublicJourneysQuery,
+): {
+  readonly from?: string;
+  readonly to?: string;
+  readonly date?: string;
+} {
+  const from = query.from?.trim();
+  const to = query.to?.trim();
+  const date = query.date?.trim();
+
+  return {
+    ...(from ? { from } : {}),
+    ...(to ? { to } : {}),
+    ...(date ? { date } : {}),
+  };
 }
 
 // -----------------------------------------------------------------------------
@@ -99,9 +137,17 @@ export interface GetPublicJourneysQuery {
  *
  * Backend:
  *
- *   GET /journeys/public?from=&to=&date=
+ *   GET /journeys/public
  *
  * No authentication is required.
+ *
+ * Search behavior is owned by the backend repository:
+ *
+ *   from → corridor.originName contains, case-insensitive
+ *   to   → corridor.destinationName contains, case-insensitive
+ *   date → departure calendar date
+ *
+ * The adapter only transports the committed marketplace filters.
  */
 export async function getPublicJourneys(
   query: GetPublicJourneysQuery = {},
@@ -111,11 +157,7 @@ export async function getPublicJourneys(
     "/journeys/public",
     {
       ...options,
-      query: {
-        from: query.from,
-        to: query.to,
-        date: query.date,
-      },
+      query: buildQuery(query),
     },
   );
 }

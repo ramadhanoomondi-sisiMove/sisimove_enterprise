@@ -1,15 +1,18 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Demand Marketplace
+// Path: src/features/journey-demand/components/journey-demand-marketplace.tsx
 // -----------------------------------------------------------------------------
+//
+// sisiMove — Journey Demand Marketplace
 //
 // Journey Demand marketplace composition component.
 //
 // Responsibilities:
-// - own marketplace filter state;
+// - own committed marketplace filter state;
 // - execute the Journey Demand collection query;
 // - connect filters to the query boundary;
 // - render loading, error, empty, and populated states;
-// - compose the marketplace filters, list, and state components.
+// - compose the marketplace filters, list, and state components;
+// - expose public presentation actions to the Journey Demand list.
 //
 // Non-responsibilities:
 // - no API calls directly;
@@ -20,44 +23,106 @@
 // - no route construction;
 // - no Journey Demand mutation handling.
 //
-// The Journey Demand query hook remains the server-state boundary.
-// The backend remains authoritative for the returned public Journey Demand
-// projections.
+// Presentation flow:
+//
+//     LandingPage
+//         ↓
+//     JourneyDemandMarketplace
+//         ↓
+//     JourneyDemandList
+//         ↓
+//     JourneyDemandCard
+//         ↓
+//     JourneyDemandActions
+//
+// The marketplace does not know how navigation, sharing, or authentication
+// is implemented. It only forwards the supplied public Journey Demand ID.
+//
+// -----------------------------------------------------------------------------
+//
+// FILTER LIFECYCLE
+// ----------------
+//
+// JourneyDemandMarketplace owns the committed query state.
+//
+// JourneyDemandMarketplaceFilters owns the temporary typing state.
+//
+//     User types
+//          │
+//          ▼
+//     Filter local draft
+//          │
+//          ▼
+//     300ms debounce
+//          │
+//          ▼
+//     handleFiltersChange()
+//          │
+//          ▼
+//     committed `filters`
+//          │
+//          ▼
+//     useJourneyDemands()
+//          │
+//          ▼
+//     backend query
+//
+// IMPORTANT
+// ---------
+//
+// The marketplace MUST NOT disable or unmount JourneyDemandMarketplaceFilters
+// while the query is loading.
+//
+// The user must be able to continue typing while results are loading.
+//
+// Loading belongs to the result area, not the input controls.
 //
 // -----------------------------------------------------------------------------
 
-'use client';
+"use client";
 
-import { useCallback, useState } from 'react';
-
-import { Button } from '@/components/ui';
-import { cn } from '@/foundation';
-
-import { useJourneyDemands } from '@/features/journey-demand/hooks';
+// -----------------------------------------------------------------------------
+// React
+// -----------------------------------------------------------------------------
 
 import {
-  JourneyDemandEmptyState,
-} from './journey-demand-empty-state';
+  useCallback,
+  useState,
+} from "react";
 
-import {
-  JourneyDemandErrorState,
-} from './journey-demand-error-state';
+// -----------------------------------------------------------------------------
+// UI
+// -----------------------------------------------------------------------------
 
-import {
-  JourneyDemandList,
-} from './journey-demand-list';
+import { Button } from "@/components/ui";
 
+// -----------------------------------------------------------------------------
+// Foundation
+// -----------------------------------------------------------------------------
+
+import { cn } from "@/foundation";
+
+// -----------------------------------------------------------------------------
+// Journey Demand Query
+// -----------------------------------------------------------------------------
+
+import { useJourneyDemands } from "@/features/journey-demand/hooks";
+
+// -----------------------------------------------------------------------------
+// Components
+// -----------------------------------------------------------------------------
+
+import { JourneyDemandEmptyState } from "./journey-demand-empty-state";
+import { JourneyDemandErrorState } from "./journey-demand-error-state";
+import { JourneyDemandList } from "./journey-demand-list";
 import {
   JourneyDemandMarketplaceFilters,
-} from './journey-demand-marketplace-filters';
+  type JourneyDemandMarketplaceFiltersValue,
+} from "./journey-demand-marketplace-filters";
 
-import type {
-  JourneyDemandMarketplaceFiltersValue,
-} from './journey-demand-marketplace-filters';
-
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export interface JourneyDemandMarketplaceProps {
   /**
@@ -82,58 +147,149 @@ export interface JourneyDemandMarketplaceProps {
 
   /**
    * Controls the density of Journey Demand cards.
+   *
+   * Compact is the default public marketplace presentation so multiple
+   * cards remain visible while browsing and filtering.
    */
-  readonly emphasis?: 'compact' | 'default';
+  readonly emphasis?: "compact" | "default";
 
   /**
    * Optional action supplied by the parent for creating a Journey Demand.
    */
   readonly onCreateDemand?: () => void;
+
+  /**
+   * Optional public Journey Demand presentation action.
+   */
+  readonly onView?: (
+    demandPublicId: string,
+  ) => void;
+
+  /**
+   * Optional public Journey Demand sharing action.
+   */
+  readonly onShare?: (
+    demandPublicId: string,
+  ) => void;
+
+  /**
+   * Optional authenticated Journey Demand participation action.
+   */
+  readonly onJoin?: (
+    demandPublicId: string,
+  ) => void;
+
+  /**
+   * Optional disabled state for View actions.
+   */
+  readonly viewDisabled?: boolean;
+
+  /**
+   * Optional disabled state for Share actions.
+   */
+  readonly shareDisabled?: boolean;
+
+  /**
+   * Optional disabled state for Join actions.
+   */
+  readonly joinDisabled?: boolean;
+
+  /**
+   * Optional View action label.
+   */
+  readonly viewLabel?: string;
+
+  /**
+   * Optional Share action label.
+   */
+  readonly shareLabel?: string;
+
+  /**
+   * Optional Join action label.
+   */
+  readonly joinLabel?: string;
+
+  /**
+   * Optional Join loading label.
+   */
+  readonly joiningLabel?: string;
+
+  /**
+   * Public ID of the Journey Demand currently being joined.
+   *
+   * Only the matching card receives its joining state.
+   */
+  readonly joiningDemandPublicId?: string | null;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
+// Constants
+// =============================================================================
+
+const EMPTY_FILTER_VALUES: JourneyDemandMarketplaceFiltersValue = {
+  from: "",
+  to: "",
+  date: "",
+};
+
+// =============================================================================
 // Component
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function JourneyDemandMarketplace({
-  initialFrom = '',
-  initialTo = '',
-  initialDate = '',
+  initialFrom = "",
+  initialTo = "",
+  initialDate = "",
   className,
-  emphasis = 'default',
+  emphasis = "compact",
   onCreateDemand,
+  onView,
+  onShare,
+  onJoin,
+  viewDisabled = false,
+  shareDisabled = false,
+  joinDisabled = false,
+  viewLabel = "View",
+  shareLabel = "Share",
+  joinLabel = "Join Demand",
+  joiningLabel = "Joining…",
+  joiningDemandPublicId = null,
 }: JourneyDemandMarketplaceProps) {
-  // ---------------------------------------------------------------------------
-  // Marketplace filter state
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Marketplace Filter State
+  // ===========================================================================
   //
-  // Initial values establish the marketplace's initial UI state.
+  // IMPORTANT:
   //
-  // The marketplace owns subsequent user interaction with these filters.
-  // We intentionally do not synchronize them back from props with useEffect.
-  // ---------------------------------------------------------------------------
+  // This is the committed marketplace query state.
+  //
+  // JourneyDemandMarketplaceFilters maintains its own temporary draft state
+  // while the user types and calls this handler only after its debounce period.
+  //
+  // Do NOT synchronize this state back into the filter inputs.
+  //
 
   const [filters, setFilters] =
-    useState<JourneyDemandMarketplaceFiltersValue>(() => ({
-      from: initialFrom,
-      to: initialTo,
-      date: initialDate,
-    }));
+    useState<JourneyDemandMarketplaceFiltersValue>(
+      () => ({
+        from: initialFrom,
+        to: initialTo,
+        date: initialDate,
+      }),
+    );
 
-  // ---------------------------------------------------------------------------
-  // Journey Demand query
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Journey Demand Query
+  // ===========================================================================
   //
-  // The hook owns:
-  // - HTTP execution;
-  // - request lifecycle;
-  // - cancellation/stale-request protection;
-  // - error state;
-  // - explicit refetch capability.
+  // The backend remains authoritative for:
   //
-  // The marketplace supplies only the current query values and decides when
-  // the hook's refetch capability should be invoked.
-  // ---------------------------------------------------------------------------
+  // - matching;
+  // - filtering;
+  // - returned Journey Demand projections.
+  //
+  // No client-side filtering is performed here.
+  //
 
   const {
     data: demands,
@@ -141,14 +297,26 @@ export function JourneyDemandMarketplace({
     error,
     refetch,
   } = useJourneyDemands({
-    from: filters.from.trim() || undefined,
-    to: filters.to.trim() || undefined,
-    date: filters.date || undefined,
+    from:
+      filters.from.trim() || undefined,
+
+    to:
+      filters.to.trim() || undefined,
+
+    date:
+      filters.date || undefined,
   });
 
-  // ---------------------------------------------------------------------------
-  // Filter changes
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Filter Changes
+  // ===========================================================================
+  //
+  // Stable callback is important because JourneyDemandMarketplaceFilters uses
+  // this callback as the dependency of its debounce effect.
+  //
+  // Keeping this callback stable prevents the debounce timer from restarting
+  // because the parent recreated the callback during every render.
+  //
 
   const handleFiltersChange = useCallback(
     (
@@ -159,23 +327,50 @@ export function JourneyDemandMarketplace({
     [],
   );
 
-  // ---------------------------------------------------------------------------
-  // Clear filters
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Clear Filters
+  // ===========================================================================
 
-  const handleClearFilters = useCallback((): void => {
-    setFilters({
-      from: '',
-      to: '',
-      date: '',
-    });
-  }, []);
+  const handleClearFilters = useCallback(
+    (): void => {
+      setFilters(
+        EMPTY_FILTER_VALUES,
+      );
+    },
+    [],
+  );
 
-  // ---------------------------------------------------------------------------
-  // Result state
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Public Journey Demand Actions
+  // ===========================================================================
 
-  const hasError = error !== null;
+  const handleViewDemand = useCallback(
+    (demandPublicId: string): void => {
+      onView?.(demandPublicId);
+    },
+    [onView],
+  );
+
+  const handleShareDemand = useCallback(
+    (demandPublicId: string): void => {
+      onShare?.(demandPublicId);
+    },
+    [onShare],
+  );
+
+  const handleJoinDemand = useCallback(
+    (demandPublicId: string): void => {
+      onJoin?.(demandPublicId);
+    },
+    [onJoin],
+  );
+
+  // ===========================================================================
+  // Result State
+  // ===========================================================================
+
+  const hasError =
+    error !== null;
 
   const isEmpty =
     !isLoading &&
@@ -187,28 +382,78 @@ export function JourneyDemandMarketplace({
     !hasError &&
     demands.length > 0;
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Render
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   return (
     <section
-      className={cn('w-full', className)}
+      className={cn(
+        "w-full",
+        "min-w-0",
+        className,
+      )}
       aria-label="Journey Demand marketplace"
     >
-      <div className="space-y-4">
+      <div
+        className={cn(
+          "w-full",
+          "min-w-0",
+          "space-y-[clamp(0.625rem,1.4vw,0.875rem)]",
+        )}
+      >
         {/* ----------------------------------------------------------------- */}
-        {/* Marketplace heading                                               */}
+        {/* Marketplace Heading                                               */}
         {/* ----------------------------------------------------------------- */}
 
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold text-[var(--foreground)]">
+        <div
+          className={cn(
+            "flex",
+            "min-w-0",
+            "items-center",
+            "justify-between",
+            "gap-[clamp(0.5rem,1.5vw,1rem)]",
+          )}
+        >
+          <div className="min-w-0 flex-1">
+            <p
+              className={cn(
+                "truncate",
+                "text-[clamp(0.55rem,0.75vw,0.7rem)]",
+                "font-semibold",
+                "uppercase",
+                "tracking-[0.14em]",
+                "text-[var(--brand)]",
+              )}
+            >
+              The Travel Needs Market
+            </p>
+
+            <h2
+              className={cn(
+                "mt-0.5",
+                "truncate",
+                "text-[clamp(0.95rem,1.7vw,1.2rem)]",
+                "font-semibold",
+                "leading-tight",
+                "text-[var(--foreground)]",
+              )}
+            >
               Travel needs
             </h2>
 
-            <p className="mt-1 text-sm text-[var(--foreground-muted)]">
-              See where people are looking to travel.
+            <p
+              className={cn(
+                "mt-0.5",
+                "max-w-2xl",
+                "truncate",
+                "text-[clamp(0.65rem,0.9vw,0.8rem)]",
+                "leading-relaxed",
+                "text-[var(--foreground-muted)]",
+              )}
+            >
+              See where people are looking to travel and discover opportunities
+              to match their plans.
             </p>
           </div>
 
@@ -218,7 +463,11 @@ export function JourneyDemandMarketplace({
               variant="outline"
               size="sm"
               onClick={onCreateDemand}
-              className="shrink-0"
+              className={cn(
+                "shrink-0",
+                "whitespace-nowrap",
+                "text-[clamp(0.65rem,0.85vw,0.8rem)]",
+              )}
             >
               Create demand
             </Button>
@@ -226,29 +475,46 @@ export function JourneyDemandMarketplace({
         </div>
 
         {/* ----------------------------------------------------------------- */}
-        {/* Marketplace filters                                                */}
+        {/* Marketplace Filters                                               */}
         {/* ----------------------------------------------------------------- */}
+        {/*
+          IMPORTANT:
+          Do NOT pass `disabled={isLoading}` here.
 
-        <JourneyDemandMarketplaceFilters
-          value={filters}
-          onChange={handleFiltersChange}
-          onClear={handleClearFilters}
-          disabled={isLoading}
-        />
+          JourneyDemandMarketplaceFilters deliberately keeps its controls
+          editable while the query is running.
+
+          This prevents the first keystroke from disabling the input and
+          allows the user to continue typing naturally.
+        */}
+
+        <div className="min-w-0">
+          <JourneyDemandMarketplaceFilters
+            value={filters}
+            onChange={handleFiltersChange}
+            onClear={handleClearFilters}
+            disabled={false}
+          />
+        </div>
 
         {/* ----------------------------------------------------------------- */}
-        {/* Loading state                                                      */}
+        {/* Loading State                                                      */}
         {/* ----------------------------------------------------------------- */}
 
         {isLoading && (
           <div
             className={cn(
-              'rounded-[var(--radius-lg)]',
-              'border border-[var(--border)]',
-              'bg-[var(--surface)]',
-              'px-4 py-8',
-              'text-center text-sm',
-              'text-[var(--foreground-muted)]',
+              "w-full",
+              "min-w-0",
+              "rounded-[var(--radius-lg)]",
+              "border",
+              "border-[var(--border)]",
+              "bg-[var(--surface)]",
+              "px-[clamp(0.625rem,1.5vw,1rem)]",
+              "py-[clamp(0.875rem,2vw,1.5rem)]",
+              "text-center",
+              "text-[clamp(0.7rem,0.9vw,0.875rem)]",
+              "text-[var(--foreground-muted)]",
             )}
             role="status"
             aria-live="polite"
@@ -258,30 +524,36 @@ export function JourneyDemandMarketplace({
         )}
 
         {/* ----------------------------------------------------------------- */}
-        {/* Error state                                                        */}
+        {/* Error State                                                        */}
         {/* ----------------------------------------------------------------- */}
 
         {hasError && !isLoading && (
-          <JourneyDemandErrorState
-            onRetry={refetch}
-          />
+          <div className="min-w-0">
+            <JourneyDemandErrorState
+              onRetry={() => {
+                void refetch();
+              }}
+            />
+          </div>
         )}
 
         {/* ----------------------------------------------------------------- */}
-        {/* Empty state                                                        */}
+        {/* Empty State                                                        */}
         {/* ----------------------------------------------------------------- */}
 
         {isEmpty && (
-          <JourneyDemandEmptyState
-            primaryAction={
-              onCreateDemand
-                ? {
-                    label: 'Create a demand',
-                    onClick: onCreateDemand,
-                  }
-                : undefined
-            }
-          />
+          <div className="min-w-0">
+            <JourneyDemandEmptyState
+              primaryAction={
+                onCreateDemand
+                  ? {
+                      label: "Create a demand",
+                      onClick: onCreateDemand,
+                    }
+                  : undefined
+              }
+            />
+          </div>
         )}
 
         {/* ----------------------------------------------------------------- */}
@@ -289,13 +561,36 @@ export function JourneyDemandMarketplace({
         {/* ----------------------------------------------------------------- */}
 
         {hasResults && (
-          <JourneyDemandList
-            demands={demands}
-            emphasis={emphasis}
-          />
+          <div className="min-w-0">
+            <JourneyDemandList
+              demands={demands}
+              emphasis={emphasis}
+              onView={handleViewDemand}
+              onShare={handleShareDemand}
+              onJoin={handleJoinDemand}
+              viewDisabled={
+                viewDisabled ||
+                onView === undefined
+              }
+              shareDisabled={
+                shareDisabled ||
+                onShare === undefined
+              }
+              joinDisabled={
+                joinDisabled ||
+                onJoin === undefined
+              }
+              joiningDemandPublicId={
+                joiningDemandPublicId
+              }
+              viewLabel={viewLabel}
+              shareLabel={shareLabel}
+              joinLabel={joinLabel}
+              joiningLabel={joiningLabel}
+            />
+          </div>
         )}
       </div>
     </section>
   );
 }
-

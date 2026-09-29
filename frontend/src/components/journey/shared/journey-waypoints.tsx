@@ -1,16 +1,23 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Waypoints
+// Path: src/features/journey/components/shared/JourneyWaypoints.tsx
 // -----------------------------------------------------------------------------
 //
-// Read-only presentation of Journey corridor waypoints.
+// sisiMove — Journey Waypoints
+//
+// Compact read-only presentation of Journey corridor waypoints.
+//
+// Marketplace treatment:
+// - Supporting information only.
+// - Dense and visually subordinate to the primary Journey information.
+// - Preserve backend ordering and permissions.
+// - Avoid competing with route, vehicle, price, and capacity.
 //
 // Responsibilities:
 // - Render the backend-provided waypoint collection.
 // - Preserve backend sequence ordering.
 // - Present waypoint type as human-readable text.
 // - Present pickup/dropoff permissions independently from waypoint type.
-// - Provide a compact presentation suitable for Journey cards and detail
-//   sections.
+// - Provide a dense presentation suitable for detail and secondary surfaces.
 //
 // This component does NOT:
 // - infer pickupAllowed from waypoint type;
@@ -23,28 +30,20 @@
 //
 // The backend Journey aggregate remains authoritative for waypoint identity,
 // ordering, type, coordinates, and permissions.
-//
 // -----------------------------------------------------------------------------
-//
-// JourneyRoute
-//      │
-//      └── waypoints[]
-//              │
-//              ▼
-//      JourneyWaypoints
-//              │
-//              ├── sequence
-//              ├── type
-//              ├── name
-//              ├── pickupAllowed
-//              └── dropoffAllowed
-//
-// -----------------------------------------------------------------------------
+
+import {
+  CircleDot,
+  MapPin,
+  MapPinCheck,
+  PackageCheck,
+} from "lucide-react";
 
 import type {
   JourneyWaypoint,
   JourneyWaypointType,
 } from "@/features/journey/models";
+
 import { cn } from "@/foundation/utils/cn";
 
 // -----------------------------------------------------------------------------
@@ -63,8 +62,7 @@ export interface JourneyWaypointsProps {
   /**
    * Whether to display pickup/dropoff permissions for each waypoint.
    *
-   * This defaults to true because those permissions are meaningful Journey
-   * data and must not be inferred from the waypoint type.
+   * Defaults to true.
    */
   readonly showPermissions?: boolean;
 
@@ -78,22 +76,44 @@ export interface JourneyWaypointsProps {
 // Presentation
 // -----------------------------------------------------------------------------
 
-function getWaypointTypeLabel(type: JourneyWaypointType): string {
+interface WaypointTypePresentation {
+  readonly label: string;
+  readonly icon: typeof CircleDot;
+}
+
+function getWaypointTypePresentation(
+  type: JourneyWaypointType,
+): WaypointTypePresentation {
   switch (type) {
     case "ORIGIN":
-      return "Origin";
+      return {
+        label: "Origin",
+        icon: MapPin,
+      };
 
     case "DESTINATION":
-      return "Destination";
+      return {
+        label: "Destination",
+        icon: MapPinCheck,
+      };
 
     case "PICKUP":
-      return "Pickup";
+      return {
+        label: "Pickup",
+        icon: MapPin,
+      };
 
     case "DROPOFF":
-      return "Drop-off";
+      return {
+        label: "Drop-off",
+        icon: PackageCheck,
+      };
 
     case "WAYPOINT":
-      return "Waypoint";
+      return {
+        label: "Waypoint",
+        icon: CircleDot,
+      };
   }
 }
 
@@ -111,7 +131,6 @@ function getPermissionLabel(
 
   if (pickupAllowed) {
     return "Pickup";
-
   }
 
   if (dropoffAllowed) {
@@ -138,99 +157,133 @@ export function JourneyWaypoints({
     <div
       className={cn(
         "min-w-0",
-        "space-y-2",
+        "space-y-[clamp(0.25rem,0.5vw,0.4rem)]",
         className,
       )}
     >
-      {waypoints.map((waypoint) => (
-        <div
-          key={waypoint.publicId}
-          className={cn(
-            "flex",
-            "min-w-0",
-            "items-start",
-            "gap-3",
-          )}
-        >
-          {/* -----------------------------------------------------------------
-              Sequence indicator
-              -----------------------------------------------------------------
-              Sequence is backend-provided route ordering. We display it as
-              supplied rather than calculating it from the array index.
-          ------------------------------------------------------------------ */}
-          <span
-            aria-hidden="true"
+      {waypoints.map((waypoint) => {
+        const typePresentation =
+          getWaypointTypePresentation(waypoint.type);
+
+        const TypeIcon = typePresentation.icon;
+
+        return (
+          <div
+            key={waypoint.publicId}
             className={cn(
               "flex",
-              "size-7",
-              "shrink-0",
+              "min-w-0",
               "items-center",
-              "justify-center",
-              "rounded-full",
-              "border",
-              "border-[var(--border)]",
-              "bg-[var(--background)]",
-              "text-xs",
-              "font-semibold",
-              "text-[var(--foreground-secondary)]",
+              "gap-[clamp(0.3rem,0.6vw,0.5rem)]",
             )}
           >
-            {waypoint.sequence}
-          </span>
+            {/* -----------------------------------------------------------------
+             * Sequence
+             * ----------------------------------------------------------------- */}
 
-          {/* -----------------------------------------------------------------
-              Waypoint content
-              ------------------------------------------------------------------ */}
-          <div className="min-w-0 flex-1">
-            <div
+            <span
+              aria-hidden="true"
               className={cn(
                 "flex",
-                "min-w-0",
-                "flex-wrap",
-                "items-baseline",
-                "gap-x-2",
-                "gap-y-0.5",
+                "size-[clamp(0.85rem,1.4vw,1.05rem)]",
+                "shrink-0",
+                "items-center",
+                "justify-center",
+                "rounded-full",
+                "border",
+                "border-[var(--border-subtle)]",
+                "bg-[var(--background)]",
+                "text-[clamp(0.4rem,0.62vw,0.52rem)]",
+                "font-semibold",
+                "leading-none",
+                "text-[var(--foreground-muted)]",
               )}
             >
-              <p
-                className={cn(
-                  "truncate",
-                  "text-sm",
-                  "font-medium",
-                  "text-[var(--foreground)]",
-                )}
-              >
-                {waypoint.name}
-              </p>
+              {waypoint.sequence}
+            </span>
 
-              <span
+            {/* -----------------------------------------------------------------
+             * Waypoint content
+             * ----------------------------------------------------------------- */}
+
+            <div className="min-w-0 flex-1">
+              <div
                 className={cn(
-                  "shrink-0",
-                  "text-xs",
-                  "text-[var(--foreground-muted)]",
+                  "flex",
+                  "min-w-0",
+                  "items-center",
+                  "gap-[clamp(0.2rem,0.4vw,0.3rem)]",
                 )}
               >
-                {getWaypointTypeLabel(waypoint.type)}
-              </span>
+                <TypeIcon
+                  className={cn(
+                    "size-[clamp(0.5rem,0.8vw,0.65rem)]",
+                    "shrink-0",
+                    "text-[var(--foreground-muted)]",
+                  )}
+                  aria-hidden="true"
+                />
+
+                <p
+                  className={cn(
+                    "truncate",
+                    "text-[clamp(0.48rem,0.72vw,0.62rem)]",
+                    "font-medium",
+                    "leading-tight",
+                    "text-[var(--foreground-secondary)]",
+                  )}
+                >
+                  {waypoint.name}
+                </p>
+              </div>
+
+              {showPermissions ? (
+                <div
+                  className={cn(
+                    "mt-[clamp(0.1rem,0.2vw,0.15rem)]",
+                    "flex",
+                    "min-w-0",
+                    "items-center",
+                    "gap-[clamp(0.2rem,0.4vw,0.3rem)]",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "truncate",
+                      "text-[clamp(0.4rem,0.62vw,0.52rem)]",
+                      "leading-tight",
+                      "text-[var(--foreground-muted)]",
+                    )}
+                  >
+                    {typePresentation.label}
+                  </span>
+
+                  <span
+                    aria-hidden="true"
+                    className="shrink-0 text-[clamp(0.4rem,0.6vw,0.5rem)] text-[var(--foreground-subtle)]"
+                  >
+                    ·
+                  </span>
+
+                  <span
+                    className={cn(
+                      "truncate",
+                      "text-[clamp(0.4rem,0.62vw,0.52rem)]",
+                      "leading-tight",
+                      "text-[var(--foreground-muted)]",
+                    )}
+                  >
+                    {getPermissionLabel(
+                      waypoint.pickupAllowed,
+                      waypoint.dropoffAllowed,
+                    )}
+                  </span>
+                </div>
+              ) : null}
             </div>
-
-            {showPermissions && (
-              <p
-                className={cn(
-                  "mt-0.5",
-                  "text-xs",
-                  "text-[var(--foreground-muted)]",
-                )}
-              >
-                {getPermissionLabel(
-                  waypoint.pickupAllowed,
-                  waypoint.dropoffAllowed,
-                )}
-              </p>
-            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

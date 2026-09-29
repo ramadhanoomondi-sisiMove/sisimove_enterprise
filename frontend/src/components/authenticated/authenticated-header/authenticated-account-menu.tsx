@@ -43,6 +43,8 @@
 //
 // `avatarSrc` is already a resolved public Asset URL.
 //
+// This component does not resolve AssetPublicId or call the Asset API.
+//
 // Route ownership:
 //
 //     AUTHENTICATED_ROUTES
@@ -53,7 +55,25 @@
 // All authenticated navigation is resolved through the canonical route map.
 // This component does not construct authenticated route paths itself.
 //
+// Icon ownership:
+//
+// All account-menu interface icons are provided by Lucide React.
+// No handwritten SVG markup is used by this component.
+//
 // -----------------------------------------------------------------------------
+
+import {
+  Bell,
+  BellRing,
+  ChevronDown,
+  CircleHelp,
+  House,
+  LogOut,
+  MessageCircle,
+  Settings,
+  UserRound,
+  Wallet,
+} from 'lucide-react';
 
 import {
   useEffect,
@@ -109,28 +129,60 @@ const ACCOUNT_MENU_ITEMS = [
   {
     label: 'Profile',
     href: AUTHENTICATED_ROUTES.PROFILE,
+    icon: UserRound,
+  },
+  {
+    label: 'Messages',
+    href: AUTHENTICATED_ROUTES.MESSAGES,
+    icon: MessageCircle,
   },
   {
     label: 'Wallet',
     href: AUTHENTICATED_ROUTES.WALLET,
+    icon: Wallet,
   },
   {
     label: 'Notifications',
     href: AUTHENTICATED_ROUTES.NOTIFICATIONS,
+    icon: Bell,
   },
   {
     label: 'Notification settings',
     href: AUTHENTICATED_ROUTES.NOTIFICATION_SETTINGS,
+    icon: BellRing,
   },
   {
     label: 'Support',
     href: AUTHENTICATED_ROUTES.SUPPORT,
+    icon: CircleHelp,
   },
   {
     label: 'Settings',
     href: AUTHENTICATED_ROUTES.SETTINGS,
+    icon: Settings,
   },
 ] as const;
+
+// =============================================================================
+// Shared Menu Item Styles
+// =============================================================================
+
+const MENU_ITEM_CLASS_NAME = [
+  'flex',
+  'w-full',
+  'items-center',
+  'gap-3',
+  'rounded-[var(--radius-md)]',
+  'px-3',
+  'py-2',
+  'text-sm',
+  'text-[var(--foreground)]',
+  'transition-colors',
+  'duration-150',
+  'ease-out',
+  'hover:bg-[var(--brand-soft)]',
+  'hover:text-[var(--brand)]',
+].join(' ');
 
 // =============================================================================
 // Component
@@ -299,24 +351,18 @@ export function AuthenticatedAccountMenu({
           {displayHandle}
         </span>
 
-        <svg
+        <ChevronDown
           aria-hidden="true"
-          viewBox="0 0 20 20"
-          fill="currentColor"
           className={[
             'size-4',
+            'shrink-0',
             'transition-transform',
             'duration-150',
             'ease-out',
             isOpen ? 'rotate-180' : '',
           ].join(' ')}
-        >
-          <path
-            fillRule="evenodd"
-            d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 1 1-1.08 1.04l4.25-4.5a.75.75 0 0 1 1.08 1.04l-4.25-4.5a.75.75 0 0 1 .02 1.06Z"
-            clipRule="evenodd"
-          />
-        </svg>
+          strokeWidth={1.75}
+        />
       </button>
 
       {/* ---------------------------------------------------------------------
@@ -342,55 +388,67 @@ export function AuthenticatedAccountMenu({
             'shadow-lg',
           ].join(' ')}
         >
+          {/* -----------------------------------------------------------------
+              Home
+          ----------------------------------------------------------------- */}
+
           <Link
             href={AUTHENTICATED_ROUTES.HOME}
             role="menuitem"
             onClick={() => setIsOpen(false)}
-            className={[
-              'block',
-              'rounded-[var(--radius-md)]',
-              'px-3',
-              'py-2',
-              'text-sm',
-              'text-[var(--foreground)]',
-              'transition-colors',
-              'duration-150',
-              'ease-out',
-              'hover:bg-[var(--brand-soft)]',
-              'hover:text-[var(--brand)]',
-            ].join(' ')}
+            className={MENU_ITEM_CLASS_NAME}
           >
-            Home
+            <House
+              aria-hidden="true"
+              className="size-4 shrink-0"
+              strokeWidth={1.75}
+            />
+
+            <span>
+              Home
+            </span>
           </Link>
 
-          {ACCOUNT_MENU_ITEMS.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              role="menuitem"
-              onClick={() => setIsOpen(false)}
-              className={[
-                'block',
-                'rounded-[var(--radius-md)]',
-                'px-3',
-                'py-2',
-                'text-sm',
-                'text-[var(--foreground)]',
-                'transition-colors',
-                'duration-150',
-                'ease-out',
-                'hover:bg-[var(--brand-soft)]',
-                'hover:text-[var(--brand)]',
-              ].join(' ')}
-            >
-              {item.label}
-            </Link>
-          ))}
+          {/* -----------------------------------------------------------------
+              Account Navigation
+          ----------------------------------------------------------------- */}
+
+          {ACCOUNT_MENU_ITEMS.map((item) => {
+            const Icon = item.icon;
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                role="menuitem"
+                onClick={() => setIsOpen(false)}
+                className={MENU_ITEM_CLASS_NAME}
+              >
+                <Icon
+                  aria-hidden="true"
+                  className="size-4 shrink-0"
+                  strokeWidth={1.75}
+                />
+
+                <span>
+                  {item.label}
+                </span>
+              </Link>
+            );
+          })}
+
+          {/* -----------------------------------------------------------------
+              Separator
+          ----------------------------------------------------------------- */}
 
           <div
             aria-hidden="true"
             className="my-1.5 border-t border-[var(--border-subtle)]"
           />
+
+          {/* -----------------------------------------------------------------
+              Sign Out
+          ----------------------------------------------------------------- */}
 
           <button
             type="button"
@@ -399,24 +457,21 @@ export function AuthenticatedAccountMenu({
             disabled={isLoggingOut}
             aria-busy={isLoggingOut}
             className={[
-              'block',
-              'w-full',
-              'rounded-[var(--radius-md)]',
-              'px-3',
-              'py-2',
+              MENU_ITEM_CLASS_NAME,
               'text-left',
-              'text-sm',
-              'text-[var(--foreground)]',
-              'transition-colors',
-              'duration-150',
-              'ease-out',
-              'hover:bg-[var(--brand-soft)]',
-              'hover:text-[var(--brand)]',
               'disabled:pointer-events-none',
               'disabled:opacity-60',
             ].join(' ')}
           >
-            {isLoggingOut ? 'Signing out…' : 'Sign out'}
+            <LogOut
+              aria-hidden="true"
+              className="size-4 shrink-0"
+              strokeWidth={1.75}
+            />
+
+            <span>
+              {isLoggingOut ? 'Signing out…' : 'Sign out'}
+            </span>
           </button>
         </div>
       ) : null}

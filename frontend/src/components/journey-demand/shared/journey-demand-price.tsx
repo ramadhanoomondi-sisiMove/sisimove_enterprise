@@ -8,7 +8,7 @@
 //
 // Responsibilities:
 // - Present backend-provided Journey Demand pricing.
-// - Respect the backend-provided pricing interpretation flags.
+// - Respect backend-provided pricing interpretation flags.
 // - Format monetary values using the shared currency formatter.
 // - Clearly distinguish preferred and maximum prices when both are supplied.
 //
@@ -21,12 +21,19 @@
 // - determine whether a price is acceptable;
 // - recreate backend pricing constraints.
 //
-// The JourneyDemandPricing model remains the source of truth.
+// Marketplace presentation:
+// - Price is a primary commercial signal.
+// - Compact enough for the marketplace card.
+// - Preferred price is visually dominant.
+// - Secondary pricing interpretation remains readable.
+// - Does not introduce a nested surface or card.
 //
+// The JourneyDemandPricing model remains the source of truth.
 // -----------------------------------------------------------------------------
 
 import type { JourneyDemandPricing } from '@/features/journey-demand/models';
 
+import { cn } from '@/foundation';
 import { formatCurrency } from '@/foundation/formatters';
 
 // -----------------------------------------------------------------------------
@@ -37,12 +44,12 @@ export interface JourneyDemandPriceProps {
   /**
    * Journey Demand pricing supplied by the backend.
    */
-  pricing: JourneyDemandPricing;
+  readonly pricing: JourneyDemandPricing;
 
   /**
    * Optional additional classes for the price presentation.
    */
-  className?: string;
+  readonly className?: string;
 
   /**
    * Controls the visual emphasis of the price.
@@ -50,7 +57,7 @@ export interface JourneyDemandPriceProps {
    * Compact is appropriate for marketplace cards.
    * Default is appropriate for detail and management surfaces.
    */
-  emphasis?: 'compact' | 'default';
+  readonly emphasis?: 'compact' | 'default';
 }
 
 // -----------------------------------------------------------------------------
@@ -72,97 +79,96 @@ export function JourneyDemandPrice({
     hasPreferredAndMaximumPrice,
   } = pricing;
 
+  const isCompact = emphasis === 'compact';
+
+  const containerClassName = cn(
+    'min-w-0',
+    className,
+  );
+
+  const valueClassName = cn(
+    'truncate font-bold leading-tight',
+    'text-[var(--foreground)]',
+    isCompact ? 'text-base' : 'text-lg',
+  );
+
+  const labelClassName = cn(
+    'mt-0.5 truncate font-medium',
+    'text-[var(--foreground-muted)]',
+    isCompact ? 'text-[10px]' : 'text-xs',
+  );
+
+  // ---------------------------------------------------------------------------
+  // Unconstrained
+  // ---------------------------------------------------------------------------
+
   if (isUnconstrained) {
     return (
-      <div
-        className={[
-          'min-w-0',
-          className ?? '',
-        ]
-          .filter(Boolean)
-          .join(' ')}
-      >
-        <span
-          className={[
-            emphasis === 'compact'
-              ? 'text-sm'
-              : 'text-base',
+      <div className={containerClassName}>
+        <p
+          className={cn(
+            'font-semibold leading-tight',
             'text-[var(--foreground-secondary)]',
-          ].join(' ')}
+            isCompact ? 'text-sm' : 'text-base',
+          )}
         >
           No price preference
-        </span>
+        </p>
       </div>
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Preferred price only
+  // ---------------------------------------------------------------------------
 
   if (
     isPreferredPriceOnly &&
     preferredPricePerSeat !== undefined
   ) {
     return (
-      <div
-        className={[
-          'min-w-0',
-          className ?? '',
-        ]
-          .filter(Boolean)
-          .join(' ')}
-      >
-        <div
-          className={[
-            emphasis === 'compact'
-              ? 'text-sm font-medium'
-              : 'text-base font-semibold',
-            'text-[var(--foreground)]',
-          ].join(' ')}
-        >
+      <div className={containerClassName}>
+        <p className={valueClassName}>
           {formatCurrency(
             preferredPricePerSeat,
             currency,
           )}
-        </div>
+        </p>
 
-        <div className="mt-0.5 text-xs text-[var(--foreground-muted)]">
-          Preferred per seat
-        </div>
+        <p className={labelClassName}>
+          Preferred / seat
+        </p>
       </div>
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Maximum price only
+  // ---------------------------------------------------------------------------
 
   if (
     isMaximumPriceOnly &&
     maximumPricePerSeat !== undefined
   ) {
     return (
-      <div
-        className={[
-          'min-w-0',
-          className ?? '',
-        ]
-          .filter(Boolean)
-          .join(' ')}
-      >
-        <div
-          className={[
-            emphasis === 'compact'
-              ? 'text-sm font-medium'
-              : 'text-base font-semibold',
-            'text-[var(--foreground)]',
-          ].join(' ')}
-        >
+      <div className={containerClassName}>
+        <p className={valueClassName}>
           {formatCurrency(
             maximumPricePerSeat,
             currency,
           )}
-        </div>
+        </p>
 
-        <div className="mt-0.5 text-xs text-[var(--foreground-muted)]">
-          Maximum per seat
-        </div>
+        <p className={labelClassName}>
+          Maximum / seat
+        </p>
       </div>
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Preferred + maximum
+  // ---------------------------------------------------------------------------
 
   if (
     hasPreferredAndMaximumPrice &&
@@ -170,36 +176,29 @@ export function JourneyDemandPrice({
     maximumPricePerSeat !== undefined
   ) {
     return (
-      <div
-        className={[
-          'min-w-0',
-          className ?? '',
-        ]
-          .filter(Boolean)
-          .join(' ')}
-      >
-        <div
-          className={[
-            emphasis === 'compact'
-              ? 'text-sm font-medium'
-              : 'text-base font-semibold',
-            'text-[var(--foreground)]',
-          ].join(' ')}
+      <div className={containerClassName}>
+        <p
+          className={cn(
+            valueClassName,
+            'whitespace-nowrap',
+          )}
         >
           {formatCurrency(
             preferredPricePerSeat,
             currency,
           )}
-          {' – '}
+          <span className="px-1 font-normal text-[var(--foreground-muted)]">
+            –
+          </span>
           {formatCurrency(
             maximumPricePerSeat,
             currency,
           )}
-        </div>
+        </p>
 
-        <div className="mt-0.5 text-xs text-[var(--foreground-muted)]">
-          Preferred – maximum per seat
-        </div>
+        <p className={labelClassName}>
+          Preferred – maximum / seat
+        </p>
       </div>
     );
   }
@@ -218,77 +217,41 @@ export function JourneyDemandPrice({
 
   if (preferredPricePerSeat !== undefined) {
     return (
-      <div
-        className={[
-          'min-w-0',
-          className ?? '',
-        ]
-          .filter(Boolean)
-          .join(' ')}
-      >
-        <div
-          className={[
-            emphasis === 'compact'
-              ? 'text-sm font-medium'
-              : 'text-base font-semibold',
-            'text-[var(--foreground)]',
-          ].join(' ')}
-        >
+      <div className={containerClassName}>
+        <p className={valueClassName}>
           {formatCurrency(
             preferredPricePerSeat,
             currency,
           )}
-        </div>
+        </p>
       </div>
     );
   }
 
   if (maximumPricePerSeat !== undefined) {
     return (
-      <div
-        className={[
-          'min-w-0',
-          className ?? '',
-        ]
-          .filter(Boolean)
-          .join(' ')}
-      >
-        <div
-          className={[
-            emphasis === 'compact'
-              ? 'text-sm font-medium'
-              : 'text-base font-semibold',
-            'text-[var(--foreground)]',
-          ].join(' ')}
-        >
+      <div className={containerClassName}>
+        <p className={valueClassName}>
           {formatCurrency(
             maximumPricePerSeat,
             currency,
           )}
-        </div>
+        </p>
       </div>
     );
   }
 
   return (
-    <div
-      className={[
-        'min-w-0',
-        className ?? '',
-      ]
-        .filter(Boolean)
-        .join(' ')}
-    >
-      <span
-        className={[
-          emphasis === 'compact'
-            ? 'text-sm'
-            : 'text-base',
+    <div className={containerClassName}>
+      <p
+        className={cn(
+          'font-semibold leading-tight',
           'text-[var(--foreground-secondary)]',
-        ].join(' ')}
+          isCompact ? 'text-sm' : 'text-base',
+        )}
       >
         No price specified
-      </span>
+      </p>
     </div>
   );
 }

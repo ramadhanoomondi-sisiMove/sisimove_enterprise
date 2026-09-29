@@ -1449,6 +1449,18 @@ export class PrismaJourneyRepository implements JourneyRepository {
    * - to   -> corridor destination
    * - date -> schedule departure calendar date
    *
+   * Text filters intentionally use case-insensitive partial matching so the
+   * marketplace can search naturally while the user types.
+   *
+   * Examples:
+   *
+   * - "N"     -> Nairobi
+   * - "Na"    -> Nairobi
+   * - "Nai"   -> Nairobi
+   * - "M"     -> Mombasa
+   * - "Mom"   -> Mombasa
+   * - "Momb"  -> Mombasa
+   *
    * The method intentionally supports an empty filter because the marketplace
    * landing page displays published Journeys before search is applied.
    *
@@ -1467,10 +1479,16 @@ export class PrismaJourneyRepository implements JourneyRepository {
     // -------------------------------------------------------------------------
     // Origin filter
     // -------------------------------------------------------------------------
+    //
+    // `contains` provides prefix/partial matching while `insensitive` makes
+    // marketplace search independent of letter casing.
+    // -------------------------------------------------------------------------
 
-    if (filters.from !== undefined && filters.from.trim().length > 0) {
+    const from = filters.from?.trim();
+
+    if (from !== undefined && from.length > 0) {
       corridorFilter.originName = {
-        equals: filters.from.trim(),
+        contains: from,
         mode: 'insensitive',
       };
     }
@@ -1479,9 +1497,11 @@ export class PrismaJourneyRepository implements JourneyRepository {
     // Destination filter
     // -------------------------------------------------------------------------
 
-    if (filters.to !== undefined && filters.to.trim().length > 0) {
+    const to = filters.to?.trim();
+
+    if (to !== undefined && to.length > 0) {
       corridorFilter.destinationName = {
-        equals: filters.to.trim(),
+        contains: to,
         mode: 'insensitive',
       };
     }
@@ -1508,9 +1528,9 @@ export class PrismaJourneyRepository implements JourneyRepository {
     // Optional departure-date filter
     // -------------------------------------------------------------------------
 
-    if (filters.date !== undefined && filters.date.trim().length > 0) {
-      const date = filters.date.trim();
+    const date = filters.date?.trim();
 
+    if (date !== undefined && date.length > 0) {
       const departureFrom = new Date(`${date}T00:00:00.000Z`);
 
       if (!Number.isNaN(departureFrom.getTime())) {

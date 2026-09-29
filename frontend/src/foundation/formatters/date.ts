@@ -1,4 +1,5 @@
-//sr/foundation/formatter/dates.ts
+// src/foundation/formatter/dates.ts
+
 // -----------------------------------------------------------------------------
 // Date Formatter
 // -----------------------------------------------------------------------------
@@ -41,6 +42,7 @@ export function formatTime(
     {
       hour: 'numeric',
       minute: '2-digit',
+      hour12: true,
       ...options,
     },
   ).format(date);
@@ -67,6 +69,7 @@ export function formatDateTime(
       year: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
+      hour12: true,
       ...options,
     },
   ).format(date);

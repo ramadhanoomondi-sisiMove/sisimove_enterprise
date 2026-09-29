@@ -16,11 +16,18 @@
 // - determine status;
 // - transition a Journey Demand;
 // - infer capabilities.
+//
+// Marketplace presentation:
+// - Compact enough for the Journey Demand card.
+// - Status remains secondary to route, demand, and price.
+// - Uses the existing design-system Badge variants.
 // -----------------------------------------------------------------------------
 
 import { Badge } from '@/components/ui';
 
-import type { PublicJourneyDemandStatus } from '@/features/journey-demand/models';
+import type {
+  PublicJourneyDemandStatus,
+} from '@/features/journey-demand/models';
 
 // -----------------------------------------------------------------------------
 // Props

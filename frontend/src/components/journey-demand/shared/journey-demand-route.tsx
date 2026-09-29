@@ -24,6 +24,13 @@
 // The public Journey Demand route supplied by the backend/frontend model
 // remains the source of truth.
 //
+// Marketplace presentation:
+// - Route is the primary visual anchor.
+// - Origin and destination are visually distinct.
+// - Origin uses the brand color.
+// - Destination uses the danger color.
+// - Route remains compact and does not introduce a nested surface.
+// - The route can remain horizontally composed inside the marketplace card.
 // -----------------------------------------------------------------------------
 
 import type { PublicJourneyDemandRoute } from '@/features/journey-demand/models';
@@ -64,51 +71,60 @@ export function JourneyDemandRoute({
   className,
   emphasis = 'default',
 }: JourneyDemandRouteProps) {
+  const isCompact = emphasis === 'compact';
+
   return (
     <div
       className={cn(
-        'flex min-w-0 items-center gap-2',
+        'flex min-w-0 items-center justify-center',
+        isCompact ? 'gap-2' : 'gap-3',
         className,
       )}
     >
-      <span className="min-w-0 truncate">
-        <span
-          className={cn(
-            emphasis === 'compact'
-              ? 'text-sm font-medium'
-              : 'text-base font-semibold',
-            'text-foreground',
-          )}
-        >
-          {route.origin.name}
-        </span>
+      {/* -----------------------------------------------------------------
+          Origin
+          ----------------------------------------------------------------- */}
+
+      <span
+        className={cn(
+          'min-w-0 truncate text-right font-semibold leading-tight',
+          'text-[var(--brand)]',
+          isCompact ? 'text-sm' : 'text-base',
+        )}
+        title={route.origin.name}
+      >
+        {route.origin.name}
       </span>
+
+      {/* -----------------------------------------------------------------
+          Direction
+          ----------------------------------------------------------------- */}
 
       <span
         aria-hidden="true"
         className={cn(
-          'shrink-0 text-foreground-muted',
-          emphasis === 'compact'
-            ? 'text-sm'
-            : 'text-base',
+          'shrink-0 font-medium',
+          'text-[var(--foreground-muted)]',
+          isCompact ? 'text-sm' : 'text-base',
         )}
       >
         →
       </span>
 
-      <span className="min-w-0 truncate">
-        <span
-          className={cn(
-            emphasis === 'compact'
-              ? 'text-sm font-medium'
-              : 'text-base font-semibold',
-            'text-foreground',
-          )}
-        >
-          {route.destination.name}
-        </span>
+      {/* -----------------------------------------------------------------
+          Destination
+          ----------------------------------------------------------------- */}
+
+      <span
+        className={cn(
+          'min-w-0 truncate font-semibold leading-tight',
+          'text-[var(--danger)]',
+          isCompact ? 'text-sm' : 'text-base',
+        )}
+        title={route.destination.name}
+      >
+        {route.destination.name}
       </span>
     </div>
   );
 }
-

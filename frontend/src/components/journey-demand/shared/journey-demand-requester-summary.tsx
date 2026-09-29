@@ -1,8 +1,8 @@
-// src/features/journey-demands/components/shared/journey-demand-requester-summary.tsx
-
 // -----------------------------------------------------------------------------
+// Path: src/features/journey-demands/components/shared/journey-demand-requester-summary.tsx
+// -----------------------------------------------------------------------------
+//
 // sisiMove — Journey Demand Requester Summary
-// -----------------------------------------------------------------------------
 //
 // Compact public requester identity block used by Journey Demand marketplace
 // cards and detail surfaces.
@@ -19,11 +19,20 @@
 // - calculate trust scores;
 // - infer verification state;
 // - expose private identity information.
+//
+// Marketplace presentation:
+// - Dense enough for the Journey Demand marketplace card.
+// - @handle remains the primary requester identity.
+// - Trust evidence is secondary.
+// - Avoids unnecessary vertical expansion.
+// - Uses frozen design-token variables.
 // -----------------------------------------------------------------------------
 
-import { Avatar } from '@/components/ui';
+import { Avatar } from "@/components/ui";
 
-import type { PublicJourneyDemandRequester } from '@/features/journey-demand/models';
+import type {
+  PublicJourneyDemandRequester,
+} from "@/features/journey-demand/models";
 
 // -----------------------------------------------------------------------------
 // Props
@@ -31,7 +40,7 @@ import type { PublicJourneyDemandRequester } from '@/features/journey-demand/mod
 
 export interface JourneyDemandRequesterSummaryProps {
   readonly requester: PublicJourneyDemandRequester;
-  readonly emphasis?: 'compact' | 'default';
+  readonly emphasis?: "compact" | "default";
   readonly className?: string;
 }
 
@@ -39,20 +48,28 @@ export interface JourneyDemandRequesterSummaryProps {
 // Helpers
 // -----------------------------------------------------------------------------
 
+function normalizeHandle(handle: string): string {
+  const normalizedHandle = handle.trim().replace(/^@+/, "");
+
+  return normalizedHandle.length > 0
+    ? `@${normalizedHandle}`
+    : "@";
+}
+
 function getVerificationLabel(
-  verificationLevel: PublicJourneyDemandRequester['trust']['verificationLevel'],
+  verificationLevel: PublicJourneyDemandRequester["trust"]["verificationLevel"],
 ): string | null {
   switch (verificationLevel) {
-    case 'HIGHLY_VERIFIED':
-      return 'Highly verified';
+    case "HIGHLY_VERIFIED":
+      return "Highly verified";
 
-    case 'VERIFIED':
-      return 'Verified';
+    case "VERIFIED":
+      return "Verified";
 
-    case 'BASIC':
-      return 'Basic verification';
+    case "BASIC":
+      return "Basic verification";
 
-    case 'NONE':
+    case "NONE":
     default:
       return null;
   }
@@ -64,19 +81,19 @@ function getVerificationLabel(
  * Examples:
  * - "jane_doe" -> "JD"
  * - "jane-doe" -> "JD"
- * - "jane" -> "J"
+ * - "jane" -> "JA"
  *
  * The fallback is intentionally derived only from the public handle.
  * It does not attempt to infer a person's real name.
  */
 function getAvatarFallback(handle: string): string {
   const words = handle
-    .replace(/^@+/, '')
+    .replace(/^@+/, "")
     .split(/[\s_-]+/)
     .filter(Boolean);
 
   if (words.length === 0) {
-    return '?';
+    return "?";
   }
 
   if (words.length === 1) {
@@ -86,7 +103,7 @@ function getAvatarFallback(handle: string): string {
   return words
     .slice(0, 2)
     .map((word) => word.charAt(0))
-    .join('')
+    .join("")
     .toUpperCase();
 }
 
@@ -96,86 +113,107 @@ function getAvatarFallback(handle: string): string {
 
 export function JourneyDemandRequesterSummary({
   requester,
-  emphasis = 'default',
+  emphasis = "default",
   className,
 }: JourneyDemandRequesterSummaryProps) {
   const { traveller, trust } = requester;
 
-  const handle = `@${traveller.handle}`;
+  const handle = normalizeHandle(traveller.handle);
+  const avatarFallback = getAvatarFallback(traveller.handle);
   const verificationLabel = getVerificationLabel(
     trust.verificationLevel,
   );
 
-  const avatarFallback = getAvatarFallback(traveller.handle);
-  const isCompact = emphasis === 'compact';
+  const isCompact = emphasis === "compact";
 
   return (
     <div
       className={[
-        'flex',
-        'min-w-0',
-        'items-center',
-        isCompact ? 'gap-2' : 'gap-2.5',
-        className ?? '',
+        "flex",
+        "min-w-0",
+        "items-center",
+        isCompact ? "gap-1.5" : "gap-2.5",
+        className ?? "",
       ]
         .filter(Boolean)
-        .join(' ')}
+        .join(" ")}
     >
+      {/* -----------------------------------------------------------------
+          Avatar
+          ----------------------------------------------------------------- */}
+
       <Avatar
         src={traveller.avatar?.url}
         alt={`Avatar for ${handle}`}
         fallback={avatarFallback}
-        size={isCompact ? 'sm' : 'md'}
+        size={isCompact ? "sm" : "md"}
       />
 
+      {/* -----------------------------------------------------------------
+          Public identity + trust
+          ----------------------------------------------------------------- */}
+
       <div className="min-w-0">
-        <div
-          className="truncate text-sm font-semibold text-foreground"
+        <p
+          className={[
+            "truncate",
+            "font-semibold",
+            "leading-tight",
+            "text-[var(--foreground)]",
+            isCompact ? "text-sm" : "text-base",
+          ].join(" ")}
+          title={handle}
         >
           {handle}
-        </div>
+        </p>
 
         <div
           className={[
-            'mt-0.5',
-            'flex',
-            'min-w-0',
-            'flex-wrap',
-            'items-center',
-            isCompact
-              ? 'gap-x-1.5 gap-y-0'
-              : 'gap-x-2 gap-y-0.5',
-            'text-xs',
-            'text-foreground-muted',
-          ].join(' ')}
+            "mt-0.5",
+            "flex",
+            "min-w-0",
+            "items-center",
+            "gap-x-1.5",
+            "overflow-hidden",
+            "whitespace-nowrap",
+            "text-[var(--foreground-muted)]",
+            isCompact ? "text-[10px]" : "text-xs",
+          ].join(" ")}
         >
+          {/* Verification */}
+
           {verificationLabel !== null && (
-            <span className="shrink-0">
+            <span className="flex shrink-0 items-center">
               <span
                 aria-hidden="true"
-                className="mr-0.5 text-success"
+                className="mr-0.5 font-semibold text-[var(--success)]"
               >
                 ✓
               </span>
+
               {verificationLabel}
             </span>
           )}
 
+          {/* Rating */}
+
           {trust.ratingCount > 0 && (
             <span className="shrink-0">
-              <span aria-hidden="true">★</span>{' '}
+              <span aria-hidden="true">★</span>{" "}
               {trust.ratingAverage.toFixed(1)}
-              {' · '}
+              {" · "}
               {trust.ratingCount}
             </span>
           )}
 
+          {/* Completed journeys */}
+
           {trust.completedJourneys > 0 && (
             <span className="shrink-0">
-              {trust.completedJourneys}{' '}
+              {trust.completedJourneys}{" "}
               {trust.completedJourneys === 1
-                ? 'journey'
-                : 'journeys'}
+                ? "journey"
+                : "journeys"}
             </span>
           )}
         </div>

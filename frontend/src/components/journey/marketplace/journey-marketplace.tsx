@@ -1,11 +1,21 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Marketplace
+// Path: src/features/journey/components/journey-marketplace.tsx
 // -----------------------------------------------------------------------------
+//
+// sisiMove — Journey Marketplace
 //
 // Public Journey marketplace composition component.
 //
+// Responsive philosophy:
+// - The marketplace is fluid from edge to edge.
+// - JourneyCard owns its internal rubber-band scaling.
+// - JourneyList owns collection spacing only.
+// - Marketplace chrome contracts naturally with the available width.
+// - No mobile-only reconstruction of the marketplace hierarchy.
+// - Existing results remain visible while a new filter query is loading.
+//
 // Responsibilities:
-// - own marketplace filter state;
+// - own committed marketplace filter state;
 // - execute the public Journey collection query;
 // - connect filters to the query boundary;
 // - render loading, error, empty, and populated states;
@@ -36,15 +46,111 @@
 //      └── JourneyErrorState
 //
 // -----------------------------------------------------------------------------
+//
+// FILTER LIFECYCLE
+// ----------------
+//
+// JourneyMarketplace owns the committed query state.
+//
+// JourneyMarketplaceFilters owns the temporary typing state.
+//
+//     User types
+//          │
+//          ▼
+//     Filter local draft
+//          │
+//          ▼
+//     300ms debounce
+//          │
+//          ▼
+//     handleFiltersChange()
+//          │
+//          ▼
+//     committed `filters`
+//          │
+//          ▼
+//     usePublicJourneys()
+//          │
+//          ▼
+//     backend query
+//
+// IMPORTANT
+// ---------
+//
+// The marketplace MUST NOT disable or unmount JourneyMarketplaceFilters
+// while the query is loading.
+//
+// The user must be able to continue typing while results are loading.
+//
+// Loading belongs to the result area, not the input controls.
+//
+// During a filter transition, previously returned journeys remain visible
+// whenever the query hook provides them. This prevents the marketplace from
+// flashing an empty state between keystrokes.
+//
+// -----------------------------------------------------------------------------
+//
+// QUERY STATE CONTRACT
+// -------------------
+//
+// `filters` is the committed marketplace query.
+//
+// `JourneyMarketplaceFilters` owns the temporary draft.
+//
+// `usePublicJourneys` owns asynchronous request state.
+//
+// This component does not attempt to reproduce request lifecycle logic.
+//
+// -----------------------------------------------------------------------------
+//
+// REFETCH CONTRACT
+// ----------------
+//
+// `usePublicJourneys().refetch()` schedules a new request for the current
+// normalized query.
+//
+// It does not return a Promise.
+//
+// The marketplace therefore invokes it directly:
+//
+//     refetch();
+//
+// -----------------------------------------------------------------------------
+//
+// -----------------------------------------------------------------------------
 
 "use client";
 
-import { useCallback, useState } from "react";
+// -----------------------------------------------------------------------------
+// React
+// -----------------------------------------------------------------------------
+
+import {
+  useCallback,
+  useState,
+} from "react";
+
+// -----------------------------------------------------------------------------
+// UI
+// -----------------------------------------------------------------------------
 
 import { Button } from "@/components/ui";
+
+// -----------------------------------------------------------------------------
+// Foundation
+// -----------------------------------------------------------------------------
+
 import { cn } from "@/foundation";
 
+// -----------------------------------------------------------------------------
+// Journey Queries
+// -----------------------------------------------------------------------------
+
 import { usePublicJourneys } from "@/features/journey/hooks/queries/use-public-journeys";
+
+// -----------------------------------------------------------------------------
+// Components
+// -----------------------------------------------------------------------------
 
 import { JourneyEmptyState } from "./journey-empty-state";
 import { JourneyErrorState } from "./journey-error-state";
@@ -54,9 +160,9 @@ import {
   type JourneyMarketplaceFilterValues,
 } from "./journey-marketplace-filters";
 
-// -----------------------------------------------------------------------------
-// Props
-// -----------------------------------------------------------------------------
+// =============================================================================
+// Types
+// =============================================================================
 
 export interface JourneyMarketplaceProps {
   /**
@@ -81,6 +187,9 @@ export interface JourneyMarketplaceProps {
 
   /**
    * Controls the density of Journey cards.
+   *
+   * Compact is the default because the public marketplace is designed to
+   * display multiple Journeys at once and make filtering useful.
    */
   readonly emphasis?: "compact" | "default";
 
@@ -96,14 +205,27 @@ export interface JourneyMarketplaceProps {
    *
    * Navigation remains owned by the parent.
    */
-  readonly onView?: (journeyPublicId: string) => void;
+  readonly onView?: (
+    journeyPublicId: string,
+  ) => void;
+
+  /**
+   * Optional Share Journey action.
+   *
+   * Sharing behavior remains owned by the parent.
+   */
+  readonly onShare?: (
+    journeyPublicId: string,
+  ) => void;
 
   /**
    * Optional Book Journey action.
    *
    * Booking behavior remains owned by the parent.
    */
-  readonly onBook?: (journeyPublicId: string) => void;
+  readonly onBook?: (
+    journeyPublicId: string,
+  ) => void;
 
   /**
    * Public ID of the Journey currently being booked.
@@ -116,6 +238,11 @@ export interface JourneyMarketplaceProps {
   readonly viewDisabled?: boolean;
 
   /**
+   * Allows the parent to disable Journey Share actions.
+   */
+  readonly shareDisabled?: boolean;
+
+  /**
    * Allows the parent to disable Journey Book actions.
    */
   readonly bookDisabled?: boolean;
@@ -124,39 +251,53 @@ export interface JourneyMarketplaceProps {
    * Optional action labels.
    */
   readonly viewLabel?: string;
+  readonly shareLabel?: string;
   readonly bookLabel?: string;
   readonly bookingLabel?: string;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
+// Constants
+// =============================================================================
+
+const EMPTY_FILTER_VALUES: JourneyMarketplaceFilterValues = {
+  from: "",
+  to: "",
+  date: "",
+};
+
+// =============================================================================
 // Component
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function JourneyMarketplace({
   initialFrom = "",
   initialTo = "",
   initialDate = "",
   className,
-  emphasis = "default",
+  emphasis = "compact",
   onCreateJourney,
   onView,
+  onShare,
   onBook,
   bookingJourneyPublicId = null,
   viewDisabled = false,
+  shareDisabled = false,
   bookDisabled = false,
-  viewLabel = "View Journey",
-  bookLabel = "Book Journey",
+  viewLabel = "View",
+  shareLabel = "Share",
+  bookLabel = "Book",
   bookingLabel = "Booking…",
 }: JourneyMarketplaceProps) {
-  // ---------------------------------------------------------------------------
-  // Marketplace filter state
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Marketplace Filter State
+  // ===========================================================================
   //
-  // Initial values establish the marketplace's initial UI state.
+  // This is the committed marketplace query state.
   //
-  // The marketplace owns subsequent user interaction with these filters.
-  // We intentionally do not synchronize them back from props with useEffect.
-  // ---------------------------------------------------------------------------
+  // JourneyMarketplaceFilters owns the temporary typing state.
+  //
+  // ===========================================================================
 
   const [filters, setFilters] =
     useState<JourneyMarketplaceFilterValues>(() => ({
@@ -165,23 +306,19 @@ export function JourneyMarketplace({
       date: initialDate,
     }));
 
-  // ---------------------------------------------------------------------------
-  // Public Journey query
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Public Journey Query
+  // ===========================================================================
   //
-  // The query hook owns:
-  // - HTTP execution;
-  // - request lifecycle;
-  // - server-state management;
-  // - stale-request protection;
-  // - error state;
-  // - explicit refetch capability.
+  // The backend remains authoritative for:
   //
-  // The marketplace supplies only the current filter values.
+  // - matching;
+  // - filtering;
+  // - returned Journey projections.
   //
-  // The hook exposes `journeys` directly. It does not use a React Query-style
-  // `data` property.
-  // ---------------------------------------------------------------------------
+  // No client-side filtering is performed here.
+  //
+  // ===========================================================================
 
   const {
     journeys,
@@ -189,80 +326,170 @@ export function JourneyMarketplace({
     error,
     refetch,
   } = usePublicJourneys({
-    from: filters.from.trim() || undefined,
-    to: filters.to.trim() || undefined,
-    date: filters.date || undefined,
+    from:
+      filters.from.trim() || undefined,
+
+    to:
+      filters.to.trim() || undefined,
+
+    date:
+      filters.date || undefined,
   });
 
-  // ---------------------------------------------------------------------------
-  // Filter changes
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Filter Changes
+  // ===========================================================================
+  //
+  // Stable callback is important because JourneyMarketplaceFilters uses this
+  // callback as the dependency of its debounce effect.
+  //
+  // ===========================================================================
 
   const handleFiltersChange = useCallback(
-    (nextFilters: JourneyMarketplaceFilterValues): void => {
+    (
+      nextFilters: JourneyMarketplaceFilterValues,
+    ): void => {
       setFilters(nextFilters);
     },
     [],
   );
 
-  // ---------------------------------------------------------------------------
-  // Clear filters
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Clear Filters
+  // ===========================================================================
 
-  const handleClearFilters = useCallback((): void => {
-    setFilters({
-      from: "",
-      to: "",
-      date: "",
-    });
-  }, []);
+  const handleClearFilters = useCallback(
+    (): void => {
+      setFilters(
+        EMPTY_FILTER_VALUES,
+      );
+    },
+    [],
+  );
 
-  // ---------------------------------------------------------------------------
-  // Result state
-  // ---------------------------------------------------------------------------
-
-  const hasError = error !== null;
-
-  const isEmpty =
-    !isLoading &&
-    !hasError &&
-    journeys.length === 0;
-
-  const hasResults =
-    !isLoading &&
-    !hasError &&
-    journeys.length > 0;
+  // ===========================================================================
+  // Filter State
+  // ===========================================================================
 
   const hasActiveFilters =
     filters.from.trim().length > 0 ||
     filters.to.trim().length > 0 ||
     filters.date.length > 0;
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Result State
+  // ===========================================================================
+  //
+  // A loading transition is NOT an empty marketplace.
+  //
+  // Existing journeys remain visible while the next query is loading.
+  //
+  // This is particularly important for live filtering:
+  //
+  //     typing "N"
+  //          ↓
+  //     request starts
+  //          ↓
+  //     existing results remain visible
+  //          ↓
+  //     new response arrives
+  //
+  // ===========================================================================
+
+  const hasError =
+    error !== null;
+
+  const hasResults =
+    journeys.length > 0;
+
+  const showLoadingState =
+    isLoading &&
+    !hasResults &&
+    !hasError;
+
+  const showUpdatingState =
+    isLoading &&
+    hasResults;
+
+  const showErrorState =
+    hasError &&
+    !isLoading;
+
+  const showEmptyState =
+    !isLoading &&
+    !hasError &&
+    !hasResults;
+
+  // ===========================================================================
   // Render
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   return (
     <section
-      className={cn("w-full", className)}
+      className={cn(
+        "w-full",
+        "min-w-0",
+        className,
+      )}
       aria-label="Journey marketplace"
     >
-      <div className="space-y-4">
+      <div
+        className={cn(
+          "w-full",
+          "min-w-0",
+          "space-y-[clamp(0.625rem,1.4vw,0.875rem)]",
+        )}
+      >
         {/* ----------------------------------------------------------------- */}
-        {/* Marketplace heading                                               */}
+        {/* Marketplace Heading                                               */}
         {/* ----------------------------------------------------------------- */}
 
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--brand)]">
+        <div
+          className={cn(
+            "flex",
+            "min-w-0",
+            "items-center",
+            "justify-between",
+            "gap-[clamp(0.4rem,1.2vw,1rem)]",
+          )}
+        >
+          <div className="min-w-0 flex-1">
+            <p
+              className={cn(
+                "truncate",
+                "text-[clamp(0.55rem,0.75vw,0.7rem)]",
+                "font-semibold",
+                "uppercase",
+                "tracking-[0.14em]",
+                "text-[var(--brand)]",
+              )}
+            >
               The Journey Market
             </p>
 
-            <h2 className="mt-1 text-lg font-semibold text-[var(--foreground)]">
+            <h2
+              className={cn(
+                "mt-0.5",
+                "truncate",
+                "text-[clamp(0.95rem,1.7vw,1.2rem)]",
+                "font-semibold",
+                "leading-tight",
+                "text-[var(--foreground)]",
+              )}
+            >
               Journeys
             </h2>
 
-            <p className="mt-1 text-sm text-[var(--foreground-muted)]">
+            <p
+              className={cn(
+                "mt-0.5",
+                "max-w-2xl",
+                "truncate",
+                "text-[clamp(0.65rem,0.9vw,0.8rem)]",
+                "leading-relaxed",
+                "text-[var(--foreground-muted)]",
+              )}
+            >
               See where people are going and find a Journey that matches your
               plans.
             </p>
@@ -274,39 +501,97 @@ export function JourneyMarketplace({
               variant="outline"
               size="sm"
               onClick={onCreateJourney}
-              className="shrink-0"
+              className={cn(
+                "min-w-0",
+                "max-w-full",
+                "shrink-0",
+                "overflow-hidden",
+                "whitespace-nowrap",
+                "text-[clamp(0.55rem,0.8vw,0.8rem)]",
+                "px-[clamp(0.55rem,1vw,0.85rem)]",
+              )}
             >
-              Create Journey
+              <span className="truncate">
+                Create Journey
+              </span>
             </Button>
           )}
         </div>
 
         {/* ----------------------------------------------------------------- */}
-        {/* Marketplace filters                                                */}
+        {/* Marketplace Filters                                               */}
         {/* ----------------------------------------------------------------- */}
+        {/*
+          The filter component remains mounted and editable during loading.
+          Loading state belongs to the result area.
+        */}
 
-        <JourneyMarketplaceFilters
-          values={filters}
-          onChange={handleFiltersChange}
-          hasActiveFilters={hasActiveFilters}
-          isLoading={isLoading}
-        />
+        <div
+          className={cn(
+            "w-full",
+            "min-w-0",
+          )}
+        >
+          <JourneyMarketplaceFilters
+            values={filters}
+            onChange={handleFiltersChange}
+            hasActiveFilters={hasActiveFilters}
+            isLoading={isLoading}
+          />
+        </div>
 
         {/* ----------------------------------------------------------------- */}
-        {/* Loading state                                                      */}
+        {/* Background Loading Indicator                                      */}
         {/* ----------------------------------------------------------------- */}
+        {/*
+          Existing results remain visible while the next query is resolving.
+        */}
 
-        {isLoading && (
+        {showUpdatingState && (
           <div
             className={cn(
+              "flex",
+              "w-full",
+              "min-w-0",
+              "items-center",
+              "justify-center",
+              "gap-[clamp(0.3rem,0.6vw,0.45rem)]",
+              "rounded-[var(--radius-md)]",
+              "border",
+              "border-[var(--border-subtle)]",
+              "bg-[var(--background-subtle)]",
+              "px-[clamp(0.5rem,1vw,0.75rem)]",
+              "py-[clamp(0.35rem,0.7vw,0.5rem)]",
+              "text-[clamp(0.55rem,0.75vw,0.7rem)]",
+              "text-[var(--foreground-muted)]",
+            )}
+            role="status"
+            aria-live="polite"
+          >
+            Updating journeys…
+          </div>
+        )}
+
+        {/* ----------------------------------------------------------------- */}
+        {/* Initial Loading State                                             */}
+        {/* ----------------------------------------------------------------- */}
+
+        {showLoadingState && (
+          <div
+            className={cn(
+              "flex",
+              "w-full",
+              "min-w-0",
+              "items-center",
+              "justify-center",
               "rounded-[var(--radius-lg)]",
               "border",
               "border-[var(--border)]",
               "bg-[var(--surface)]",
-              "px-4",
-              "py-8",
+              "px-[clamp(0.625rem,1.5vw,1rem)]",
+              "py-[clamp(1rem,2.5vw,1.5rem)]",
               "text-center",
-              "text-sm",
+              "text-[clamp(0.65rem,0.9vw,0.875rem)]",
               "text-[var(--foreground-muted)]",
             )}
             role="status"
@@ -317,66 +602,119 @@ export function JourneyMarketplace({
         )}
 
         {/* ----------------------------------------------------------------- */}
-        {/* Error state                                                        */}
+        {/* Error State                                                       */}
         {/* ----------------------------------------------------------------- */}
 
-        {hasError && !isLoading && (
-          <JourneyErrorState
-            onRetry={() => {
-              void refetch();
-            }}
-            onSecondaryAction={
-              hasActiveFilters
-                ? handleClearFilters
-                : undefined
-            }
-          />
+        {showErrorState && (
+          <div
+            className={cn(
+              "w-full",
+              "min-w-0",
+            )}
+          >
+            <JourneyErrorState
+              onRetry={refetch}
+              onSecondaryAction={
+                hasActiveFilters
+                  ? handleClearFilters
+                  : undefined
+              }
+            />
+          </div>
         )}
 
         {/* ----------------------------------------------------------------- */}
-        {/* Empty state                                                        */}
+        {/* Empty State                                                       */}
         {/* ----------------------------------------------------------------- */}
 
-        {isEmpty && (
-          <JourneyEmptyState
-            hasActiveFilters={hasActiveFilters}
-            onClearFilters={
-              hasActiveFilters
-                ? handleClearFilters
-                : undefined
-            }
-          />
+        {showEmptyState && (
+          <div
+            className={cn(
+              "w-full",
+              "min-w-0",
+            )}
+          >
+            <JourneyEmptyState
+              hasActiveFilters={
+                hasActiveFilters
+              }
+              onClearFilters={
+                hasActiveFilters
+                  ? handleClearFilters
+                  : undefined
+              }
+            />
+          </div>
         )}
 
         {/* ----------------------------------------------------------------- */}
-        {/* Results                                                            */}
+        {/* Results                                                           */}
         {/* ----------------------------------------------------------------- */}
 
         {hasResults && (
-          <JourneyList
-            journeys={journeys}
-            emphasis={emphasis}
-            onView={
-              onView
-                ? (journey) => {
-                    onView(journey.publicId);
-                  }
-                : undefined
-            }
-            onBook={
-              onBook
-                ? (journey) => {
-                    onBook(journey.publicId);
-                  }
-                : undefined
-            }
-            bookingJourneyPublicId={bookingJourneyPublicId}
-            viewDisabled={viewDisabled}
-            bookDisabled={bookDisabled}
-            viewLabel={viewLabel}
-            bookLabel={bookLabel}
-            bookingLabel={bookingLabel}
-          />
+          <div
+            className={cn(
+              "relative",
+              "w-full",
+              "min-w-0",
+            )}
+          >
+            <JourneyList
+              journeys={journeys}
+              emphasis={emphasis}
+              onView={
+                onView
+                  ? (journey) => {
+                      onView(
+                        journey.publicId,
+                      );
+                    }
+                  : undefined
+              }
+              onShare={
+                onShare
+                  ? (journey) => {
+                      onShare(
+                        journey.publicId,
+                      );
+                    }
+                  : undefined
+              }
+              onBook={
+                onBook
+                  ? (journey) => {
+                      onBook(
+                        journey.publicId,
+                      );
+                    }
+                  : undefined
+              }
+              bookingJourneyPublicId={
+                bookingJourneyPublicId
+              }
+              viewDisabled={
+                viewDisabled
+              }
+              shareDisabled={
+                shareDisabled
+              }
+              bookDisabled={
+                bookDisabled
+              }
+              viewLabel={
+                viewLabel
+              }
+              shareLabel={
+                shareLabel
+              }
+              bookLabel={
+                bookLabel
+              }
+              bookingLabel={
+                bookingLabel
+              }
+            />
+          </div>
         )}
       </div>
     </section>

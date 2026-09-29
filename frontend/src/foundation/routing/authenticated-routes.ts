@@ -1,4 +1,6 @@
 // -----------------------------------------------------------------------------
+// Path: src/foundation/routing/authenticated-routes.ts
+// -----------------------------------------------------------------------------
 // sisiMove — Authenticated Routes
 // -----------------------------------------------------------------------------
 //
@@ -115,8 +117,25 @@
 //
 //     /my-demands/[publicId]
 //
+// Public informational pages such as:
+//
+//     /how-it-works
+//
+// belong to PUBLIC_ROUTES and are intentionally not defined here.
+//
 // This separation is intentional and required by Next.js dynamic route
 // matching.
+//
+// -----------------------------------------------------------------------------
+//
+// ROUTE OWNERSHIP
+// -----------------------------------------------------------------------------
+//
+// This object defines URL construction only.
+//
+// Authentication, authorization, verification requirements, lifecycle
+// capabilities, and navigation decisions belong to the corresponding
+// application boundaries.
 //
 // -----------------------------------------------------------------------------
 
@@ -179,30 +198,57 @@ export const AUTHENTICATED_ROUTES = {
   //
   // ===========================================================================
 
+  /**
+   * Journey creation/edit root.
+   */
   JOURNEY_CREATE: (journeyPublicId: string) =>
     `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit`,
 
+  /**
+   * Journey route creation/edit step.
+   */
   JOURNEY_CREATE_ROUTE: (journeyPublicId: string) =>
     `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit/route`,
 
+  /**
+   * Journey schedule creation/edit step.
+   */
   JOURNEY_CREATE_SCHEDULE: (journeyPublicId: string) =>
     `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit/schedule`,
 
+  /**
+   * Journey vehicle creation/edit step.
+   */
   JOURNEY_CREATE_VEHICLE: (journeyPublicId: string) =>
     `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit/vehicle`,
 
+  /**
+   * Journey seats creation/edit step.
+   */
   JOURNEY_CREATE_SEATS: (journeyPublicId: string) =>
     `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit/seats`,
 
+  /**
+   * Journey pricing creation/edit step.
+   */
   JOURNEY_CREATE_PRICING: (journeyPublicId: string) =>
     `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit/pricing`,
 
+  /**
+   * Journey preferences creation/edit step.
+   */
   JOURNEY_CREATE_PREFERENCES: (journeyPublicId: string) =>
     `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit/preferences`,
 
+  /**
+   * Journey photos creation/edit step.
+   */
   JOURNEY_CREATE_PHOTOS: (journeyPublicId: string) =>
     `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit/photos`,
 
+  /**
+   * Journey review creation/edit step.
+   */
   JOURNEY_CREATE_REVIEW: (journeyPublicId: string) =>
     `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit/review`,
 
@@ -279,21 +325,39 @@ export const AUTHENTICATED_ROUTES = {
   //
   // ===========================================================================
 
+  /**
+   * Journey Demand creation/edit root.
+   */
   JOURNEY_DEMAND_CREATE: (journeyDemandPublicId: string) =>
     `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit`,
 
+  /**
+   * Journey Demand route creation/edit step.
+   */
   JOURNEY_DEMAND_CREATE_ROUTE: (journeyDemandPublicId: string) =>
     `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit/route`,
 
+  /**
+   * Journey Demand schedule creation/edit step.
+   */
   JOURNEY_DEMAND_CREATE_SCHEDULE: (journeyDemandPublicId: string) =>
     `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit/schedule`,
 
+  /**
+   * Journey Demand seats creation/edit step.
+   */
   JOURNEY_DEMAND_CREATE_SEATS: (journeyDemandPublicId: string) =>
     `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit/seats`,
 
+  /**
+   * Journey Demand pricing creation/edit step.
+   */
   JOURNEY_DEMAND_CREATE_PRICING: (journeyDemandPublicId: string) =>
     `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit/pricing`,
 
+  /**
+   * Journey Demand review creation/edit step.
+   */
   JOURNEY_DEMAND_CREATE_REVIEW: (journeyDemandPublicId: string) =>
     `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit/review`,
 
@@ -308,6 +372,9 @@ export const AUTHENTICATED_ROUTES = {
 
   /**
    * Authenticated booking detail.
+   *
+   * Booking URLs use the /bookings namespace because booking ownership and
+   * access are determined by the authenticated application boundary.
    */
   BOOKING: (journeyBookingPublicId: string) =>
     `/bookings/${encodeURIComponent(journeyBookingPublicId)}`,
@@ -316,14 +383,23 @@ export const AUTHENTICATED_ROUTES = {
   // Assets
   // ===========================================================================
 
+  /**
+   * Authenticated member asset collection.
+   */
   ASSETS: "/assets",
 
   // ===========================================================================
   // Messaging
   // ===========================================================================
 
+  /**
+   * Authenticated messaging inbox.
+   */
   MESSAGES: "/messages",
 
+  /**
+   * Authenticated messaging conversation.
+   */
   MESSAGING_CONVERSATION: (conversationPublicId: string) =>
     `/messages/${encodeURIComponent(conversationPublicId)}`,
 
@@ -331,46 +407,88 @@ export const AUTHENTICATED_ROUTES = {
   // Notifications
   // ===========================================================================
 
+  /**
+   * Authenticated notification collection.
+   */
   NOTIFICATIONS: "/notifications",
 
+  /**
+   * Authenticated notification detail.
+   */
   NOTIFICATION: (notificationPublicId: string) =>
     `/notifications/${encodeURIComponent(notificationPublicId)}`,
 
+  /**
+   * Authenticated notification preferences.
+   */
   NOTIFICATION_SETTINGS: "/settings/notifications",
 
   // ===========================================================================
   // Traveller Profile
   // ===========================================================================
 
+  /**
+   * Authenticated member profile.
+   */
   PROFILE: "/profile",
 
+  /**
+   * Authenticated member verification surface.
+   */
   PROFILE_VERIFICATION: "/profile/verification",
 
   // ===========================================================================
   // Financial / Wallet
   // ===========================================================================
 
+  /**
+   * Authenticated member wallet.
+   */
   WALLET: "/wallet",
 
+  /**
+   * Wallet top-up workflow.
+   */
   WALLET_TOP_UP: "/wallet/top-up",
 
+  /**
+   * Wallet withdrawal workflow.
+   */
   WALLET_WITHDRAW: "/wallet/withdraw",
 
+  /**
+   * Wallet transaction collection.
+   */
   WALLET_TRANSACTIONS: "/wallet/transactions",
 
+  /**
+   * Wallet transaction detail.
+   */
   WALLET_TRANSACTION: (transactionPublicId: string) =>
     `/wallet/transactions/${encodeURIComponent(transactionPublicId)}`,
 
+  /**
+   * Authenticated wallet payment methods.
+   */
   WALLET_PAYMENT_METHODS: "/wallet/payment-methods",
 
   // ===========================================================================
   // Support
   // ===========================================================================
 
+  /**
+   * Authenticated member support collection.
+   */
   SUPPORT: "/support",
 
+  /**
+   * Create a new support case.
+   */
   SUPPORT_NEW: "/support/new",
 
+  /**
+   * Authenticated support case detail.
+   */
   SUPPORT_CASE: (supportCasePublicId: string) =>
     `/support/cases/${encodeURIComponent(supportCasePublicId)}`,
 
@@ -378,6 +496,9 @@ export const AUTHENTICATED_ROUTES = {
   // Settings
   // ===========================================================================
 
+  /**
+   * Authenticated application settings.
+   */
   SETTINGS: "/settings",
 } as const;
 
@@ -399,4 +520,3 @@ export type AuthenticatedRoute = Extract<
   AuthenticatedRouteValue,
   string
 >;
-

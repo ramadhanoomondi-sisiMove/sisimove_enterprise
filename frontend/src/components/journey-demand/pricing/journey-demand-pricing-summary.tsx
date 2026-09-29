@@ -14,6 +14,13 @@
 // Pricing represents the traveller's requested/preferred pricing conditions.
 // It is not a confirmed fare, booking amount, commission, settlement amount,
 // wallet balance, or accounting value.
+//
+// Marketplace presentation:
+// - Compact by default.
+// - Designed to fit inside the Journey Demand marketplace card.
+// - Avoids nested card/surface treatment.
+// - Keeps the commercial value visually prominent.
+// - Uses a single compact pricing row rather than large stacked panels.
 // -----------------------------------------------------------------------------
 
 import type { PublicJourneyDemandPricing } from '@/features/journey-demand/models';
@@ -35,95 +42,74 @@ export function JourneyDemandPricingSummary({
   return (
     <section
       className={cn(
-        'surface',
-        isCompact ? 'p-4' : 'p-5',
+        'min-w-0',
+        isCompact ? 'px-3 py-2' : 'px-4 py-3',
         className,
       )}
-      aria-labelledby="journey-demand-pricing-summary-heading"
+      aria-label="Pricing"
     >
-      <div className="min-w-0">
-        <h2
-          id="journey-demand-pricing-summary-heading"
-          className={cn(
-            'font-semibold text-foreground',
-            isCompact ? 'text-sm' : 'text-base',
-          )}
-        >
-          Pricing
-        </h2>
+      <div
+        className={cn(
+          'flex min-w-0 items-center justify-between gap-4',
+          isCompact ? 'gap-3' : 'gap-4',
+        )}
+      >
+        <div className="min-w-0">
+          <p
+            className={cn(
+              'font-medium text-[var(--foreground-secondary)]',
+              isCompact ? 'text-[11px]' : 'text-xs',
+            )}
+          >
+            Preferred price
+          </p>
+
+          <p
+            className={cn(
+              'truncate font-bold leading-tight text-[var(--foreground)]',
+              isCompact ? 'mt-0.5 text-sm' : 'mt-1 text-base',
+            )}
+          >
+            {pricing.preferredPricePerSeat === null
+              ? 'Not specified'
+              : formatPrice(
+                  pricing.preferredPricePerSeat,
+                  pricing.currency,
+                )}
+          </p>
+        </div>
 
         <div
           className={cn(
-            'mt-4 grid min-w-0 gap-3',
-            isCompact
-              ? 'grid-cols-1'
-              : 'grid-cols-1 sm:grid-cols-2',
+            'min-w-0 shrink-0 text-right',
+            'border-l border-[var(--border-subtle)] pl-3',
           )}
         >
-          <PricingValue
-            label="Preferred price"
-            value={pricing.preferredPricePerSeat}
-            currency={pricing.currency}
-            emphasis={emphasis}
-          />
+          <p
+            className={cn(
+              'font-medium text-[var(--foreground-muted)]',
+              isCompact ? 'text-[10px]' : 'text-xs',
+            )}
+          >
+            Maximum
+          </p>
 
-          <PricingValue
-            label="Maximum price"
-            value={pricing.maximumPricePerSeat}
-            currency={pricing.currency}
-            emphasis={emphasis}
-          />
+          <p
+            className={cn(
+              'truncate font-semibold text-[var(--foreground)]',
+              isCompact ? 'mt-0.5 text-xs' : 'mt-1 text-sm',
+            )}
+          >
+            {pricing.maximumPricePerSeat === null
+              ? 'Not specified'
+              : formatPrice(
+                  pricing.maximumPricePerSeat,
+                  pricing.currency,
+                )}
+          </p>
         </div>
       </div>
     </section>
-  );
-}
-
-// -----------------------------------------------------------------------------
-// Pricing Value
-// -----------------------------------------------------------------------------
-
-interface PricingValueProps {
-  readonly label: string;
-  readonly value: number | null;
-  readonly currency: string;
-  readonly emphasis: 'compact' | 'default';
-}
-
-function PricingValue({
-  label,
-  value,
-  currency,
-  emphasis,
-}: PricingValueProps) {
-  return (
-    <div
-      className={cn(
-        'min-w-0 rounded-[var(--radius-md)]',
-        'bg-[var(--background-subtle)]',
-        emphasis === 'compact' ? 'p-3' : 'p-4',
-      )}
-    >
-      <p
-        className={cn(
-          'text-foreground-muted',
-          emphasis === 'compact' ? 'text-xs' : 'text-sm',
-        )}
-      >
-        {label}
-      </p>
-
-      <p
-        className={cn(
-          'mt-1 font-semibold text-foreground',
-          emphasis === 'compact' ? 'text-sm' : 'text-base',
-        )}
-      >
-        {value === null
-          ? 'Not specified'
-          : formatPrice(value, currency)}
-      </p>
-    </div>
   );
 }
 
@@ -141,4 +127,3 @@ function formatPrice(
 
   return `${currency} ${formattedValue} / seat`;
 }
-

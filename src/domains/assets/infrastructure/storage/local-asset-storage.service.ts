@@ -148,7 +148,7 @@ export class LocalAssetStorageService implements AssetStoragePort {
 
   public constructor() {
     this.rootDirectory = resolve(
-      process.env.ASSET_STORAGE_LOCAL_ROOT ?? './storage/assets',
+      process.env.ASSET_STORAGE_LOCAL_ROOT ?? './storage/assets/assets',
     );
   }
 
