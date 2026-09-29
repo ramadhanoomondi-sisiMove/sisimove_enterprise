@@ -55,27 +55,28 @@
 // `NotificationBell` owns its notification query because notifications are
 // independent authenticated server state.
 //
+// Marketplace components are intentionally not composed here. Authenticated
+// pages own marketplace composition because JourneyMarketplace and
+// JourneyDemandMarketplace are core capabilities that can also be composed
+// by public pages.
+//
 // -----------------------------------------------------------------------------
 
-'use client';
+"use client";
 
-// -----------------------------------------------------------------------------
-// React
-// -----------------------------------------------------------------------------
-
-import type { ReactNode } from 'react';
+import type { ReactNode } from "react";
 
 // -----------------------------------------------------------------------------
 // Authenticated Application
 // -----------------------------------------------------------------------------
 
-import { AuthenticatedShell } from '@/components/authenticated';
+import { AuthenticatedShell } from "@/components/authenticated";
 
 // -----------------------------------------------------------------------------
 // Traveller Profile
 // -----------------------------------------------------------------------------
 
-import { useCurrentTravellerProfile } from '@/features/traveller-profile';
+import { useCurrentTravellerProfile } from "@/features/traveller-profile";
 
 // -----------------------------------------------------------------------------
 // Assets
@@ -92,7 +93,7 @@ import { useCurrentTravellerProfile } from '@/features/traveller-profile';
 // The layout never constructs an Asset URL itself.
 // -----------------------------------------------------------------------------
 
-import { usePublicAsset } from '@/features/assets';
+import { usePublicAsset } from "@/features/assets";
 
 // =============================================================================
 // Props
@@ -157,13 +158,19 @@ export default function AuthenticatedLayout({
 
   if (profileLoading) {
     return (
-      <div className="min-h-screen bg-background text-foreground">
+      <div
+        className={[
+          "min-h-screen",
+          "bg-[var(--background)]",
+          "text-[var(--foreground)]",
+        ].join(" ")}
+      >
         <div
           className="flex min-h-screen items-center justify-center px-4"
           aria-busy="true"
           aria-live="polite"
         >
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-[var(--foreground-muted)]">
             Loading your profile…
           </p>
         </div>
@@ -182,17 +189,23 @@ export default function AuthenticatedLayout({
 
   if (profileIsError || travellerProfile == null) {
     return (
-      <div className="min-h-screen bg-background text-foreground">
+      <div
+        className={[
+          "min-h-screen",
+          "bg-[var(--background)]",
+          "text-[var(--foreground)]",
+        ].join(" ")}
+      >
         <div className="flex min-h-screen items-center justify-center px-4">
           <div
             className="max-w-md text-center"
             role="alert"
           >
-            <h1 className="text-lg font-semibold">
+            <h1 className="text-lg font-semibold text-[var(--foreground)]">
               We could not load your profile
             </h1>
 
-            <p className="mt-2 text-sm text-muted-foreground">
+            <p className="mt-2 text-sm text-[var(--foreground-muted)]">
               Your Traveller Profile is required to continue.
             </p>
           </div>
@@ -225,4 +238,3 @@ export default function AuthenticatedLayout({
     </AuthenticatedShell>
   );
 }
-

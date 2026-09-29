@@ -2,49 +2,54 @@
 // sisiMove — Authenticated Marketplace Actions
 // -----------------------------------------------------------------------------
 //
-// Compact action prompt for the authenticated marketplace.
+// Secondary participation prompt for the authenticated marketplace.
 //
-// Marketplace participation:
+// The SisiMove marketplaces themselves are the primary product surfaces:
 //
-//     Existing journey found
-//              │
-//              └── Book / continue to journey
+//     JourneyMarketplace
+//     JourneyDemandMarketplace
 //
-//     Journey not found
-//              │
-//              └── Create travel demand
-//                       │
-//                       └── Demand stays visible in the marketplace
-//                              │
-//                              └── When a suitable journey becomes available,
-//                                  the member can be notified
+// This component provides additional authenticated entry points for members
+// who want to participate in the marketplace by:
 //
-//     Traveller has available seats
-//              │
-//              └── Publish a journey
+// - publishing available seats through a Journey;
+// - creating a Journey Demand when they cannot find the Journey they need.
 //
-// The component explains how travellers can participate in both sides of the
-// SisiMove marketplace: publishing available seats or expressing unmet travel
-// demand.
+// This component is presentation-only.
 //
-// A travel demand is not simply a failed search. It gives the marketplace a
-// clear signal of where someone needs to travel. When a suitable journey
-// becomes available, the member can be notified so they have an opportunity
-// to act on the new supply.
+// Responsibilities:
+// - present authenticated marketplace participation actions;
+// - navigate to the supplied Journey creation destination;
+// - navigate to the supplied Journey Demand creation destination.
 //
-// This component is presentation-only. It does not perform search, matching,
-// notification delivery, or authorization.
+// Non-responsibilities:
+// - no marketplace search;
+// - no marketplace data fetching;
+// - no matching;
+// - no booking;
+// - no joining a Journey Demand;
+// - no notification delivery;
+// - no authorization;
+// - no Journey creation;
+// - no Journey Demand creation;
+// - no route construction;
+// - no authentication-state management.
+//
+// Navigation destinations are supplied by the composition boundary so this
+// component remains independent of application routing.
+//
 // -----------------------------------------------------------------------------
 
-import Link from 'next/link';
+import Link from "next/link";
+import type { ReactNode } from "react";
 
 import {
   ArrowRight,
   CarFront,
   UsersRound,
-} from 'lucide-react';
+} from "lucide-react";
 
-import { cn } from '@/foundation';
+import { cn } from "@/foundation";
 
 // =============================================================================
 // Props
@@ -52,12 +57,12 @@ import { cn } from '@/foundation';
 
 export interface AuthenticatedMarketplaceActionsProps {
   /**
-   * Destination for the authenticated journey-publishing flow.
+   * Destination for the authenticated Journey creation flow.
    */
   readonly publishJourneyHref: string;
 
   /**
-   * Destination for the authenticated travel-demand creation flow.
+   * Destination for the authenticated Journey Demand creation flow.
    */
   readonly createDemandHref: string;
 
@@ -65,6 +70,66 @@ export interface AuthenticatedMarketplaceActionsProps {
    * Optional additional classes supplied by the composition boundary.
    */
   readonly className?: string;
+}
+
+// =============================================================================
+// Action
+// =============================================================================
+
+interface MarketplaceActionProps {
+  readonly href: string;
+  readonly children: ReactNode;
+  readonly variant: "primary" | "secondary";
+}
+
+function MarketplaceAction({
+  href,
+  children,
+  variant,
+}: MarketplaceActionProps) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "inline-flex",
+        "min-h-10",
+        "items-center",
+        "justify-center",
+        "gap-2",
+        "rounded-[var(--radius-md)]",
+        "px-3.5",
+        "py-2",
+        "text-sm",
+        "font-semibold",
+        "transition-colors",
+        "duration-150",
+        "ease-out",
+        "focus-visible:outline-none",
+        "focus-visible:ring-2",
+        "focus-visible:ring-[var(--brand)]",
+        "focus-visible:ring-offset-2",
+        "focus-visible:ring-offset-[var(--background-brand)]",
+
+        variant === "primary" && [
+          "bg-[var(--brand)]",
+          "text-[var(--brand-foreground)]",
+          "hover:bg-[var(--brand-hover)]",
+        ].join(" "),
+
+        variant === "secondary" && [
+          "border",
+          "border-[var(--border-strong)]",
+          "bg-[var(--surface)]",
+          "text-[var(--foreground)]",
+          "hover:border-[var(--brand)]",
+          "hover:bg-[var(--brand-soft)]",
+          "hover:text-[var(--brand)]",
+        ].join(" "),
+      )}
+    >
+      {children}
+    </Link>
+  );
 }
 
 // =============================================================================
@@ -80,17 +145,18 @@ export function AuthenticatedMarketplaceActions({
     <section
       aria-labelledby="authenticated-marketplace-actions-heading"
       className={cn(
-        'w-full',
-        'border-b border-[var(--border-subtle)]',
-        'bg-[var(--background-brand)]',
+        "w-full",
+        "border-b",
+        "border-[var(--border-subtle)]",
+        "bg-[var(--background-brand)]",
         className,
       )}
     >
       <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
         <div
           className={cn(
-            'flex flex-col gap-4',
-            'sm:flex-row sm:items-center sm:justify-between',
+            "flex flex-col gap-4",
+            "sm:flex-row sm:items-center sm:justify-between",
           )}
         >
           {/* -----------------------------------------------------------------
@@ -98,28 +164,27 @@ export function AuthenticatedMarketplaceActions({
               ----------------------------------------------------------------- */}
 
           <div className="min-w-0">
-            <h1
+            <h2
               id="authenticated-marketplace-actions-heading"
               className={cn(
-                'text-lg font-semibold tracking-tight',
-                'text-[var(--foreground)]',
-                'sm:text-xl',
+                "text-lg font-semibold tracking-tight",
+                "text-[var(--foreground)]",
+                "sm:text-xl",
               )}
             >
               What are you looking to do?
-            </h1>
+            </h2>
 
             <p
               className={cn(
-                'mt-1 max-w-2xl',
-                'text-sm leading-5',
-                'text-[var(--foreground-secondary)]',
+                "mt-1 max-w-2xl",
+                "text-sm leading-5",
+                "text-[var(--foreground-secondary)]",
               )}
             >
               Have available seats? Publish your journey and make your trip
-              discoverable. Can’t find the journey you need? Create a travel
-              demand so your travel need is visible to the marketplace. When a
-              suitable journey becomes available, you can be notified.
+              discoverable. Can&apos;t find the journey you need? Create a
+              travel demand so your travel need is visible to the marketplace.
             </p>
           </div>
 
@@ -128,26 +193,9 @@ export function AuthenticatedMarketplaceActions({
               ----------------------------------------------------------------- */}
 
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {/* ---------------------------------------------------------------
-                Publish a journey
-                --------------------------------------------------------------- */}
-
-            <Link
+            <MarketplaceAction
               href={publishJourneyHref}
-              className={cn(
-                'inline-flex min-h-10 items-center justify-center gap-2',
-                'rounded-[var(--radius-md)]',
-                'bg-[var(--brand)] px-3.5 py-2',
-                'text-sm font-semibold',
-                'text-[var(--brand-foreground)]',
-                'transition-colors duration-150 ease-out',
-                'hover:bg-[var(--brand-hover)]',
-                'focus-visible:outline-none',
-                'focus-visible:ring-2',
-                'focus-visible:ring-[var(--brand)]',
-                'focus-visible:ring-offset-2',
-                'focus-visible:ring-offset-[var(--background-brand)]',
-              )}
+              variant="primary"
             >
               <CarFront
                 aria-hidden="true"
@@ -155,31 +203,11 @@ export function AuthenticatedMarketplaceActions({
               />
 
               <span>Publish a journey</span>
-            </Link>
+            </MarketplaceAction>
 
-            {/* ---------------------------------------------------------------
-                Create travel demand
-                --------------------------------------------------------------- */}
-
-            <Link
+            <MarketplaceAction
               href={createDemandHref}
-              className={cn(
-                'inline-flex min-h-10 items-center justify-center gap-2',
-                'rounded-[var(--radius-md)]',
-                'border border-[var(--border-strong)]',
-                'bg-[var(--surface)] px-3.5 py-2',
-                'text-sm font-semibold',
-                'text-[var(--foreground)]',
-                'transition-colors duration-150 ease-out',
-                'hover:border-[var(--brand)]',
-                'hover:bg-[var(--brand-soft)]',
-                'hover:text-[var(--brand)]',
-                'focus-visible:outline-none',
-                'focus-visible:ring-2',
-                'focus-visible:ring-[var(--brand)]',
-                'focus-visible:ring-offset-2',
-                'focus-visible:ring-offset-[var(--background-brand)]',
-              )}
+              variant="secondary"
             >
               <UsersRound
                 aria-hidden="true"
@@ -192,12 +220,10 @@ export function AuthenticatedMarketplaceActions({
                 aria-hidden="true"
                 className="h-4 w-4"
               />
-            </Link>
+            </MarketplaceAction>
           </div>
         </div>
       </div>
     </section>
   );
 }
-
-export default AuthenticatedMarketplaceActions;

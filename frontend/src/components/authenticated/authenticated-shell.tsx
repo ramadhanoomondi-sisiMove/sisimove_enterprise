@@ -44,18 +44,18 @@
 //              ▼
 //     AuthenticatedShell
 //
-// Route protection should remain at the authenticated route boundary and
-// should use the existing authentication infrastructure. The shell itself
-// must not create a second authentication mechanism.
+// Route protection remains at the authenticated route boundary and should use
+// the existing authentication infrastructure. The shell must not create a
+// second authentication mechanism.
 //
 // Traveller identity:
 //
-// AuthSession contains authentication/session identifiers, but the public
+// AuthSession contains authentication/session identifiers, while the public
 // traveller handle and avatar belong to TravellerProfile.
 //
-// Therefore the authenticated application boundary resolves the current
-// TravellerProfile and its public avatar URL, then supplies those values
-// to this shell.
+// Therefore, the authenticated application boundary resolves the current
+// TravellerProfile and its public avatar URL, then supplies those values to
+// this shell.
 //
 // Presentation flow:
 //
@@ -81,12 +81,12 @@
 //
 // -----------------------------------------------------------------------------
 
-import type { ReactNode } from 'react';
+import type { ReactNode } from "react";
 
 import {
   AuthenticatedFooter,
   AuthenticatedHeader,
-} from '@/components/authenticated';
+} from "@/components/authenticated";
 
 // =============================================================================
 // Props
@@ -101,10 +101,6 @@ export interface AuthenticatedShellProps {
   /**
    * Public TravellerProfile handle displayed in the authenticated header.
    *
-   * Example:
-   *
-   *     ramadhan
-   *
    * AuthenticatedAccountMenu is responsible for presenting the @ prefix.
    */
   readonly travellerHandle: string;
@@ -115,8 +111,8 @@ export interface AuthenticatedShellProps {
    * Asset resolution remains outside the shell.
    *
    * `null` or `undefined` means that the traveller does not currently have
-   * a usable public avatar, in which case the shared Avatar primitive
-   * renders its initials fallback.
+   * a usable public avatar, allowing the shared Avatar primitive to render
+   * its initials fallback.
    */
   readonly travellerAvatarUrl?: string | null;
 }
@@ -131,7 +127,13 @@ export function AuthenticatedShell({
   travellerAvatarUrl,
 }: AuthenticatedShellProps) {
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div
+      className={[
+        "min-h-screen",
+        "bg-[var(--background)]",
+        "text-[var(--foreground)]",
+      ].join(" ")}
+    >
       <div className="flex min-h-screen flex-col">
         <AuthenticatedHeader
           travellerHandle={travellerHandle}
@@ -147,5 +149,3 @@ export function AuthenticatedShell({
     </div>
   );
 }
-
-export default AuthenticatedShell;
