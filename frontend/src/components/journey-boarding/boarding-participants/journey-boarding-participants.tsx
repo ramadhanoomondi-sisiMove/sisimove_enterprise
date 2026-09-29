@@ -28,7 +28,7 @@ import type { JourneyBoardingParticipant as JourneyBoardingParticipantModel } fr
 // Child Component
 // -----------------------------------------------------------------------------
 
-import { JourneyBoardingParticipantStatus } from './journey-boarding-participant-status';
+import { JourneyBoardingParticipantStatusBadge } from './journey-boarding-participant-status';
 
 // -----------------------------------------------------------------------------
 // Types
@@ -114,7 +114,7 @@ export function JourneyBoardingParticipant({
       {/* Participant Status                                                  */}
       {/* ------------------------------------------------------------------- */}
 
-      <JourneyBoardingParticipantStatus
+      <JourneyBoardingParticipantStatusBadge
         status={participant.status}
       />
     </article>

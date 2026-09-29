@@ -81,7 +81,7 @@ export function MyJourneyDemands({
 
   const handleCreate = (): void => {
     router.push(
-      AUTHENTICATED_ROUTES.MY_DEMAND_CREATE_START,
+      AUTHENTICATED_ROUTES.MY_DEMAND_NEW,
     );
   };
 

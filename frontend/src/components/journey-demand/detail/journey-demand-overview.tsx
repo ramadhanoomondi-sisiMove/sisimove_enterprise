@@ -25,12 +25,13 @@
 
 import {
   JourneyDemandDemandSummary,
-  JourneyDemandPrice,
   JourneyDemandRequesterSummary,
   JourneyDemandRoute,
   JourneyDemandScheduleSummary,
   JourneyDemandStatusBadge,
 } from '../shared';
+
+import { JourneyDemandPricing } from './journey-demand-pricing';
 
 import type { PublicJourneyDemand } from '@/features/journey-demand/models';
 
@@ -137,12 +138,7 @@ export function JourneyDemandOverview({
       {/* Route                                                               */}
       {/* ------------------------------------------------------------------- */}
 
-      <div
-        className={cn(
-          'mt-5',
-          'min-w-0',
-        )}
-      >
+      <div className="mt-5 min-w-0">
         <div
           className={cn(
             'mb-2',
@@ -157,7 +153,7 @@ export function JourneyDemandOverview({
         </div>
 
         <JourneyDemandRoute
-          corridor={demand.route}
+          route={demand.route}
           emphasis={emphasis}
         />
       </div>
@@ -225,7 +221,7 @@ export function JourneyDemandOverview({
           isCompact ? 'p-3' : 'p-4',
         )}
       >
-        <JourneyDemandPrice
+        <JourneyDemandPricing
           pricing={demand.pricing}
           emphasis={emphasis}
         />
@@ -233,3 +229,4 @@ export function JourneyDemandOverview({
     </section>
   );
 }
+

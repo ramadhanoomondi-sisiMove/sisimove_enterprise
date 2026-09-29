@@ -31,7 +31,7 @@ export interface SupportCaseMessageProps {
   message: SupportCaseMessageModel;
 }
 
-export function SupportCaseMessage({
+export function SupportCaseMessageItem({
   message,
 }: SupportCaseMessageProps) {
   const isSystemMessage = message.type === 'SYSTEM';

@@ -89,8 +89,6 @@ export {
 
 export type {
   MessagingMessageListProps,
-  MessagingMessageListEmptyProps,
-  MessagingMessageListLoadingProps,
 } from './message-list';
 
 // -----------------------------------------------------------------------------

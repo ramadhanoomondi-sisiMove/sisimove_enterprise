@@ -7,7 +7,7 @@
 // Responsibilities:
 // - compose the authenticated Notifications surface;
 // - provide route-level page structure;
-// - delegate notification rendering to the NotificationList component.
+// - delegate notification querying and rendering to NotificationPanel.
 //
 // Non-responsibilities:
 // - authentication;
@@ -17,12 +17,13 @@
 // - notification lifecycle decisions;
 // - notification business logic.
 //
-// The NotificationList component owns the notification collection query.
+// NotificationPanel owns the notification collection query and supplies the
+// resulting collection to the presentation-only NotificationList component.
 // -----------------------------------------------------------------------------
 
 import {
-  NotificationList,
-} from '@/components/notification/notification-list';
+  NotificationPanel,
+} from '@/components/notification/notification-panel';
 
 export default function NotificationsPage() {
   return (
@@ -38,7 +39,7 @@ export default function NotificationsPage() {
           </p>
         </header>
 
-        <NotificationList />
+        <NotificationPanel />
       </div>
     </main>
   );

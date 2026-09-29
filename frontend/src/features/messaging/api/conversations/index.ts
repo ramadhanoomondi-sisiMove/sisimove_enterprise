@@ -10,6 +10,14 @@
 // - Re-export conversation API contracts.
 // - Provide a stable import boundary.
 //
+// Non-responsibilities:
+//
+// - HTTP implementation.
+// - Response mapping.
+// - Domain logic.
+// - React Query integration.
+// - Business rules.
+//
 // This barrel contains no business logic.
 //
 // -----------------------------------------------------------------------------
@@ -33,6 +41,7 @@ export {
   listMessagingConversations,
   type ListMessagingConversationsQuery,
   type ListMessagingConversationsApiResponse,
-  type ListMessagingConversationParticipantApiResponse,
-  type ListMessagingConversationMessageApiResponse,
+  type ListMessagingConversationsParticipantResponse,
+  type ListMessagingConversationsMessageResponse,
 } from './list-messaging-conversations.api';
+

@@ -30,6 +30,6 @@ import { AUTHENTICATED_ROUTES } from "@/foundation/routing";
 // -----------------------------------------------------------------------------
 
 export default function NewMyJourneyPage() {
-  redirect(AUTHENTICATED_ROUTES.JOURNEY_CREATE_START);
+  redirect(AUTHENTICATED_ROUTES.MY_JOURNEY_NEW);
 }
 

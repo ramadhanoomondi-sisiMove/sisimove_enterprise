@@ -73,14 +73,6 @@ export type {
 } from './journey-demand-requester-summary';
 
 export {
-  JourneyDemandParticipant,
-} from './journey-demand-participant';
-
-export type {
-  JourneyDemandParticipantProps,
-} from './journey-demand-participant';
-
-export {
   JourneyDemandActions,
 } from './journey-demand-actions';
 

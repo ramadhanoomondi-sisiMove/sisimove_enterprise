@@ -25,7 +25,7 @@
 import type { SupportCase } from '@/features/support-case/models';
 import type { SupportCaseMessage } from '@/features/support-case/models/support-case-message';
 
-import { SupportCaseMessage } from '../support-case-message';
+import { SupportCaseMessageItem } from '../support-case-message';
 
 export interface SupportCaseMessageListProps {
   supportCase: SupportCase;
@@ -70,7 +70,7 @@ export function SupportCaseMessageList({
     >
       {messages.map((message) => (
         <li key={message.publicId}>
-          <SupportCaseMessage message={message} />
+          <SupportCaseMessageItem message={message} />
         </li>
       ))}
     </ol>

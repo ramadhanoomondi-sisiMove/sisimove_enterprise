@@ -18,18 +18,17 @@
 export {
   JourneyBoardingStatusBadge,
   type JourneyBoardingStatusBadgeProps,
-} from './boarding-status';
+} from "./boarding-status";
 
 export {
   JourneyBoardingSummary,
   type JourneyBoardingSummaryProps,
-} from './boarding-summary';
+} from "./boarding-summary";
 
 export {
   JourneyBoardingProvider,
   type JourneyBoardingProviderProps,
-} from './boarding-provider';
-
+} from "./boarding-provider";
 
 export {
   JourneyBoardingActions,
@@ -50,16 +49,28 @@ export {
   type StartJourneyActionProps,
   CancelJourneyBoardingAction,
   type CancelJourneyBoardingActionProps,
-} from './boarding-actions';
+} from "./boarding-actions";
 
 export {
   JourneyBoardingActivity,
   type JourneyBoardingActivityProps,
   JourneyBoardingEventItem,
   type JourneyBoardingEventItemProps,
-} from './boarding-activity';
+} from "./boarding-activity";
 
 export {
   JourneyBoardingCard,
   type JourneyBoardingCardProps,
-} from './boarding-card';
+} from "./boarding-card";
+
+export {
+  JourneyBoardingProgress,
+  type JourneyBoardingProgressProps,
+} from "./boarding-progress";
+
+export {
+  JourneyBoardingParticipant,
+  type JourneyBoardingParticipantProps,
+} from "./boarding-participants";
+
+

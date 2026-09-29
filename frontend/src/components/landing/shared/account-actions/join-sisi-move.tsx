@@ -1,0 +1,152 @@
+// -----------------------------------------------------------------------------
+// sisiMove — Join sisiMove
+// -----------------------------------------------------------------------------
+//
+// Reusable public account-action component for visitors who want to join
+// sisiMove.
+//
+// Presentation-only:
+// - no authentication state;
+// - no API calls;
+// - no registration logic;
+// - no business rules.
+//
+// The authentication boundary owns the actual registration flow.
+//
+// Routing:
+// - The default destination comes from the canonical authentication routing
+//   boundary.
+// - Consumers may override the destination when composing the component in a
+//   different navigation context.
+//
+// -----------------------------------------------------------------------------
+
+import Link from 'next/link';
+
+import { AUTHENTICATION_ROUTES } from '@/foundation/routing';
+
+
+// =============================================================================
+// Props
+// =============================================================================
+
+export interface JoinSisiMoveProps {
+  /**
+   * Registration destination.
+   *
+   * Defaults to the canonical public registration route.
+   */
+  readonly href?: string;
+
+  /**
+   * Optional consumer-supplied classes.
+   */
+  readonly className?: string;
+
+  /**
+   * Compact presentation used by header/navigation surfaces.
+   */
+  readonly compact?: boolean;
+}
+
+
+// =============================================================================
+// Component
+// =============================================================================
+
+export function JoinSisiMove({
+  href = AUTHENTICATION_ROUTES.REGISTER,
+  className,
+  compact = false,
+}: JoinSisiMoveProps) {
+  return (
+    <Link
+      href={href}
+      className={[
+        // ---------------------------------------------------------------------
+        // Base
+        // ---------------------------------------------------------------------
+
+        'inline-flex',
+        'min-w-0',
+        'items-center',
+        'justify-center',
+        'gap-2',
+        'rounded-[var(--radius-md)]',
+        'border',
+        'font-semibold',
+        'whitespace-nowrap',
+        'select-none',
+
+        // ---------------------------------------------------------------------
+        // Brand-outline action
+        // ---------------------------------------------------------------------
+        //
+        // The header should remain visually light.
+        //
+        // Join sisiMove is still the stronger account action, but it does not
+        // compete with the page's primary blue CTA.
+        //
+
+        'border-[color:var(--brand)]',
+        'bg-[color:var(--surface)]',
+        'text-[color:var(--brand)]',
+
+        'transition-colors',
+        'duration-150',
+        'ease-out',
+
+        // ---------------------------------------------------------------------
+        // Hover
+        // ---------------------------------------------------------------------
+
+        'hover:bg-[color:var(--brand-soft)]',
+        'hover:border-[color:var(--brand-hover)]',
+        'hover:text-[color:var(--brand-hover)]',
+
+        // ---------------------------------------------------------------------
+        // Keyboard focus
+        // ---------------------------------------------------------------------
+
+        'focus-visible:outline-none',
+        'focus-visible:ring-2',
+        'focus-visible:ring-[color:var(--brand)]',
+        'focus-visible:ring-offset-2',
+        'focus-visible:ring-offset-[color:var(--background)]',
+
+        // ---------------------------------------------------------------------
+        // Density
+        // ---------------------------------------------------------------------
+
+        compact
+          ? [
+              'min-h-9',
+              'px-3.5',
+              'py-1.5',
+              'text-sm',
+            ].join(' ')
+          : [
+              'min-h-10',
+              'px-4',
+              'py-2',
+              'text-sm',
+              'sm:min-h-11',
+              'sm:px-5',
+              'sm:py-2.5',
+            ].join(' '),
+
+        // ---------------------------------------------------------------------
+        // Consumer customization
+        // ---------------------------------------------------------------------
+
+        className,
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
+      Join sisiMove
+    </Link>
+  );
+}
+
+export default JoinSisiMove;

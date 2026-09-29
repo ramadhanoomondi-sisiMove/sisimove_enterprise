@@ -22,19 +22,19 @@
 // Backend authorization and aggregate lifecycle rules remain authoritative.
 // -----------------------------------------------------------------------------
 
-'use client';
+"use client";
 
 // -----------------------------------------------------------------------------
 // React
 // -----------------------------------------------------------------------------
 
-import { use } from 'react';
+import { use } from "react";
 
 // -----------------------------------------------------------------------------
 // Next.js
 // -----------------------------------------------------------------------------
 
-import Link from 'next/link';
+import Link from "next/link";
 
 // -----------------------------------------------------------------------------
 // UI
@@ -45,7 +45,7 @@ import {
   Container,
   ErrorState,
   Skeleton,
-} from '@/components/ui';
+} from "@/components/ui";
 
 // -----------------------------------------------------------------------------
 // Authentication / Identity
@@ -61,7 +61,7 @@ import {
 // presentation context required by JourneyBoardingActions.
 // -----------------------------------------------------------------------------
 
-import { useCurrentIdentity } from '@/features/identity';
+import { useCurrentIdentity } from "@/features/identity";
 
 // -----------------------------------------------------------------------------
 // Journey Boarding
@@ -70,19 +70,23 @@ import { useCurrentIdentity } from '@/features/identity';
 import {
   JourneyBoardingActions,
   JourneyBoardingActivity,
-  JourneyBoardingParticipants,
+  JourneyBoardingParticipant,
   JourneyBoardingProgress,
   JourneyBoardingProvider,
   JourneyBoardingSummary,
-} from '@/components/journey-boarding';
+} from "@/components/journey-boarding";
 
-import { useJourneyBoardingByJourney } from '@/features/journey-boarding/hooks';
+import {
+  JourneyBoardingParticipantRole,
+} from "@/features/journey-boarding/models";
+
+import { useJourneyBoardingByJourney } from "@/features/journey-boarding/hooks";
 
 // -----------------------------------------------------------------------------
 // Routing
 // -----------------------------------------------------------------------------
 
-import { AUTHENTICATED_ROUTES } from '@/foundation/routing';
+import { AUTHENTICATED_ROUTES } from "@/foundation/routing";
 
 // -----------------------------------------------------------------------------
 // Types
@@ -151,19 +155,19 @@ function JourneyBoardingPageError({
             <Link
               href={AUTHENTICATED_ROUTES.MY_JOURNEYS}
               className={[
-                'inline-flex min-h-9 items-center justify-center',
-                'rounded-[var(--radius-md)]',
-                'border border-[var(--border)]',
-                'bg-[var(--background)]',
-                'px-3 text-sm font-medium',
-                'text-[var(--foreground)]',
-                'transition-colors',
-                'hover:bg-[var(--background-subtle)]',
-                'focus-visible:outline-none',
-                'focus-visible:ring-2',
-                'focus-visible:ring-[var(--brand)]',
-                'focus-visible:ring-offset-2',
-              ].join(' ')}
+                "inline-flex min-h-9 items-center justify-center",
+                "rounded-[var(--radius-md)]",
+                "border border-[var(--border)]",
+                "bg-[var(--background)]",
+                "px-3 text-sm font-medium",
+                "text-[var(--foreground)]",
+                "transition-colors",
+                "hover:bg-[var(--background-subtle)]",
+                "focus-visible:outline-none",
+                "focus-visible:ring-2",
+                "focus-visible:ring-[var(--brand)]",
+                "focus-visible:ring-offset-2",
+              ].join(" ")}
             >
               Back to my journeys
             </Link>
@@ -187,8 +191,7 @@ export default function JourneyBoardingPage({
   // Journey Boarding
   // ---------------------------------------------------------------------------
   //
-  // The hook accepts structured parameters because the query boundary owns
-  // its complete request contract.
+  // The hook owns the complete query request contract.
   //
   // The page does not know the HTTP endpoint.
   // ---------------------------------------------------------------------------
@@ -230,7 +233,7 @@ export default function JourneyBoardingPage({
         message={
           boardingQuery.error instanceof Error
             ? boardingQuery.error.message
-            : 'We could not load the boarding information for this journey.'
+            : "We could not load the boarding information for this journey."
         }
       />
     );
@@ -246,7 +249,7 @@ export default function JourneyBoardingPage({
         message={
           identityQuery.error instanceof Error
             ? identityQuery.error.message
-            : 'We could not resolve the authenticated identity.'
+            : "We could not resolve the authenticated identity."
         }
       />
     );
@@ -270,8 +273,8 @@ export default function JourneyBoardingPage({
   // `useCurrentIdentity()` deliberately returns `Identity | null`.
   //
   // A null Identity means that the identity boundary did not resolve an
-  // authenticated Identity. The authenticated route itself remains
-  // responsible for authentication/session enforcement.
+  // authenticated Identity. The authenticated route remains responsible
+  // for authentication/session enforcement.
   if (identity === null) {
     return (
       <JourneyBoardingPageError
@@ -299,6 +302,23 @@ export default function JourneyBoardingPage({
   const isProvider =
     boarding.providerPublicId === identity.publicId;
 
+  // ---------------------------------------------------------------------------
+  // Passenger presentation
+  // ---------------------------------------------------------------------------
+  //
+  // JourneyBoardingParticipant is deliberately a single-participant
+  // presentation component. The page therefore supplies the participant
+  // collection context and renders one component per passenger.
+  //
+  // Participant role filtering is presentation composition only. It does not
+  // determine who is authorized to board or alter the aggregate.
+  // ---------------------------------------------------------------------------
+
+  const passengerParticipants = boarding.participants.filter(
+    (participant) =>
+      participant.role === JourneyBoardingParticipantRole.PASSENGER,
+  );
+
   return (
     <div className="page-shell">
       <Container className="page-container">
@@ -309,16 +329,16 @@ export default function JourneyBoardingPage({
         <div className="section-sm">
           <div className="flex flex-col gap-1">
             <Link
-              href={AUTHENTICATED_ROUTES.JOURNEY(journeyPublicId)}
+              href={AUTHENTICATED_ROUTES.MY_JOURNEY(journeyPublicId)}
               className={[
-                'w-fit text-sm font-medium',
-                'text-[var(--brand)]',
-                'hover:text-[var(--brand-hover)]',
-                'focus-visible:outline-none',
-                'focus-visible:ring-2',
-                'focus-visible:ring-[var(--brand)]',
-                'focus-visible:ring-offset-2',
-              ].join(' ')}
+                "w-fit text-sm font-medium",
+                "text-[var(--brand)]",
+                "hover:text-[var(--brand-hover)]",
+                "focus-visible:outline-none",
+                "focus-visible:ring-2",
+                "focus-visible:ring-[var(--brand)]",
+                "focus-visible:ring-offset-2",
+              ].join(" ")}
             >
               ← Back to journey
             </Link>
@@ -329,7 +349,7 @@ export default function JourneyBoardingPage({
               </h1>
 
               <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
-                Operational boarding for journey{' '}
+                Operational boarding for journey{" "}
                 <span className="font-mono text-xs text-[var(--foreground-muted)]">
                   {journeyPublicId}
                 </span>
@@ -339,7 +359,7 @@ export default function JourneyBoardingPage({
         </div>
 
         {/* ----------------------------------------------------------------- */}
-        {/* Operational dashboard                                              */}
+        {/* Operational dashboard                                             */}
         {/* ----------------------------------------------------------------- */}
 
         <div className="section">
@@ -363,9 +383,65 @@ export default function JourneyBoardingPage({
                 />
               )}
 
-              <JourneyBoardingParticipants
-                boarding={boarding}
-              />
+              {/* ----------------------------------------------------------- */}
+              {/* Passenger Participants                                      */}
+              {/* ----------------------------------------------------------- */}
+
+              <section
+                aria-labelledby="journey-boarding-participants-title"
+                className={[
+                  "surface",
+                  "p-4",
+                  "sm:p-5",
+                ].join(" ")}
+              >
+                <div>
+                  <h2
+                    id="journey-boarding-participants-title"
+                    className={[
+                      "text-sm",
+                      "font-semibold",
+                      "text-[var(--foreground)]",
+                    ].join(" ")}
+                  >
+                    Passengers
+                  </h2>
+
+                  <p
+                    className={[
+                      "mt-1",
+                      "text-sm",
+                      "text-[var(--foreground-muted)]",
+                    ].join(" ")}
+                  >
+                    {passengerParticipants.length}{" "}
+                    {passengerParticipants.length === 1
+                      ? "passenger"
+                      : "passengers"}
+                  </p>
+                </div>
+
+                {passengerParticipants.length > 0 ? (
+                  <div className="mt-4 divide-y divide-[var(--border-subtle)]">
+                    {passengerParticipants.map((participant) => (
+                      <JourneyBoardingParticipant
+                        key={participant.memberPublicId}
+                        participant={participant}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p
+                    className={[
+                      "mt-4",
+                      "text-sm",
+                      "text-[var(--foreground-muted)]",
+                    ].join(" ")}
+                  >
+                    No passenger boarding records are currently available.
+                  </p>
+                )}
+              </section>
 
               <JourneyBoardingActivity
                 boarding={boarding}
@@ -407,3 +483,4 @@ export default function JourneyBoardingPage({
     </div>
   );
 }
+

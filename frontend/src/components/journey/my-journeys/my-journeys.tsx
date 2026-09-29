@@ -110,7 +110,7 @@ export function MyJourneys() {
     return (
       <MyJourneyEmptyState
         onCreateJourney={() =>
-          router.push(AUTHENTICATED_ROUTES.JOURNEY_CREATE_START)
+          router.push(AUTHENTICATED_ROUTES.MY_JOURNEY_NEW)
         }
       />
     );

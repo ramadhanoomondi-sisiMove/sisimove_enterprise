@@ -7,6 +7,7 @@
 // Responsibilities:
 // - load the authenticated user's notifications;
 // - present notification loading, error, empty, and populated states;
+// - limit the collection for compact-panel presentation;
 // - compose the notification list;
 // - provide navigation to the full notification centre.
 //
@@ -15,16 +16,18 @@
 // - marking notifications as read;
 // - generating notification content;
 // - resolving notification reference destinations;
-// - fetching notifications through a parent page;
+// - fetching notifications through a child component;
 // - managing notification delivery state.
 //
 // Data ownership:
 //
 //     NotificationPanel
 //         └── useNotifications()
+//                 └── NotificationList
 //
 // The panel owns its own notification query because notification data is a
-// direct dependency of this component.
+// direct dependency of this component. NotificationList is intentionally
+// presentation-only and receives the already-loaded collection.
 //
 // -----------------------------------------------------------------------------
 
@@ -51,7 +54,7 @@ export interface NotificationPanelProps {
   /**
    * Optional class name applied to the panel container.
    */
-  className?: string;
+  readonly className?: string;
 
   /**
    * Maximum number of notifications displayed in the compact panel.
@@ -59,12 +62,12 @@ export interface NotificationPanelProps {
    * The panel is intended as an authenticated-shell surface rather than the
    * complete notification centre.
    */
-  limit?: number;
+  readonly limit?: number;
 
   /**
    * Whether to show the link to the complete notification centre.
    */
-  showViewAll?: boolean;
+  readonly showViewAll?: boolean;
 }
 
 // -----------------------------------------------------------------------------
@@ -195,7 +198,7 @@ export function NotificationPanel({
   showViewAll = true,
 }: NotificationPanelProps) {
   const {
-    data: notifications,
+    data: notifications = [],
     isLoading,
     isError,
   } = useNotifications();
@@ -216,10 +219,15 @@ export function NotificationPanel({
     );
   }
 
-  const visibleNotifications = (notifications ?? []).slice(
+  const normalizedLimit = Math.max(0, limit);
+
+  const visibleNotifications = notifications.slice(
     0,
-    Math.max(0, limit),
+    normalizedLimit,
   );
+
+  const hasMoreNotifications =
+    notifications.length > normalizedLimit;
 
   return (
     <Card
@@ -284,7 +292,7 @@ export function NotificationPanel({
             notifications={visibleNotifications}
           />
 
-          {showViewAll && notifications && notifications.length > limit && (
+          {showViewAll && hasMoreNotifications && (
             <div
               className={[
                 'border-t',
@@ -329,3 +337,4 @@ export function NotificationPanel({
     </Card>
   );
 }
+
