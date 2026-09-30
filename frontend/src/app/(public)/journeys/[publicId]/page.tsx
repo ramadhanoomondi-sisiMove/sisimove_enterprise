@@ -29,11 +29,19 @@
 
 import { JourneyPublicDetailPage } from "@/components/journey/detail/journey-public-detail-page";
 
+// =============================================================================
+// Props
+// =============================================================================
+
 interface PublicJourneyPageProps {
   readonly params: Promise<{
     publicId: string;
   }>;
 }
+
+// =============================================================================
+// Page
+// =============================================================================
 
 export default async function PublicJourneyPage({
   params,

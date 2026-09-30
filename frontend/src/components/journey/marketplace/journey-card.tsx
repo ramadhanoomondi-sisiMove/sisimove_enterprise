@@ -4,61 +4,54 @@
 //
 // sisiMove — Public Journey Marketplace Card
 //
-// Visual direction:
-// - Premium, bright, distinctive marketplace surface.
+// PublicJourney-aligned marketplace presentation.
+//
+// Composition:
+//
+//   ┌──────────────┬─────────────────────────┬────────────────┬──────────────┐
+//   │   SCHEDULE   │       ROUTE / @USER     │    VEHICLE     │ PRICE / SEATS │
+//   ├──────────────┴─────────────────────────┴────────────────┴──────────────┤
+//   │ Route context                                                   Actions │
+//   └─────────────────────────────────────────────────────────────────────────┘
+//
+// Design contract:
+// - Consumes only the PublicJourney read model.
+// - Uses only fields actually exposed by PublicTraveller.
 // - One horizontal composition at every viewport size.
-// - Card behaves as one proportional visual object.
-// - Route is the primary visual anchor and is centered within its zone.
-// - Provider handle is prominent and always presented as @handle.
-// - Provider identity is trust metadata, never a real-name presentation.
-// - From and To use distinct visual colors.
-// - Vehicle imagery is a primary marketplace visual.
-// - Vehicle identity remains prominent beside the vehicle image.
+// - Compact proportional marketplace surface.
+// - Shared Journey presentation components remain the visual source of truth.
+// - Route is the primary visual anchor.
+// - Provider handle is prominent and uses @handle.
+// - No provider avatar.
+// - Vehicle image is resolved only from supplied PublicAsset references.
 // - Price is the commercial anchor.
 // - Capacity is an immediate availability signal.
-// - Actions remain visible in a dedicated footer.
-// - Footer repeats the route as action context.
-// - Typography, icons, imagery, spacing and controls scale together.
-// - No mobile-only stacking or structural reconstruction.
-// - No provider avatar/profile image.
-// - No global CSS changes.
-// -----------------------------------------------------------------------------
+// - Footer remains compact and horizontal.
+// - No mobile-only stacking.
+// - No Asset URL construction.
+// - No routing/authentication/booking orchestration.
 //
-// Frozen visual tokens used:
-// - --background
-// - --surface
-// - --background-subtle
-// - --background-brand
-// - --brand
-// - --foreground
-// - --foreground-secondary
-// - --foreground-muted
-// - --foreground-subtle
-// - --border
-// - --border-subtle
-// - --border-strong
-// - --success
-// - --warning
-// - --shadow-md
-// - --shadow-lg
 // -----------------------------------------------------------------------------
 
 "use client";
 
 import Image from "next/image";
+import { Clock3, UsersRound } from "lucide-react";
 
 import { Card } from "@/components/ui";
 
+import type { PublicAsset } from "@/features/assets/models";
 import type { PublicJourney } from "@/features/journey/models";
 
-import { cn } from "@/foundation";
+import { formatTime } from "@/foundation/formatters";
+import { cn } from "@/foundation/utils/cn";
 
 import {
   JourneyActions,
   JourneyCapacitySummary,
+  JourneyDate,
   JourneyPrice,
   JourneyRoute,
-  JourneyScheduleSummary,
   JourneyVehicleSummary,
 } from "../shared";
 
@@ -68,15 +61,33 @@ import {
 
 export interface JourneyCardProps {
   readonly journey: PublicJourney;
+
+  /**
+   * Public Asset references already resolved through the public Asset
+   * delivery boundary.
+   *
+   * JourneyCard never constructs or infers Asset URLs.
+   */
+  readonly publicAssets?: readonly PublicAsset[];
+
   readonly emphasis?: "compact" | "default";
   readonly className?: string;
+
+  /**
+   * Presentation callbacks.
+   *
+   * The parent owns routing, authentication and booking orchestration.
+   */
   readonly onView?: () => void;
   readonly onShare?: () => void;
   readonly onBook?: () => void;
+
   readonly isBooking?: boolean;
+
   readonly viewDisabled?: boolean;
   readonly shareDisabled?: boolean;
   readonly bookDisabled?: boolean;
+
   readonly viewLabel?: string;
   readonly shareLabel?: string;
   readonly bookLabel?: string;
@@ -84,125 +95,28 @@ export interface JourneyCardProps {
 }
 
 // -----------------------------------------------------------------------------
-// Local icon
+// Asset helpers
 // -----------------------------------------------------------------------------
 
-function MarketplaceIcon({
-  type,
-  className,
-}: {
-  readonly type:
-    | "clock"
-    | "origin"
-    | "destination"
-    | "arrow"
-    | "verified"
-    | "phone"
-    | "seats";
-  readonly className?: string;
-}) {
-  const common = cn(
-    "inline-block",
-    "shrink-0",
-    "stroke-current",
-    className,
+function getVehicleAssetUrl(
+  journey: PublicJourney,
+  publicAssets: readonly PublicAsset[],
+): string | null {
+  const vehicleAsset = journey.assets.find(
+    (asset) => asset.type === "VEHICLE",
   );
 
-  switch (type) {
-    case "clock":
-      return (
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          fill="none"
-          className={common}
-          strokeWidth="2"
-        >
-          <circle cx="12" cy="12" r="9" />
-          <path d="M12 7v5l3 2" />
-        </svg>
-      );
-
-    case "origin":
-      return (
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          fill="currentColor"
-          className={common}
-        >
-          <path d="M12 21s7-6.1 7-12a7 7 0 1 0-14 0c0 5.9 7 12 7 12Zm0-9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5Z" />
-        </svg>
-      );
-
-    case "destination":
-      return (
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          fill="currentColor"
-          className={common}
-        >
-          <path d="M12 21s7-6.1 7-12a7 7 0 1 0-14 0c0 5.9 7 12 7 12Zm0-9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5Z" />
-        </svg>
-      );
-
-    case "arrow":
-      return (
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          fill="none"
-          className={common}
-          strokeWidth="2"
-        >
-          <path d="M4 12h15" />
-          <path d="m14 7 5 5-5 5" />
-        </svg>
-      );
-
-    case "verified":
-      return (
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          fill="currentColor"
-          className={common}
-        >
-          <path d="M12 2.5 14.2 4l2.7-.2 1.1 2.5 2.3 1.4-.6 2.7.6 2.7-2.3 1.4-1.1 2.5-2.7-.2-2.2 1.5-2.2-1.5-2.7.2-1.1-2.5-2.3-1.4.6-2.7-.6-2.7 2.3-1.4L7.1 3.8l2.7.2L12 2.5Zm-1.1 13.2 5.4-5.4-1.4-1.4-4 4-1.8-1.8-1.4 1.4 3.2 3.2Z" />
-        </svg>
-      );
-
-    case "phone":
-      return (
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          fill="none"
-          className={common}
-          strokeWidth="2"
-        >
-          <path d="M6.7 3.5 9.2 3l1.7 4-2 1.5a14.6 14.6 0 0 0 6.6 6.6l1.5-2 4 1.7-.5 2.5c-.3 1.4-1.6 2.3-3 2.1A16.9 16.9 0 0 1 4.6 6.5c-.2-1.4.7-2.7 2.1-3Z" />
-        </svg>
-      );
-
-    case "seats":
-      return (
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          fill="none"
-          className={common}
-          strokeWidth="2"
-        >
-          <path d="M7 5v8a3 3 0 0 0 3 3h7" />
-          <path d="M8 16v3" />
-          <path d="M17 16v3" />
-          <path d="M10 5h4a2 2 0 0 1 2 2v6H10a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" />
-          <path d="M5 19h14" />
-        </svg>
-      );
+  if (!vehicleAsset) {
+    return null;
   }
+
+  const publicAsset = publicAssets.find(
+    (asset) => asset.publicId === vehicleAsset.assetPublicId,
+  );
+
+  const url = publicAsset?.url?.trim();
+
+  return url || null;
 }
 
 // -----------------------------------------------------------------------------
@@ -211,6 +125,7 @@ function MarketplaceIcon({
 
 export function JourneyCard({
   journey,
+  publicAssets = [],
   emphasis = "compact",
   className,
   onView,
@@ -222,76 +137,91 @@ export function JourneyCard({
   bookDisabled = false,
   viewLabel = "View",
   shareLabel = "Share",
-  bookLabel = "Book Mine",
+  bookLabel = "Book Journey",
   bookingLabel = "Booking…",
 }: JourneyCardProps) {
   const isCompact = emphasis === "compact";
 
-  const waypointCount = journey.route.waypoints.length;
-
-  const vehicleAsset = journey.assets.find(
-    (asset) => asset.type === "VEHICLE",
+  const vehicleImageUrl = getVehicleAssetUrl(
+    journey,
+    publicAssets,
   );
 
-  const traveller =
-    journey.provider.traveller as typeof journey.provider.traveller &
-      Record<string, unknown>;
-
-  const rating =
-    typeof traveller.rating === "number"
-      ? traveller.rating
-      : typeof traveller.averageRating === "number"
-        ? traveller.averageRating
-        : null;
-
-  const tripCount =
-    typeof traveller.tripCount === "number"
-      ? traveller.tripCount
-      : typeof traveller.completedTrips === "number"
-        ? traveller.completedTrips
-        : null;
-
-  const idVerified =
-    traveller.idVerified === true ||
-    traveller.isIdVerified === true ||
-    traveller.identityVerified === true;
-
-  const phoneVerified =
-    traveller.phoneVerified === true ||
-    traveller.isPhoneVerified === true;
-
-  const vehicleAssetRecord = vehicleAsset as
-    | (typeof vehicleAsset & Record<string, unknown>)
-    | undefined;
-
-  const vehicleImageUrl =
-    typeof vehicleAssetRecord?.url === "string"
-      ? vehicleAssetRecord.url.trim() || null
-      : typeof vehicleAssetRecord?.publicUrl === "string"
-        ? vehicleAssetRecord.publicUrl.trim() || null
-        : typeof vehicleAssetRecord?.src === "string"
-          ? vehicleAssetRecord.src.trim() || null
-          : null;
+  // ---------------------------------------------------------------------------
+  // Public Traveller fields
+  //
+  // PublicTraveller exposes:
+  // - publicId
+  // - handle
+  // - bio
+  // - avatar
+  // - countryCode
+  //
+  // The marketplace card uses handle and countryCode.
+  // Avatar is intentionally not rendered by the card.
+  // ---------------------------------------------------------------------------
 
   const providerHandle =
     journey.provider.traveller.handle.startsWith("@")
       ? journey.provider.traveller.handle
       : `@${journey.provider.traveller.handle}`;
 
-  const verticalPadding = isCompact
-    ? "py-[clamp(0.8rem,1.55vw,1.15rem)]"
-    : "py-[clamp(0.95rem,1.9vw,1.4rem)]";
+  const providerCountry =
+    journey.provider.traveller.countryCode.trim();
 
-  const horizontalPadding =
-    "px-[clamp(0.75rem,1.45vw,1.2rem)]";
+  const waypointCount = journey.route.waypoints.length;
+
+  // ---------------------------------------------------------------------------
+  // Schedule
+  //
+  // Keep nullable arrivalAt separate from the formatted display value.
+  // This is important with exactOptionalPropertyTypes because React's
+  // <time dateTime> prop accepts string | undefined, not string | null.
+  // ---------------------------------------------------------------------------
+
+  const departureAt = journey.schedule.departureAt;
+  const arrivalAt = journey.schedule.arrivalAt;
+
+  const departureTime = formatTime(departureAt);
+
+  const arrivalTime =
+    arrivalAt !== null
+      ? formatTime(arrivalAt)
+      : null;
+
+  // ---------------------------------------------------------------------------
+  // Responsive sizing
+  // ---------------------------------------------------------------------------
+
+  const horizontalPadding = isCompact
+    ? "px-[clamp(0.6rem,1.15vw,0.95rem)]"
+    : "px-[clamp(0.7rem,1.35vw,1.1rem)]";
+
+  const verticalPadding = isCompact
+    ? "py-[clamp(0.55rem,1vw,0.8rem)]"
+    : "py-[clamp(0.7rem,1.3vw,1rem)]";
+
+  const sectionGap =
+    "gap-[clamp(0.4rem,0.8vw,0.7rem)]";
+
+  const sectionLabel = cn(
+    "mb-[clamp(0.25rem,0.5vw,0.4rem)]",
+    "text-[clamp(0.38rem,0.55vw,0.5rem)]",
+    "font-semibold",
+    "uppercase",
+    "tracking-[0.08em]",
+    "leading-none",
+    "text-[var(--foreground-muted)]",
+  );
 
   return (
     <Card
+      padding="none"
       className={cn(
         "w-full",
         "min-w-0",
         "overflow-hidden",
-        "rounded-[clamp(0.75rem,1.2vw,1rem)]",
+        "rounded-[clamp(0.65rem,1vw,0.9rem)]",
         "border",
         "border-[var(--border)]",
         "bg-[var(--surface)]",
@@ -303,7 +233,6 @@ export function JourneyCard({
         "hover:shadow-[var(--shadow-lg)]",
         className,
       )}
-      padding="none"
     >
       <article
         className="min-w-0"
@@ -318,9 +247,7 @@ export function JourneyCard({
         {/* -------------------------------------------------------------------
             Marketplace body
 
-            Stable proportional zones:
-
-              Schedule | Centered Route + Provider | Vehicle | Price + Capacity
+            Schedule | Route / Provider | Vehicle | Price / Capacity
             ------------------------------------------------------------------- */}
 
         <div
@@ -328,7 +255,7 @@ export function JourneyCard({
             "grid",
             "w-full",
             "min-w-0",
-            "grid-cols-[17%_35%_24%_24%]",
+            "grid-cols-[18%_34%_24%_24%]",
           )}
         >
           {/* -----------------------------------------------------------------
@@ -350,34 +277,98 @@ export function JourneyCard({
             <div className="w-full min-w-0">
               <div
                 className={cn(
-                  "mb-[clamp(0.35rem,0.7vw,0.55rem)]",
                   "flex",
                   "items-center",
-                  "gap-[clamp(0.25rem,0.5vw,0.4rem)]",
-                  "text-[clamp(0.42rem,0.62vw,0.55rem)]",
-                  "font-semibold",
-                  "uppercase",
-                  "tracking-[0.08em]",
-                  "text-[var(--foreground-muted)]",
+                  "justify-center",
+                  "gap-[clamp(0.18rem,0.35vw,0.28rem)]",
+                  sectionLabel,
                 )}
               >
-                <MarketplaceIcon
-                  type="clock"
-                  className="size-[clamp(0.5rem,0.8vw,0.65rem)] text-[var(--brand)]"
+                <Clock3
+                  aria-hidden="true"
+                  className="size-[clamp(0.5rem,0.75vw,0.65rem)] shrink-0 text-[var(--brand)]"
                 />
 
                 <span>Departure</span>
               </div>
 
-              <JourneyScheduleSummary
-                schedule={journey.schedule}
-                className="items-start text-left"
-              />
+              <div className="min-w-0 text-center">
+                <JourneyDate
+                  schedule={journey.schedule}
+                  className="mx-auto w-full"
+                />
+
+                <div
+                  className={cn(
+                    "mt-[clamp(0.35rem,0.7vw,0.55rem)]",
+                    "flex",
+                    "min-w-0",
+                    "items-center",
+                    "justify-center",
+                    "gap-[clamp(0.2rem,0.4vw,0.35rem)]",
+                  )}
+                >
+                  <time
+                    dateTime={departureAt}
+                    className={cn(
+                      "truncate",
+                      "text-[clamp(0.62rem,0.95vw,0.82rem)]",
+                      "font-extrabold",
+                      "leading-none",
+                      "tracking-tight",
+                      "text-[var(--foreground)]",
+                    )}
+                  >
+                    {departureTime}
+                  </time>
+
+                  {arrivalAt !== null ? (
+                    <>
+                      <span
+                        aria-hidden="true"
+                        className="shrink-0 text-[clamp(0.45rem,0.65vw,0.58rem)] text-[var(--foreground-subtle)]"
+                      >
+                        →
+                      </span>
+
+                      <time
+                        dateTime={arrivalAt}
+                        className={cn(
+                          "truncate",
+                          "text-[clamp(0.52rem,0.78vw,0.68rem)]",
+                          "font-semibold",
+                          "leading-none",
+                          "text-[var(--foreground-secondary)]",
+                        )}
+                      >
+                        {arrivalTime}
+                      </time>
+                    </>
+                  ) : null}
+                </div>
+
+                <span
+                  className={cn(
+                    "mt-[clamp(0.2rem,0.4vw,0.3rem)]",
+                    "block",
+                    "max-w-full",
+                    "truncate",
+                    "text-[clamp(0.34rem,0.52vw,0.48rem)]",
+                    "font-semibold",
+                    "uppercase",
+                    "tracking-[0.07em]",
+                    "leading-none",
+                    "text-[var(--foreground-muted)]",
+                  )}
+                >
+                  {journey.schedule.timezone}
+                </span>
+              </div>
             </div>
           </section>
 
           {/* -----------------------------------------------------------------
-              Centered route + provider
+              Route + Provider
               ----------------------------------------------------------------- */}
 
           <section
@@ -387,42 +378,38 @@ export function JourneyCard({
               "min-w-0",
               "items-center",
               "justify-center",
-              "text-center",
               horizontalPadding,
               verticalPadding,
             )}
           >
             <div className="w-full min-w-0">
-              <div
-                className={cn(
-                  "mb-[clamp(0.35rem,0.7vw,0.55rem)]",
-                  "text-[clamp(0.42rem,0.62vw,0.55rem)]",
-                  "font-semibold",
-                  "uppercase",
-                  "tracking-[0.08em]",
-                  "text-[var(--foreground-muted)]",
-                )}
-              >
+              <div className={sectionLabel}>
                 Route
-              </div>
-
-              <div className="flex min-w-0 justify-center">
-                <div className="min-w-0 max-w-full">
-                  <JourneyRoute
-                    route={journey.route}
-                    showWaypoints={false}
-                  />
-                </div>
               </div>
 
               <div
                 className={cn(
                   "mx-auto",
-                  "mt-[clamp(0.6rem,1.1vw,0.85rem)]",
-                  "max-w-full",
+                  "w-full",
+                  "max-w-[clamp(11rem,22vw,18rem)]",
+                )}
+              >
+                <JourneyRoute
+                  route={journey.route}
+                  showWaypoints={false}
+                />
+              </div>
+
+              {/* -------------------------------------------------------------
+                  Provider
+                  ------------------------------------------------------------- */}
+
+              <div
+                className={cn(
+                  "mt-[clamp(0.45rem,0.8vw,0.65rem)]",
                   "border-t",
                   "border-[var(--border-subtle)]",
-                  "pt-[clamp(0.45rem,0.8vw,0.65rem)]",
+                  "pt-[clamp(0.35rem,0.6vw,0.5rem)]",
                 )}
               >
                 <div
@@ -431,129 +418,72 @@ export function JourneyCard({
                     "min-w-0",
                     "items-center",
                     "justify-center",
-                    "gap-[clamp(0.3rem,0.6vw,0.5rem)]",
+                    "gap-[clamp(0.2rem,0.4vw,0.35rem)]",
                   )}
                 >
                   <span
                     className={cn(
                       "min-w-0",
                       "truncate",
-                      "text-[clamp(0.62rem,0.9vw,0.78rem)]",
+                      "text-[clamp(0.58rem,0.85vw,0.76rem)]",
                       "font-bold",
-                      "leading-tight",
+                      "leading-none",
                       "text-[var(--brand)]",
                     )}
                   >
                     {providerHandle}
                   </span>
 
-                  {rating !== null ? (
-                    <span
-                      className={cn(
-                        "shrink-0",
-                        "text-[clamp(0.46rem,0.65vw,0.58rem)]",
-                        "font-semibold",
-                        "text-[var(--foreground-secondary)]",
-                      )}
-                    >
-                      <span className="mr-[0.15em] text-[var(--warning)]">
-                        ★
+                  {providerCountry ? (
+                    <>
+                      <span
+                        aria-hidden="true"
+                        className="shrink-0 text-[clamp(0.38rem,0.55vw,0.5rem)] text-[var(--foreground-subtle)]"
+                      >
+                        ·
                       </span>
-                      {rating.toFixed(1)}
-                    </span>
-                  ) : null}
 
-                  {tripCount !== null ? (
-                    <span
-                      className={cn(
-                        "min-w-0",
-                        "truncate",
-                        "text-[clamp(0.4rem,0.6vw,0.52rem)]",
-                        "text-[var(--foreground-muted)]",
-                      )}
-                    >
-                      · {tripCount} trips
-                    </span>
+                      <span
+                        className={cn(
+                          "shrink-0",
+                          "text-[clamp(0.38rem,0.55vw,0.5rem)]",
+                          "font-semibold",
+                          "uppercase",
+                          "leading-none",
+                          "tracking-[0.06em]",
+                          "text-[var(--foreground-muted)]",
+                        )}
+                      >
+                        {providerCountry}
+                      </span>
+                    </>
                   ) : null}
                 </div>
 
-                {(idVerified ||
-                  phoneVerified ||
-                  waypointCount > 0) ? (
+                {waypointCount > 0 ? (
                   <div
                     className={cn(
-                      "mt-[clamp(0.2rem,0.4vw,0.3rem)]",
+                      "mt-[clamp(0.2rem,0.35vw,0.3rem)]",
                       "flex",
                       "min-w-0",
                       "items-center",
                       "justify-center",
-                      "gap-[clamp(0.35rem,0.7vw,0.55rem)]",
-                      "overflow-hidden",
                     )}
                   >
-                    {idVerified ? (
-                      <span
-                        className={cn(
-                          "inline-flex",
-                          "min-w-0",
-                          "items-center",
-                          "gap-0.5",
-                          "truncate",
-                          "text-[clamp(0.38rem,0.58vw,0.5rem)]",
-                          "font-medium",
-                          "text-[var(--success)]",
-                        )}
-                      >
-                        <MarketplaceIcon
-                          type="verified"
-                          className="size-[clamp(0.4rem,0.65vw,0.55rem)]"
-                        />
-
-                        <span className="truncate">
-                          ID verified
-                        </span>
-                      </span>
-                    ) : null}
-
-                    {phoneVerified ? (
-                      <span
-                        className={cn(
-                          "inline-flex",
-                          "min-w-0",
-                          "items-center",
-                          "gap-0.5",
-                          "truncate",
-                          "text-[clamp(0.38rem,0.58vw,0.5rem)]",
-                          "font-medium",
-                          "text-[var(--success)]",
-                        )}
-                      >
-                        <MarketplaceIcon
-                          type="phone"
-                          className="size-[clamp(0.4rem,0.65vw,0.55rem)]"
-                        />
-
-                        <span className="truncate">
-                          Phone verified
-                        </span>
-                      </span>
-                    ) : null}
-
-                    {waypointCount > 0 ? (
-                      <span
-                        className={cn(
-                          "min-w-0",
-                          "truncate",
-                          "text-[clamp(0.38rem,0.58vw,0.5rem)]",
-                          "text-[var(--foreground-muted)]",
-                        )}
-                      >
-                        · {waypointCount}{" "}
-                        {waypointCount === 1
-                          ? "waypoint"
-                          : "waypoints"}
-                      </span>
-                    ) : null}
+                    <span
+                      className={cn(
+                        "min-w-0",
+                        "truncate",
+                        "text-[clamp(0.34rem,0.5vw,0.46rem)]",
+                        "leading-none",
+                        "text-[var(--foreground-muted)]",
+                      )}
+                    >
+                      {waypointCount}{" "}
+                      {waypointCount === 1
+                        ? "waypoint"
+                        : "waypoints"}
+                    </span>
                   </div>
                 ) : null}
               </div>
@@ -577,27 +507,25 @@ export function JourneyCard({
             )}
           >
             <div className="w-full min-w-0">
-              <div
-                className={cn(
-                  "mb-[clamp(0.35rem,0.7vw,0.55rem)]",
-                  "text-[clamp(0.42rem,0.62vw,0.55rem)]",
-                  "font-semibold",
-                  "uppercase",
-                  "tracking-[0.08em]",
-                  "text-[var(--foreground-muted)]",
-                )}
-              >
+              <div className={sectionLabel}>
                 Vehicle
               </div>
 
-              <div className="flex min-w-0 items-center gap-[clamp(0.45rem,0.9vw,0.75rem)]">
+              <div
+                className={cn(
+                  "flex",
+                  "min-w-0",
+                  "items-center",
+                  sectionGap,
+                )}
+              >
                 <div
                   className={cn(
                     "relative",
-                    "size-[clamp(3rem,6vw,4.5rem)]",
+                    "size-[clamp(2.4rem,4.6vw,3.6rem)]",
                     "shrink-0",
                     "overflow-hidden",
-                    "rounded-[clamp(0.5rem,0.9vw,0.75rem)]",
+                    "rounded-[clamp(0.4rem,0.75vw,0.6rem)]",
                     "border",
                     "border-[var(--border)]",
                     "bg-[var(--background-subtle)]",
@@ -608,14 +536,23 @@ export function JourneyCard({
                       src={vehicleImageUrl}
                       alt="Journey vehicle"
                       fill
-                      sizes="(max-width: 640px) 48px, (max-width: 1024px) 64px, 72px"
+                      sizes="(max-width: 640px) 40px, (max-width: 1024px) 54px, 60px"
                       className="object-cover"
+                      unoptimized
                     />
                   ) : (
-                    <div className="flex size-full items-center justify-center">
+                    <div
+                      className={cn(
+                        "flex",
+                        "size-full",
+                        "items-center",
+                        "justify-center",
+                        "bg-[var(--brand-soft)]",
+                      )}
+                    >
                       <span
                         aria-hidden="true"
-                        className="text-[clamp(0.75rem,1.5vw,1.15rem)] font-bold text-[var(--brand)]"
+                        className="text-[clamp(0.82rem,1.65vw,1.18rem)]"
                       >
                         🚙
                       </span>
@@ -626,6 +563,7 @@ export function JourneyCard({
                 <div className="min-w-0 flex-1">
                   <JourneyVehicleSummary
                     vehicle={journey.vehicle}
+                    className="gap-[clamp(0.35rem,0.65vw,0.55rem)]"
                   />
                 </div>
               </div>
@@ -633,7 +571,7 @@ export function JourneyCard({
           </section>
 
           {/* -----------------------------------------------------------------
-              Commercial anchor
+              Price + Capacity
               ----------------------------------------------------------------- */}
 
           <section
@@ -649,32 +587,24 @@ export function JourneyCard({
             )}
           >
             <div className="w-full min-w-0">
-              <div
+              <div className={sectionLabel}>
+                Price
+              </div>
+
+              <JourneyPrice
+                pricing={journey.pricing}
                 className={cn(
-                  "mb-[clamp(0.35rem,0.7vw,0.55rem)]",
-                  "text-[clamp(0.42rem,0.62vw,0.55rem)]",
-                  "font-semibold",
-                  "uppercase",
-                  "tracking-[0.08em]",
-                  "text-[var(--foreground-muted)]",
+                  "max-w-full",
+                  "gap-[clamp(0.3rem,0.55vw,0.45rem)]",
                 )}
-              >
-                From
-              </div>
-
-              <div className="min-w-0 overflow-hidden">
-                <JourneyPrice
-                  pricing={journey.pricing}
-                  className="max-w-full"
-                />
-              </div>
+              />
 
               <div
                 className={cn(
-                  "mt-[clamp(0.5rem,0.9vw,0.7rem)]",
+                  "mt-[clamp(0.4rem,0.7vw,0.55rem)]",
                   "border-t",
                   "border-[var(--border-subtle)]",
-                  "pt-[clamp(0.45rem,0.8vw,0.65rem)]",
+                  "pt-[clamp(0.35rem,0.6vw,0.48rem)]",
                 )}
               >
                 <div
@@ -682,20 +612,21 @@ export function JourneyCard({
                     "flex",
                     "min-w-0",
                     "items-center",
-                    "gap-[clamp(0.3rem,0.6vw,0.45rem)]",
+                    "gap-[clamp(0.22rem,0.4vw,0.35rem)]",
                   )}
                 >
-                  <MarketplaceIcon
-                    type="seats"
-                    className="size-[clamp(0.58rem,0.9vw,0.72rem)] text-[var(--brand)]"
+                  <UsersRound
+                    aria-hidden="true"
+                    className="size-[clamp(0.58rem,0.85vw,0.72rem)] shrink-0 text-[var(--brand)]"
                   />
 
                   <span
                     className={cn(
                       "min-w-0",
                       "truncate",
-                      "text-[clamp(0.5rem,0.75vw,0.64rem)]",
+                      "text-[clamp(0.45rem,0.65vw,0.58rem)]",
                       "font-semibold",
+                      "leading-tight",
                       "text-[var(--foreground)]",
                     )}
                   >
@@ -709,7 +640,10 @@ export function JourneyCard({
 
                 <JourneyCapacitySummary
                   capacity={journey.capacity}
-                  className="mt-[clamp(0.2rem,0.4vw,0.3rem)]"
+                  className={cn(
+                    "mt-[clamp(0.15rem,0.3vw,0.25rem)]",
+                    "gap-x-[clamp(0.22rem,0.4vw,0.35rem)]",
+                  )}
                 />
               </div>
             </div>
@@ -726,55 +660,63 @@ export function JourneyCard({
             "min-w-0",
             "items-center",
             "justify-between",
-            "gap-[clamp(0.6rem,1.2vw,1rem)]",
+            "gap-[clamp(0.45rem,0.9vw,0.75rem)]",
             "border-t",
             "border-[var(--border)]",
             "bg-[var(--background-brand)]",
-            "px-[clamp(0.7rem,1.45vw,1.2rem)]",
-            "py-[clamp(0.45rem,0.9vw,0.7rem)]",
+            "px-[clamp(0.6rem,1.15vw,0.95rem)]",
+            "py-[clamp(0.32rem,0.6vw,0.48rem)]",
           )}
         >
+          {/* Route context */}
+
           <div className="min-w-0 flex-1">
             <div
               className={cn(
                 "flex",
                 "min-w-0",
                 "items-center",
-                "gap-[clamp(0.3rem,0.55vw,0.5rem)]",
+                "gap-[clamp(0.2rem,0.4vw,0.35rem)]",
                 "overflow-hidden",
-                "text-[clamp(0.46rem,0.7vw,0.62rem)]",
-                "font-semibold",
               )}
             >
-              <MarketplaceIcon
-                type="origin"
-                className="size-[clamp(0.45rem,0.7vw,0.62rem)] text-[var(--success)]"
+              <span
+                aria-hidden="true"
+                className="size-[clamp(0.28rem,0.45vw,0.36rem)] shrink-0 rounded-full bg-[var(--success)]"
               />
 
               <span
                 className={cn(
                   "min-w-0",
                   "truncate",
+                  "text-[clamp(0.4rem,0.6vw,0.54rem)]",
+                  "font-semibold",
+                  "leading-none",
                   "text-[var(--success)]",
                 )}
               >
                 {journey.route.origin.name}
               </span>
 
-              <MarketplaceIcon
-                type="arrow"
-                className="size-[clamp(0.5rem,0.78vw,0.68rem)] text-[var(--foreground-subtle)]"
-              />
+              <span
+                aria-hidden="true"
+                className="shrink-0 text-[clamp(0.45rem,0.65vw,0.58rem)] text-[var(--foreground-subtle)]"
+              >
+                →
+              </span>
 
-              <MarketplaceIcon
-                type="destination"
-                className="size-[clamp(0.45rem,0.7vw,0.62rem)] text-[var(--danger)]"
+              <span
+                aria-hidden="true"
+                className="size-[clamp(0.28rem,0.45vw,0.36rem)] shrink-0 rounded-full bg-[var(--danger)]"
               />
 
               <span
                 className={cn(
                   "min-w-0",
                   "truncate",
+                  "text-[clamp(0.4rem,0.6vw,0.54rem)]",
+                  "font-semibold",
+                  "leading-none",
                   "text-[var(--danger)]",
                 )}
               >
@@ -782,6 +724,8 @@ export function JourneyCard({
               </span>
             </div>
           </div>
+
+          {/* Actions */}
 
           <div className="min-w-0 shrink-0">
             <JourneyActions
@@ -797,7 +741,7 @@ export function JourneyCard({
               shareLabel={shareLabel}
               bookLabel={bookLabel}
               bookingLabel={bookingLabel}
-              className="border-t-0 pt-0"
+              className="pt-0"
             />
           </div>
         </footer>

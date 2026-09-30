@@ -199,6 +199,32 @@ export interface JourneyDemandRepository {
   ): Promise<JourneyDemandAggregate | null>;
 
   /**
+   * Find and fully rehydrate all JourneyDemand aggregates belonging to a
+   * requester.
+   *
+   * This is the aggregate-oriented counterpart to
+   * findJourneyDemandsByRequesterPublicId(), which intentionally returns only
+   * root entities.
+   *
+   * The requester constraint is applied by the repository itself.
+   *
+   * The returned aggregates include their owned components:
+   *
+   * - corridor
+   * - waypoints
+   * - schedule
+   * - capacity
+   * - pricing
+   * - participants
+   *
+   * This operation is intended for authenticated requester-owned application
+   * surfaces such as "My Journey Demands".
+   */
+  findByRequesterPublicId(
+    requesterPublicId: RequesterPublicId,
+  ): Promise<JourneyDemandAggregate[]>;
+
+  /**
    * Find and fully rehydrate a JourneyDemand aggregate that is eligible for
    * public discovery by public ID.
    *

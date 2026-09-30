@@ -10,7 +10,7 @@
 //
 //   ┌───────────────┐
 //   │               │
-//   │  VEHICLE IMG  │   Vehicle
+//   │ Vehicle image │   Vehicle
 //   │               │   Vehicle image
 //   └───────────────┘
 //
@@ -21,7 +21,7 @@
 // - Treat assetPublicId strictly as an opaque Asset reference.
 // - Keep Asset resolution outside the Journey feature component.
 // - Use Next.js Image for optimized image rendering.
-// - Use a subtle Lucide vehicle icon for the unresolved state.
+// - Provide a neutral fallback when the public Asset is unavailable.
 //
 // This component does NOT:
 // - treat assetPublicId as a URL;
@@ -31,13 +31,13 @@
 // - create or mutate Journey assets;
 // - access storageProvider, bucket, objectKey, or internal Asset fields;
 // - assume that AssetVisibility.PUBLIC exposes the underlying storage object.
+//
 // -----------------------------------------------------------------------------
 
 import Image from "next/image";
-import { CarFront } from "lucide-react";
 
-import type { JourneyAsset } from "@/features/journey/models";
 import type { PublicAsset } from "@/features/assets/models";
+import type { JourneyAsset } from "@/features/journey/models";
 
 import { cn } from "@/foundation/utils/cn";
 
@@ -76,7 +76,9 @@ export function JourneyVehicleAsset({
   className,
 }: JourneyVehicleAssetProps) {
   const hasPublicAsset =
-    publicAsset !== null && publicAsset !== undefined;
+    publicAsset !== null &&
+    publicAsset !== undefined &&
+    publicAsset.url.trim().length > 0;
 
   return (
     <div
@@ -90,22 +92,22 @@ export function JourneyVehicleAsset({
       )}
     >
       {/* ------------------------------------------------------------------- */}
-      {/* Vehicle Image / Fallback                                            */}
+      {/* Vehicle Image / Neutral Fallback                                    */}
       {/* ------------------------------------------------------------------- */}
 
-      {hasPublicAsset ? (
-        <div
-          className={cn(
-            "relative",
-            "size-[clamp(2.35rem,5vw,3.8rem)]",
-            "shrink-0",
-            "overflow-hidden",
-            "rounded-[clamp(0.5rem,0.9vw,0.7rem)]",
-            "border",
-            "border-[var(--border)]",
-            "bg-[var(--background-muted)]",
-          )}
-        >
+      <div
+        className={cn(
+          "relative",
+          "size-[clamp(2.35rem,5vw,3.8rem)]",
+          "shrink-0",
+          "overflow-hidden",
+          "rounded-[clamp(0.5rem,0.9vw,0.7rem)]",
+          "border",
+          "border-[var(--border)]",
+          "bg-[var(--background-muted)]",
+        )}
+      >
+        {hasPublicAsset ? (
           <Image
             src={publicAsset.url}
             alt={publicAsset.alt ?? "Vehicle"}
@@ -113,28 +115,32 @@ export function JourneyVehicleAsset({
             sizes="(max-width: 640px) 38px, 5vw"
             className="object-cover"
           />
-        </div>
-      ) : (
-        <span
-          aria-hidden="true"
-          className={cn(
-            "flex",
-            "size-[clamp(2.35rem,5vw,3.8rem)]",
-            "shrink-0",
-            "items-center",
-            "justify-center",
-            "rounded-[clamp(0.5rem,0.9vw,0.7rem)]",
-            "border",
-            "border-[var(--border-subtle)]",
-            "bg-[var(--brand-soft)]",
-            "text-[var(--brand)]",
-          )}
-        >
-          <CarFront
-            className="size-[clamp(1.05rem,2.1vw,1.55rem)]"
-          />
-        </span>
-      )}
+        ) : (
+          <div
+            aria-hidden="true"
+            className={cn(
+              "flex",
+              "size-full",
+              "items-center",
+              "justify-center",
+              "bg-[var(--background-muted)]",
+            )}
+          >
+            <span
+              className={cn(
+                "text-center",
+                "text-[clamp(0.4rem,0.65vw,0.56rem)]",
+                "font-semibold",
+                "uppercase",
+                "tracking-[0.06em]",
+                "text-[var(--foreground-subtle)]",
+              )}
+            >
+              Vehicle
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* ------------------------------------------------------------------- */}
       {/* Vehicle Asset Metadata                                              */}
@@ -164,9 +170,11 @@ export function JourneyVehicleAsset({
         >
           {hasPublicAsset
             ? "Vehicle image"
-            : "Vehicle asset attached"}
+            : "Vehicle image unavailable"}
         </p>
       </div>
     </div>
   );
 }
+
+export default JourneyVehicleAsset;

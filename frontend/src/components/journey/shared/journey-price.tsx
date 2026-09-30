@@ -9,7 +9,17 @@
 //
 // Marketplace presentation:
 //
-//   💰 KES 2,500
+//   [banknote] KES 2,500
+//
+// Product role:
+//
+//   Clear price
+//        │
+//        ▼
+//   Fast comparison
+//        │
+//        ▼
+//   Booking confidence
 //
 // Responsibilities:
 // - present the Journey price using the shared currency formatter;
@@ -26,6 +36,7 @@
 // - recreate JourneyPricing domain behavior.
 //
 // The backend Journey pricing projection remains the source of truth.
+//
 // -----------------------------------------------------------------------------
 
 import { Banknote } from "lucide-react";
@@ -35,9 +46,9 @@ import type { JourneyPricing } from "@/features/journey/models";
 import { formatCurrency } from "@/foundation/formatters/currency";
 import { cn } from "@/foundation/utils/cn";
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export interface JourneyPriceProps {
   /**
@@ -51,9 +62,9 @@ export interface JourneyPriceProps {
   readonly className?: string;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Component
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function JourneyPrice({
   pricing,
@@ -65,26 +76,37 @@ export function JourneyPrice({
         "inline-flex",
         "min-w-0",
         "items-center",
-        "gap-[clamp(0.3rem,0.6vw,0.5rem)]",
+        "gap-2",
         "whitespace-nowrap",
         className,
       )}
+      aria-label={`Journey price ${formatCurrency(
+        pricing.amount,
+        pricing.currency,
+      )}`}
     >
-      <Banknote
+      <span
+        aria-hidden="true"
         className={cn(
-          "size-[clamp(0.7rem,1.25vw,1rem)]",
+          "flex",
+          "size-7",
           "shrink-0",
+          "items-center",
+          "justify-center",
+          "rounded-full",
+          "bg-[var(--brand-soft)]",
           "text-[var(--brand)]",
         )}
-        aria-hidden="true"
-      />
+      >
+        <Banknote className="size-3.5" />
+      </span>
 
       <span
         className={cn(
           "min-w-0",
-          "text-[clamp(0.8rem,1.5vw,1.15rem)]",
-          "font-bold",
-          "leading-tight",
+          "text-[clamp(0.95rem,1.6vw,1.2rem)]",
+          "font-extrabold",
+          "leading-none",
           "tracking-tight",
           "text-[var(--foreground)]",
         )}
@@ -97,3 +119,5 @@ export function JourneyPrice({
     </span>
   );
 }
+
+export default JourneyPrice;

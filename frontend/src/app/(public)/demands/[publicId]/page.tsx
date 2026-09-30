@@ -19,17 +19,24 @@
 // - no mutation handling.
 //
 // The feature route container owns the client-side query lifecycle.
-// JourneyDemandDetail itself receives only an already-loaded
-// PublicJourneyDemand.
+// JourneyDemandDetail receives only an already-loaded PublicJourneyDemand.
 // -----------------------------------------------------------------------------
 
-import { JourneyDemandsDetailRoute } from '@/components/journey-demand/detail';
+import { JourneyDemandsDetailRoute } from "@/components/journey-demand/detail";
+
+// =============================================================================
+// Route Props
+// =============================================================================
 
 interface JourneyDemandDetailPageProps {
   readonly params: Promise<{
     readonly publicId: string;
   }>;
 }
+
+// =============================================================================
+// Route
+// =============================================================================
 
 export default async function JourneyDemandDetailPage({
   params,
@@ -42,4 +49,3 @@ export default async function JourneyDemandDetailPage({
     />
   );
 }
-

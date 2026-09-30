@@ -1,17 +1,24 @@
-// src/domains/journey/application/query-handlers/journey/get-journeys-by-provider.query-handler.ts
-
 // -----------------------------------------------------------------------------
 // sisiMove — Get Journeys By Provider Query Handler
 // -----------------------------------------------------------------------------
 //
-// Application-layer query handler for retrieving Journeys belonging to a
-// specific Journey provider.
+// Application-layer query handler for retrieving complete Journey aggregates
+// belonging to a specific provider.
+//
+// This query is used by authenticated provider-facing Journey surfaces such as
+//:
+//
+//     GET /journeys/me
+//
+// Because the presentation layer maps the result through MyJourneyMapper,
+// this handler deliberately retrieves complete Journey aggregates rather than
+// root Journey entities.
 //
 // Responsibilities:
 // - convert the primitive provider public ID into the Journey domain value
 //   object;
-// - delegate the read operation to the JourneyRepository application port;
-// - return the Journey entities produced by the repository.
+// - delegate aggregate retrieval to JourneyRepository;
+// - return complete JourneyAggregate instances.
 //
 // This handler deliberately does NOT:
 // - access Prisma directly;
@@ -20,15 +27,15 @@
 // - perform authorization;
 // - resolve the current authenticated identity;
 // - instantiate a repository;
-// - expose persistence models.
+// - expose Prisma models.
 //
-// The authenticated /journeys/me controller resolves the provider identity
-// from the authenticated JWT and passes that identity into this query.
+// The presentation layer determines the provider identity from the
+// authenticated JWT and passes that identity into the application query.
 //
-// Repository dependency:
-// JourneyRepository is an application/domain contract and therefore must be
-// injected through the runtime JOURNEY_TOKENS.REPOSITORY token. Relying on
-// TypeScript interface inference would not provide Nest with a runtime token.
+// Repository operation:
+// - findByProviderPublicId() returns complete Journey aggregates.
+// - findJourneysByProvider() returns only JourneyEntity instances and is
+//   therefore intentionally not used here.
 //
 // -----------------------------------------------------------------------------
 
@@ -54,7 +61,7 @@ import type { GetJourneysByProviderQuery } from '../../queries/journey/get-journ
 // Domain
 // -----------------------------------------------------------------------------
 
-import type { JourneyEntity } from '../../../domain/entities/journey.entity';
+import type { JourneyAggregate } from '../../../domain/aggregates/journey.aggregate';
 import type { JourneyRepository } from '../../../domain/repositories/journey.repository';
 
 import { JourneyProviderPublicId } from '../../../domain/value-objects/journey-provider-public-id.vo';
@@ -72,7 +79,7 @@ import { JOURNEY_TOKENS } from '../../journey.tokens';
 @Injectable()
 export class GetJourneysByProviderQueryHandler implements QueryHandler<
   GetJourneysByProviderQuery,
-  JourneyEntity[]
+  JourneyAggregate[]
 > {
   public constructor(
     @Inject(JOURNEY_TOKENS.REPOSITORY)
@@ -85,11 +92,11 @@ export class GetJourneysByProviderQueryHandler implements QueryHandler<
 
   public async execute(
     query: GetJourneysByProviderQuery,
-  ): Promise<JourneyEntity[]> {
+  ): Promise<JourneyAggregate[]> {
     const providerPublicId = new JourneyProviderPublicId(
       query.providerPublicId,
     );
 
-    return this.repository.findJourneysByProvider(providerPublicId);
+    return this.repository.findByProviderPublicId(providerPublicId);
   }
 }

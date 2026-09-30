@@ -4,32 +4,44 @@
 //
 // Authenticated entry point for creating a new Journey.
 //
-// Responsibilities:
-// - provide a convenient `/my-journeys/new` entry point;
-// - redirect into the canonical Journey creation workflow.
+// This is the canonical Journey creation entry point.
 //
-// Non-responsibilities:
-// - no Journey creation mutation;
-// - no Journey form state;
-// - no Journey component attachment;
-// - no Journey validation;
-// - no Journey lifecycle logic;
-// - no duplicate creation workflow.
-//
-// The canonical Journey creation workflow remains under the authenticated
-// Journey creation routes defined by AUTHENTICATED_ROUTES.
+// The JourneyCreateForm:
+// - creates the Journey aggregate exactly once;
+// - progressively attaches Journey-owned components;
+// - leaves the Journey in DRAFT;
+// - returns the backend-generated journeyPublicId when complete.
 //
 // -----------------------------------------------------------------------------
 
-import { redirect } from "next/navigation";
+"use client";
+
+import { useRouter } from "next/navigation";
 
 import { AUTHENTICATED_ROUTES } from "@/foundation/routing";
+import { JourneyCreateForm } from "@/components/journey/create";
 
 // -----------------------------------------------------------------------------
 // Page
 // -----------------------------------------------------------------------------
 
 export default function NewMyJourneyPage() {
-  redirect(AUTHENTICATED_ROUTES.MY_JOURNEY_NEW);
-}
+  const router = useRouter();
 
+  return (
+    <JourneyCreateForm
+      onCreated={(journeyPublicId) => {
+        router.push(
+          AUTHENTICATED_ROUTES.JOURNEY_EDIT(
+            journeyPublicId,
+          ),
+        );
+      }}
+      onCancel={() => {
+        router.push(
+          AUTHENTICATED_ROUTES.MY_JOURNEYS,
+        );
+      }}
+    />
+  );
+}

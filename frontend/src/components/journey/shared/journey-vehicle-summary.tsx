@@ -10,14 +10,25 @@
 //
 //   Toyota Probox
 //   2019 · White
+//   Journey vehicle
+//
+// Product role:
+//
+//     Know the vehicle
+//          │
+//          ▼
+//     Recognise the Journey
+//          │
+//          ▼
+//     Book with clearer expectations
 //
 // Responsibilities:
-// - Present the vehicle make and model prominently.
-// - Present optional year and color when supplied.
-// - Keep vehicle presentation independent from Asset retrieval.
-// - Avoid exposing registration in the public summary because its visibility
-//   is subject to the Journey privacy contract.
-// - Provide a clear vehicle identity alongside the Journey vehicle asset.
+// - present the vehicle make and model prominently;
+// - present optional year and color when supplied;
+// - keep vehicle presentation independent from Asset retrieval;
+// - avoid exposing registration in the public summary because its visibility
+//   is subject to the Journey privacy contract;
+// - provide a clear vehicle identity alongside the Journey vehicle asset.
 //
 // This component does NOT:
 // - resolve assetPublicId into an image;
@@ -25,15 +36,16 @@
 // - expose registration;
 // - modify vehicle state;
 // - recreate JourneyVehicle domain behavior.
+//
 // -----------------------------------------------------------------------------
 
 import type { JourneyVehicle } from "@/features/journey/models";
 
 import { cn } from "@/foundation/utils/cn";
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export interface JourneyVehicleSummaryProps {
   /**
@@ -47,9 +59,9 @@ export interface JourneyVehicleSummaryProps {
   readonly className?: string;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Component
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function JourneyVehicleSummary({
   vehicle,
@@ -74,14 +86,14 @@ export function JourneyVehicleSummary({
       )}
     >
       {/* ------------------------------------------------------------------- */}
-      {/* Vehicle Identity                                                    */}
+      {/* Vehicle identity                                                    */}
       {/* ------------------------------------------------------------------- */}
 
       <p
         className={cn(
           "truncate",
-          "text-[clamp(0.68rem,1.15vw,0.92rem)]",
-          "font-bold",
+          "text-[clamp(0.8rem,1.35vw,1rem)]",
+          "font-extrabold",
           "leading-tight",
           "tracking-tight",
           "text-[var(--foreground)]",
@@ -91,16 +103,16 @@ export function JourneyVehicleSummary({
       </p>
 
       {/* ------------------------------------------------------------------- */}
-      {/* Vehicle Metadata                                                    */}
+      {/* Vehicle metadata                                                    */}
       {/* ------------------------------------------------------------------- */}
 
       {metadata.length > 0 ? (
         <p
           className={cn(
-            "mt-[clamp(0.18rem,0.35vw,0.3rem)]",
+            "mt-1",
             "truncate",
-            "text-[clamp(0.48rem,0.75vw,0.64rem)]",
-            "font-medium",
+            "text-[clamp(0.62rem,0.9vw,0.75rem)]",
+            "font-semibold",
             "leading-tight",
             "text-[var(--foreground-secondary)]",
           )}
@@ -110,14 +122,15 @@ export function JourneyVehicleSummary({
       ) : null}
 
       {/* ------------------------------------------------------------------- */}
-      {/* Supporting Label                                                    */}
+      {/* Supporting label                                                    */}
       {/* ------------------------------------------------------------------- */}
 
       <p
         className={cn(
-          "mt-[clamp(0.18rem,0.35vw,0.3rem)]",
+          "mt-1",
           "truncate",
-          "text-[clamp(0.42rem,0.65vw,0.55rem)]",
+          "text-[clamp(0.55rem,0.72vw,0.65rem)]",
+          "font-medium",
           "leading-tight",
           "text-[var(--foreground-muted)]",
         )}
@@ -127,3 +140,5 @@ export function JourneyVehicleSummary({
     </div>
   );
 }
+
+export default JourneyVehicleSummary;

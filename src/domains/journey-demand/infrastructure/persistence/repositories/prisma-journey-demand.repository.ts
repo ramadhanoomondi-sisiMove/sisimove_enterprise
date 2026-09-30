@@ -128,14 +128,10 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
   /**
    * Complete aggregate persistence graph.
    *
-   * Public marketplace queries deliberately reuse the same aggregate graph
-   * because the public application query composes route, schedule, capacity,
-   * pricing, participants, and requester references from the JourneyDemand
-   * aggregate before enriching the response with Traveller and Trust data.
+   * Aggregate reads use this graph so that JourneyDemandAggregate.rehydrate()
+   * can reconstruct the complete aggregate boundary.
    *
-   * Cross-domain Traveller/Trust data is NOT included here. Those concerns
-   * belong to their own bounded contexts and are composed by the application
-   * query handler.
+   * Cross-domain Traveller/Trust data is intentionally excluded.
    */
   private readonly include = {
     corridor: {
@@ -539,10 +535,6 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
    * Public marketplace aggregate lookup.
    *
    * Only OPEN JourneyDemands are anonymously discoverable.
-   *
-   * The visibility rule is applied directly in the persistence query so that
-   * callers of the public query handler cannot accidentally retrieve a
-   * non-public demand through a generic public-ID lookup.
    */
   public async findPublicJourneyDemandByPublicId(
     publicId: JourneyDemandPublicId,
@@ -561,44 +553,11 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
 
   /**
    * Public marketplace collection lookup.
-   *
-   * This is the collection counterpart to
-   * findPublicJourneyDemandByPublicId().
-   *
-   * The public visibility rule is always applied first:
-   *
-   *   status = OPEN
-   *
-   * Optional marketplace filters then narrow that public collection:
-   *
-   *   from -> corridor origin
-   *   to   -> corridor destination
-   *   date -> requested departure window
-   *
-   * An omitted filters argument therefore means:
-   *
-   *   "return all publicly discoverable JourneyDemands."
-   *
-   * The method returns fully rehydrated aggregates rather than root entities
-   * because the public application query needs the aggregate-owned route,
-   * schedule, capacity, pricing, and participant information to construct the
-   * public read model.
-   *
-   * Traveller and Trust information is deliberately NOT queried here.
-   * requesterPublicId and participant memberPublicId remain opaque
-   * cross-domain references and are resolved by the public application query
-   * handler through the Social and Trust application capabilities.
    */
   public async findPublicJourneyDemands(
     filters?: PublicJourneyDemandFilters,
   ): Promise<JourneyDemandAggregate[]> {
     const where: Prisma.JourneyDemandWhereInput = {
-      // -----------------------------------------------------------------------
-      // Public Visibility
-      // -----------------------------------------------------------------------
-      //
-      // A JourneyDemand must be OPEN to appear in anonymous marketplace
-      // discovery. Filters must never bypass this visibility rule.
       status: this.toPrismaJourneyDemandStatus('OPEN'),
     };
 
@@ -635,23 +594,7 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
     // -------------------------------------------------------------------------
     // Date
     // -------------------------------------------------------------------------
-    //
-    // The public API supplies a calendar date. Journey Demand stores a
-    // departure window rather than a single departure timestamp:
-    //
-    //   earliestDeparture
-    //   latestDeparture
-    //
-    // A demand belongs in a date search when its departure window overlaps
-    // that requested calendar day.
-    //
-    // The application currently uses the Kenya marketplace timezone
-    // (Africa/Nairobi). The repository receives the already-normalized query
-    // string and constructs the corresponding UTC boundaries.
-    //
-    // Invalid date input is deliberately not converted into a broad query.
-    // An invalid date therefore cannot accidentally expose the entire public
-    // marketplace.
+
     if (filters?.date?.trim()) {
       const date = filters.date.trim();
 
@@ -715,6 +658,15 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
     return records.map((record) => this.toAggregate(record));
   }
 
+  /**
+   * Find all Journey Demand aggregates belonging to a requester.
+   *
+   * Unlike findJourneyDemandsByRequesterPublicId(), this method returns fully
+   * rehydrated aggregates with all aggregate-owned components.
+   *
+   * This is the aggregate-oriented read used by authenticated requester-owned
+   * application surfaces such as "My Journey Demands".
+   */
   public async findByRequesterPublicId(
     requesterPublicId: RequesterPublicId,
   ): Promise<JourneyDemandAggregate[]> {
@@ -890,28 +842,6 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
 
   /**
    * Ownership-scoped Journey Demand root lookup.
-   *
-   * The requester public ID and Journey Demand public ID are applied together
-   * in the Prisma query.
-   *
-   * This is intentionally different from findJourneyDemandByPublicId():
-   *
-   *   findJourneyDemandByPublicId()
-   *       -> generic lookup by public ID
-   *
-   *   findJourneyDemandByRequesterAndPublicId()
-   *       -> requester-owned lookup by requester + public ID
-   *
-   * The combined predicate prevents the application layer from retrieving an
-   * arbitrary Journey Demand and performing ownership filtering afterward.
-   *
-   * A null result deliberately does not distinguish between:
-   *
-   *   - a missing Journey Demand; and
-   *   - a Journey Demand belonging to another requester.
-   *
-   * This keeps ownership information from leaking through the repository
-   * boundary.
    */
   public async findJourneyDemandByRequesterAndPublicId(
     requesterPublicId: RequesterPublicId,
@@ -1669,11 +1599,120 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
   // Aggregate Reconstruction
   // ===========================================================================
 
+  /**
+   * Reconstructs the complete JourneyDemand aggregate from the Prisma graph.
+   *
+   * Important:
+   *
+   * JourneyDemandAggregate.create() is intentionally NOT used here.
+   *
+   * create() constructs an aggregate around only the root JourneyDemandEntity.
+   * Aggregate reads, however, load the aggregate-owned components through the
+   * repository include graph.
+   *
+   * rehydrate() attaches those components to the root entity while preserving
+   * the aggregate boundary:
+   *
+   * JourneyDemand
+   * ├── Corridor
+   * │   └── Waypoints
+   * ├── Schedule
+   * ├── Capacity
+   * ├── Pricing
+   * └── Participants
+   */
   private toAggregate(
     record: JourneyDemandWithComponents,
   ): JourneyDemandAggregate {
     const journeyDemand = JourneyDemandPrismaMapper.toDomain(record);
 
-    return JourneyDemandAggregate.create(journeyDemand);
+    // -------------------------------------------------------------------------
+    // Corridor + Waypoints
+    // -------------------------------------------------------------------------
+
+    let corridor: JourneyDemandCorridorEntity | undefined;
+    let waypoints: JourneyDemandWaypointEntity[] = [];
+
+    if (record.corridor !== undefined && record.corridor !== null) {
+      corridor = JourneyDemandPrismaMapper.toDomainComponent(
+        record.corridor,
+      ) as JourneyDemandCorridorEntity;
+
+      if (
+        record.corridor.waypoints !== undefined &&
+        record.corridor.waypoints !== null
+      ) {
+        waypoints = record.corridor.waypoints.map(
+          (waypoint) =>
+            JourneyDemandPrismaMapper.toDomainComponent(
+              waypoint,
+            ) as JourneyDemandWaypointEntity,
+        );
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Schedule
+    // -------------------------------------------------------------------------
+
+    let schedule: JourneyDemandScheduleEntity | undefined;
+
+    if (record.schedule !== undefined && record.schedule !== null) {
+      schedule = JourneyDemandPrismaMapper.toDomainComponent(
+        record.schedule,
+      ) as JourneyDemandScheduleEntity;
+    }
+
+    // -------------------------------------------------------------------------
+    // Capacity
+    // -------------------------------------------------------------------------
+
+    let capacity: JourneyDemandCapacityEntity | undefined;
+
+    if (record.capacity !== undefined && record.capacity !== null) {
+      capacity = JourneyDemandPrismaMapper.toDomainComponent(
+        record.capacity,
+      ) as JourneyDemandCapacityEntity;
+    }
+
+    // -------------------------------------------------------------------------
+    // Pricing
+    // -------------------------------------------------------------------------
+
+    let pricing: JourneyDemandPricingEntity | undefined;
+
+    if (record.pricing !== undefined && record.pricing !== null) {
+      pricing = JourneyDemandPrismaMapper.toDomainComponent(
+        record.pricing,
+      ) as JourneyDemandPricingEntity;
+    }
+
+    // -------------------------------------------------------------------------
+    // Participants
+    // -------------------------------------------------------------------------
+
+    const participants: JourneyDemandParticipantEntity[] =
+      record.participants === undefined
+        ? []
+        : record.participants.map(
+            (participant) =>
+              JourneyDemandPrismaMapper.toDomainComponent(
+                participant,
+              ) as JourneyDemandParticipantEntity,
+          );
+
+    // -------------------------------------------------------------------------
+    // Aggregate
+    // -------------------------------------------------------------------------
+
+    return JourneyDemandAggregate.rehydrate(
+      journeyDemand,
+      corridor,
+      schedule,
+      capacity,
+      pricing,
+      waypoints,
+      participants,
+    );
   }
 }

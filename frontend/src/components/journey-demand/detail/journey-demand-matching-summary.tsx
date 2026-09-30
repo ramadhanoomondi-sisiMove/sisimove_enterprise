@@ -11,13 +11,12 @@
 //     participantCount
 //     joinedSeats
 //
-// - capacity/matching:
+// - capacity / matching:
 //     requestedSeats
 //     matchedSeats
 //
-// This component presents those backend-provided facts together so the
-// traveller can understand the current Demand without reconstructing the
-// Journey Demand aggregate.
+// This component presents those backend-provided facts together so travellers
+// can understand the current Demand without reconstructing the aggregate.
 //
 // Responsibilities:
 // - present public participation evidence;
@@ -39,18 +38,24 @@
 // The backend public projection remains authoritative.
 // -----------------------------------------------------------------------------
 
-import type { PublicJourneyDemand } from '@/features/journey-demand/models';
+import {
+  ArrowRight,
+  CheckCircle2,
+  Users,
+} from "lucide-react";
+
+import type { PublicJourneyDemand } from "@/features/journey-demand/models";
+
+import { cn } from "@/foundation";
 
 import {
   JourneyDemandDemandSummary,
   JourneyDemandStatusBadge,
-} from '../shared';
+} from "../shared";
 
-import { cn } from '@/foundation';
-
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export interface JourneyDemandMatchingSummaryProps {
   /**
@@ -61,7 +66,7 @@ export interface JourneyDemandMatchingSummaryProps {
   /**
    * Controls presentation density.
    */
-  readonly emphasis?: 'compact' | 'default';
+  readonly emphasis?: "compact" | "default";
 
   /**
    * Optional additional classes.
@@ -69,56 +74,125 @@ export interface JourneyDemandMatchingSummaryProps {
   readonly className?: string;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Component
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function JourneyDemandMatchingSummary({
   demand,
-  emphasis = 'default',
+  emphasis = "default",
   className,
 }: JourneyDemandMatchingSummaryProps) {
-  const isCompact = emphasis === 'compact';
+  const isCompact = emphasis === "compact";
 
   return (
     <section
       aria-labelledby="journey-demand-matching-summary-heading"
       className={cn(
-        'min-w-0',
+        "min-w-0",
+        "overflow-hidden",
+        "rounded-[var(--radius-xl)]",
+        "border",
+        "border-[var(--border)]",
+        "bg-[var(--surface)]",
+        "shadow-[var(--shadow-sm)]",
         className,
       )}
     >
       {/* ------------------------------------------------------------------- */}
-      {/* Heading                                                             */}
+      {/* Header                                                              */}
       {/* ------------------------------------------------------------------- */}
 
       <div
         className={cn(
-          'mb-3',
-          'flex',
-          'min-w-0',
-          'items-center',
-          'justify-between',
-          'gap-3',
+          "border-b",
+          "border-[var(--border-subtle)]",
+          "bg-[var(--background-brand)]",
+          isCompact
+            ? "px-4 py-4"
+            : "px-5 py-5 sm:px-6",
         )}
       >
-        <h2
-          id="journey-demand-matching-summary-heading"
+        <div
           className={cn(
-            'text-xs',
-            'font-medium',
-            'uppercase',
-            'tracking-wide',
-            'text-[var(--foreground-muted)]',
+            "flex",
+            "min-w-0",
+            "items-start",
+            "justify-between",
+            "gap-4",
           )}
         >
-          Demand matching
-        </h2>
+          <div
+            className={cn(
+              "flex",
+              "min-w-0",
+              "items-start",
+              "gap-3",
+            )}
+          >
+            <div
+              aria-hidden="true"
+              className={cn(
+                "flex",
+                "size-9",
+                "shrink-0",
+                "items-center",
+                "justify-center",
+                "rounded-[var(--radius-lg)]",
+                "bg-[var(--brand-soft)]",
+                "text-[var(--brand)]",
+              )}
+            >
+              <Users className="size-4" />
+            </div>
 
-        <JourneyDemandStatusBadge
-          status={demand.status}
-          className="shrink-0"
-        />
+            <div className="min-w-0">
+              <p
+                className={cn(
+                  "text-[0.65rem]",
+                  "font-bold",
+                  "uppercase",
+                  "tracking-[0.12em]",
+                  "text-[var(--brand)]",
+                )}
+              >
+                Demand matching
+              </p>
+
+              <h2
+                id="journey-demand-matching-summary-heading"
+                className={cn(
+                  "mt-1",
+                  "font-extrabold",
+                  "tracking-tight",
+                  "text-[var(--foreground)]",
+                  isCompact
+                    ? "text-base"
+                    : "text-[clamp(1.05rem,1.8vw,1.3rem)]",
+                )}
+              >
+                Travellers are signalling interest
+              </h2>
+
+              <p
+                className={cn(
+                  "mt-1",
+                  "leading-6",
+                  "text-[var(--foreground-muted)]",
+                  isCompact ? "text-xs" : "text-sm",
+                )}
+              >
+                See the participation and matching evidence currently exposed
+                by this Demand.
+              </p>
+            </div>
+          </div>
+
+          <JourneyDemandStatusBadge
+            status={demand.status}
+            className="shrink-0"
+          />
+        </div>
       </div>
 
       {/* ------------------------------------------------------------------- */}
@@ -127,32 +201,43 @@ export function JourneyDemandMatchingSummary({
 
       <div
         className={cn(
-          'rounded-[var(--radius-lg)]',
-          'border',
-          'border-[var(--border-subtle)]',
-          'bg-[var(--surface)]',
-          isCompact ? 'p-3' : 'p-4',
+          isCompact
+            ? "p-4"
+            : "p-5 sm:p-6",
         )}
       >
         <div className="min-w-0">
-          <h3
+          <div
             className={cn(
-              'text-sm',
-              'font-semibold',
-              'text-[var(--foreground)]',
+              "flex",
+              "items-center",
+              "gap-2",
             )}
           >
-            Traveller participation
-          </h3>
+            <Users
+              aria-hidden="true"
+              className="size-4 text-[var(--brand)]"
+            />
+
+            <h3
+              className={cn(
+                "font-bold",
+                "text-[var(--foreground)]",
+                isCompact ? "text-sm" : "text-base",
+              )}
+            >
+              Traveller participation
+            </h3>
+          </div>
 
           <p
             className={cn(
-              'mt-1',
-              'text-xs',
-              'text-[var(--foreground-muted)]',
+              "mt-1",
+              "text-[var(--foreground-muted)]",
+              isCompact ? "text-xs" : "text-sm",
             )}
           >
-            People who have joined this travel need.
+            People and seats currently represented in this travel need.
           </p>
         </div>
 
@@ -163,91 +248,156 @@ export function JourneyDemandMatchingSummary({
             emphasis={emphasis}
           />
         </div>
+
+        {/* ----------------------------------------------------------------- */}
+        {/* Matching evidence                                                 */}
+        {/* ----------------------------------------------------------------- */}
+
+        <div
+          className={cn(
+            "mt-5",
+            "rounded-[var(--radius-lg)]",
+            "border",
+            "border-[var(--border-subtle)]",
+            "bg-[var(--background-subtle)]",
+            isCompact ? "p-4" : "p-5",
+          )}
+        >
+          <div
+            className={cn(
+              "flex",
+              "items-center",
+              "gap-2",
+              "text-xs",
+              "font-semibold",
+              "uppercase",
+              "tracking-[0.08em]",
+              "text-[var(--foreground-muted)]",
+            )}
+          >
+            <CheckCircle2
+              aria-hidden="true"
+              className="size-3.5 text-[var(--brand)]"
+            />
+
+            Matching evidence
+          </div>
+
+          <div
+            className={cn(
+              "mt-4",
+              "grid",
+              "min-w-0",
+              "grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]",
+              "items-center",
+              "gap-3",
+            )}
+          >
+            <div className="min-w-0">
+              <p
+                className={cn(
+                  "text-xs",
+                  "font-medium",
+                  "text-[var(--foreground-muted)]",
+                )}
+              >
+                Requested
+              </p>
+
+              <p
+                className={cn(
+                  "mt-1",
+                  "font-extrabold",
+                  "leading-none",
+                  "tracking-tight",
+                  "text-[var(--foreground)]",
+                  isCompact ? "text-xl" : "text-2xl",
+                )}
+              >
+                {demand.capacity.requestedSeats}
+              </p>
+
+              <p
+                className={cn(
+                  "mt-1",
+                  "text-xs",
+                  "text-[var(--foreground-muted)]",
+                )}
+              >
+                {demand.capacity.requestedSeats === 1
+                  ? "seat"
+                  : "seats"}
+              </p>
+            </div>
+
+            <ArrowRight
+              aria-hidden="true"
+              className="size-4 shrink-0 text-[var(--foreground-subtle)]"
+            />
+
+            <div className="min-w-0 text-right">
+              <p
+                className={cn(
+                  "text-xs",
+                  "font-medium",
+                  "text-[var(--foreground-muted)]",
+                )}
+              >
+                Matched
+              </p>
+
+              <p
+                className={cn(
+                  "mt-1",
+                  "font-extrabold",
+                  "leading-none",
+                  "tracking-tight",
+                  "text-[var(--foreground)]",
+                  isCompact ? "text-xl" : "text-2xl",
+                )}
+              >
+                {demand.capacity.matchedSeats}
+              </p>
+
+              <p
+                className={cn(
+                  "mt-1",
+                  "text-xs",
+                  "text-[var(--foreground-muted)]",
+                )}
+              >
+                {demand.capacity.matchedSeats === 1
+                  ? "seat"
+                  : "seats"}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* ------------------------------------------------------------------- */}
-      {/* Matching                                                            */}
+      {/* Explanation                                                         */}
       {/* ------------------------------------------------------------------- */}
 
       <div
         className={cn(
-          'mt-3',
-          'rounded-[var(--radius-lg)]',
-          'border',
-          'border-[var(--border-subtle)]',
-          'bg-[var(--surface)]',
-          isCompact ? 'p-3' : 'p-4',
+          "border-t",
+          "border-[var(--border-subtle)]",
+          "bg-[var(--background-subtle)]",
+          isCompact
+            ? "px-4 py-3"
+            : "px-5 py-4 sm:px-6",
         )}
       >
-        <dl
-          className={cn(
-            'grid',
-            'min-w-0',
-            'grid-cols-1',
-            'gap-4',
-            'sm:grid-cols-2',
-          )}
-        >
-          <div className="min-w-0">
-            <dt
-              className={cn(
-                'text-xs',
-                'text-[var(--foreground-muted)]',
-              )}
-            >
-              Requested seats
-            </dt>
-
-            <dd
-              className={cn(
-                'mt-1',
-                isCompact
-                  ? 'text-sm font-medium'
-                  : 'text-base font-semibold',
-                'text-[var(--foreground)]',
-              )}
-            >
-              {demand.capacity.requestedSeats}
-            </dd>
-          </div>
-
-          <div className="min-w-0">
-            <dt
-              className={cn(
-                'text-xs',
-                'text-[var(--foreground-muted)]',
-              )}
-            >
-              Matched seats
-            </dt>
-
-            <dd
-              className={cn(
-                'mt-1',
-                isCompact
-                  ? 'text-sm font-medium'
-                  : 'text-base font-semibold',
-                'text-[var(--foreground)]',
-              )}
-            >
-              {demand.capacity.matchedSeats}
-            </dd>
-          </div>
-        </dl>
-
         <p
           className={cn(
-            'mt-4',
-            'border-t',
-            'border-[var(--border-subtle)]',
-            'pt-3',
-            'text-xs',
-            'leading-5',
-            'text-[var(--foreground-muted)]',
+            "text-xs",
+            "leading-5",
+            "text-[var(--foreground-muted)]",
           )}
         >
           Matched seats represent the portion of the requested capacity
-          currently associated with a Journey through the Demand matching
+          currently associated with Journey supply through the Demand matching
           process.
         </p>
       </div>
