@@ -29,6 +29,7 @@ import { useRouter } from "next/navigation";
 
 import { Spinner } from "@/components/ui";
 import { AUTHENTICATED_ROUTES } from "@/foundation/routing";
+import { cn } from "@/foundation/utils/cn";
 
 import { useMyJourneys } from "@/features/journey/hooks/queries/use-my-journeys";
 
@@ -53,30 +54,43 @@ export function MyJourneys() {
   // ---------------------------------------------------------------------------
   // Loading
   // ---------------------------------------------------------------------------
-  //
-  // The query owns loading state. This surface only presents it.
-  //
-  // Keep the loading presentation deliberately lightweight so the collection
-  // does not introduce a second domain-specific loading primitive.
-  //
 
   if (isLoading) {
     return (
       <div
-        className={[
+        className={cn(
           "flex",
           "min-h-48",
           "w-full",
           "items-center",
           "justify-center",
-        ].join(" ")}
+          "rounded-[var(--radius-lg)]",
+          "border",
+          "border-[var(--border)]",
+          "bg-[var(--surface)]",
+          "shadow-[var(--shadow-sm)]",
+        )}
         aria-label="Loading your Journeys"
         role="status"
       >
-        <Spinner />
-        <span className="sr-only">
-          Loading your Journeys
-        </span>
+        <div
+          className={cn(
+            "flex",
+            "items-center",
+            "gap-3",
+          )}
+        >
+          <Spinner size="md" />
+
+          <span
+            className={cn(
+              "text-sm",
+              "text-[var(--foreground-muted)]",
+            )}
+          >
+            Loading your Journeys…
+          </span>
+        </div>
       </div>
     );
   }
@@ -84,10 +98,6 @@ export function MyJourneys() {
   // ---------------------------------------------------------------------------
   // Error
   // ---------------------------------------------------------------------------
-  //
-  // The query hook already normalizes unknown thrown values into Error.
-  // MyJourneyErrorState remains responsible only for presentation and retry.
-  //
 
   if (error) {
     return (
@@ -101,17 +111,15 @@ export function MyJourneys() {
   // ---------------------------------------------------------------------------
   // Empty
   // ---------------------------------------------------------------------------
-  //
-  // Empty is a successful query result containing no Journey projections.
-  // It is intentionally distinct from loading and error states.
-  //
 
   if (journeys.length === 0) {
     return (
       <MyJourneyEmptyState
-        onCreateJourney={() =>
-          router.push(AUTHENTICATED_ROUTES.MY_JOURNEY_NEW)
-        }
+        onCreateJourney={() => {
+          router.push(
+            AUTHENTICATED_ROUTES.MY_JOURNEY_NEW,
+          );
+        }}
       />
     );
   }
@@ -128,4 +136,3 @@ export function MyJourneys() {
     <MyJourneysList journeys={journeys} />
   );
 }
-

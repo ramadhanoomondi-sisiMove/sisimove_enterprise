@@ -72,34 +72,47 @@ export function JourneyCapacityEditor({
   className,
 }: JourneyCapacityEditorProps) {
   const [values, setValues] = useState<JourneyCapacityFieldValues>(() => ({
-    ...EMPTY_VALUES,
-    ...initialValue,
+    totalSeats:
+      initialValue?.totalSeats !== undefined
+        ? initialValue.totalSeats
+        : EMPTY_VALUES.totalSeats,
   }));
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    onSubmit(values);
+
+    onSubmit({
+      totalSeats: values.totalSeats,
+    });
   }
 
   return (
     <form
-      className={cn("space-y-6", className)}
+      className={cn("space-y-5", className)}
       onSubmit={handleSubmit}
     >
       <JourneySeatControl
         value={values.totalSeats}
         onChange={(totalSeats) => {
-          setValues((current) => ({
-            ...current,
+          setValues({
             totalSeats,
-          }));
+          });
         }}
         disabled={submitting}
+        label="Total seats"
         helperText="Booked and available seats are managed by the Journey lifecycle."
       />
 
-      <div className={cn("flex", "flex-col-reverse", "gap-3", "sm:flex-row", "sm:justify-end")}>
-        {onCancel && (
+      <div
+        className={cn(
+          "flex",
+          "flex-col-reverse",
+          "gap-3",
+          "sm:flex-row",
+          "sm:justify-end",
+        )}
+      >
+        {onCancel !== undefined && (
           <Button
             type="button"
             variant="ghost"

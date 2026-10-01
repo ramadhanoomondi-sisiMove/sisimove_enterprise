@@ -1,19 +1,62 @@
-// src/domains/journey/domain/value-objects/journey-luggage-policy.vo.ts
+// -----------------------------------------------------------------------------
+// Path: src/domains/journey/domain/value-objects/journey-luggage-policy.vo.ts
+// -----------------------------------------------------------------------------
+// sisiMove — Journey Luggage Policy Value Object
+//
+// Represents the luggage policy configured for a Journey.
+//
+// Allowed values:
+// - NONE
+// - LIMITED
+// - STANDARD
+// - LARGE
+//
+// Responsibilities:
+// - enforce the Journey luggage-policy vocabulary;
+// - provide immutable domain representation;
+// - expose semantic convenience getters.
+//
+// This Value Object does NOT:
+// - perform persistence concerns;
+// - perform HTTP validation;
+// - depend on Prisma.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Foundation
+// -----------------------------------------------------------------------------
 
 import { ValueObject } from '../../../../foundation/kernel/domain/value-object';
 
+// -----------------------------------------------------------------------------
+// Value
+// -----------------------------------------------------------------------------
+
 export enum JourneyLuggagePolicy {
-  STANDARD = 'STANDARD',
+  NONE = 'NONE',
   LIMITED = 'LIMITED',
-  NOT_ALLOWED = 'NOT_ALLOWED',
+  STANDARD = 'STANDARD',
+  LARGE = 'LARGE',
 }
+
+// -----------------------------------------------------------------------------
+// Properties
+// -----------------------------------------------------------------------------
 
 interface JourneyLuggagePolicyProps {
-  value: JourneyLuggagePolicy;
+  readonly value: JourneyLuggagePolicy;
 }
 
+// -----------------------------------------------------------------------------
+// Value Object
+// -----------------------------------------------------------------------------
+
 export class JourneyLuggagePolicyValueObject extends ValueObject<JourneyLuggagePolicyProps> {
-  constructor(policy: JourneyLuggagePolicy) {
+  // ===========================================================================
+  // Constructor
+  // ===========================================================================
+
+  public constructor(policy: JourneyLuggagePolicy) {
     if (!Object.values(JourneyLuggagePolicy).includes(policy)) {
       throw new Error(`Invalid journey luggage policy "${policy}".`);
     }
@@ -23,19 +66,31 @@ export class JourneyLuggagePolicyValueObject extends ValueObject<JourneyLuggageP
     });
   }
 
-  get value(): JourneyLuggagePolicy {
+  // ===========================================================================
+  // Value
+  // ===========================================================================
+
+  public get value(): JourneyLuggagePolicy {
     return this.props.value;
   }
 
-  get isStandard(): boolean {
-    return this.props.value === JourneyLuggagePolicy.STANDARD;
+  // ===========================================================================
+  // Semantic Queries
+  // ===========================================================================
+
+  public get isNone(): boolean {
+    return this.props.value === JourneyLuggagePolicy.NONE;
   }
 
-  get isLimited(): boolean {
+  public get isLimited(): boolean {
     return this.props.value === JourneyLuggagePolicy.LIMITED;
   }
 
-  get isNotAllowed(): boolean {
-    return this.props.value === JourneyLuggagePolicy.NOT_ALLOWED;
+  public get isStandard(): boolean {
+    return this.props.value === JourneyLuggagePolicy.STANDARD;
+  }
+
+  public get isLarge(): boolean {
+    return this.props.value === JourneyLuggagePolicy.LARGE;
   }
 }

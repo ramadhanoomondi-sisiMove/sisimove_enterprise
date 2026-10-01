@@ -5,10 +5,13 @@
 // Infrastructure dependency-injection providers for the Identity bounded
 // context.
 //
-// The application layer depends on domain repository contracts.
+// The application layer depends on domain repository contracts and
+// application-service contracts.
 //
-// This provider file binds those repository abstractions to their concrete
-// Prisma implementations.
+// This provider file binds:
+//
+// - repository abstractions → concrete Prisma implementations;
+// - application-service abstractions → concrete application services.
 //
 // Covered aggregate / relationship boundaries:
 //
@@ -50,6 +53,9 @@
 // This keeps the transaction boundary owned by the infrastructure UnitOfWork
 // rather than by individual repositories.
 //
+// Application services remain transaction-aware through the repositories they
+// consume. They do not depend directly on PrismaTransactionContext.
+//
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
@@ -63,6 +69,12 @@ import type { Provider } from '@nestjs/common';
 // -----------------------------------------------------------------------------
 
 import { IDENTITY_TOKENS } from '../../application/identity.tokens';
+
+// -----------------------------------------------------------------------------
+// Application — Services
+// -----------------------------------------------------------------------------
+
+import { AuthorizationSnapshotServiceImpl } from '../../application/services/authorization-snapshot.service';
 
 // -----------------------------------------------------------------------------
 // Infrastructure — Prisma Repositories
@@ -83,20 +95,37 @@ import {
 /**
  * Dependency-injection providers for the Identity bounded context.
  *
- * Infrastructure is responsible for binding each domain repository
- * abstraction to its concrete Prisma implementation.
+ * Infrastructure is responsible for binding:
  *
- * The application layer depends only on the repository contracts exposed
- * through IDENTITY_TOKENS.REPOSITORIES.
+ *     application/domain abstraction
+ *              ↓
+ *     concrete infrastructure implementation
  *
- * The repositories themselves resolve Prisma access through
- * PrismaTransactionContext. Consequently, this provider layer does not
- * inject PrismaService directly and does not manually construct repositories.
+ * Repository bindings:
  *
- * This is important for atomic application workflows such as user
- * registration, where Identity, Verification, TravellerProfile, TrustProfile,
- * and Authentication persistence must participate in the same UnitOfWork
- * transaction.
+ *     IDENTITY_TOKENS.REPOSITORIES.IDENTITY
+ *         → PrismaIdentityRepository
+ *
+ *     IDENTITY_TOKENS.REPOSITORIES.VERIFICATION
+ *         → PrismaVerificationRepository
+ *
+ *     IDENTITY_TOKENS.REPOSITORIES.ROLE
+ *         → PrismaRoleRepository
+ *
+ *     IDENTITY_TOKENS.REPOSITORIES.PERMISSION
+ *         → PrismaPermissionRepository
+ *
+ *     IDENTITY_TOKENS.REPOSITORIES.ROLE_PERMISSION
+ *         → PrismaRolePermissionRepository
+ *
+ * Application-service bindings:
+ *
+ *     IDENTITY_TOKENS.APPLICATION_SERVICES.AUTHORIZATION_SNAPSHOT
+ *         → AuthorizationSnapshotServiceImpl
+ *
+ * The AuthorizationSnapshotService receives repository contracts through
+ * dependency injection. It therefore remains independent of Prisma and can
+ * participate in an active UnitOfWork through the repository implementations.
  */
 export const IDENTITY_PROVIDERS: Provider[] = [
   // ===========================================================================
@@ -142,6 +171,35 @@ export const IDENTITY_PROVIDERS: Provider[] = [
   {
     provide: IDENTITY_TOKENS.REPOSITORIES.ROLE_PERMISSION,
     useClass: PrismaRolePermissionRepository,
+  },
+
+  // ===========================================================================
+  // Application Services
+  // ===========================================================================
+
+  /**
+   * Resolves the current authorization snapshot for an Identity.
+   *
+   * The service composes:
+   *
+   *     Identity
+   *         ↓
+   *     active identity roles
+   *         ↓
+   *     role-permission assignments
+   *         ↓
+   *     active permissions
+   *         ↓
+   *     roles + permission codes
+   *
+   * The resulting snapshot is consumed by authentication/session workflows
+   * when issuing access JWTs.
+   *
+   * No Prisma dependency crosses into the application service.
+   */
+  {
+    provide: IDENTITY_TOKENS.APPLICATION_SERVICES.AUTHORIZATION_SNAPSHOT,
+    useClass: AuthorizationSnapshotServiceImpl,
   },
 ];
 

@@ -32,15 +32,11 @@ export default function NewMyJourneyPage() {
     <JourneyCreateForm
       onCreated={(journeyPublicId) => {
         router.push(
-          AUTHENTICATED_ROUTES.JOURNEY_EDIT(
-            journeyPublicId,
-          ),
+          AUTHENTICATED_ROUTES.JOURNEY_EDIT(journeyPublicId),
         );
       }}
       onCancel={() => {
-        router.push(
-          AUTHENTICATED_ROUTES.MY_JOURNEYS,
-        );
+        router.push(AUTHENTICATED_ROUTES.MY_JOURNEYS);
       }}
     />
   );

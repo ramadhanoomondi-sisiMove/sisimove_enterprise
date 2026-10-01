@@ -9,6 +9,7 @@
 // Responsibilities:
 // - resolve the Journey aggregate;
 // - create a new Journey Capacity child entity from command data;
+// - initialize booked seats to zero;
 // - delegate the attachment mutation to the Journey aggregate;
 // - persist the mutated aggregate.
 //
@@ -133,10 +134,6 @@ export class AttachJourneyCapacityHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     // Aggregate Mutation
     // -------------------------------------------------------------------------
-    //
-    // The Journey aggregate owns the capacity attachment relationship and
-    // remains responsible for enforcing its domain invariants.
-    //
 
     journey.attachCapacity(capacity);
 

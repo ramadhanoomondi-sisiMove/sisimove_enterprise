@@ -7,7 +7,9 @@
 // Responsibilities:
 // - maintain local presentation state;
 // - collect primitive vehicle values;
-// - emit those values through onSubmit.
+// - display the currently selected vehicle Asset;
+// - allow the owning workflow to initiate Asset replacement;
+// - emit vehicle values through onSubmit.
 //
 // This component does NOT:
 // - call the Journey API;
@@ -18,7 +20,9 @@
 // - validate vehicle/domain invariants;
 // - decide whether the Journey may attach or replace its vehicle.
 //
-// Those responsibilities belong to the owning application workflow/backend.
+// The Asset capability remains responsible for uploading and resolving Assets.
+// The owning Journey workflow remains responsible for translating the selected
+// Asset into the Journey vehicle command.
 //
 // -----------------------------------------------------------------------------
 
@@ -31,6 +35,7 @@ import { cn } from "@/foundation";
 
 import {
   JourneyVehicleFields,
+  type JourneyVehicleAssetOption,
   type JourneyVehicleFieldValues,
 } from "./journey-vehicle-fields";
 
@@ -45,9 +50,24 @@ export interface JourneyVehicleEditorProps {
   readonly initialValue?: Partial<JourneyVehicleFieldValues>;
 
   /**
+   * The currently resolved vehicle Asset.
+   *
+   * This is already a presentation-safe Asset reference supplied by the
+   * owning workflow. The editor does not resolve or construct its URL.
+   */
+  readonly selectedAsset?: JourneyVehicleAssetOption | null;
+
+  /**
    * Presentation-only submission boundary.
    */
-  readonly onSubmit: (values: JourneyVehicleFieldValues) => void;
+  readonly onSubmit: (
+    values: JourneyVehicleFieldValues,
+  ) => void;
+
+  /**
+   * Requests the owning workflow to open the Asset upload/replacement flow.
+   */
+  readonly onChangeAsset?: () => void;
 
   readonly onCancel?: () => void;
 
@@ -77,16 +97,29 @@ const EMPTY_VALUES: JourneyVehicleFieldValues = {
 
 export function JourneyVehicleEditor({
   initialValue,
+  selectedAsset = null,
   onSubmit,
+  onChangeAsset,
   onCancel,
   submitting = false,
   submitLabel = "Save vehicle",
   className,
 }: JourneyVehicleEditorProps) {
-  const [values, setValues] = useState<JourneyVehicleFieldValues>(() => ({
-    ...EMPTY_VALUES,
-    ...initialValue,
-  }));
+  const [values, setValues] =
+    useState<JourneyVehicleFieldValues>(() => ({
+      make: initialValue?.make ?? EMPTY_VALUES.make,
+      model: initialValue?.model ?? EMPTY_VALUES.model,
+      year: initialValue?.year ?? EMPTY_VALUES.year,
+      color: initialValue?.color ?? EMPTY_VALUES.color,
+      registration:
+        initialValue?.registration ?? EMPTY_VALUES.registration,
+      assetPublicId:
+        initialValue?.assetPublicId ?? EMPTY_VALUES.assetPublicId,
+    }));
+
+  // ===========================================================================
+  // Presentation State
+  // ===========================================================================
 
   /**
    * Update one presentation field.
@@ -105,29 +138,50 @@ export function JourneyVehicleEditor({
     }));
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
+  // ===========================================================================
+  // Submit
+  // ===========================================================================
+
+  function handleSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ): void {
     event.preventDefault();
 
     onSubmit(values);
   }
+
+  // ===========================================================================
+  // Render
+  // ===========================================================================
 
   return (
     <form
       onSubmit={handleSubmit}
       className={cn(
         "w-full",
-        "space-y-6",
+        "space-y-5",
         className,
       )}
     >
       <JourneyVehicleFields
         values={values}
         onChange={updateField}
+        selectedAsset={selectedAsset}
+        onChangeAsset={onChangeAsset}
         disabled={submitting}
       />
 
-      <div className="flex flex-wrap items-center justify-end gap-3">
-        {onCancel ? (
+      <div
+        className={cn(
+          "flex",
+          "flex-col-reverse",
+          "gap-3",
+          "sm:flex-row",
+          "sm:items-center",
+          "sm:justify-end",
+        )}
+      >
+        {onCancel !== undefined && (
           <Button
             type="button"
             variant="ghost"
@@ -136,7 +190,7 @@ export function JourneyVehicleEditor({
           >
             Cancel
           </Button>
-        ) : null}
+        )}
 
         <Button
           type="submit"

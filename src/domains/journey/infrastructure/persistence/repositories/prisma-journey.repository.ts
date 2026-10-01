@@ -133,20 +133,6 @@ export class PrismaJourneyRepository implements JourneyRepository {
   // ===========================================================================
   // Include Graph
   // ===========================================================================
-  //
-  // This is the canonical Journey aggregate/read hydration graph.
-  //
-  // JourneyPrismaMapper.toDomain() already knows how to map every included
-  // component into JourneyEntity. The repository therefore only needs to
-  // ensure that public and aggregate reads provide the mapper with the
-  // complete graph.
-  //
-  // Importantly, this graph contains only Journey-owned state.
-  //
-  // Traveller, Identity, Trust, and other cross-domain public data are NOT
-  // relations of Journey and must not be introduced here. The public
-  // application read boundary composes those domains using providerPublicId.
-  // ===========================================================================
 
   private readonly include = {
     corridor: {
@@ -189,6 +175,19 @@ export class PrismaJourneyRepository implements JourneyRepository {
       // -----------------------------------------------------------------------
       // Journey
       // -----------------------------------------------------------------------
+      //
+      // IMPORTANT:
+      //
+      // vehicleId is deliberately NOT written during the initial Journey
+      // upsert.
+      //
+      // Journey.vehicleId is a foreign key to JourneyVehicle.id. Therefore the
+      // JourneyVehicle row must exist before Journey.vehicleId can reference
+      // it.
+      //
+      // The vehicle relationship is populated only after the vehicle has been
+      // persisted below.
+      // -----------------------------------------------------------------------
 
       await tx.journey.upsert({
         where: {
@@ -214,7 +213,7 @@ export class PrismaJourneyRepository implements JourneyRepository {
           createdAt: persistence.journey.createdAt,
           updatedAt: persistence.journey.updatedAt,
 
-          vehicleId: persistence.journey.vehicleId,
+          vehicleId: null,
         },
 
         update: {
@@ -232,8 +231,6 @@ export class PrismaJourneyRepository implements JourneyRepository {
 
           version: persistence.journey.version,
           updatedAt: persistence.journey.updatedAt,
-
-          vehicleId: persistence.journey.vehicleId,
         },
       });
 
@@ -389,6 +386,20 @@ export class PrismaJourneyRepository implements JourneyRepository {
             assetPublicId: persistence.vehicle.assetPublicId,
 
             updatedAt: persistence.vehicle.updatedAt,
+          },
+        });
+
+        // ---------------------------------------------------------------------
+        // Only after the vehicle exists can the FK be populated.
+        // ---------------------------------------------------------------------
+
+        await tx.journey.update({
+          where: {
+            id: journeyId,
+          },
+
+          data: {
+            vehicleId: persistence.vehicle.id,
           },
         });
       } else {
@@ -669,43 +680,14 @@ export class PrismaJourneyRepository implements JourneyRepository {
     return record === null ? null : JourneyPrismaMapper.toDomain(record);
   }
 
-  /**
-   * Returns a Journey only when it is currently publicly discoverable.
-   *
-   * This is deliberately separate from findJourneyByPublicId().
-   *
-   * A valid public identifier only establishes that the Journey can be
-   * addressed inside the Journey domain. It does not mean that the Journey
-   * should be exposed to anonymous marketplace visitors.
-   *
-   * Public visibility is therefore enforced at the repository query boundary.
-   *
-   * For the current Journey lifecycle, PUBLISHED is the public discovery
-   * state. If the lifecycle later introduces another publicly discoverable
-   * state, the public-read policy should be changed here rather than in the
-   * application handler or HTTP controller.
-   *
-   * The complete Journey-owned graph is loaded because the public application
-   * read boundary needs route, schedule, vehicle, capacity, pricing,
-   * preferences, and assets to construct the marketplace projection.
-   */
   public async findPublicJourneyByPublicId(
     publicId: JourneyPublicId,
   ): Promise<JourneyEntity | null> {
     const record = await this.prisma.journey.findFirst({
       where: {
         publicId: publicId.value,
-
         status: this.toPrismaJourneyStatus('PUBLISHED'),
       },
-
-      // -----------------------------------------------------------------------
-      // Important:
-      //
-      // A public Journey is not just the root Journey row. The marketplace
-      // needs the Journey-owned components as well. The mapper already knows
-      // how to hydrate these components; this include graph supplies them.
-      // -----------------------------------------------------------------------
       include: this.include,
     });
 
@@ -727,9 +709,6 @@ export class PrismaJourneyRepository implements JourneyRepository {
     return records.map((record) => JourneyPrismaMapper.toDomain(record));
   }
 
-  /**
-   * Alias required by the JourneyRepository contract.
-   */
   public async findJourneysByProvider(
     providerPublicId: JourneyProviderPublicId,
   ): Promise<JourneyEntity[]> {
@@ -1430,45 +1409,6 @@ export class PrismaJourneyRepository implements JourneyRepository {
   // Public Journey Discovery
   // ===========================================================================
 
-  /**
-   * Finds currently publicly discoverable Journeys.
-   *
-   * This is the repository implementation of the public Journey marketplace
-   * collection.
-   *
-   * Public visibility is always enforced here. Callers cannot accidentally
-   * expose DRAFT, CANCELLED, EXPIRED, or other non-public Journeys by omitting
-   * a status filter.
-   *
-   * An empty filter object returns the complete currently published Journey
-   * collection.
-   *
-   * Optional filters narrow the same public collection:
-   *
-   * - from -> corridor origin
-   * - to   -> corridor destination
-   * - date -> schedule departure calendar date
-   *
-   * Text filters intentionally use case-insensitive partial matching so the
-   * marketplace can search naturally while the user types.
-   *
-   * Examples:
-   *
-   * - "N"     -> Nairobi
-   * - "Na"    -> Nairobi
-   * - "Nai"   -> Nairobi
-   * - "M"     -> Mombasa
-   * - "Mom"   -> Mombasa
-   * - "Momb"  -> Mombasa
-   *
-   * The method intentionally supports an empty filter because the marketplace
-   * landing page displays published Journeys before search is applied.
-   *
-   * The returned JourneyEntity contains the complete Journey-owned graph.
-   * Cross-domain public data such as Traveller and Trust is intentionally not
-   * loaded here; the application public read boundary resolves those using
-   * providerPublicId.
-   */
   public async findPublicJourneys(filters: {
     readonly from?: string;
     readonly to?: string;
@@ -1478,10 +1418,6 @@ export class PrismaJourneyRepository implements JourneyRepository {
 
     // -------------------------------------------------------------------------
     // Origin filter
-    // -------------------------------------------------------------------------
-    //
-    // `contains` provides prefix/partial matching while `insensitive` makes
-    // marketplace search independent of letter casing.
     // -------------------------------------------------------------------------
 
     const from = filters.from?.trim();
@@ -1552,18 +1488,6 @@ export class PrismaJourneyRepository implements JourneyRepository {
     // -------------------------------------------------------------------------
     // Public marketplace collection
     // -------------------------------------------------------------------------
-    //
-    // IMPORTANT:
-    //
-    // Do not remove `include: this.include`.
-    //
-    // Without it Prisma returns only the Journey root record. The mapper then
-    // correctly maps that root record into a JourneyEntity whose corridor,
-    // schedule, vehicle, capacity, pricing, preferences, and assets are
-    // undefined/empty.
-    //
-    // The public marketplace requires those Journey-owned components.
-    // -------------------------------------------------------------------------
 
     const records = await this.prisma.journey.findMany({
       where,
@@ -1580,21 +1504,6 @@ export class PrismaJourneyRepository implements JourneyRepository {
     return records.map((record) => JourneyPrismaMapper.toDomain(record));
   }
 
-  /**
-   * Finds published Journeys matching an origin, destination, and departure
-   * date range.
-   *
-   * This method is intentionally restricted to PUBLISHED Journeys because it
-   * represents anonymous/public discovery rather than an internal lifecycle
-   * query.
-   *
-   * The public visibility rule therefore remains inside the persistence
-   * implementation instead of being duplicated by controllers or handlers.
-   *
-   * The complete Journey-owned graph is loaded for the same reason as
-   * findPublicJourneys(): public consumers need the Journey's route, schedule,
-   * vehicle, capacity, pricing, preferences, and assets.
-   */
   public async findPublishedJourneysByRouteAndDate(
     origin: string,
     destination: string,
@@ -1629,10 +1538,6 @@ export class PrismaJourneyRepository implements JourneyRepository {
         },
       },
 
-      // -----------------------------------------------------------------------
-      // Public route/date discovery must return the same complete Journey-owned
-      // graph as the main public marketplace collection.
-      // -----------------------------------------------------------------------
       include: this.include,
 
       orderBy: {
@@ -1648,19 +1553,145 @@ export class PrismaJourneyRepository implements JourneyRepository {
   // ===========================================================================
   // Aggregate Reconstruction
   // ===========================================================================
+  //
+  // Prisma has already loaded the complete Journey aggregate graph through
+  // `this.include`.
+  //
+  // IMPORTANT:
+  //
+  // `JourneyAggregate.create()` only reconstructs the root JourneyEntity.
+  // It does NOT attach persisted child entities.
+  //
+  // Therefore using `create()` here silently discards:
+  //
+  //   - corridor
+  //   - waypoints
+  //   - schedule
+  //   - vehicle
+  //   - capacity
+  //   - pricing
+  //   - preferences
+  //   - assets
+  //
+  // Rehydration must restore the complete aggregate graph.
+  //
+  // The explicit null/undefined checks below are intentional. `JourneyWithComponents`
+  // represents optional Prisma relations as potentially undefined, while Prisma
+  // represents missing optional one-to-one relations as null.
+  //
+  // ===========================================================================
 
-  /**
-   * Reconstructs the Journey aggregate from a fully hydrated persistence
-   * record.
-   *
-   * JourneyPrismaMapper.toDomain() performs the actual component mapping and
-   * rehydrates JourneyEntity with its Journey-owned children.
-   *
-   * The aggregate is therefore not rebuilt component-by-component here.
-   */
   private toAggregate(record: JourneyWithComponents): JourneyAggregate {
     const journey = JourneyPrismaMapper.toDomain(record);
 
-    return JourneyAggregate.create(journey);
+    // -------------------------------------------------------------------------
+    // Corridor
+    // -------------------------------------------------------------------------
+
+    let corridor: JourneyCorridorEntity | undefined;
+
+    if (record.corridor !== undefined && record.corridor !== null) {
+      corridor = JourneyPrismaMapper.toDomainComponent(
+        record.corridor,
+      ) as JourneyCorridorEntity;
+    }
+
+    // -------------------------------------------------------------------------
+    // Waypoints
+    // -------------------------------------------------------------------------
+
+    const waypoints: JourneyWaypointEntity[] =
+      record.corridor?.waypoints?.map(
+        (waypoint) =>
+          JourneyPrismaMapper.toDomainComponent(
+            waypoint,
+          ) as JourneyWaypointEntity,
+      ) ?? [];
+
+    // -------------------------------------------------------------------------
+    // Schedule
+    // -------------------------------------------------------------------------
+
+    let schedule: JourneyScheduleEntity | undefined;
+
+    if (record.schedule !== undefined && record.schedule !== null) {
+      schedule = JourneyPrismaMapper.toDomainComponent(
+        record.schedule,
+      ) as JourneyScheduleEntity;
+    }
+
+    // -------------------------------------------------------------------------
+    // Vehicle
+    // -------------------------------------------------------------------------
+
+    let vehicle: JourneyVehicleEntity | undefined;
+
+    if (record.vehicle !== undefined && record.vehicle !== null) {
+      vehicle = JourneyPrismaMapper.toDomainComponent(
+        record.vehicle,
+      ) as JourneyVehicleEntity;
+    }
+
+    // -------------------------------------------------------------------------
+    // Capacity
+    // -------------------------------------------------------------------------
+
+    let capacity: JourneyCapacityEntity | undefined;
+
+    if (record.capacity !== undefined && record.capacity !== null) {
+      capacity = JourneyPrismaMapper.toDomainComponent(
+        record.capacity,
+      ) as JourneyCapacityEntity;
+    }
+
+    // -------------------------------------------------------------------------
+    // Pricing
+    // -------------------------------------------------------------------------
+
+    let pricing: JourneyPricingEntity | undefined;
+
+    if (record.pricing !== undefined && record.pricing !== null) {
+      pricing = JourneyPrismaMapper.toDomainComponent(
+        record.pricing,
+      ) as JourneyPricingEntity;
+    }
+
+    // -------------------------------------------------------------------------
+    // Preferences
+    // -------------------------------------------------------------------------
+
+    let preferences: JourneyPreferencesEntity | undefined;
+
+    if (record.preferences !== undefined && record.preferences !== null) {
+      preferences = JourneyPrismaMapper.toDomainComponent(
+        record.preferences,
+      ) as JourneyPreferencesEntity;
+    }
+
+    // -------------------------------------------------------------------------
+    // Assets
+    // -------------------------------------------------------------------------
+
+    const assets: JourneyAssetEntity[] =
+      record.assets?.map(
+        (asset) =>
+          JourneyPrismaMapper.toDomainComponent(asset) as JourneyAssetEntity,
+      ) ?? [];
+
+    // -------------------------------------------------------------------------
+    // Complete aggregate rehydration
+    // -------------------------------------------------------------------------
+
+    return JourneyAggregate.rehydrate(
+      journey,
+      corridor,
+      schedule,
+      vehicle,
+      capacity,
+      pricing,
+      preferences,
+      waypoints,
+      assets,
+    );
   }
 }

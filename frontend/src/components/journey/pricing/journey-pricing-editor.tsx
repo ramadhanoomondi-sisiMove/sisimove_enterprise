@@ -60,10 +60,18 @@ export function JourneyPricingEditor({
   submitLabel = "Save price",
   className,
 }: JourneyPricingEditorProps) {
-  const [values, setValues] = useState<JourneyPriceFieldValues>(() => ({
-    ...EMPTY_VALUES,
-    ...initialValue,
-  }));
+  const [values, setValues] =
+    useState<JourneyPriceFieldValues>(() => ({
+      amount:
+        initialValue?.amount !== undefined
+          ? initialValue.amount
+          : EMPTY_VALUES.amount,
+
+      currency:
+        initialValue?.currency !== undefined
+          ? initialValue.currency
+          : EMPTY_VALUES.currency,
+    }));
 
   function updateField(
     field: keyof JourneyPriceFieldValues,
@@ -77,12 +85,20 @@ export function JourneyPricingEditor({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    onSubmit(values);
+
+    onSubmit({
+      amount: values.amount,
+      currency: values.currency,
+    });
   }
 
   return (
     <form
-      className={cn("space-y-6", className)}
+      className={cn(
+        "w-full",
+        "space-y-5",
+        className,
+      )}
       onSubmit={handleSubmit}
     >
       <JourneyPriceFields
@@ -91,8 +107,16 @@ export function JourneyPricingEditor({
         disabled={submitting}
       />
 
-      <div className={cn("flex", "flex-col-reverse", "gap-3", "sm:flex-row", "sm:justify-end")}>
-        {onCancel && (
+      <div
+        className={cn(
+          "flex",
+          "flex-col-reverse",
+          "gap-3",
+          "sm:flex-row",
+          "sm:justify-end",
+        )}
+      >
+        {onCancel !== undefined && (
           <Button
             type="button"
             variant="ghost"

@@ -11,7 +11,7 @@
 // - JourneyCard owns all internal responsive scaling.
 // - JourneyCards retain the same horizontal composition at every viewport.
 // - Cards contract proportionally rather than switching to stacked layouts.
-// - Vertical spacing remains stable and intentionally compact.
+// - Collection spacing remains compact and consistent.
 //
 // Responsibilities:
 // - render a collection of PublicJourney projections;
@@ -82,33 +82,23 @@ export interface JourneyListProps {
 
   /**
    * Parent-owned View Journey action.
-   *
-   * The JourneyList supplies the selected Journey to the callback but does
-   * not decide how navigation is performed.
    */
   readonly onView?: (journey: PublicJourney) => void;
 
   /**
    * Parent-owned Share Journey action.
-   *
-   * The JourneyList supplies the selected Journey to the callback but does
-   * not perform the sharing itself.
    */
   readonly onShare?: (journey: PublicJourney) => void;
 
   /**
    * Parent-owned Book Journey action.
-   *
-   * The JourneyList supplies the selected Journey to the callback but does
-   * not perform authorization, verification, or booking itself.
    */
   readonly onBook?: (journey: PublicJourney) => void;
 
   /**
    * Identifies the Journey currently being booked.
    *
-   * Keeping this state outside the list prevents the collection component
-   * from owning booking mutation state.
+   * Booking mutation state remains owned by the parent.
    */
   readonly bookingJourneyPublicId?: string | null;
 
@@ -159,8 +149,12 @@ export function JourneyList({
   return (
     <div
       className={cn(
+        "flex",
         "w-full",
-        "space-y-2",
+        "min-w-0",
+        "flex-col",
+        "gap-2",
+        "sm:gap-3",
         className,
       )}
       aria-label="Available Journeys"

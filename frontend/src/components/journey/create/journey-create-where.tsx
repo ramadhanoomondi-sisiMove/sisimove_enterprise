@@ -1,64 +1,170 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Create Where
+// Path: src/features/journey/components/create/JourneyCreateWhere.tsx
 // -----------------------------------------------------------------------------
 //
-// Presentation-only step for collecting the Journey corridor.
+// sisiMove — Journey Create Where
 //
-// Responsibilities:
-// - collect origin and destination names;
-// - collect optional origin/destination coordinates;
-// - emit primitive string values through onChange;
-// - render the existing UI primitives;
-// - remain independent of API calls, domain objects, and persistence.
+// Presentation-only Journey corridor selection step.
 //
-// The parent JourneyCreateForm owns:
-// - coordinate parsing;
-// - domain validation;
-// - conversion of empty/invalid coordinates to undefined;
-// - createJourney();
-// - attachJourneyCorridor();
-// - navigation to the next creation step.
+// State ownership:
 //
-// Coordinates intentionally remain strings here. In particular, do not use
-// Number(value) in this component because Number("") evaluates to 0.
+//   JourneyCreateForm
+//        │
+//        ├── origin
+//        ├── destination
+//        ├── originQuery
+//        └── destinationQuery
+//                 │
+//                 ▼
+//        JourneyCreateWhere
 //
-// Waypoints are intentionally not handled here. They are a separate Journey
-// corridor concern and have their own editor/component layer.
+// This component does NOT keep local location state.
+//
+// Therefore when the user moves:
+//
+//   Where → When → Vehicle → Back
+//
+// the previously entered From / To values remain available because the
+// JourneyCreateForm remains the single source of truth.
+//
+// User-facing requirement:
+// - From
+// - To
+//
+// The user never enters:
+// - latitude;
+// - longitude;
+// - coordinates;
+// - geocoding/provider details.
+//
+// Supported locations are supplied by the Journey creation workflow.
+// The component does not resolve, search, geocode, or persist locations.
+//
+// JourneyCreateForm owns:
+// - resolved location state;
+// - location query state;
+// - supported-location filtering;
+// - corridor resolution;
+// - Journey creation;
+// - corridor persistence;
+// - validation;
+// - workflow navigation.
+//
+// LocationSelector owns:
+// - location input;
+// - location suggestions;
+// - location selection.
 // -----------------------------------------------------------------------------
 
-import { Input } from "@/components/ui/input";
+"use client";
+
+import {
+  LocationSelector,
+  type ResolvedLocation,
+} from "@/foundation/location";
+
 import { cn } from "@/foundation/utils/cn";
 
-export interface JourneyCreateWhereValues {
-  readonly originName: string;
-  readonly originLatitude: string;
-  readonly originLongitude: string;
-  readonly destinationName: string;
-  readonly destinationLatitude: string;
-  readonly destinationLongitude: string;
-}
+// =============================================================================
+// Props
+// =============================================================================
 
 export interface JourneyCreateWhereProps {
-  readonly values: JourneyCreateWhereValues;
-  readonly onChange: (
-    field: keyof JourneyCreateWhereValues,
-    value: string,
-  ) => void;
+  /**
+   * Previously selected origin.
+   *
+   * Controlled by JourneyCreateForm so the selection survives step
+   * navigation/remounting.
+   */
+  readonly origin: ResolvedLocation | null;
+
+  /**
+   * Previously selected destination.
+   *
+   * Controlled by JourneyCreateForm so the selection survives step
+   * navigation/remounting.
+   */
+  readonly destination: ResolvedLocation | null;
+
+  /**
+   * Current origin search text.
+   *
+   * Controlled by JourneyCreateForm.
+   */
+  readonly originQuery: string;
+
+  /**
+   * Current destination search text.
+   *
+   * Controlled by JourneyCreateForm.
+   */
+  readonly destinationQuery: string;
+
+  /**
+   * SisiMove-supported locations available for the origin selector.
+   */
+  readonly originSuggestions: readonly ResolvedLocation[];
+
+  /**
+   * SisiMove-supported destinations available for the selected origin.
+   */
+  readonly destinationSuggestions: readonly ResolvedLocation[];
+
+  readonly originError?: string | null;
+  readonly destinationError?: string | null;
+
   readonly disabled?: boolean;
   readonly className?: string;
+
+  readonly onOriginQueryChange: (
+    query: string,
+  ) => void;
+
+  readonly onDestinationQueryChange: (
+    query: string,
+  ) => void;
+
+  readonly onOriginSelect: (
+    location: ResolvedLocation,
+  ) => void;
+
+  readonly onDestinationSelect: (
+    location: ResolvedLocation,
+  ) => void;
 }
 
+// =============================================================================
+// Component
+// =============================================================================
+
 export function JourneyCreateWhere({
-  values,
-  onChange,
+  origin,
+  destination,
+  originQuery,
+  destinationQuery,
+  originSuggestions,
+  destinationSuggestions,
+  originError = null,
+  destinationError = null,
   disabled = false,
   className,
+  onOriginQueryChange,
+  onDestinationQueryChange,
+  onOriginSelect,
+  onDestinationSelect,
 }: JourneyCreateWhereProps) {
   return (
     <section
       aria-labelledby="journey-create-where-title"
-      className={cn("space-y-6", className)}
+      className={cn(
+        "space-y-6",
+        className,
+      )}
     >
+      {/* ------------------------------------------------------------------- */}
+      {/* Header                                                              */}
+      {/* ------------------------------------------------------------------- */}
+
       <div className="space-y-1">
         <h2
           id="journey-create-where-title"
@@ -68,124 +174,66 @@ export function JourneyCreateWhere({
         </h2>
 
         <p className="text-sm text-[var(--foreground-secondary)]">
-          Tell passengers where the journey starts and where it ends.
+          Choose your starting point and destination.
         </p>
       </div>
 
-      <div className="space-y-5">
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-sm font-semibold text-[var(--foreground)]">
-              Origin
-            </h3>
+      {/* ------------------------------------------------------------------- */}
+      {/* Location Selection                                                  */}
+      {/* ------------------------------------------------------------------- */}
 
-            <p className="mt-1 text-xs text-[var(--foreground-muted)]">
-              The starting point of the journey.
-            </p>
-          </div>
+      <div className="grid gap-5 sm:grid-cols-2">
+        {/* ----------------------------------------------------------------- */}
+        {/* Origin                                                            */}
+        {/* ----------------------------------------------------------------- */}
 
-          <Input
-            label="Origin"
-            value={values.originName}
-            onChange={(event) =>
-              onChange("originName", event.target.value)
-            }
-            placeholder="e.g. Nairobi"
-            disabled={disabled}
-            autoComplete="off"
-            fullWidth
-          />
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Input
-              label="Latitude"
-              value={values.originLatitude}
-              onChange={(event) =>
-                onChange("originLatitude", event.target.value)
-              }
-              placeholder="e.g. -1.286389"
-              inputMode="decimal"
-              disabled={disabled}
-              autoComplete="off"
-              helperText="Optional"
-              fullWidth
-            />
-
-            <Input
-              label="Longitude"
-              value={values.originLongitude}
-              onChange={(event) =>
-                onChange("originLongitude", event.target.value)
-              }
-              placeholder="e.g. 36.817223"
-              inputMode="decimal"
-              disabled={disabled}
-              autoComplete="off"
-              helperText="Optional"
-              fullWidth
-            />
-          </div>
-        </div>
-
-        <div
-          aria-hidden="true"
-          className="h-px bg-[var(--border-subtle)]"
+        <LocationSelector
+          label="From"
+          placeholder="Select starting point"
+          value={origin}
+          query={originQuery}
+          suggestions={originSuggestions}
+          disabled={disabled}
+          error={originError}
+          onQueryChange={
+            onOriginQueryChange
+          }
+          onSelect={
+            onOriginSelect
+          }
         />
 
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-sm font-semibold text-[var(--foreground)]">
-              Destination
-            </h3>
+        {/* ----------------------------------------------------------------- */}
+        {/* Destination                                                       */}
+        {/* ----------------------------------------------------------------- */}
 
-            <p className="mt-1 text-xs text-[var(--foreground-muted)]">
-              The final destination of the journey.
-            </p>
-          </div>
-
-          <Input
-            label="Destination"
-            value={values.destinationName}
-            onChange={(event) =>
-              onChange("destinationName", event.target.value)
-            }
-            placeholder="e.g. Mombasa"
-            disabled={disabled}
-            autoComplete="off"
-            fullWidth
-          />
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Input
-              label="Latitude"
-              value={values.destinationLatitude}
-              onChange={(event) =>
-                onChange("destinationLatitude", event.target.value)
-              }
-              placeholder="e.g. -4.043477"
-              inputMode="decimal"
-              disabled={disabled}
-              autoComplete="off"
-              helperText="Optional"
-              fullWidth
-            />
-
-            <Input
-              label="Longitude"
-              value={values.destinationLongitude}
-              onChange={(event) =>
-                onChange("destinationLongitude", event.target.value)
-              }
-              placeholder="e.g. 39.668207"
-              inputMode="decimal"
-              disabled={disabled}
-              autoComplete="off"
-              helperText="Optional"
-              fullWidth
-            />
-          </div>
-        </div>
+        <LocationSelector
+          label="To"
+          placeholder={
+            origin !== null
+              ? "Select destination"
+              : "Select starting point first"
+          }
+          value={destination}
+          query={destinationQuery}
+          suggestions={
+            destinationSuggestions
+          }
+          disabled={
+            disabled ||
+            origin === null
+          }
+          error={destinationError}
+          onQueryChange={
+            onDestinationQueryChange
+          }
+          onSelect={
+            onDestinationSelect
+          }
+        />
       </div>
     </section>
   );
 }
+
+export default JourneyCreateWhere;

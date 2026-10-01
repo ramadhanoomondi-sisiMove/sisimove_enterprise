@@ -7,7 +7,8 @@
 // Architecture:
 // - Owns temporary client-side form state for the creation workflow.
 // - Owns the current creation step.
-// - Composes the individual create-step components.
+// - Owns SisiMove-supported location selection for the Where step.
+// - Resolves From/To through the local SisiMove-supported location catalogue.
 // - Performs no API requests.
 // - Performs no authorization checks.
 // - Does not construct a backend JourneyDemand aggregate.
@@ -19,33 +20,57 @@
 //
 //   Where → When → Seats → Price
 //
+// Location flow:
+//
+//   Supported catalogue
+//        ↓
+//   From selection
+//        ↓
+//   Supported destinations
+//        ↓
+//   To selection
+//        ↓
+//   ResolvedLocation values
+//
 // The form values are intentionally lightweight creation-form representations.
 // They are not authenticated JourneyDemand domain models.
 // -----------------------------------------------------------------------------
 
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui';
+import {
+  type ResolvedLocation,
+} from '@/foundation/location';
 import { cn } from '@/foundation';
+
+import {
+  getSupportedDestinations,
+  findSupportedLocation,
+} from '@/foundation/location/data/resolve-supported-corridor';
 
 import {
   JourneyDemandCreatePrice,
   type JourneyDemandCreatePriceValue,
 } from './journey-demand-create-price';
+
 import {
   JourneyDemandCreateProgress,
   type JourneyDemandCreateStep,
 } from './journey-demand-create-progress';
+
 import {
   JourneyDemandCreateSeats,
   type JourneyDemandCreateSeatsValue,
 } from './journey-demand-create-seats';
+
 import {
   JourneyDemandCreateWhen,
   type JourneyDemandCreateWhenValue,
 } from './journey-demand-create-when';
+
 import {
   JourneyDemandCreateWhere,
   type JourneyDemandCreateWhereValue,
@@ -81,8 +106,8 @@ export interface JourneyDemandCreateFormProps {
 
 const DEFAULT_VALUE: JourneyDemandCreateFormValue = {
   where: {
-    origin: '',
-    destination: '',
+    origin: null,
+    destination: null,
   },
   when: {
     earliestDeparture: '',
@@ -98,6 +123,30 @@ const DEFAULT_VALUE: JourneyDemandCreateFormValue = {
     maximumPricePerSeat: undefined,
   },
 };
+
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+
+function normalizeQuery(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function matchesLocation(
+  location: ResolvedLocation,
+  query: string,
+): boolean {
+  const normalizedQuery = normalizeQuery(query);
+
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return (
+    location.name.toLowerCase().includes(normalizedQuery) ||
+    location.key.toLowerCase().includes(normalizedQuery)
+  );
+}
 
 // -----------------------------------------------------------------------------
 // Component
@@ -119,7 +168,103 @@ export function JourneyDemandCreateForm({
       () => initialValue ?? DEFAULT_VALUE,
     );
 
-  const controlsDisabled = disabled || isSubmitting;
+  // ---------------------------------------------------------------------------
+  // Location query state
+  // ---------------------------------------------------------------------------
+
+  const [originQuery, setOriginQuery] = useState<string>(
+    () => initialValue?.where.origin?.name ?? '',
+  );
+
+  const [destinationQuery, setDestinationQuery] = useState<string>(
+    () => initialValue?.where.destination?.name ?? '',
+  );
+
+  // ---------------------------------------------------------------------------
+  // Location suggestions
+  // ---------------------------------------------------------------------------
+  //
+  // From:
+  //   All SisiMove-supported locations.
+  //
+  // To:
+  //   Only destinations supported from the selected origin.
+  //
+  // This keeps Journey Demand creation aligned with the same SisiMove-owned
+  // corridor catalogue used by Journey creation.
+  // ---------------------------------------------------------------------------
+
+  const supportedOriginSuggestions =
+    useMemo<readonly ResolvedLocation[]>(
+      () => {
+        const locations: ResolvedLocation[] = [];
+
+        const seen = new Set<string>();
+
+        const addLocation = (
+          location: ResolvedLocation | undefined,
+        ): void => {
+          if (!location || seen.has(location.key)) {
+            return;
+          }
+
+          if (!matchesLocation(location, originQuery)) {
+            return;
+          }
+
+          seen.add(location.key);
+          locations.push(location);
+        };
+
+        const knownKeys = [
+          'NAIROBI',
+          'NAKURU',
+          'KERICHO',
+          'KISUMU',
+          'ELDORET',
+          'MOMBASA',
+          'VOI',
+          'MACHAKOS',
+          'KITALE',
+          'KAKAMEGA',
+        ];
+
+        for (const key of knownKeys) {
+          addLocation(findSupportedLocation(key));
+        }
+
+        return locations;
+      },
+      [originQuery],
+    );
+
+  const destinationSuggestions =
+    useMemo<readonly ResolvedLocation[]>(() => {
+      if (!value.where.origin) {
+        return [];
+      }
+
+      const destinations = getSupportedDestinations(
+        value.where.origin.key,
+      );
+
+      return destinations.filter((destination) =>
+        matchesLocation(
+          destination,
+          destinationQuery,
+        ),
+      );
+    }, [
+      value.where.origin,
+      destinationQuery,
+    ]);
+
+  const controlsDisabled =
+    disabled || isSubmitting;
+
+  // ---------------------------------------------------------------------------
+  // Where
+  // ---------------------------------------------------------------------------
 
   const updateWhere = (
     where: JourneyDemandCreateWhereValue,
@@ -130,6 +275,81 @@ export function JourneyDemandCreateForm({
     }));
   };
 
+  const handleOriginQueryChange = (
+    query: string,
+  ): void => {
+    setOriginQuery(query);
+
+    /*
+     * Changing the origin invalidates both resolved locations.
+     *
+     * The destination list is dependent on the selected origin, so the
+     * existing destination must also be cleared.
+     */
+    if (value.where.origin) {
+      updateWhere({
+        origin: null,
+        destination: null,
+      });
+
+      setDestinationQuery('');
+      return;
+    }
+
+    /*
+     * Even before a location has been selected, ensure a stale destination
+     * cannot survive an origin search interaction.
+     */
+    if (value.where.destination) {
+      updateWhere({
+        origin: null,
+        destination: null,
+      });
+
+      setDestinationQuery('');
+    }
+  };
+
+  const handleDestinationQueryChange = (
+    query: string,
+  ): void => {
+    setDestinationQuery(query);
+
+    if (value.where.destination) {
+      updateWhere({
+        ...value.where,
+        destination: null,
+      });
+    }
+  };
+
+  const handleOriginSelect = (
+    location: ResolvedLocation,
+  ): void => {
+    setOriginQuery(location.name);
+    setDestinationQuery('');
+
+    updateWhere({
+      origin: location,
+      destination: null,
+    });
+  };
+
+  const handleDestinationSelect = (
+    location: ResolvedLocation,
+  ): void => {
+    setDestinationQuery(location.name);
+
+    updateWhere({
+      ...value.where,
+      destination: location,
+    });
+  };
+
+  // ---------------------------------------------------------------------------
+  // When
+  // ---------------------------------------------------------------------------
+
   const updateWhen = (
     when: JourneyDemandCreateWhenValue,
   ): void => {
@@ -138,6 +358,10 @@ export function JourneyDemandCreateForm({
       when,
     }));
   };
+
+  // ---------------------------------------------------------------------------
+  // Seats
+  // ---------------------------------------------------------------------------
 
   const updateSeats = (
     seats: JourneyDemandCreateSeatsValue,
@@ -148,6 +372,10 @@ export function JourneyDemandCreateForm({
     }));
   };
 
+  // ---------------------------------------------------------------------------
+  // Price
+  // ---------------------------------------------------------------------------
+
   const updatePrice = (
     price: JourneyDemandCreatePriceValue,
   ): void => {
@@ -156,6 +384,10 @@ export function JourneyDemandCreateForm({
       price,
     }));
   };
+
+  // ---------------------------------------------------------------------------
+  // Navigation
+  // ---------------------------------------------------------------------------
 
   const handleNext = (): void => {
     if (currentStep === 'where') {
@@ -189,6 +421,10 @@ export function JourneyDemandCreateForm({
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // Submit
+  // ---------------------------------------------------------------------------
+
   const handleSubmit = (
     event: React.FormEvent<HTMLFormElement>,
   ): void => {
@@ -201,8 +437,19 @@ export function JourneyDemandCreateForm({
     onSubmit(value);
   };
 
-  const isFirstStep = currentStep === 'where';
-  const isLastStep = currentStep === 'price';
+  // ---------------------------------------------------------------------------
+  // Presentation state
+  // ---------------------------------------------------------------------------
+
+  const isFirstStep =
+    currentStep === 'where';
+
+  const isLastStep =
+    currentStep === 'price';
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
     <form
@@ -220,8 +467,27 @@ export function JourneyDemandCreateForm({
         {currentStep === 'where' ? (
           <JourneyDemandCreateWhere
             value={value.where}
-            onChange={updateWhere}
+            originQuery={originQuery}
+            destinationQuery={destinationQuery}
+            originSuggestions={
+              supportedOriginSuggestions
+            }
+            destinationSuggestions={
+              destinationSuggestions
+            }
             disabled={controlsDisabled}
+            onOriginQueryChange={
+              handleOriginQueryChange
+            }
+            onDestinationQueryChange={
+              handleDestinationQueryChange
+            }
+            onOriginSelect={
+              handleOriginSelect
+            }
+            onDestinationSelect={
+              handleDestinationSelect
+            }
           />
         ) : null}
 
@@ -294,3 +560,4 @@ export function JourneyDemandCreateForm({
   );
 }
 
+export default JourneyDemandCreateForm;

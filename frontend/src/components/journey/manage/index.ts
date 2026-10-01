@@ -1,5 +1,7 @@
 // -----------------------------------------------------------------------------
+//
 // sisiMove — Journey Management Components
+//
 // -----------------------------------------------------------------------------
 //
 // Management-layer barrel.
@@ -16,20 +18,15 @@
 //
 // -----------------------------------------------------------------------------
 
-export * from './journey-actions';
-
-export * from './journey-publish-action';
-export * from './journey-start-action';
-export * from './journey-complete-action';
-export * from './journey-cancel-action';
-export * from './journey-expire-action';
-
-export * from './journey-cancel-dialog';
-
-export * from './journey-management';
-export * from './journey-management-panel';
-
-export * from './journey-editor-header';
-export * from './journey-editor-sections';
-export * from './journey-editor';
-
+export * from "./journey-actions";
+export * from "./journey-publish-action";
+export * from "./journey-start-action";
+export * from "./journey-complete-action";
+export * from "./journey-cancel-action";
+export * from "./journey-expire-action";
+export * from "./journey-cancel-dialog";
+export * from "./journey-management";
+export * from "./journey-management-panel";
+export * from "./journey-editor-header";
+export * from "./journey-editor-sections";
+export * from "./journey-editor";

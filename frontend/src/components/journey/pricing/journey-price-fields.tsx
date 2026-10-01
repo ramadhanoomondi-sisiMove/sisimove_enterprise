@@ -52,23 +52,36 @@ export function JourneyPriceFields({
   className,
 }: JourneyPriceFieldsProps) {
   return (
-    <div className={cn("grid", "gap-4", "sm:grid-cols-[1fr_160px]", className)}>
+    <div
+      className={cn(
+        "grid",
+        "gap-3",
+        "sm:grid-cols-[minmax(0,1fr)_8rem]",
+        className,
+      )}
+    >
       <Input
         label="Price"
         type="text"
         inputMode="decimal"
         value={values.amount}
-        onChange={(event) => onChange("amount", event.target.value)}
+        onChange={(event) => {
+          onChange("amount", event.target.value);
+        }}
         disabled={disabled}
         autoComplete="off"
+        placeholder="e.g. 1250"
       />
 
       <Input
         label="Currency"
         value={values.currency}
-        onChange={(event) => onChange("currency", event.target.value)}
+        onChange={(event) => {
+          onChange("currency", event.target.value);
+        }}
         disabled={disabled}
         autoComplete="off"
+        placeholder="KES"
       />
     </div>
   );

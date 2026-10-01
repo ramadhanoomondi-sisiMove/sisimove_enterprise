@@ -34,9 +34,9 @@ import { cn } from "@/foundation/utils/cn";
 
 import { usePublishJourney } from "@/features/journey/hooks/mutations";
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Icons
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 function PublishIcon() {
   return (
@@ -67,9 +67,9 @@ function PublishIcon() {
   );
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export interface JourneyPublishActionProps {
   /**
@@ -108,9 +108,9 @@ export interface JourneyPublishActionProps {
   readonly className?: string;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Component
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function JourneyPublishAction({
   journeyPublicId,
@@ -124,16 +124,19 @@ export function JourneyPublishAction({
 
   const publishJourneyMutation = usePublishJourney();
 
+  const isPending = publishJourneyMutation.isPending;
+  const isDisabled = disabled || isPending;
+
+  // ===========================================================================
+  // Publish
+  // ===========================================================================
+
   async function handlePublish(): Promise<void> {
-    if (
-      disabled ||
-      publishJourneyMutation.isPending
-    ) {
+    if (isDisabled) {
       return;
     }
 
-    const normalizedJourneyPublicId =
-      journeyPublicId.trim();
+    const normalizedJourneyPublicId = journeyPublicId.trim();
 
     if (normalizedJourneyPublicId.length === 0) {
       setError(
@@ -164,12 +167,14 @@ export function JourneyPublishAction({
     }
   }
 
-  const isPending =
-    publishJourneyMutation.isPending;
+  // ===========================================================================
+  // Render
+  // ===========================================================================
 
   return (
     <div
       className={cn(
+        "w-full",
         "space-y-2",
         className,
       )}
@@ -181,7 +186,7 @@ export function JourneyPublishAction({
           retryAction={{
             label: "Try again",
             onClick: handlePublish,
-            disabled: isPending || disabled,
+            disabled: isDisabled,
           }}
         />
       )}
@@ -192,11 +197,10 @@ export function JourneyPublishAction({
         leadingIcon={<PublishIcon />}
         onClick={handlePublish}
         loading={isPending}
-        disabled={disabled}
+        disabled={isDisabled}
       >
         {isPending ? publishingLabel : label}
       </Button>
     </div>
   );
 }
-

@@ -89,10 +89,23 @@ export function JourneyScheduleEditor({
   submitLabel = "Save schedule",
   className,
 }: JourneyScheduleEditorProps) {
-  const [values, setValues] = useState<JourneyScheduleFieldValues>(() => ({
-    ...EMPTY_VALUES,
-    ...initialValue,
-  }));
+  const [values, setValues] =
+    useState<JourneyScheduleFieldValues>(() => ({
+      departureAt:
+        initialValue?.departureAt !== undefined
+          ? initialValue.departureAt
+          : EMPTY_VALUES.departureAt,
+
+      arrivalAt:
+        initialValue?.arrivalAt !== undefined
+          ? initialValue.arrivalAt
+          : EMPTY_VALUES.arrivalAt,
+
+      timezone:
+        initialValue?.timezone !== undefined
+          ? initialValue.timezone
+          : EMPTY_VALUES.timezone,
+    }));
 
   /**
    * Update one presentation field.
@@ -112,7 +125,11 @@ export function JourneyScheduleEditor({
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
 
-    onSubmit(values);
+    onSubmit({
+      departureAt: values.departureAt,
+      arrivalAt: values.arrivalAt,
+      timezone: values.timezone,
+    });
   }
 
   return (
@@ -120,7 +137,7 @@ export function JourneyScheduleEditor({
       onSubmit={handleSubmit}
       className={cn(
         "w-full",
-        "space-y-6",
+        "space-y-5",
         className,
       )}
     >
@@ -130,8 +147,16 @@ export function JourneyScheduleEditor({
         disabled={submitting}
       />
 
-      <div className="flex flex-wrap items-center justify-end gap-3">
-        {onCancel ? (
+      <div
+        className={cn(
+          "flex",
+          "flex-col-reverse",
+          "gap-3",
+          "sm:flex-row",
+          "sm:justify-end",
+        )}
+      >
+        {onCancel !== undefined && (
           <Button
             type="button"
             variant="ghost"
@@ -140,7 +165,7 @@ export function JourneyScheduleEditor({
           >
             Cancel
           </Button>
-        ) : null}
+        )}
 
         <Button
           type="submit"

@@ -9,7 +9,9 @@
 // - own component mutation pending/error state;
 // - refresh the Journey projection after successful mutations;
 // - provide the existing Journey projection as initial values;
-// - safely initialize editors for progressively assembled Draft Journeys.
+// - safely initialize editors for progressively assembled Draft Journeys;
+// - pass resolved Asset presentation data to the vehicle editor;
+// - allow the owning Asset workflow to initiate vehicle-photo replacement.
 //
 // Non-responsibilities:
 // - no Journey lifecycle transitions;
@@ -18,43 +20,19 @@
 // - no authorization decisions;
 // - no verification decisions;
 // - no backend aggregate reconstruction;
-// - no generic Journey update command.
+// - no generic Journey update command;
+// - no Asset URL construction;
+// - no Asset upload implementation;
+// - no standalone Journey Asset editing.
 //
-// Each existing editor remains presentation-only:
+// Asset presentation:
+// - JourneyVehicle stores assetPublicId as the opaque Asset reference;
+// - the authenticated Journey read model also provides vehicle.asset;
+// - vehicle.asset is already resolved by the backend Asset capability;
+// - the vehicle editor displays vehicle.asset.url;
+// - vehicle photo replacement remains part of the Vehicle workflow;
+// - there is no duplicate standalone Assets section.
 //
-//   JourneyCorridorEditor
-//   JourneyScheduleEditor
-//   JourneyVehicleEditor
-//   JourneyCapacityEditor
-//   JourneyPricingEditor
-//   JourneyPreferencesEditor
-//   JourneyAssetEditor
-//
-// This component translates their presentation values into the exact
-// Journey bounded-context commands.
-//
-// -----------------------------------------------------------------------------
-// IMPORTANT
-// -----------------------------------------------------------------------------
-//
-// MyJourney is intentionally progressively assembled.
-//
-// The following projections may therefore be null:
-//
-//   journey.route
-//   journey.schedule
-//   journey.vehicle
-//   journey.capacity
-//   journey.pricing
-//   journey.preferences
-//
-// A missing component does NOT mean the editor cannot be rendered.
-//
-// It means that the corresponding editor receives empty/default presentation
-// values and can attach the missing component through its existing command.
-//
-// The editor therefore does not use non-null assertions to hide the nullable
-// projection contract.
 // -----------------------------------------------------------------------------
 
 "use client";
@@ -64,11 +42,16 @@ import { useMemo, useState } from "react";
 import { ErrorState } from "@/components/ui/error-state";
 import { cn } from "@/foundation/utils/cn";
 
-import type { JourneyAssetPickerOption } from "@/components/journey/assets";
-import type { MyJourney } from "@/features/journey/models";
+import type {
+  JourneyConversationPreference,
+  JourneyLuggagePolicy,
+  JourneyMusicPreference,
+  JourneyPetsPolicy,
+  JourneySmokingPolicy,
+  MyJourney,
+} from "@/features/journey/models";
 
 import {
-  useAttachJourneyAsset,
   useAttachJourneyCapacity,
   useAttachJourneyCorridor,
   useAttachJourneyPreferences,
@@ -77,42 +60,33 @@ import {
   useAttachJourneyVehicle,
 } from "@/features/journey/hooks/mutations";
 
+import type { JourneyVehicleAssetOption } from "../vehicle";
+
 import { JourneyEditorSections } from "./journey-editor-sections";
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export interface JourneyEditorProps {
-  /**
-   * Authenticated Journey projection being edited.
-   *
-   * The projection may represent a partially assembled Draft Journey.
-   */
   readonly journey: MyJourney;
 
-  /**
-   * Refetches the authoritative Journey projection after a successful
-   * component mutation.
-   */
   readonly onChanged?: () => void | Promise<void>;
 
   /**
-   * Available Asset references supplied by the Asset capability.
+   * Requests the owning workflow to open the vehicle Asset upload or
+   * replacement flow.
    *
-   * Journey does not fetch or own Asset records.
+   * Asset upload/replacement remains owned by the Asset capability.
    */
-  readonly assetOptions?: readonly JourneyAssetPickerOption[];
+  readonly onChangeVehicleAsset?: () => void;
 
-  /**
-   * Optional additional classes.
-   */
   readonly className?: string;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Helpers
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 function parseOptionalInteger(
   value: string,
@@ -184,14 +158,53 @@ function requireText(
   return normalized;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
+// Date / Time Presentation
+// =============================================================================
+
+function toDateTimeLocalValue(
+  value: string | null | undefined,
+): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  const normalized = value.trim();
+
+  if (normalized.length === 0) {
+    return "";
+  }
+
+  const date = new Date(normalized);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const pad = (part: number): string =>
+    part.toString().padStart(2, "0");
+
+  return [
+    date.getFullYear(),
+    "-",
+    pad(date.getMonth() + 1),
+    "-",
+    pad(date.getDate()),
+    "T",
+    pad(date.getHours()),
+    ":",
+    pad(date.getMinutes()),
+  ].join("");
+}
+
+// =============================================================================
 // Component
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function JourneyEditor({
   journey,
   onChanged,
-  assetOptions = [],
+  onChangeVehicleAsset,
   className,
 }: JourneyEditorProps) {
   const [error, setError] =
@@ -222,29 +235,67 @@ export function JourneyEditor({
   const attachPreferences =
     useAttachJourneyPreferences();
 
-  const attachAsset =
-    useAttachJourneyAsset();
-
   const journeyPublicId =
     journey.publicId.trim();
 
   // ---------------------------------------------------------------------------
-  // Initial values
+  // Current vehicle Asset
   // ---------------------------------------------------------------------------
   //
-  // Each Journey child is optional while the Draft is being assembled.
+  // The authenticated My Journey response resolves the vehicle Asset:
   //
-  // Missing backend components are represented by empty presentation values.
-  // The existing editors can therefore create those components.
+  //   vehicle.assetPublicId
+  //   vehicle.asset
+  //       ├── publicId
+  //       └── url
   //
-  // These values are only initial values. The presentation editors own their
-  // transient local form state after mounting.
+  // The resolved Asset is consumed directly by the Vehicle editor.
+  //
+  // The editor does not construct Asset URLs and does not search a generic
+  // Asset collection to determine the current vehicle photo.
+  // ---------------------------------------------------------------------------
+
+  const selectedVehicleAsset =
+    useMemo((): JourneyVehicleAssetOption | null => {
+      const asset =
+        journey.vehicle?.asset;
+
+      if (
+        asset === null ||
+        asset === undefined
+      ) {
+        return null;
+      }
+
+      const publicId =
+        asset.publicId.trim();
+
+      const url =
+        asset.url.trim();
+
+      if (
+        publicId.length === 0 ||
+        url.length === 0
+      ) {
+        return null;
+      }
+
+      return {
+        publicId,
+        url,
+        label: "Vehicle photo",
+      };
+    }, [journey.vehicle?.asset]);
+
+  // ---------------------------------------------------------------------------
+  // Initial values
   // ---------------------------------------------------------------------------
 
   const corridorInitialValue = useMemo(
     () => ({
       originName:
         journey.route?.origin.name ?? "",
+
       originLatitude:
         journey.route?.origin.latitude !==
         undefined
@@ -252,6 +303,7 @@ export function JourneyEditor({
               journey.route.origin.latitude,
             )
           : "",
+
       originLongitude:
         journey.route?.origin.longitude !==
         undefined
@@ -259,8 +311,10 @@ export function JourneyEditor({
               journey.route.origin.longitude,
             )
           : "",
+
       destinationName:
         journey.route?.destination.name ?? "",
+
       destinationLatitude:
         journey.route?.destination.latitude !==
         undefined
@@ -268,6 +322,7 @@ export function JourneyEditor({
               journey.route.destination.latitude,
             )
           : "",
+
       destinationLongitude:
         journey.route?.destination.longitude !==
         undefined
@@ -279,12 +334,22 @@ export function JourneyEditor({
     [journey],
   );
 
+  // ---------------------------------------------------------------------------
+  // Schedule initial values
+  // ---------------------------------------------------------------------------
+
   const scheduleInitialValue = useMemo(
     () => ({
       departureAt:
-        journey.schedule?.departureAt ?? "",
+        toDateTimeLocalValue(
+          journey.schedule?.departureAt,
+        ),
+
       arrivalAt:
-        journey.schedule?.arrivalAt ?? "",
+        toDateTimeLocalValue(
+          journey.schedule?.arrivalAt,
+        ),
+
       timezone:
         journey.schedule?.timezone ??
         "Africa/Nairobi",
@@ -292,26 +357,39 @@ export function JourneyEditor({
     [journey],
   );
 
+  // ---------------------------------------------------------------------------
+  // Vehicle initial values
+  // ---------------------------------------------------------------------------
+
   const vehicleInitialValue = useMemo(
     () => ({
       make:
         journey.vehicle?.make ?? "",
+
       model:
         journey.vehicle?.model ?? "",
+
       year:
         journey.vehicle?.year !== null &&
         journey.vehicle?.year !== undefined
           ? String(journey.vehicle.year)
           : "",
+
       color:
         journey.vehicle?.color ?? "",
+
       registration:
         journey.vehicle?.registration ?? "",
+
       assetPublicId:
         journey.vehicle?.assetPublicId ?? "",
     }),
     [journey],
   );
+
+  // ---------------------------------------------------------------------------
+  // Capacity initial values
+  // ---------------------------------------------------------------------------
 
   const capacityInitialValue = useMemo(
     () => ({
@@ -321,68 +399,61 @@ export function JourneyEditor({
     [journey],
   );
 
+  // ---------------------------------------------------------------------------
+  // Pricing initial values
+  // ---------------------------------------------------------------------------
+
   const pricingInitialValue = useMemo(
     () => ({
       amount:
-        journey.pricing?.amount !==
-          null &&
-        journey.pricing?.amount !==
-          undefined
+        journey.pricing?.amount !== null &&
+        journey.pricing?.amount !== undefined
           ? String(
               journey.pricing.amount,
             )
           : "",
+
       currency:
         journey.pricing?.currency ?? "KES",
     }),
     [journey],
   );
 
+  // ---------------------------------------------------------------------------
+  // Preferences initial values
+  // ---------------------------------------------------------------------------
+
   const preferencesInitialValue =
     useMemo(
-      () => ({
+      (): {
+        smoking: JourneySmokingPolicy;
+        pets: JourneyPetsPolicy;
+        luggage: JourneyLuggagePolicy;
+        conversation: JourneyConversationPreference;
+        music: JourneyMusicPreference;
+      } => ({
         smoking:
-          journey.preferences?.smoking ===
-          "ALLOWED",
+          journey.preferences?.smoking ??
+          "NOT_ALLOWED",
 
         pets:
-          journey.preferences?.pets ===
-          "ALLOWED",
+          journey.preferences?.pets ??
+          "NOT_ALLOWED",
 
         luggage:
-          journey.preferences?.luggage !==
-          "NONE",
+          journey.preferences?.luggage ??
+          "STANDARD",
 
         conversation:
-          journey.preferences?.conversation !==
-          "QUIET",
+          journey.preferences?.conversation ??
+          "MODERATE",
 
         music:
-          journey.preferences?.music !==
-          "NONE",
+          journey.preferences?.music ??
+          "LOW",
       }),
       [journey],
     );
-
-  const assetInitialValue = useMemo(
-    () => ({
-      assetPublicId:
-        journey.assets[0]?.assetPublicId ??
-        "",
-
-      type:
-        journey.assets[0]?.type ??
-        "VEHICLE",
-
-      sortOrder:
-        journey.assets[0] !== undefined
-          ? String(
-              journey.assets[0].sortOrder,
-            )
-          : "0",
-    }),
-    [journey],
-  );
 
   // ---------------------------------------------------------------------------
   // Submission state
@@ -395,15 +466,10 @@ export function JourneyEditor({
     attachVehicle.isPending ||
     attachCapacity.isPending ||
     attachPricing.isPending ||
-    attachPreferences.isPending ||
-    attachAsset.isPending;
+    attachPreferences.isPending;
 
   // ---------------------------------------------------------------------------
   // Refresh
-  // ---------------------------------------------------------------------------
-  //
-  // The API mutation response is not used to fabricate a new MyJourney
-  // projection. The parent refreshes the authoritative projection instead.
   // ---------------------------------------------------------------------------
 
   async function refreshAfterChange(): Promise<void> {
@@ -471,7 +537,6 @@ export function JourneyEditor({
             );
 
       setError(nextError);
-
       throw nextError;
     } finally {
       setActiveMutation(null);
@@ -498,10 +563,12 @@ export function JourneyEditor({
               "Departure time",
             ),
 
-          arrivalAt:
-            values.arrivalAt.trim().length > 0
-              ? values.arrivalAt.trim()
-              : undefined,
+          ...(values.arrivalAt.trim().length > 0
+            ? {
+                arrivalAt:
+                  values.arrivalAt.trim(),
+              }
+            : {}),
 
           timezone:
             requireText(
@@ -521,7 +588,6 @@ export function JourneyEditor({
             );
 
       setError(nextError);
-
       throw nextError;
     } finally {
       setActiveMutation(null);
@@ -539,6 +605,20 @@ export function JourneyEditor({
     setActiveMutation("vehicle");
 
     try {
+      const year =
+        parseOptionalInteger(
+          values.year,
+        );
+
+      const color =
+        values.color.trim();
+
+      const registration =
+        values.registration.trim();
+
+      const assetPublicId =
+        values.assetPublicId.trim();
+
       await attachVehicle.attach(
         journeyPublicId,
         {
@@ -552,24 +632,21 @@ export function JourneyEditor({
             "Vehicle model",
           ),
 
-          year: parseOptionalInteger(
-            values.year,
-          ),
+          ...(year !== undefined
+            ? { year }
+            : {}),
 
-          color:
-            values.color.trim().length > 0
-              ? values.color.trim()
-              : undefined,
+          ...(color.length > 0
+            ? { color }
+            : {}),
 
-          registration:
-            values.registration.trim().length > 0
-              ? values.registration.trim()
-              : undefined,
+          ...(registration.length > 0
+            ? { registration }
+            : {}),
 
-          assetPublicId:
-            values.assetPublicId.trim().length > 0
-              ? values.assetPublicId.trim()
-              : undefined,
+          ...(assetPublicId.length > 0
+            ? { assetPublicId }
+            : {}),
         },
       );
 
@@ -583,7 +660,6 @@ export function JourneyEditor({
             );
 
       setError(nextError);
-
       throw nextError;
     } finally {
       setActiveMutation(null);
@@ -632,7 +708,6 @@ export function JourneyEditor({
             );
 
       setError(nextError);
-
       throw nextError;
     } finally {
       setActiveMutation(null);
@@ -676,7 +751,6 @@ export function JourneyEditor({
             );
 
       setError(nextError);
-
       throw nextError;
     } finally {
       setActiveMutation(null);
@@ -685,13 +759,6 @@ export function JourneyEditor({
 
   // ---------------------------------------------------------------------------
   // Preferences
-  // ---------------------------------------------------------------------------
-  //
-  // The editor intentionally uses booleans because that is the existing
-  // presentation contract.
-  //
-  // Translation into the Journey API's explicit policy unions happens here at
-  // the orchestration boundary.
   // ---------------------------------------------------------------------------
 
   async function handlePreferencesSubmit(
@@ -704,26 +771,11 @@ export function JourneyEditor({
       await attachPreferences.attach(
         journeyPublicId,
         {
-          smoking: values.smoking
-            ? "ALLOWED"
-            : "NOT_ALLOWED",
-
-          pets: values.pets
-            ? "ALLOWED"
-            : "NOT_ALLOWED",
-
-          luggage: values.luggage
-            ? "STANDARD"
-            : "NONE",
-
-          conversation:
-            values.conversation
-              ? "MODERATE"
-              : "QUIET",
-
-          music: values.music
-            ? "MODERATE"
-            : "NONE",
+          smoking: values.smoking,
+          pets: values.pets,
+          luggage: values.luggage,
+          conversation: values.conversation,
+          music: values.music,
         },
       );
 
@@ -737,65 +789,6 @@ export function JourneyEditor({
             );
 
       setError(nextError);
-
-      throw nextError;
-    } finally {
-      setActiveMutation(null);
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Asset
-  // ---------------------------------------------------------------------------
-
-  async function handleAssetSubmit(
-    values: typeof assetInitialValue,
-  ): Promise<void> {
-    setError(null);
-    setActiveMutation("asset");
-
-    try {
-      const assetPublicId =
-        values.assetPublicId.trim();
-
-      if (assetPublicId.length === 0) {
-        throw new Error(
-          "Asset selection is required.",
-        );
-      }
-
-      const sortOrder =
-        Number(values.sortOrder);
-
-      if (
-        !Number.isInteger(sortOrder) ||
-        sortOrder < 0
-      ) {
-        throw new Error(
-          "Asset display order must be a non-negative whole number.",
-        );
-      }
-
-      await attachAsset.attach(
-        journeyPublicId,
-        {
-          assetPublicId,
-          type: values.type,
-          sortOrder,
-        },
-      );
-
-      await refreshAfterChange();
-    } catch (cause) {
-      const nextError =
-        cause instanceof Error
-          ? cause
-          : new Error(
-              "Unable to save the Journey asset.",
-            );
-
-      setError(nextError);
-
       throw nextError;
     } finally {
       setActiveMutation(null);
@@ -809,7 +802,10 @@ export function JourneyEditor({
   return (
     <div
       className={cn(
-        "space-y-6",
+        "w-full",
+        "space-y-4",
+        "sm:space-y-5",
+        "lg:space-y-6",
         className,
       )}
     >
@@ -841,8 +837,14 @@ export function JourneyEditor({
         vehicleInitialValue={
           vehicleInitialValue
         }
+        vehicleSelectedAsset={
+          selectedVehicleAsset
+        }
         onVehicleSubmit={
           handleVehicleSubmit
+        }
+        onChangeVehicleAsset={
+          onChangeVehicleAsset
         }
         capacityInitialValue={
           capacityInitialValue
@@ -862,16 +864,8 @@ export function JourneyEditor({
         onPreferencesSubmit={
           handlePreferencesSubmit
         }
-        assetInitialValue={
-          assetInitialValue
-        }
-        assetOptions={assetOptions}
-        onAssetSubmit={
-          handleAssetSubmit
-        }
         submitting={isSubmitting}
       />
     </div>
   );
 }
-

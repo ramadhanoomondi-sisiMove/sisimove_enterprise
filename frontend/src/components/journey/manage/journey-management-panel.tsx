@@ -50,9 +50,9 @@ import { useMyJourney } from "@/features/journey/hooks/queries/use-my-journey";
 
 import { JourneyManagement } from "./journey-management";
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export interface JourneyManagementPanelProps {
   /**
@@ -68,9 +68,9 @@ export interface JourneyManagementPanelProps {
   readonly className?: string;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Loading State
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 function JourneyManagementLoadingState() {
   return (
@@ -84,6 +84,7 @@ function JourneyManagementLoadingState() {
         "border",
         "border-[var(--border)]",
         "bg-[var(--surface)]",
+        "shadow-[var(--shadow-sm)]",
       ].join(" ")}
       role="status"
       aria-label="Loading Journey"
@@ -99,9 +100,9 @@ function JourneyManagementLoadingState() {
   );
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Component
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function JourneyManagementPanel({
   journeyPublicId,
@@ -109,9 +110,9 @@ export function JourneyManagementPanel({
 }: JourneyManagementPanelProps) {
   const normalizedJourneyPublicId = journeyPublicId.trim();
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Query
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   //
   // IMPORTANT:
   // This hook intentionally runs before any conditional return.
@@ -121,7 +122,8 @@ export function JourneyManagementPanel({
   //
   // The hook receives the normalized identifier and is responsible for
   // avoiding an HTTP request when the identifier is empty.
-  // ---------------------------------------------------------------------------
+  //
+  // ===========================================================================
 
   const {
     journey,
@@ -130,17 +132,9 @@ export function JourneyManagementPanel({
     refetch,
   } = useMyJourney(normalizedJourneyPublicId);
 
-  // ---------------------------------------------------------------------------
-  // Invalid identifier
-  // ---------------------------------------------------------------------------
-  //
-  // Route-level parameter validation should normally prevent this state, but
-  // the panel still protects the management boundary from operating without
-  // a valid public ID.
-  //
-  // This check occurs AFTER the hook invocation so Hook ordering remains
-  // unconditional.
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Invalid Identifier
+  // ===========================================================================
 
   if (normalizedJourneyPublicId.length === 0) {
     return (
@@ -153,9 +147,9 @@ export function JourneyManagementPanel({
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Loading
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   if (isLoading) {
     return (
@@ -165,9 +159,9 @@ export function JourneyManagementPanel({
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Error
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   if (error) {
     return (
@@ -190,14 +184,15 @@ export function JourneyManagementPanel({
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Not found
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Not Found
+  // ===========================================================================
   //
   // The query completed without an error but did not produce a Journey.
   // Keep this separate from the transport/error state because the management
   // layer should never receive an undefined Journey.
-  // ---------------------------------------------------------------------------
+  //
+  // ===========================================================================
 
   if (!journey) {
     return (
@@ -216,9 +211,9 @@ export function JourneyManagementPanel({
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Loaded
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   return (
     <div className={className}>

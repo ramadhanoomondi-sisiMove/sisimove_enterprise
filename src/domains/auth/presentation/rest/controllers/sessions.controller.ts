@@ -520,6 +520,7 @@ import { randomUUID } from 'node:crypto';
 // -----------------------------------------------------------------------------
 
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -666,7 +667,6 @@ interface AuthenticatedSessionPrincipal {
 @Controller('sessions')
 export class SessionsController {
   // ===========================================================================
-
   // Constructor
   // ===========================================================================
 
@@ -743,7 +743,6 @@ export class SessionsController {
   ) {}
 
   // ===========================================================================
-
   // Queries
   // ===========================================================================
 
@@ -830,7 +829,6 @@ export class SessionsController {
   }
 
   // ===========================================================================
-
   // Administrative / Security Management Commands
   // ===========================================================================
 
@@ -906,7 +904,6 @@ export class SessionsController {
   }
 
   // ===========================================================================
-
   // Authenticated Session Lifecycle
   // ===========================================================================
 
@@ -927,8 +924,11 @@ export class SessionsController {
 
     const command = new RevokeSessionCommand(
       sessionPublicId,
+
       SessionRevokedAt.create(new Date()),
+
       SessionRevocationReason.create(SessionRevocationReason.USER_LOGOUT),
+
       randomUUID(),
     );
 
@@ -956,39 +956,37 @@ export class SessionsController {
     const command = new RefreshSessionCommand(
       new SessionPublicId(sessionPublicId),
 
-      // ---------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       // RAW REFRESH TOKEN
-      // ---------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       //
       // Preserve exactly as supplied.
       //
 
       dto.refreshToken,
 
-      // ---------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       // Last Activity
-      // ---------------------------------------------------------------------
+      // -----------------------------------------------------------------------
 
       SessionLastActivityAt.create(new Date(dto.lastActivityAt)),
 
-      // ---------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       // Correlation
-      // ---------------------------------------------------------------------
+      // -----------------------------------------------------------------------
 
       randomUUID(),
 
-      // ---------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       // Causation
-      // ---------------------------------------------------------------------
+      // -----------------------------------------------------------------------
 
       ...(dto.causationId !== undefined ? [dto.causationId] : []),
     );
 
     return this.refreshSessionHandler.execute(command);
   }
-
   // ===========================================================================
-
   // Authorized Session Management
   // ===========================================================================
 
@@ -1009,14 +1007,14 @@ export class SessionsController {
     @Param('sessionPublicId') sessionPublicId: string,
     @Body() dto: RevokeSessionRequestDto,
   ): Promise<SessionResponse> {
-    const reason = dto.reason as SessionRevocationReasonValue;
-
     const command = new RevokeSessionCommand(
       new SessionPublicId(sessionPublicId),
 
       SessionRevokedAt.create(new Date(dto.revokedAt)),
 
-      SessionRevocationReason.create(reason),
+      SessionRevocationReason.create(
+        this.toSessionRevocationReasonValue(dto.reason),
+      ),
 
       randomUUID(),
 
@@ -1026,6 +1024,48 @@ export class SessionsController {
     const aggregate = await this.revokeSessionHandler.execute(command);
 
     return SessionResponseMapper.toResponse(aggregate);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Session Revocation Reason
+  // ---------------------------------------------------------------------------
+
+  private toSessionRevocationReasonValue(
+    value: string,
+  ): SessionRevocationReasonValue {
+    switch (value) {
+      case SessionRevocationReason.USER_LOGOUT:
+        return SessionRevocationReason.USER_LOGOUT;
+
+      case SessionRevocationReason.PASSWORD_CHANGED:
+        return SessionRevocationReason.PASSWORD_CHANGED;
+
+      case SessionRevocationReason.PASSWORD_RESET:
+        return SessionRevocationReason.PASSWORD_RESET;
+
+      case SessionRevocationReason.ACCOUNT_LOCKED:
+        return SessionRevocationReason.ACCOUNT_LOCKED;
+
+      case SessionRevocationReason.ACCOUNT_DISABLED:
+        return SessionRevocationReason.ACCOUNT_DISABLED;
+
+      case SessionRevocationReason.DEVICE_REVOKED:
+        return SessionRevocationReason.DEVICE_REVOKED;
+
+      case SessionRevocationReason.TOKEN_REUSE:
+        return SessionRevocationReason.TOKEN_REUSE;
+
+      case SessionRevocationReason.SESSION_EXPIRED:
+        return SessionRevocationReason.SESSION_EXPIRED;
+
+      case SessionRevocationReason.SYSTEM:
+        return SessionRevocationReason.SYSTEM;
+
+      default:
+        throw new BadRequestException(
+          `Invalid Session revocation reason: ${value}`,
+        );
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1061,7 +1101,6 @@ export class SessionsController {
   }
 
   // ===========================================================================
-
   // Private Security Context Helpers
   // ===========================================================================
 

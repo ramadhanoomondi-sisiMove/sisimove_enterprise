@@ -12,11 +12,10 @@ import { IsInt, Min } from 'class-validator';
 // -----------------------------------------------------------------------------
 
 /**
- * Configures the seat capacity of a Journey.
+ * Configures the passenger-seat capacity of a Journey.
  *
- * The Journey aggregate owns its capacity child, so the caller supplies only
- * the capacity configuration. The application layer generates the child
- * public ID when creating JourneyCapacityEntity.
+ * Booked seats are not supplied by the client.
+ * A newly configured Journey always starts with zero booked seats.
  */
 export class AttachCapacityDto {
   /**
@@ -30,20 +29,4 @@ export class AttachCapacityDto {
   @IsInt()
   @Min(1)
   totalSeats!: number;
-
-  /**
-   * Number of seats already booked.
-   *
-   * This is normally zero during Journey creation, but the command supports
-   * an explicit value because the domain entity contains booked-seat state.
-   */
-  @ApiProperty({
-    example: 0,
-    description: 'Number of passenger seats already booked.',
-    minimum: 0,
-    default: 0,
-  })
-  @IsInt()
-  @Min(0)
-  bookedSeats!: number;
 }

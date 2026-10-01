@@ -28,6 +28,7 @@
 // - recreate JourneyCorridor domain behavior.
 //
 // The JourneyRoute model remains the source of truth for displayed data.
+//
 // -----------------------------------------------------------------------------
 
 import { MapPin, MapPinCheck } from "lucide-react";
@@ -49,7 +50,7 @@ export interface JourneyRouteProps {
   /**
    * Whether intermediate waypoints should be displayed.
    *
-   * Defaults to `false` so marketplace cards remain compact.
+   * Defaults to false so marketplace cards remain compact.
    */
   readonly showWaypoints?: boolean;
 
@@ -72,40 +73,40 @@ export function JourneyRoute({
     <div
       className={cn(
         "min-w-0",
-        "space-y-[clamp(0.45rem,0.9vw,0.7rem)]",
+        "space-y-[clamp(0.45rem,0.8vw,0.7rem)]",
         className,
       )}
     >
-      {/* --------------------------------------------------------------------- */}
-      {/* Primary route                                                         */}
-      {/* --------------------------------------------------------------------- */}
+      {/* ---------------------------------------------------------------------
+          Primary route
+          --------------------------------------------------------------------- */}
 
       <div
         className={cn(
           "flex",
           "min-w-0",
           "items-stretch",
-          "gap-[clamp(0.45rem,0.9vw,0.7rem)]",
+          "gap-[clamp(0.4rem,0.75vw,0.65rem)]",
         )}
       >
-        {/* ------------------------------------------------------------------- */}
-        {/* Route indicator                                                     */}
-        {/* ------------------------------------------------------------------- */}
+        {/* -------------------------------------------------------------------
+            Route indicator
+            ------------------------------------------------------------------- */}
 
         <div
           aria-hidden="true"
           className={cn(
             "flex",
-            "w-[clamp(0.75rem,1.35vw,1rem)]",
+            "w-[clamp(0.75rem,1.25vw,0.95rem)]",
             "shrink-0",
             "flex-col",
             "items-center",
-            "pt-[clamp(0.05rem,0.15vw,0.1rem)]",
+            "pt-[clamp(0.04rem,0.1vw,0.08rem)]",
           )}
         >
           <MapPin
             className={cn(
-              "size-[clamp(0.68rem,1.15vw,0.9rem)]",
+              "size-[clamp(0.68rem,1.05vw,0.86rem)]",
               "shrink-0",
               "text-[var(--brand)]",
             )}
@@ -113,9 +114,9 @@ export function JourneyRoute({
 
           <span
             className={cn(
-              "my-[clamp(0.18rem,0.35vw,0.3rem)]",
+              "my-[clamp(0.15rem,0.3vw,0.25rem)]",
               "w-px",
-              "min-h-[clamp(0.75rem,1.4vw,1.15rem)]",
+              "min-h-[clamp(0.7rem,1.2vw,1rem)]",
               "flex-1",
               "bg-[var(--border)]",
             )}
@@ -123,26 +124,26 @@ export function JourneyRoute({
 
           <MapPinCheck
             className={cn(
-              "size-[clamp(0.68rem,1.15vw,0.9rem)]",
+              "size-[clamp(0.68rem,1.05vw,0.86rem)]",
               "shrink-0",
               "text-[var(--brand)]",
             )}
           />
         </div>
 
-        {/* ------------------------------------------------------------------- */}
-        {/* Origin / destination                                                */}
-        {/* ------------------------------------------------------------------- */}
+        {/* -------------------------------------------------------------------
+            Origin / destination
+            ------------------------------------------------------------------- */}
 
         <div className="min-w-0 flex-1">
           <div className="min-w-0">
             <p
               className={cn(
-                "text-[clamp(0.42rem,0.68vw,0.58rem)]",
-                "font-medium",
+                "text-[clamp(0.4rem,0.6vw,0.52rem)]",
+                "font-semibold",
                 "uppercase",
-                "tracking-wide",
-                "leading-tight",
+                "tracking-[0.07em]",
+                "leading-none",
                 "text-[var(--foreground-muted)]",
               )}
             >
@@ -151,12 +152,15 @@ export function JourneyRoute({
 
             <p
               className={cn(
+                "mt-[clamp(0.18rem,0.3vw,0.25rem)]",
                 "truncate",
-                "text-[clamp(0.68rem,1.2vw,0.98rem)]",
-                "font-semibold",
+                "text-[clamp(0.68rem,1.15vw,0.96rem)]",
+                "font-extrabold",
                 "leading-tight",
+                "tracking-tight",
                 "text-[var(--foreground)]",
               )}
+              title={route.origin.name}
             >
               {route.origin.name}
             </p>
@@ -164,17 +168,17 @@ export function JourneyRoute({
 
           <div
             aria-hidden="true"
-            className="h-[clamp(0.45rem,0.9vw,0.7rem)]"
+            className="h-[clamp(0.5rem,0.9vw,0.7rem)]"
           />
 
           <div className="min-w-0">
             <p
               className={cn(
-                "text-[clamp(0.42rem,0.68vw,0.58rem)]",
-                "font-medium",
+                "text-[clamp(0.4rem,0.6vw,0.52rem)]",
+                "font-semibold",
                 "uppercase",
-                "tracking-wide",
-                "leading-tight",
+                "tracking-[0.07em]",
+                "leading-none",
                 "text-[var(--foreground-muted)]",
               )}
             >
@@ -183,12 +187,15 @@ export function JourneyRoute({
 
             <p
               className={cn(
+                "mt-[clamp(0.18rem,0.3vw,0.25rem)]",
                 "truncate",
-                "text-[clamp(0.68rem,1.2vw,0.98rem)]",
-                "font-semibold",
+                "text-[clamp(0.68rem,1.15vw,0.96rem)]",
+                "font-extrabold",
                 "leading-tight",
+                "tracking-tight",
                 "text-[var(--foreground)]",
               )}
+              title={route.destination.name}
             >
               {route.destination.name}
             </p>
@@ -196,37 +203,33 @@ export function JourneyRoute({
         </div>
       </div>
 
-      {/* --------------------------------------------------------------------- */}
-      {/* Waypoints                                                             */}
-      {/* --------------------------------------------------------------------- */}
+      {/* ---------------------------------------------------------------------
+          Waypoints
+          --------------------------------------------------------------------- */}
 
       {showWaypoints && route.waypoints.length > 0 ? (
         <div
           className={cn(
             "border-t",
             "border-[var(--border-subtle)]",
-            "pt-[clamp(0.45rem,0.9vw,0.7rem)]",
+            "pt-[clamp(0.45rem,0.8vw,0.65rem)]",
           )}
         >
           <p
             className={cn(
-              "mb-[clamp(0.3rem,0.6vw,0.5rem)]",
-              "text-[clamp(0.42rem,0.68vw,0.58rem)]",
+              "mb-[clamp(0.3rem,0.55vw,0.45rem)]",
+              "text-[clamp(0.4rem,0.6vw,0.52rem)]",
               "font-semibold",
               "uppercase",
-              "tracking-wide",
-              "leading-tight",
+              "tracking-[0.07em]",
+              "leading-none",
               "text-[var(--foreground-muted)]",
             )}
           >
             Stops
           </p>
 
-          <div
-            className={cn(
-              "space-y-[clamp(0.3rem,0.6vw,0.5rem)]",
-            )}
-          >
+          <div className="space-y-[clamp(0.3rem,0.55vw,0.45rem)]">
             {route.waypoints.map((waypoint) => (
               <div
                 key={waypoint.publicId}
@@ -234,41 +237,40 @@ export function JourneyRoute({
                   "flex",
                   "min-w-0",
                   "items-start",
-                  "gap-[clamp(0.35rem,0.7vw,0.55rem)]",
+                  "gap-[clamp(0.35rem,0.65vw,0.5rem)]",
                 )}
               >
                 <span
                   aria-hidden="true"
                   className={cn(
-                    "mt-[clamp(0.2rem,0.4vw,0.3rem)]",
-                    "size-[clamp(0.28rem,0.5vw,0.4rem)]",
+                    "mt-[clamp(0.2rem,0.35vw,0.28rem)]",
+                    "size-[clamp(0.28rem,0.45vw,0.36rem)]",
                     "shrink-0",
                     "rounded-full",
                     "bg-[var(--foreground-subtle)]",
                   )}
                 />
 
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p
                     className={cn(
                       "truncate",
-                      "text-[clamp(0.5rem,0.78vw,0.68rem)]",
-                      "font-medium",
+                      "text-[clamp(0.5rem,0.72vw,0.64rem)]",
+                      "font-semibold",
                       "leading-tight",
                       "text-[var(--foreground-secondary)]",
                     )}
+                    title={waypoint.name}
                   >
                     {waypoint.name}
                   </p>
 
-                  {(
-                    waypoint.pickupAllowed ||
-                    waypoint.dropoffAllowed
-                  ) ? (
+                  {waypoint.pickupAllowed ||
+                  waypoint.dropoffAllowed ? (
                     <p
                       className={cn(
-                        "mt-[clamp(0.12rem,0.25vw,0.2rem)]",
-                        "text-[clamp(0.42rem,0.65vw,0.55rem)]",
+                        "mt-[clamp(0.12rem,0.22vw,0.18rem)]",
+                        "text-[clamp(0.4rem,0.58vw,0.5rem)]",
                         "leading-tight",
                         "text-[var(--foreground-muted)]",
                       )}
@@ -290,3 +292,5 @@ export function JourneyRoute({
     </div>
   );
 }
+
+export default JourneyRoute;

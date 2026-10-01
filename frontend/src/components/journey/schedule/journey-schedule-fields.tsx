@@ -29,11 +29,14 @@ export interface JourneyScheduleFieldValues {
 
 export interface JourneyScheduleFieldsProps {
   readonly values: JourneyScheduleFieldValues;
+
   readonly onChange: (
     field: keyof JourneyScheduleFieldValues,
     value: string,
   ) => void;
+
   readonly disabled?: boolean;
+
   readonly className?: string;
 }
 
@@ -50,10 +53,15 @@ export function JourneyScheduleFields({
   return (
     <div
       className={cn(
-        "space-y-5",
+        "w-full",
+        "space-y-4",
         className,
       )}
     >
+      {/* ------------------------------------------------------------------- */}
+      {/* Departure                                                           */}
+      {/* ------------------------------------------------------------------- */}
+
       <Input
         label="Departure"
         type="datetime-local"
@@ -64,6 +72,10 @@ export function JourneyScheduleFields({
         disabled={disabled}
         fullWidth
       />
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Arrival                                                             */}
+      {/* ------------------------------------------------------------------- */}
 
       <Input
         label="Arrival"
@@ -77,6 +89,10 @@ export function JourneyScheduleFields({
         fullWidth
       />
 
+      {/* ------------------------------------------------------------------- */}
+      {/* Timezone                                                            */}
+      {/* ------------------------------------------------------------------- */}
+
       <Input
         label="Timezone"
         value={values.timezone}
@@ -85,6 +101,7 @@ export function JourneyScheduleFields({
         }}
         disabled={disabled}
         placeholder="e.g. Africa/Nairobi"
+        autoComplete="off"
         fullWidth
       />
     </div>

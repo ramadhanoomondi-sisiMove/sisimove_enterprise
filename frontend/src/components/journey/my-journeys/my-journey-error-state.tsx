@@ -61,8 +61,7 @@ export function MyJourneyErrorState({
         label: "Try again",
         onClick: onRetry,
       }}
-      className="py-16"
+      className="w-full py-16"
     />
   );
 }
-

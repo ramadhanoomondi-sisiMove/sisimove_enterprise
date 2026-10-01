@@ -26,12 +26,15 @@ interface PermissionCodeProps {
  * Permission codes are used by the authorization layer to identify
  * capabilities independently of display names or database identifiers.
  *
+ * Permission codes use a lowercase namespace/capability format.
+ *
  * Examples:
  *
- *   JOURNEY_CREATE
- *   JOURNEY_READ
- *   BOOKING_CREATE
- *   ADMIN_MANAGE_USERS
+ *   identity:read
+ *   journey:create
+ *   booking:create
+ *   admin:manage-users
+ *   authentication:record-failure
  */
 export class PermissionCode extends ValueObject<PermissionCodeProps> {
   // ---------------------------------------------------------------------------
@@ -55,11 +58,11 @@ export class PermissionCode extends ValueObject<PermissionCodeProps> {
   /**
    * Creates a Permission Code.
    *
-   * The supplied value is trimmed, normalized to uppercase, and validated
+   * The supplied value is trimmed, normalized to lowercase, and validated
    * before entering the domain.
    */
   public static create(value: string): PermissionCode {
-    const normalized = value.trim().toUpperCase();
+    const normalized = value.trim().toLowerCase();
 
     PermissionCode.validate(normalized);
 
@@ -90,14 +93,27 @@ export class PermissionCode extends ValueObject<PermissionCodeProps> {
    * Validates the structural format of a Permission Code.
    *
    * Allowed:
-   * - uppercase letters;
+   * - lowercase letters;
    * - numbers;
-   * - underscores.
+   * - underscores;
+   * - hyphens;
+   * - namespace separators (:).
    *
-   * The code must begin and end with an alphanumeric character.
+   * Examples:
+   *
+   *   identity:read
+   *   journey:create
+   *   booking:create
+   *   admin:manage-users
+   *   authentication:record-failure
+   *
+   * The code must begin and end each segment with an alphanumeric
+   * character. Namespace segments must not be empty.
    */
   public static isValid(value: string): boolean {
-    return /^[A-Z0-9](?:[A-Z0-9_]*[A-Z0-9])?$/.test(value);
+    return /^[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?(?::[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?)*$/.test(
+      value,
+    );
   }
 
   // ---------------------------------------------------------------------------

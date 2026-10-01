@@ -53,8 +53,7 @@ export function MyJourneyEmptyState({
         label: "Create a Journey",
         onClick: onCreateJourney,
       }}
-      className="py-16"
+      className="w-full py-16"
     />
   );
 }
-

@@ -23,6 +23,7 @@
 
 "use client";
 
+import type { ChangeEvent, FormEvent } from "react";
 import { useState } from "react";
 
 import { Button, Input } from "@/components/ui";
@@ -43,10 +44,15 @@ export interface JourneyCorridorFormValues {
 
 export interface JourneyCorridorEditorProps {
   readonly initialValue?: Partial<JourneyCorridorFormValues>;
+
   readonly onSubmit: (values: JourneyCorridorFormValues) => void;
+
   readonly onCancel?: () => void;
+
   readonly submitting?: boolean;
+
   readonly submitLabel?: string;
+
   readonly className?: string;
 }
 
@@ -76,24 +82,58 @@ export function JourneyCorridorEditor({
   className,
 }: JourneyCorridorEditorProps) {
   const [values, setValues] = useState<JourneyCorridorFormValues>(() => ({
-    ...EMPTY_VALUES,
-    ...initialValue,
+    originName:
+      initialValue?.originName !== undefined
+        ? initialValue.originName
+        : EMPTY_VALUES.originName,
+
+    originLatitude:
+      initialValue?.originLatitude !== undefined
+        ? initialValue.originLatitude
+        : EMPTY_VALUES.originLatitude,
+
+    originLongitude:
+      initialValue?.originLongitude !== undefined
+        ? initialValue.originLongitude
+        : EMPTY_VALUES.originLongitude,
+
+    destinationName:
+      initialValue?.destinationName !== undefined
+        ? initialValue.destinationName
+        : EMPTY_VALUES.destinationName,
+
+    destinationLatitude:
+      initialValue?.destinationLatitude !== undefined
+        ? initialValue.destinationLatitude
+        : EMPTY_VALUES.destinationLatitude,
+
+    destinationLongitude:
+      initialValue?.destinationLongitude !== undefined
+        ? initialValue.destinationLongitude
+        : EMPTY_VALUES.destinationLongitude,
   }));
 
   function updateField(
     field: keyof JourneyCorridorFormValues,
     value: string,
-  ) {
+  ): void {
     setValues((current) => ({
       ...current,
       [field]: value,
     }));
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
 
-    onSubmit(values);
+    onSubmit({
+      originName: values.originName,
+      originLatitude: values.originLatitude,
+      originLongitude: values.originLongitude,
+      destinationName: values.destinationName,
+      destinationLatitude: values.destinationLatitude,
+      destinationLongitude: values.destinationLongitude,
+    });
   }
 
   return (
@@ -101,7 +141,7 @@ export function JourneyCorridorEditor({
       onSubmit={handleSubmit}
       className={cn(
         "w-full",
-        "space-y-6",
+        "space-y-5",
         className,
       )}
     >
@@ -109,7 +149,7 @@ export function JourneyCorridorEditor({
       {/* Origin                                                                */}
       {/* --------------------------------------------------------------------- */}
 
-      <fieldset className="space-y-4">
+      <fieldset className="space-y-3">
         <legend className="text-sm font-semibold text-[var(--foreground)]">
           Starting point
         </legend>
@@ -117,7 +157,7 @@ export function JourneyCorridorEditor({
         <Input
           label="Origin"
           value={values.originName}
-          onChange={(event) => {
+          onChange={(event: ChangeEvent<HTMLInputElement>) => {
             updateField("originName", event.target.value);
           }}
           placeholder="e.g. Nairobi"
@@ -125,17 +165,14 @@ export function JourneyCorridorEditor({
           fullWidth
         />
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             label="Latitude"
             type="text"
             inputMode="decimal"
             value={values.originLatitude}
-            onChange={(event) => {
-              updateField(
-                "originLatitude",
-                event.target.value,
-              );
+            onChange={(event: ChangeEvent<HTMLInputElement>) => {
+              updateField("originLatitude", event.target.value);
             }}
             placeholder="e.g. -1.286389"
             fullWidth
@@ -146,11 +183,8 @@ export function JourneyCorridorEditor({
             type="text"
             inputMode="decimal"
             value={values.originLongitude}
-            onChange={(event) => {
-              updateField(
-                "originLongitude",
-                event.target.value,
-              );
+            onChange={(event: ChangeEvent<HTMLInputElement>) => {
+              updateField("originLongitude", event.target.value);
             }}
             placeholder="e.g. 36.817223"
             fullWidth
@@ -162,7 +196,7 @@ export function JourneyCorridorEditor({
       {/* Destination                                                           */}
       {/* --------------------------------------------------------------------- */}
 
-      <fieldset className="space-y-4">
+      <fieldset className="space-y-3">
         <legend className="text-sm font-semibold text-[var(--foreground)]">
           Destination
         </legend>
@@ -170,7 +204,7 @@ export function JourneyCorridorEditor({
         <Input
           label="Destination"
           value={values.destinationName}
-          onChange={(event) => {
+          onChange={(event: ChangeEvent<HTMLInputElement>) => {
             updateField("destinationName", event.target.value);
           }}
           placeholder="e.g. Mombasa"
@@ -178,13 +212,13 @@ export function JourneyCorridorEditor({
           fullWidth
         />
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             label="Latitude"
             type="text"
             inputMode="decimal"
             value={values.destinationLatitude}
-            onChange={(event) => {
+            onChange={(event: ChangeEvent<HTMLInputElement>) => {
               updateField(
                 "destinationLatitude",
                 event.target.value,
@@ -199,7 +233,7 @@ export function JourneyCorridorEditor({
             type="text"
             inputMode="decimal"
             value={values.destinationLongitude}
-            onChange={(event) => {
+            onChange={(event: ChangeEvent<HTMLInputElement>) => {
               updateField(
                 "destinationLongitude",
                 event.target.value,
@@ -215,8 +249,16 @@ export function JourneyCorridorEditor({
       {/* Actions                                                               */}
       {/* --------------------------------------------------------------------- */}
 
-      <div className="flex flex-wrap items-center justify-end gap-3">
-        {onCancel ? (
+      <div
+        className={cn(
+          "flex",
+          "flex-col-reverse",
+          "gap-3",
+          "sm:flex-row",
+          "sm:justify-end",
+        )}
+      >
+        {onCancel !== undefined && (
           <Button
             type="button"
             variant="ghost"
@@ -225,7 +267,7 @@ export function JourneyCorridorEditor({
           >
             Cancel
           </Button>
-        ) : null}
+        )}
 
         <Button
           type="submit"

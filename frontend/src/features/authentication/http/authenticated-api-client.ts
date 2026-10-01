@@ -1,4 +1,4 @@
-//frontend/src/features/authentication/http/authenticated-api-client.ts
+// frontend/src/features/authentication/http/authenticated-api-client.ts
 // -----------------------------------------------------------------------------
 // sisiMove — Authenticated API Client
 // -----------------------------------------------------------------------------
@@ -60,6 +60,21 @@ import {
 
 import { authSessionStorage } from '..';
 
+// -----------------------------------------------------------------------------
+// Types
+// -----------------------------------------------------------------------------
+
+type AuthenticatedHttpMethod =
+  | 'GET'
+  | 'POST'
+  | 'PATCH'
+  | 'PUT'
+  | 'DELETE';
+
+// -----------------------------------------------------------------------------
+// Errors
+// -----------------------------------------------------------------------------
+
 /**
  * Error thrown when a protected API request is attempted without an
  * authenticated client session.
@@ -80,6 +95,10 @@ export class AuthenticationRequiredError extends Error {
   }
 }
 
+// -----------------------------------------------------------------------------
+// Client
+// -----------------------------------------------------------------------------
+
 /**
  * Authentication-aware HTTP client.
  *
@@ -88,6 +107,10 @@ export class AuthenticationRequiredError extends Error {
  * protected API requests.
  */
 export class AuthenticatedApiClient {
+  // ---------------------------------------------------------------------------
+  // GET
+  // ---------------------------------------------------------------------------
+
   /**
    * Execute an authenticated GET request.
    */
@@ -102,6 +125,10 @@ export class AuthenticatedApiClient {
       options,
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // POST
+  // ---------------------------------------------------------------------------
 
   /**
    * Execute an authenticated POST request.
@@ -122,6 +149,10 @@ export class AuthenticatedApiClient {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // PATCH
+  // ---------------------------------------------------------------------------
+
   /**
    * Execute an authenticated PATCH request.
    *
@@ -140,6 +171,10 @@ export class AuthenticatedApiClient {
       options,
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // PUT
+  // ---------------------------------------------------------------------------
 
   /**
    * Execute an authenticated PUT request.
@@ -160,6 +195,10 @@ export class AuthenticatedApiClient {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // DELETE
+  // ---------------------------------------------------------------------------
+
   /**
    * Execute an authenticated DELETE request.
    *
@@ -177,12 +216,16 @@ export class AuthenticatedApiClient {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Request orchestration
+  // ---------------------------------------------------------------------------
+
   /**
    * Resolve the current access token and delegate the request to the
    * foundation HTTP client.
    */
   private async request<T>(
-    method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
+    method: AuthenticatedHttpMethod,
     path: string,
     body: unknown,
     options: RequestOptions,
@@ -194,8 +237,9 @@ export class AuthenticatedApiClient {
     }
 
     /**
-     * Preserve any existing request context and inject the access token
-     * belonging to the currently authenticated session.
+     * Preserve the caller's existing request context while replacing the
+     * authentication credential with the access token belonging to the
+     * currently authenticated session.
      */
     const context = {
       ...options.context,
@@ -243,6 +287,10 @@ export class AuthenticatedApiClient {
     }
   }
 }
+
+// -----------------------------------------------------------------------------
+// Shared instance
+// -----------------------------------------------------------------------------
 
 /**
  * Shared authenticated HTTP client.

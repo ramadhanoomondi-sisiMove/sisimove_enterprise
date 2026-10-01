@@ -5,103 +5,27 @@
 // REST controller for the Journey aggregate and its associated Journey
 // components.
 //
-// Aggregate boundary:
+// Permission vocabulary is intentionally aligned with the seeded Journey
+// permissions:
 //
-// JourneyAggregate
-// ├── Journey
-// ├── JourneyCorridor
-// ├── JourneyWaypoint[]
-// ├── JourneySchedule
-// ├── JourneyVehicle
-// ├── JourneyCapacity
-// ├── JourneyPricing
-// ├── JourneyPreferences
-// └── JourneyAsset[]
+//   journey:read
+//   journey:create
+//   journey:update
+//   journey:cancel
+//   journey:manage
 //
-// IMPORTANT PUBLIC READ ARCHITECTURE
-// ---------------------------------
+// Do NOT introduce component-specific Journey permissions here. Configuration
+// mutations are covered by journey:update, while lifecycle management is
+// covered by journey:manage.
 //
-// Journey remains the owner of Journey creation and Journey state.
-//
-// Journey.providerPublicId is an opaque public reference to the member who
-// provides the Journey.
-//
-// Traveller Profile and Trust Profile do NOT own the Journey.
-//
-// Public marketplace composition:
-//
-// Journey
-//   └── providerPublicId
-//          ├── Traveller Profile public read model
-//          └── Trust Profile public read model
-//
-// GetPublicJourneysQueryHandler owns this public-read composition.
-//
-// The controller MUST NOT:
-//
-// - unwrap a domain JourneyEntity from the public response;
-// - convert the public projection back through JourneyResponseMapper;
-// - load Traveller Profile or Trust Profile;
-// - join persistence models;
-// - fabricate provider data;
-// - expose providerPublicId;
-// - expose internal Journey lifecycle fields.
-//
-// The public application query is therefore the single source of truth for
-// the public marketplace Journey representation.
-//
-//
-// AUTHENTICATED "MY JOURNEYS" READ
-// --------------------------------
-//
-// The authenticated My Journeys boundary is:
-//
-//     GET /journeys/me
-//
-// The provider identity is derived from the authenticated JWT through
-// CurrentIdentity. The client MUST NOT supply providerPublicId for this
-// endpoint.
-//
-// Flow:
-//
-//     JWT
-//       │
-//       ▼
-//     AuthenticatedIdentity.identityPublicId
-//       │
-//       ▼
-//     GetJourneysByProviderQuery
-//       │
-//       ▼
-//     JourneyAggregate[]
-//       │
-//       ▼
-//     MyJourneyMapper
-//       │
-//       ▼
-//     MyJourneyResponse[]
-//
-// The existing GetJourneysByProviderQueryHandler is reused.
-//
-// No new repository method is introduced.
-//
-// The controller is responsible only for HTTP transport and application
-// response mapping. Domain aggregates are not exposed directly through the
-// authenticated HTTP contract.
-//
-// Route ordering is intentional:
-//
-//     GET /journeys/me
-//
-// appears before:
-//
-//     GET /journeys/:journeyPublicId
-//
-// so "me" cannot be interpreted as a Journey public ID.
-//
+// Asset presentation rule:
+// - Journey owns only the Asset public-ID reference.
+// - Asset owns the actual Asset resource and delivery URL.
+// - The authenticated "my journeys" read model may enrich the vehicle with a
+//   reduced public Asset reference for presentation.
+// - The Journey domain model is never given an Asset URL.
 // -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
+//
 // Node.js
 // -----------------------------------------------------------------------------
 
@@ -139,14 +63,6 @@ import {
 // -----------------------------------------------------------------------------
 // Authentication / Authorization
 // -----------------------------------------------------------------------------
-//
-// CurrentIdentity exposes the already-authenticated identity established by
-// JwtAuthGuard.
-//
-// AuthenticatedIdentity is the application-facing authenticated identity
-// contract.
-//
-// -----------------------------------------------------------------------------
 
 import * as auth from '../../../../../foundation/security/auth';
 
@@ -157,6 +73,24 @@ import * as auth from '../../../../../foundation/security/auth';
 import type { CommandHandler } from '../../../../../foundation/kernel/application/command-handler';
 
 import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
+
+// -----------------------------------------------------------------------------
+// Asset — Application Tokens
+// -----------------------------------------------------------------------------
+
+import { ASSET_TOKENS } from '../../../../assets/application/asset.tokens';
+
+// -----------------------------------------------------------------------------
+// Asset — Application Queries
+// -----------------------------------------------------------------------------
+
+import { GetPublicAssetReferenceQuery } from '../../../../assets/application/queries/get-public-asset-reference.query';
+
+// -----------------------------------------------------------------------------
+// Asset — Domain Value Objects
+// -----------------------------------------------------------------------------
+
+import { AssetPublicId } from '../../../../assets/domain/value-objects';
 
 // -----------------------------------------------------------------------------
 // Journey — Application Tokens
@@ -217,15 +151,6 @@ import {
 // -----------------------------------------------------------------------------
 // Journey — Public Query Response
 // -----------------------------------------------------------------------------
-//
-// GetPublicJourneysQueryHandler returns the complete public marketplace
-// projection.
-//
-// PublicJourneyResponse is NOT a wrapper around JourneyEntity.
-//
-// It is the application read model consumed by the public marketplace.
-//
-// -----------------------------------------------------------------------------
 
 import type { PublicJourneyResponse } from '../../../application/query-handlers/journey/get-public-journeys.query-handler';
 
@@ -280,33 +205,11 @@ import {
 // -----------------------------------------------------------------------------
 // Journey — Presentation Response Mapper
 // -----------------------------------------------------------------------------
-//
-// JourneyResponseMapper remains the mapper for the existing internal Journey
-// HTTP representation.
-//
-// It is intentionally NOT used by:
-//
-//     GET /journeys/public
-//
-// or:
-//
-//     GET /journeys/:journeyPublicId
-//
-// Those endpoints consume the application public-read projection directly.
-//
-// -----------------------------------------------------------------------------
 
 import { JourneyResponseMapper } from '../mappers/journey-response.mapper';
 
 // -----------------------------------------------------------------------------
 // Journey — Authenticated Response Mapper
-// -----------------------------------------------------------------------------
-//
-// MyJourneyMapper converts an owned JourneyAggregate into the stable
-// authenticated HTTP representation.
-//
-// The domain aggregate therefore never crosses the HTTP boundary.
-//
 // -----------------------------------------------------------------------------
 
 import { MyJourneyMapper } from '../../../application/mappers/my-journey.mapper';
@@ -320,13 +223,6 @@ import type { MyJourneyResponse } from '../../../application/responses/my-journe
 // -----------------------------------------------------------------------------
 // Journey — Domain Value Objects
 // -----------------------------------------------------------------------------
-//
-// Only public identifiers still required by the HTTP controller are imported.
-//
-// Configuration enums are deliberately NOT cast here. DTOs already expose
-// their domain enum types and therefore pass directly into commands.
-//
-// -----------------------------------------------------------------------------
 
 import {
   JourneyAssetPublicIdReference,
@@ -334,6 +230,26 @@ import {
   JourneyStatus,
   JourneyWaypointPublicId,
 } from '../../../domain/value-objects';
+
+// =============================================================================
+// Local Presentation Contract
+// =============================================================================
+//
+// Do not import Asset application's internal PublicAssetReference type here.
+//
+// Journey only needs the reduced presentation contract:
+//
+//     { publicId, url }
+//
+// Keeping this local prevents the Journey presentation layer from depending
+// on the concrete Asset query response type while still consuming the Asset
+// domain's public-reference query through its application token.
+// =============================================================================
+
+interface JourneyVehicleAssetReference {
+  readonly publicId: string;
+  readonly url: string;
+}
 
 // =============================================================================
 // Controller
@@ -561,7 +477,7 @@ export class JourneyController {
     >,
 
     // =========================================================================
-    // Asset Queries
+    // Journey Asset Queries
     // =========================================================================
 
     @Inject(JOURNEY_TOKENS.QUERY_HANDLERS.GET_ASSETS)
@@ -574,6 +490,24 @@ export class JourneyController {
     private readonly getJourneyAssetByReferenceQueryHandler: QueryHandler<
       GetJourneyAssetByReferenceQuery,
       JourneyAssetEntity | null
+    >,
+
+    // =========================================================================
+    // Asset Domain — Public Asset Reference Query
+    // =========================================================================
+    //
+    // Journey consumes only the reduced presentation contract:
+    //
+    //     { publicId, url }
+    //
+    // Journey does not query Asset storage or construct the URL itself.
+    //
+    // =========================================================================
+
+    @Inject(ASSET_TOKENS.QUERY_HANDLERS.GET_PUBLIC_ASSET_REFERENCE)
+    private readonly getPublicAssetReferenceHandler: QueryHandler<
+      GetPublicAssetReferenceQuery,
+      JourneyVehicleAssetReference
     >,
   ) {}
 
@@ -672,12 +606,29 @@ export class JourneyController {
   // ---------------------------------------------------------------------------
   // Get My Journeys
   // ---------------------------------------------------------------------------
+  //
+  // The Journey aggregate stores only vehicle.assetPublicId.
+  //
+  // For the authenticated editor/read model we additionally resolve that
+  // reference through the Asset domain's public reference query so the
+  // frontend receives:
+  //
+  //   vehicle.asset.publicId
+  //   vehicle.asset.url
+  //
+  // The URL is never added to JourneyVehicleEntity.
+  //
+  // If the referenced Asset is not currently publicly usable, the Journey
+  // response remains available and simply contains asset: null. The opaque
+  // assetPublicId is preserved by the Journey mapper.
+  //
+  // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Get my journeys',
     description:
-      'Returns journeys belonging to the currently authenticated journey provider.',
+      'Returns journeys belonging to the currently authenticated journey provider, including a consumer-facing vehicle Asset reference when available.',
   })
   @Get('me')
   @UseGuards(auth.JwtAuthGuard)
@@ -688,7 +639,21 @@ export class JourneyController {
       new GetJourneysByProviderQuery(identity.identityPublicId),
     );
 
-    return journeys.map((journey) => MyJourneyMapper.fromAggregate(journey));
+    return Promise.all(
+      journeys.map(async (journey) => {
+        const assetPublicId = journey.vehicle?.assetPublicId;
+
+        if (assetPublicId === undefined || assetPublicId === null) {
+          return MyJourneyMapper.fromAggregate(journey);
+        }
+
+        const vehicleAsset = await this.resolveVehicleAssetReference(
+          assetPublicId.value,
+        );
+
+        return MyJourneyMapper.fromAggregate(journey, vehicleAsset);
+      }),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -788,7 +753,7 @@ export class JourneyController {
   }
 
   // ===========================================================================
-  // JOURNEY LIFECYCLE
+  // CREATE / LIFECYCLE
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
@@ -806,10 +771,14 @@ export class JourneyController {
   @auth.RequirePermissions('journey:create')
   public async create(
     @auth.CurrentIdentity() identity: auth.AuthenticatedIdentity,
-  ): Promise<JourneyAggregate> {
-    return this.createJourneyHandler.execute(
+  ): Promise<{ publicId: string }> {
+    const journey = await this.createJourneyHandler.execute(
       new CreateJourneyCommand(identity.identityPublicId, randomUUID()),
     );
+
+    return {
+      publicId: journey.journey.publicId.value,
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -829,7 +798,7 @@ export class JourneyController {
   })
   @Post(':journeyPublicId/publish')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:publish')
+  @auth.RequirePermissions('journey:manage')
   public async publish(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: PublishJourneyDto,
@@ -861,7 +830,7 @@ export class JourneyController {
   })
   @Post(':journeyPublicId/start')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:start')
+  @auth.RequirePermissions('journey:manage')
   public async start(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: StartJourneyDto,
@@ -893,7 +862,7 @@ export class JourneyController {
   })
   @Post(':journeyPublicId/complete')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:complete')
+  @auth.RequirePermissions('journey:manage')
   public async complete(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: CompleteJourneyDto,
@@ -958,7 +927,7 @@ export class JourneyController {
   })
   @Post(':journeyPublicId/expire')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:expire')
+  @auth.RequirePermissions('journey:manage')
   public async expire(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: ExpireJourneyDto,
@@ -1017,7 +986,7 @@ export class JourneyController {
   })
   @Post(':journeyPublicId/corridor')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:corridor:attach')
+  @auth.RequirePermissions('journey:update')
   public async attachCorridor(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: AttachCorridorDto,
@@ -1053,7 +1022,7 @@ export class JourneyController {
   })
   @Delete(':journeyPublicId/corridor')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:corridor:remove')
+  @auth.RequirePermissions('journey:update')
   public async removeCorridor(
     @Param('journeyPublicId') journeyPublicId: string,
   ): Promise<void> {
@@ -1142,7 +1111,7 @@ export class JourneyController {
   })
   @Post(':journeyPublicId/waypoints')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:waypoint:add')
+  @auth.RequirePermissions('journey:update')
   public async addWaypoint(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: AddWaypointDto,
@@ -1185,7 +1154,7 @@ export class JourneyController {
   })
   @Delete(':journeyPublicId/waypoints/:waypointPublicId')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:waypoint:remove')
+  @auth.RequirePermissions('journey:update')
   public async removeWaypoint(
     @Param('journeyPublicId') journeyPublicId: string,
     @Param('waypointPublicId') waypointPublicId: string,
@@ -1243,7 +1212,7 @@ export class JourneyController {
   })
   @Post(':journeyPublicId/schedule')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:schedule:attach')
+  @auth.RequirePermissions('journey:update')
   public async attachSchedule(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: AttachScheduleDto,
@@ -1276,7 +1245,7 @@ export class JourneyController {
   })
   @Delete(':journeyPublicId/schedule')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:schedule:remove')
+  @auth.RequirePermissions('journey:update')
   public async removeSchedule(
     @Param('journeyPublicId') journeyPublicId: string,
   ): Promise<void> {
@@ -1332,7 +1301,7 @@ export class JourneyController {
   })
   @Post(':journeyPublicId/vehicle')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:vehicle:attach')
+  @auth.RequirePermissions('journey:update')
   public async attachVehicle(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: AttachVehicleDto,
@@ -1368,7 +1337,7 @@ export class JourneyController {
   })
   @Delete(':journeyPublicId/vehicle')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:vehicle:remove')
+  @auth.RequirePermissions('journey:update')
   public async removeVehicle(
     @Param('journeyPublicId') journeyPublicId: string,
   ): Promise<void> {
@@ -1425,7 +1394,7 @@ export class JourneyController {
   })
   @Post(':journeyPublicId/capacity')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:capacity:attach')
+  @auth.RequirePermissions('journey:update')
   public async attachCapacity(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: AttachCapacityDto,
@@ -1434,7 +1403,6 @@ export class JourneyController {
       new AttachJourneyCapacityCommand(
         new JourneyPublicId(journeyPublicId),
         dto.totalSeats,
-        dto.bookedSeats,
         randomUUID(),
       ),
     );
@@ -1457,7 +1425,7 @@ export class JourneyController {
   })
   @Delete(':journeyPublicId/capacity')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:capacity:remove')
+  @auth.RequirePermissions('journey:update')
   public async removeCapacity(
     @Param('journeyPublicId') journeyPublicId: string,
   ): Promise<void> {
@@ -1510,7 +1478,7 @@ export class JourneyController {
   })
   @Post(':journeyPublicId/pricing')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:pricing:attach')
+  @auth.RequirePermissions('journey:update')
   public async attachPricing(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: AttachPricingDto,
@@ -1542,7 +1510,7 @@ export class JourneyController {
   })
   @Delete(':journeyPublicId/pricing')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:pricing:remove')
+  @auth.RequirePermissions('journey:update')
   public async removePricing(
     @Param('journeyPublicId') journeyPublicId: string,
   ): Promise<void> {
@@ -1596,7 +1564,7 @@ export class JourneyController {
   })
   @Post(':journeyPublicId/preferences')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:preferences:attach')
+  @auth.RequirePermissions('journey:update')
   public async attachPreferences(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: AttachPreferencesDto,
@@ -1631,7 +1599,7 @@ export class JourneyController {
   })
   @Delete(':journeyPublicId/preferences')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:preferences:remove')
+  @auth.RequirePermissions('journey:update')
   public async removePreferences(
     @Param('journeyPublicId') journeyPublicId: string,
   ): Promise<void> {
@@ -1722,7 +1690,7 @@ export class JourneyController {
   })
   @Post(':journeyPublicId/assets')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:asset:attach')
+  @auth.RequirePermissions('journey:update')
   public async attachAsset(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: AttachAssetDto,
@@ -1761,7 +1729,7 @@ export class JourneyController {
   })
   @Delete(':journeyPublicId/assets/:assetPublicId')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:asset:remove')
+  @auth.RequirePermissions('journey:update')
   public async removeAsset(
     @Param('journeyPublicId') journeyPublicId: string,
     @Param('assetPublicId') assetPublicId: string,
@@ -1778,6 +1746,34 @@ export class JourneyController {
   // ===========================================================================
   // PRIVATE HELPERS
   // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Resolve Vehicle Asset Reference
+  // ---------------------------------------------------------------------------
+  //
+  // The Journey aggregate contains only the Asset public ID.
+  //
+  // The Asset domain determines whether the Asset is publicly usable and
+  // resolves its consumer-facing URL.
+  //
+  // A failure here must not make the authenticated Journey collection
+  // disappear. The Journey still has a valid opaque Asset reference, but the
+  // presentation projection cannot render an image until the Asset becomes
+  // publicly usable.
+  //
+  // ---------------------------------------------------------------------------
+
+  private async resolveVehicleAssetReference(
+    assetPublicId: string,
+  ): Promise<JourneyVehicleAssetReference | null> {
+    try {
+      return await this.getPublicAssetReferenceHandler.execute(
+        new GetPublicAssetReferenceQuery(new AssetPublicId(assetPublicId)),
+      );
+    } catch {
+      return null;
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // Parse Journey Status

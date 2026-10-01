@@ -40,6 +40,14 @@ export function JourneyCreateSeats({
   disabled = false,
   className,
 }: JourneyCreateSeatsProps) {
+  function handleChange(nextValue: number): void {
+    if (!Number.isInteger(nextValue) || nextValue < 0) {
+      return;
+    }
+
+    onChange(nextValue);
+  }
+
   return (
     <section
       aria-labelledby="journey-create-seats-title"
@@ -63,7 +71,7 @@ export function JourneyCreateSeats({
         <JourneySeatControl
           label="Passenger seats"
           value={value}
-          onChange={onChange}
+          onChange={handleChange}
           disabled={disabled}
           helperText="The number of seats passengers can book on this journey."
         />

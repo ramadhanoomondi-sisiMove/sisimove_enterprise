@@ -1,13 +1,18 @@
 // -----------------------------------------------------------------------------
-// sisiMove — My Journeys List
+// Path: src/features/journey/components/my-journeys-list.tsx
 // -----------------------------------------------------------------------------
+//
+// sisiMove — My Journeys List
 //
 // Authenticated collection presentation of the member's Journeys.
 //
-// Responsibilities:
-// - render the supplied MyJourney collection;
-// - compose one MyJourneyCard per Journey;
-// - preserve the ordering supplied by the query projection.
+// Design contract:
+// - Render the supplied MyJourney collection.
+// - Compose one MyJourneyCard per Journey.
+// - Preserve the ordering supplied by the query projection.
+// - Keep Journey cards stacked vertically.
+// - Maintain consistent SisiMove marketplace spacing.
+// - Give each card the full available collection width.
 //
 // Non-responsibilities:
 // - no Journey fetching;
@@ -18,14 +23,16 @@
 // - no Journey lifecycle logic;
 // - no Journey filtering or sorting.
 //
-// Collection state belongs to MyJourneys. Individual Journey presentation
-// belongs to MyJourneyCard.
+// Collection state belongs to MyJourneys.
+// Individual Journey presentation belongs to MyJourneyCard.
 //
 // -----------------------------------------------------------------------------
 
-import { MyJourneyCard } from "./my-journey-card";
+import { cn } from "@/foundation/utils/cn";
 
 import type { MyJourney } from "@/features/journey/models/my-journey";
+
+import { MyJourneyCard } from "./my-journey-card";
 
 // -----------------------------------------------------------------------------
 // Props
@@ -53,20 +60,24 @@ export function MyJourneysList({
 }: MyJourneysListProps) {
   return (
     <div
-      className={[
-        "grid",
-        "grid-cols-1",
+      className={cn(
+        "flex",
+        "w-full",
+        "min-w-0",
+        "flex-col",
         "gap-4",
-        className ?? "",
-      ].join(" ")}
+        "sm:gap-5",
+        "lg:gap-6",
+        className,
+      )}
     >
       {journeys.map((journey) => (
         <MyJourneyCard
           key={journey.publicId}
           journey={journey}
+          className="w-full"
         />
       ))}
     </div>
   );
 }
-

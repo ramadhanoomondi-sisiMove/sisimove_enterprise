@@ -7,7 +7,7 @@
 // Responsibilities:
 // - Present the current total-seat value.
 // - Allow the user to increment or decrement the value.
-// - Emit the resulting primitive value.
+// - Emit a valid primitive integer value.
 //
 // This component does NOT:
 // - calculate available seats;
@@ -16,6 +16,8 @@
 // - call the API;
 // - persist Journey state.
 // -----------------------------------------------------------------------------
+
+import type { ChangeEvent } from "react";
 
 import { Button, Input } from "@/components/ui";
 import { cn } from "@/foundation/utils/cn";
@@ -51,11 +53,33 @@ export function JourneySeatControl({
   className,
 }: JourneySeatControlProps) {
   function decrement(): void {
+    if (value <= 0) {
+      return;
+    }
+
     onChange(value - 1);
   }
 
   function increment(): void {
     onChange(value + 1);
+  }
+
+  function handleInputChange(
+    event: ChangeEvent<HTMLInputElement>,
+  ): void {
+    const rawValue = event.target.value;
+
+    if (rawValue === "") {
+      return;
+    }
+
+    const nextValue = Number(rawValue);
+
+    if (!Number.isInteger(nextValue) || nextValue < 0) {
+      return;
+    }
+
+    onChange(nextValue);
   }
 
   return (
@@ -65,28 +89,29 @@ export function JourneySeatControl({
           <Input
             label={label}
             type="number"
+            min={0}
+            step={1}
             inputMode="numeric"
             value={String(value)}
-            onChange={(event) => {
-              const nextValue = Number(event.target.value);
-
-              if (Number.isNaN(nextValue)) {
-                return;
-              }
-
-              onChange(nextValue);
-            }}
+            onChange={handleInputChange}
             disabled={disabled}
           />
         </div>
 
-        <div className={cn("flex", "gap-2", "pb-0.5")}>
+        <div
+          className={cn(
+            "flex",
+            "shrink-0",
+            "gap-2",
+            "pb-0.5",
+          )}
+        >
           <Button
             type="button"
             variant="outline"
             size="sm"
             aria-label="Decrease total seats"
-            disabled={disabled}
+            disabled={disabled || value <= 0}
             onClick={decrement}
           >
             −
@@ -105,8 +130,8 @@ export function JourneySeatControl({
         </div>
       </div>
 
-      {helperText && (
-        <p className="text-xs text-[var(--foreground-muted)]">
+      {helperText !== undefined && helperText.length > 0 && (
+        <p className="text-xs leading-5 text-[var(--foreground-muted)]">
           {helperText}
         </p>
       )}

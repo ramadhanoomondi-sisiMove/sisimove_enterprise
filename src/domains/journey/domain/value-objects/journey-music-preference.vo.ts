@@ -1,20 +1,62 @@
-// src/domains/journey/domain/value-objects/journey-music-preference.vo.ts
+// -----------------------------------------------------------------------------
+// Path: src/domains/journey/domain/value-objects/journey-music-preference.vo.ts
+// -----------------------------------------------------------------------------
+// sisiMove — Journey Music Preference Value Object
+//
+// Represents the music preference configured for a Journey.
+//
+// Allowed values:
+// - NONE
+// - LOW
+// - MODERATE
+// - ANY
+//
+// Responsibilities:
+// - enforce the Journey music-preference vocabulary;
+// - provide immutable domain representation;
+// - expose semantic convenience getters.
+//
+// This Value Object does NOT:
+// - perform persistence concerns;
+// - perform HTTP validation;
+// - depend on Prisma.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Foundation
+// -----------------------------------------------------------------------------
 
 import { ValueObject } from '../../../../foundation/kernel/domain/value-object';
 
+// -----------------------------------------------------------------------------
+// Value
+// -----------------------------------------------------------------------------
+
 export enum JourneyMusicPreference {
-  OFF = 'OFF',
+  NONE = 'NONE',
   LOW = 'LOW',
   MODERATE = 'MODERATE',
-  HIGH = 'HIGH',
+  ANY = 'ANY',
 }
+
+// -----------------------------------------------------------------------------
+// Properties
+// -----------------------------------------------------------------------------
 
 interface JourneyMusicPreferenceProps {
-  value: JourneyMusicPreference;
+  readonly value: JourneyMusicPreference;
 }
 
+// -----------------------------------------------------------------------------
+// Value Object
+// -----------------------------------------------------------------------------
+
 export class JourneyMusicPreferenceValueObject extends ValueObject<JourneyMusicPreferenceProps> {
-  constructor(preference: JourneyMusicPreference) {
+  // ===========================================================================
+  // Constructor
+  // ===========================================================================
+
+  public constructor(preference: JourneyMusicPreference) {
     if (!Object.values(JourneyMusicPreference).includes(preference)) {
       throw new Error(`Invalid journey music preference "${preference}".`);
     }
@@ -24,23 +66,31 @@ export class JourneyMusicPreferenceValueObject extends ValueObject<JourneyMusicP
     });
   }
 
-  get value(): JourneyMusicPreference {
+  // ===========================================================================
+  // Value
+  // ===========================================================================
+
+  public get value(): JourneyMusicPreference {
     return this.props.value;
   }
 
-  get isOff(): boolean {
-    return this.props.value === JourneyMusicPreference.OFF;
+  // ===========================================================================
+  // Semantic Queries
+  // ===========================================================================
+
+  public get isNone(): boolean {
+    return this.props.value === JourneyMusicPreference.NONE;
   }
 
-  get isLow(): boolean {
+  public get isLow(): boolean {
     return this.props.value === JourneyMusicPreference.LOW;
   }
 
-  get isModerate(): boolean {
+  public get isModerate(): boolean {
     return this.props.value === JourneyMusicPreference.MODERATE;
   }
 
-  get isHigh(): boolean {
-    return this.props.value === JourneyMusicPreference.HIGH;
+  public get isAny(): boolean {
+    return this.props.value === JourneyMusicPreference.ANY;
   }
 }

@@ -38,9 +38,9 @@ import { cn } from "@/foundation/utils/cn";
 
 import { useExpireJourney } from "@/features/journey/hooks/mutations";
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Icons
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 function ExpireIcon() {
   return (
@@ -71,9 +71,9 @@ function ExpireIcon() {
   );
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export interface JourneyExpireActionProps {
   /**
@@ -112,9 +112,9 @@ export interface JourneyExpireActionProps {
   readonly className?: string;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Component
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function JourneyExpireAction({
   journeyPublicId,
@@ -126,14 +126,17 @@ export function JourneyExpireAction({
 }: JourneyExpireActionProps) {
   const [error, setError] = useState<Error | null>(null);
 
-  const expireJourneyMutation =
-    useExpireJourney();
+  const expireJourneyMutation = useExpireJourney();
+
+  const isPending = expireJourneyMutation.isPending;
+  const isDisabled = disabled || isPending;
+
+  // ===========================================================================
+  // Expire
+  // ===========================================================================
 
   async function handleExpire(): Promise<void> {
-    if (
-      disabled ||
-      expireJourneyMutation.isPending
-    ) {
+    if (isDisabled) {
       return;
     }
 
@@ -169,12 +172,14 @@ export function JourneyExpireAction({
     }
   }
 
-  const isPending =
-    expireJourneyMutation.isPending;
+  // ===========================================================================
+  // Render
+  // ===========================================================================
 
   return (
     <div
       className={cn(
+        "w-full",
         "space-y-2",
         className,
       )}
@@ -186,7 +191,7 @@ export function JourneyExpireAction({
           retryAction={{
             label: "Try again",
             onClick: handleExpire,
-            disabled: isPending || disabled,
+            disabled: isDisabled,
           }}
         />
       )}
@@ -197,7 +202,7 @@ export function JourneyExpireAction({
         leadingIcon={<ExpireIcon />}
         onClick={handleExpire}
         loading={isPending}
-        disabled={disabled}
+        disabled={isDisabled}
       >
         {isPending ? expiringLabel : label}
       </Button>

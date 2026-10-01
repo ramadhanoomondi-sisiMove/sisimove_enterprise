@@ -44,9 +44,9 @@ import { cn } from "@/foundation/utils/cn";
 
 import type { MyJourney } from "@/features/journey/models";
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Icons
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 function ArrowLeftIcon() {
   return (
@@ -72,9 +72,9 @@ function ArrowLeftIcon() {
   );
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export interface JourneyEditorHeaderProps {
   /**
@@ -100,42 +100,33 @@ export interface JourneyEditorHeaderProps {
   readonly className?: string;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Helpers
-// -----------------------------------------------------------------------------
+// =============================================================================
 
-function formatDateTime(
-  value: string,
-): string {
+function formatDateTime(value: string): string {
   const timestamp = new Date(value);
 
   if (Number.isNaN(timestamp.getTime())) {
     return value;
   }
 
-  return new Intl.DateTimeFormat(
-    "en-KE",
-    {
-      dateStyle: "medium",
-      timeStyle: "short",
-    },
-  ).format(timestamp);
+  return new Intl.DateTimeFormat("en-KE", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(timestamp);
 }
 
-function formatStatus(
-  status: MyJourney["status"],
-): string {
+function formatStatus(status: MyJourney["status"]): string {
   return status
     .replaceAll("_", " ")
     .toLowerCase()
-    .replace(/\b\w/g, (character) =>
-      character.toUpperCase(),
-    );
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Component
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function JourneyEditorHeader({
   journey,
@@ -143,16 +134,9 @@ export function JourneyEditorHeader({
   title = "Manage Journey",
   className,
 }: JourneyEditorHeaderProps) {
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Route projection
-  // ---------------------------------------------------------------------------
-  //
-  // A Draft Journey may not have a corridor attached yet. Do not dereference
-  // journey.route unless it exists.
-  //
-  // The individual route names remain presentation data supplied by the
-  // MyJourney projection; this component does not reconstruct them.
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   const origin =
     journey.route?.origin.name ??
@@ -162,12 +146,9 @@ export function JourneyEditorHeader({
     journey.route?.destination.name ??
     "Destination not set";
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Schedule projection
-  // ---------------------------------------------------------------------------
-  //
-  // A Draft Journey may not have a schedule attached yet.
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   const departureAt =
     journey.schedule?.departureAt ?? null;
@@ -177,9 +158,14 @@ export function JourneyEditorHeader({
       ? "Departure not set"
       : `Departure ${formatDateTime(departureAt)}`;
 
+  // ===========================================================================
+  // Render
+  // ===========================================================================
+
   return (
     <header
       className={cn(
+        "w-full",
         "space-y-4",
         className,
       )}
@@ -188,7 +174,7 @@ export function JourneyEditorHeader({
       {/* Parent-owned navigation                                             */}
       {/* ------------------------------------------------------------------- */}
 
-      {onBack && (
+      {onBack !== undefined && (
         <Button
           type="button"
           variant="ghost"
@@ -201,6 +187,10 @@ export function JourneyEditorHeader({
         </Button>
       )}
 
+      {/* ------------------------------------------------------------------- */}
+      {/* Header content                                                       */}
+      {/* ------------------------------------------------------------------- */}
+
       <div
         className={cn(
           "flex",
@@ -211,8 +201,16 @@ export function JourneyEditorHeader({
           "sm:justify-between",
         )}
       >
-        <div className="min-w-0 space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
+        <div className="min-w-0 space-y-1.5">
+          <p
+            className={cn(
+              "text-xs",
+              "font-medium",
+              "uppercase",
+              "tracking-wide",
+              "text-[var(--foreground-muted)]",
+            )}
+          >
             {title}
           </p>
 
@@ -222,8 +220,10 @@ export function JourneyEditorHeader({
 
           <h1
             className={cn(
+              "break-words",
               "text-xl",
               "font-semibold",
+              "leading-tight",
               "tracking-tight",
               "text-[var(--foreground)]",
               "sm:text-2xl",
@@ -233,7 +233,10 @@ export function JourneyEditorHeader({
 
             <span
               aria-hidden="true"
-              className="px-2 text-[var(--foreground-muted)]"
+              className={cn(
+                "px-2",
+                "text-[var(--foreground-subtle)]",
+              )}
             >
               →
             </span>
@@ -245,7 +248,13 @@ export function JourneyEditorHeader({
           {/* Departure                                                        */}
           {/* --------------------------------------------------------------- */}
 
-          <p className="text-sm text-[var(--foreground-muted)]">
+          <p
+            className={cn(
+              "text-sm",
+              "leading-5",
+              "text-[var(--foreground-muted)]",
+            )}
+          >
             {departureLabel}
           </p>
         </div>
@@ -254,11 +263,12 @@ export function JourneyEditorHeader({
         {/* Lifecycle status                                                  */}
         {/* ----------------------------------------------------------------- */}
 
-        <Badge>
-          {formatStatus(journey.status)}
-        </Badge>
+        <div className="shrink-0">
+          <Badge>
+            {formatStatus(journey.status)}
+          </Badge>
+        </div>
       </div>
     </header>
   );
 }
-

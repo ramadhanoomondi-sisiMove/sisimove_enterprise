@@ -45,6 +45,10 @@
 //        │
 //        ├── refresh SessionAggregate
 //        │
+//        ├── translate SessionIdentityPublicId → IdentityPublicId
+//        │
+//        ├── resolve CURRENT authorization snapshot
+//        │
 //        ├── sign replacement access token
 //        │
 //        └── persist Session
@@ -78,6 +82,45 @@
 //
 // -----------------------------------------------------------------------------
 //
+// ACCESS TOKEN AUTHORIZATION CLAIMS
+//
+// A refreshed access token MUST reflect the Identity's CURRENT authorization
+// state.
+//
+// Therefore authorization is resolved immediately before access-token
+// issuance:
+//
+//     SessionIdentityPublicId
+//             │
+//             │ explicit VO translation
+//             ▼
+//       IdentityPublicId
+//             │
+//             ▼
+//       AuthorizationSnapshotService
+//             │
+//             ├── roles
+//             └── permissions
+//                    │
+//                    ▼
+//             JwtTokenService
+//
+// This is intentionally resolved during refresh rather than copied from the
+// previous access token.
+//
+// Consequently:
+//
+// - newly revoked permissions are not carried forward;
+// - newly granted permissions become available after refresh;
+// - authorization changes do not require refresh-token rotation;
+// - the opaque refresh token remains free of authorization claims.
+//
+// Permission claims contain stable permission codes.
+//
+// Role claims contain the resolved role public identifiers.
+//
+// -----------------------------------------------------------------------------
+//
 // ACCESS TOKEN ROTATION
 //
 // A successful refresh produces BOTH:
@@ -91,6 +134,8 @@
 //       identityPublicId,
 //       sessionPublicId,
 //       authenticationVersion,
+//       roles,
+//       permissions,
 //     })
 //
 // JwtTokenService remains responsible for:
@@ -156,10 +201,25 @@
 //
 // The application layer performs this explicit translation.
 //
-// This prevents value objects belonging to different aggregate boundaries
-// from being treated as interchangeable types.
+// Authorization resolution uses the Identity bounded context's own:
+//
+//     IdentityPublicId
+//
+// Therefore the application layer performs a second explicit translation:
+//
+//     SessionIdentityPublicId
+//             │
+//             │ value
+//             ▼
+//       IdentityPublicId
+//
+// This prevents value objects belonging to different aggregate/bounded-context
+// boundaries from being treated as interchangeable types.
 //
 // Neither repository loads or validates the Identity aggregate.
+//
+// AuthorizationSnapshotService independently resolves authorization from the
+// Identity bounded context using IdentityPublicId.
 //
 // -----------------------------------------------------------------------------
 //
@@ -180,6 +240,12 @@
 // - Authentication lifecycle;
 // - authentication state;
 // - authentication/password version.
+//
+// AuthorizationSnapshotService remains responsible for:
+//
+// - resolving current active roles;
+// - resolving current active permissions;
+// - producing authorization claims for application consumers.
 //
 // JwtTokenService remains responsible for:
 //
@@ -215,8 +281,9 @@
 // - hash passwords;
 // - persist raw refresh tokens;
 // - expose the persisted refresh-token hash;
-// - load or validate Identity;
-// - perform authorization.
+// - load or validate Identity directly;
+// - calculate authorization policy;
+// - perform authorization decisions.
 //
 // -----------------------------------------------------------------------------
 //
@@ -224,11 +291,20 @@
 //
 // The handler depends only on application/domain abstractions:
 //
-// - SessionRepository;
+// Authentication bounded context:
+//
 // - AuthenticationRepository;
 // - TokenGenerator;
 // - RefreshTokenHasher;
 // - JwtTokenService.
+//
+// Identity bounded context:
+//
+// - AuthorizationSnapshotService.
+//
+// Session:
+//
+// - SessionRepository.
 //
 // Concrete infrastructure implementations are supplied through DI.
 //
@@ -242,12 +318,15 @@
 // AuthenticationAggregate
 // └── AuthenticationEntity
 //
+// Identity authorization
+// └── AuthorizationSnapshotService
+//
 // Only Session is mutated by this handler.
 //
 // Authentication is read-only during refresh.
 //
-// Identity remains an independent aggregate and is referenced only by its
-// public identifier.
+// Identity remains an independent bounded context and is referenced through
+// its public identifier.
 //
 // -----------------------------------------------------------------------------
 
@@ -278,6 +357,38 @@ import type { TokenGenerator } from '../../../../foundation/security/token-gener
 // -----------------------------------------------------------------------------
 
 import { AUTH_TOKENS } from '../auth.tokens';
+
+// -----------------------------------------------------------------------------
+// Identity — Application Tokens
+// -----------------------------------------------------------------------------
+//
+// Authorization remains owned by the Identity bounded context.
+//
+// Authentication consumes the authorization snapshot through Identity's
+// application-service contract.
+//
+// -----------------------------------------------------------------------------
+
+import { IDENTITY_TOKENS } from '../../../identity/application/identity.tokens';
+
+// -----------------------------------------------------------------------------
+// Identity — Authorization Snapshot
+// -----------------------------------------------------------------------------
+
+import type { AuthorizationSnapshotService } from '../../../identity/application/services/authorization-snapshot.service';
+
+// -----------------------------------------------------------------------------
+// Identity — Value Objects
+// -----------------------------------------------------------------------------
+//
+// SessionIdentityPublicId and IdentityPublicId are intentionally different
+// value-object types.
+//
+// The application layer performs the explicit translation between them.
+//
+// -----------------------------------------------------------------------------
+
+import { IdentityPublicId } from '../../../identity/domain/value-objects/identity-public-id.vo';
 
 // -----------------------------------------------------------------------------
 // Command
@@ -366,9 +477,11 @@ export interface RefreshSessionResult {
  * 7. hash the replacement refresh token;
  * 8. wrap the hash in SessionRefreshTokenHash;
  * 9. refresh the Session aggregate;
- * 10. issue a replacement access token;
- * 11. persist the refreshed Session;
- * 12. return both newly issued credentials.
+ * 10. translate SessionIdentityPublicId to IdentityPublicId;
+ * 11. resolve the Identity's current authorization snapshot;
+ * 12. issue a replacement access token containing current authorization claims;
+ * 13. persist the refreshed Session;
+ * 14. return both newly issued credentials.
  *
  * The handler never places the raw refresh token inside the domain.
  */
@@ -378,7 +491,9 @@ export class RefreshSessionHandler implements CommandHandler<
   RefreshSessionResult
 > {
   // ===========================================================================
+
   // Constructor
+
   // ===========================================================================
 
   public constructor(
@@ -416,10 +531,26 @@ export class RefreshSessionHandler implements CommandHandler<
 
     @Inject(AUTH_TOKENS.APPLICATION_SERVICES.JWT_TOKEN_SERVICE)
     private readonly jwtTokenService: JwtTokenService,
+
+    // -------------------------------------------------------------------------
+    // Authorization Snapshot Service
+    // -------------------------------------------------------------------------
+    //
+    // Resolves the Identity's CURRENT authorization state.
+    //
+    // This must be resolved during refresh rather than copied from the
+    // previous access token.
+    //
+    // -------------------------------------------------------------------------
+
+    @Inject(IDENTITY_TOKENS.APPLICATION_SERVICES.AUTHORIZATION_SNAPSHOT)
+    private readonly authorizationSnapshotService: AuthorizationSnapshotService,
   ) {}
 
   // ===========================================================================
+
   // Execute
+
   // ===========================================================================
 
   /**
@@ -554,28 +685,78 @@ export class RefreshSessionHandler implements CommandHandler<
     );
 
     // -------------------------------------------------------------------------
-    // 9. Issue replacement access token
+    // 9. Translate Session Identity reference to Identity Public ID
+    // -------------------------------------------------------------------------
+    //
+    // SessionIdentityPublicId and IdentityPublicId are distinct value-object
+    // types.
+    //
+    // The application layer explicitly translates between them instead of
+    // using a type assertion or weakening the authorization service contract.
+    //
+
+    const identityPublicId = new IdentityPublicId(
+      session.identityPublicId.value,
+    );
+
+    // -------------------------------------------------------------------------
+    // 10. Resolve CURRENT authorization snapshot
+    // -------------------------------------------------------------------------
+    //
+    // Authorization is deliberately resolved AFTER refresh-token validation
+    // and immediately BEFORE access-token issuance.
+    //
+    // This ensures that the new access token reflects current authorization
+    // state rather than inheriting potentially stale authorization claims from
+    // a previous access token.
+    //
+    // The snapshot contains:
+    //
+    //     roles[]
+    //     permissions[]
+    //
+    // Permission claims represent active permission codes.
+    //
+    // Role claims represent resolved role public identifiers.
+    //
+    // -------------------------------------------------------------------------
+
+    const authorization =
+      await this.authorizationSnapshotService.resolve(identityPublicId);
+
+    // -------------------------------------------------------------------------
+    // 11. Issue replacement access token
     // -------------------------------------------------------------------------
     //
     // JwtTokenService owns JWT-specific concerns.
     //
-    // The application supplies only application-level claims.
+    // The application supplies:
+    //
+    // - Identity public identifier;
+    // - Session public identifier;
+    // - Authentication password version;
+    // - current roles;
+    // - current permissions.
+    //
+    // JwtTokenService remains responsible for the JWT envelope and cryptography.
     //
 
     const accessToken: string = this.jwtTokenService.signAccessToken({
       identityPublicId: session.identityPublicId.value,
       sessionPublicId: session.publicId.value,
       authenticationVersion: authentication.passwordVersion.value,
+      roles: authorization.roles,
+      permissions: authorization.permissions,
     });
 
     // -------------------------------------------------------------------------
-    // 10. Persist refreshed Session
+    // 12. Persist refreshed Session
     // -------------------------------------------------------------------------
 
     await this.sessionRepository.save(session);
 
     // -------------------------------------------------------------------------
-    // 11. Return refreshed credentials
+    // 13. Return refreshed credentials
     // -------------------------------------------------------------------------
 
     return {
@@ -588,7 +769,9 @@ export class RefreshSessionHandler implements CommandHandler<
   }
 
   // ===========================================================================
+
   // Command Validation
+
   // ===========================================================================
 
   /**
@@ -677,7 +860,9 @@ export class RefreshSessionHandler implements CommandHandler<
   }
 
   // ===========================================================================
+
   // Generated Token Validation
+
   // ===========================================================================
 
   /**

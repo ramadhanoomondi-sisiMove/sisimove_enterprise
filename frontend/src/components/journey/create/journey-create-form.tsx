@@ -1,74 +1,83 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Create Form
+// Path: src/features/journey/components/create/JourneyCreateForm.tsx
 // -----------------------------------------------------------------------------
+//
+// sisiMove — Journey Create Form
 //
 // Journey creation workflow orchestrator.
 //
-// Responsibilities:
-// - own the creation step;
-// - own all primitive form state;
-// - render the current creation step;
-// - create the Journey root;
-// - attach Journey-owned components through their mutation hooks;
-// - validate/normalize presentation values before persistence;
-// - translate presentation-only preference booleans into backend policy values;
-// - advance between creation steps;
-// - expose submission/loading/error state.
+// Creation lifecycle:
 //
-// Presentation components intentionally do NOT perform API calls.
-//
-// Backend creation flow:
-//
+//   Start Journey
+//          |
+//          v
 //   POST /journeys
 //          |
 //          v
-//   attach corridor
+//   Journey DRAFT created
 //          |
 //          v
-//   attach schedule
+//   Where → attach corridor
 //          |
 //          v
-//   attach vehicle
+//   When → attach schedule
 //          |
 //          v
-//   attach capacity
+//   Vehicle → upload vehicle asset + attach vehicle
 //          |
 //          v
-//   attach pricing
+//   Seats → attach capacity
 //          |
 //          v
-//   attach preferences
+//   Price → attach pricing
 //          |
 //          v
-//   attach assets
+//   Preferences → attach preferences
 //          |
 //          v
 //   Journey remains DRAFT
 //
 // Publication is a separate lifecycle command and is intentionally NOT
-// performed by this form. The caller/workflow decides when to publish.
+// performed by this form.
 //
 // Important:
-// - No generic "update Journey" operation is used.
-// - Coordinates remain strings until submission.
-// - Amount remains a string until submission.
-// - Year remains a string until submission.
-// - Sort order remains a string until submission.
-// - bookedSeats and availableSeats are never submitted.
-// - Asset lifecycle remains owned by the Asset capability.
-// - The backend creates the Journey public ID.
-// - The frontend never generates a Journey public ID.
+// - Starting Journey creation creates the aggregate root.
+// - The creation root is created exactly once.
+// - Component steps progressively mutate the existing DRAFT aggregate.
+// - Where does NOT create the Journey.
+// - Intermediate steps do not create another Journey.
+// - Each component is persisted through its dedicated mutation hook.
+// - Vehicle owns the vehicle asset upload UI.
+// - The resulting vehicle asset public ID is persisted as part of the
+//   Journey vehicle configuration.
 // - Mutation hooks own HTTP mutation concerns.
 // - This component owns workflow orchestration only.
+// - Coordinates come from the SisiMove-supported location catalogue.
+// - Users never enter latitude/longitude manually.
+// - No external geocoding service is used.
+// - The frontend never generates a Journey public ID.
+//
+// Preference contract:
+//
+//   smoking      → boolean presentation → ALLOWED / NOT_ALLOWED
+//   pets         → boolean presentation → ALLOWED / NOT_ALLOWED
+//   luggage      → NONE | LIMITED | STANDARD | LARGE
+//   conversation → QUIET | MODERATE | SOCIAL
+//   music        → NONE | LOW | MODERATE | ANY
+//
 // -----------------------------------------------------------------------------
 
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/error-state";
+import { type ResolvedLocation } from "@/foundation/location";
 import { cn } from "@/foundation/utils/cn";
+
+import { getSupportedDestinations } from "@/foundation/location/data/resolve-supported-corridor";
+import { SUPPORTED_CORRIDORS } from "@/foundation/location/data/supported-corridors";
 
 import {
   JOURNEY_CREATE_STEPS,
@@ -76,10 +85,7 @@ import {
 } from "./journey-create-progress";
 import { JourneyCreateProgress } from "./journey-create-progress";
 
-import {
-  JourneyCreateWhere,
-  type JourneyCreateWhereValues,
-} from "./journey-create-where";
+import { JourneyCreateWhere } from "./journey-create-where";
 
 import {
   JourneyCreateWhen,
@@ -101,13 +107,10 @@ import {
 import {
   JourneyCreatePreferences,
   type JourneyCreatePreferencesValues,
+  type JourneyConversationPreference,
+  type JourneyLuggagePreference,
+  type JourneyMusicPreference,
 } from "./journey-create-preferences";
-
-import {
-  JourneyCreateAssets,
-  type JourneyCreateAssetOption,
-  type JourneyCreateAssetValues,
-} from "./journey-create-assets";
 
 import {
   useCreateJourney,
@@ -117,25 +120,11 @@ import {
   useAttachJourneyCapacity,
   useAttachJourneyPricing,
   useAttachJourneyPreferences,
-  useAttachJourneyAsset,
 } from "@/features/journey/hooks/mutations";
 
-import type {
-  JourneyConversationPreference,
-  JourneyLuggagePolicy,
-  JourneyMusicPreference,
-  JourneyPetsPolicy,
-  JourneySmokingPolicy,
-} from "@/features/journey/models";
-
-const INITIAL_WHERE_VALUES: JourneyCreateWhereValues = {
-  originName: "",
-  originLatitude: "",
-  originLongitude: "",
-  destinationName: "",
-  destinationLatitude: "",
-  destinationLongitude: "",
-};
+// -----------------------------------------------------------------------------
+// Initial Values
+// -----------------------------------------------------------------------------
 
 const INITIAL_WHEN_VALUES: JourneyCreateWhenValues = {
   departureAt: "",
@@ -157,38 +146,19 @@ const INITIAL_PRICE_VALUES: JourneyCreatePriceValues = {
   currency: "KES",
 };
 
-/*
- * The current presentation component intentionally uses booleans for its
- * controls.
- *
- * These are UI values, not backend domain values.
- *
- * The workflow translates them into the exact Journey preference unions when
- * constructing AttachJourneyPreferencesRequest.
- */
 const INITIAL_PREFERENCES_VALUES: JourneyCreatePreferencesValues = {
   smoking: false,
   pets: false,
-  luggage: true,
-  conversation: true,
-  music: true,
+  luggage: "STANDARD",
+  conversation: "MODERATE",
+  music: "MODERATE",
 };
 
-const INITIAL_ASSET_VALUES: JourneyCreateAssetValues = {
-  assetPublicId: "",
-  type: "VEHICLE",
-  sortOrder: "0",
-};
+// -----------------------------------------------------------------------------
+// Props
+// -----------------------------------------------------------------------------
 
 export interface JourneyCreateFormProps {
-  /**
-   * Assets available to associate with the Journey.
-   *
-   * Asset loading remains outside this form. The form only consumes the
-   * capability's public references.
-   */
-  readonly assetOptions?: readonly JourneyCreateAssetOption[];
-
   /**
    * Called after the Journey draft and all configured Journey components have
    * been successfully persisted.
@@ -205,14 +175,10 @@ export interface JourneyCreateFormProps {
   readonly className?: string;
 }
 
-/**
- * Converts an optional integer input.
- *
- * Empty input becomes undefined.
- *
- * This is appropriate for optional vehicle year because the backend permits
- * the year to be omitted.
- */
+// -----------------------------------------------------------------------------
+// Parsing / Validation
+// -----------------------------------------------------------------------------
+
 function parseOptionalInteger(
   value: string,
 ): number | undefined {
@@ -231,28 +197,9 @@ function parseOptionalInteger(
   return parsed;
 }
 
-function parseRequiredCoordinate(
+function parseRequiredAmount(
   value: string,
-  fieldName: string,
 ): number {
-  const normalized = value.trim();
-
-  if (normalized.length === 0) {
-    throw new Error(`${fieldName} is required.`);
-  }
-
-  const parsed = Number(normalized);
-
-  if (!Number.isFinite(parsed)) {
-    throw new Error(
-      `Enter a valid ${fieldName.toLowerCase()}.`,
-    );
-  }
-
-  return parsed;
-}
-
-function parseRequiredAmount(value: string): number {
   const normalized = value.trim();
 
   if (normalized.length === 0) {
@@ -273,31 +220,12 @@ function parseRequiredPositiveInteger(
   fieldName: string,
 ): number {
   if (!Number.isInteger(value) || value <= 0) {
-    throw new Error(`${fieldName} must be greater than zero.`);
-  }
-
-  return value;
-}
-
-function parseRequiredNonNegativeInteger(
-  value: string,
-  fieldName: string,
-): number {
-  const normalized = value.trim();
-
-  if (normalized.length === 0) {
-    throw new Error(`${fieldName} is required.`);
-  }
-
-  const parsed = Number(normalized);
-
-  if (!Number.isInteger(parsed) || parsed < 0) {
     throw new Error(
-      `${fieldName} must be a whole number greater than or equal to zero.`,
+      `${fieldName} must be greater than zero.`,
     );
   }
 
-  return parsed;
+  return value;
 }
 
 function validateRequiredText(
@@ -313,83 +241,149 @@ function validateRequiredText(
   return normalized;
 }
 
-/**
- * Translate the presentation smoking toggle into the backend domain policy.
- */
+// -----------------------------------------------------------------------------
+// Supported Location Catalogue
+// -----------------------------------------------------------------------------
+
+function getSupportedLocations(): readonly ResolvedLocation[] {
+  const locations = new Map<string, ResolvedLocation>();
+
+  for (const corridor of SUPPORTED_CORRIDORS) {
+    locations.set(
+      corridor.origin.key,
+      corridor.origin,
+    );
+
+    locations.set(
+      corridor.destination.key,
+      corridor.destination,
+    );
+
+    for (const route of corridor.routes) {
+      locations.set(
+        route.location.key,
+        route.location,
+      );
+    }
+  }
+
+  return Array.from(locations.values());
+}
+
+const SUPPORTED_LOCATIONS =
+  getSupportedLocations();
+
+// -----------------------------------------------------------------------------
+// Location Search
+// -----------------------------------------------------------------------------
+
+function normalizeLocationQuery(
+  value: string,
+): string {
+  return value.trim().toLowerCase();
+}
+
+function filterSupportedLocations(
+  query: string,
+  locations: readonly ResolvedLocation[],
+): readonly ResolvedLocation[] {
+  const normalizedQuery =
+    normalizeLocationQuery(query);
+
+  if (normalizedQuery.length === 0) {
+    return locations.slice(0, 5);
+  }
+
+  return locations
+    .filter((location) => {
+      const name =
+        location.name.toLowerCase();
+
+      const key =
+        location.key.toLowerCase();
+
+      return (
+        name.includes(normalizedQuery) ||
+        key.includes(normalizedQuery)
+      );
+    })
+    .slice(0, 5);
+}
+
+// -----------------------------------------------------------------------------
+// Resolved Location Validation
+// -----------------------------------------------------------------------------
+
+function requireResolvedLocation(
+  location: ResolvedLocation | null,
+  fieldName: string,
+): ResolvedLocation {
+  if (location === null) {
+    throw new Error(
+      `${fieldName} must be selected from the supported locations.`,
+    );
+  }
+
+  const name = location.name.trim();
+
+  if (name.length === 0) {
+    throw new Error(
+      `${fieldName} could not be resolved to a valid place.`,
+    );
+  }
+
+  if (
+    !Number.isFinite(location.latitude) ||
+    !Number.isFinite(location.longitude)
+  ) {
+    throw new Error(
+      `${fieldName} could not be resolved to valid coordinates.`,
+    );
+  }
+
+  return {
+    key: location.key,
+    name,
+    latitude: location.latitude,
+    longitude: location.longitude,
+  };
+}
+
+// -----------------------------------------------------------------------------
+// Presentation → Domain Policy Translation
+// -----------------------------------------------------------------------------
+//
+// Smoking and pets are intentionally presented as boolean controls.
+//
+// The actual API/domain values are:
+//
+//   smoking → ALLOWED | NOT_ALLOWED
+//   pets    → ALLOWED | NOT_ALLOWED
+//
+// Luggage, conversation, and music already use their domain-compatible
+// presentation values and therefore require no translation.
+// -----------------------------------------------------------------------------
+
 function toSmokingPolicy(
   value: boolean,
-): JourneySmokingPolicy {
-  return value ? "ALLOWED" : "NOT_ALLOWED";
+): "ALLOWED" | "NOT_ALLOWED" {
+  return value
+    ? "ALLOWED"
+    : "NOT_ALLOWED";
 }
 
-/**
- * Translate the presentation pets toggle into the backend domain policy.
- */
 function toPetsPolicy(
   value: boolean,
-): JourneyPetsPolicy {
-  return value ? "ALLOWED" : "NOT_ALLOWED";
+): "ALLOWED" | "NOT_ALLOWED" {
+  return value
+    ? "ALLOWED"
+    : "NOT_ALLOWED";
 }
 
-/**
- * Translate the presentation luggage toggle into the backend domain policy.
- *
- * The UI currently asks whether luggage is allowed rather than asking the
- * traveller to choose a luggage size/limit.
- *
- * Therefore:
- *
- *   enabled  -> STANDARD
- *   disabled -> NONE
- */
-function toLuggagePolicy(
-  value: boolean,
-): JourneyLuggagePolicy {
-  return value ? "STANDARD" : "NONE";
-}
+// -----------------------------------------------------------------------------
+// Backend Result Boundary
+// -----------------------------------------------------------------------------
 
-/**
- * Translate the presentation conversation toggle into the backend preference.
- *
- * The current UI exposes conversation as enabled/disabled.
- *
- * Therefore:
- *
- *   enabled  -> MODERATE
- *   disabled -> QUIET
- */
-function toConversationPreference(
-  value: boolean,
-): JourneyConversationPreference {
-  return value ? "MODERATE" : "QUIET";
-}
-
-/**
- * Translate the presentation music toggle into the backend preference.
- *
- * The current UI exposes music as enabled/disabled.
- *
- * Therefore:
- *
- *   enabled  -> MODERATE
- *   disabled -> NONE
- */
-function toMusicPreference(
-  value: boolean,
-): JourneyMusicPreference {
-  return value ? "MODERATE" : "NONE";
-}
-
-/**
- * The create API intentionally exposes its serialized result as unknown.
- *
- * The form needs one value from that response — the backend-generated
- * Journey public ID — because every subsequent component command addresses
- * the Journey by public ID.
- *
- * This runtime boundary does not construct or generate an ID. It only accepts
- * a value that the backend actually returned and rejects everything else.
- */
 function extractJourneyPublicId(
   result: unknown,
 ): string {
@@ -403,34 +397,68 @@ function extractJourneyPublicId(
     );
   }
 
-  const publicId =
-    (result as { publicId?: unknown }).publicId;
+  const publicIdValue =
+    result.publicId;
 
   if (
-    typeof publicId !== "string" ||
-    publicId.trim().length === 0
+    typeof publicIdValue !== "string" ||
+    publicIdValue.trim().length === 0
   ) {
     throw new Error(
       "Journey creation succeeded but returned an invalid Journey public ID.",
     );
   }
 
-  return publicId;
+  return publicIdValue;
 }
 
+// -----------------------------------------------------------------------------
+// Component
+// -----------------------------------------------------------------------------
+
 export function JourneyCreateForm({
-  assetOptions = [],
   onCreated,
   onCancel,
   className,
 }: JourneyCreateFormProps) {
+  // ---------------------------------------------------------------------------
+  // Creation Workflow State
+  // ---------------------------------------------------------------------------
+
+  const [isStarted, setIsStarted] =
+    useState(false);
+
   const [currentStep, setCurrentStep] =
     useState<JourneyCreateStepId>("where");
 
-  const [where, setWhere] =
-    useState<JourneyCreateWhereValues>(
-      INITIAL_WHERE_VALUES,
-    );
+  const [journeyPublicId, setJourneyPublicId] =
+    useState<string | null>(null);
+
+  const [isSubmitting, setIsSubmitting] =
+    useState(false);
+
+  const [error, setError] =
+    useState<Error | null>(null);
+
+  // ---------------------------------------------------------------------------
+  // Resolved Locations
+  // ---------------------------------------------------------------------------
+
+  const [originLocation, setOriginLocation] =
+    useState<ResolvedLocation | null>(null);
+
+  const [destinationLocation, setDestinationLocation] =
+    useState<ResolvedLocation | null>(null);
+
+  const [originQuery, setOriginQuery] =
+    useState("");
+
+  const [destinationQuery, setDestinationQuery] =
+    useState("");
+
+  // ---------------------------------------------------------------------------
+  // Primitive Form State
+  // ---------------------------------------------------------------------------
 
   const [when, setWhen] =
     useState<JourneyCreateWhenValues>(
@@ -442,7 +470,8 @@ export function JourneyCreateForm({
       INITIAL_VEHICLE_VALUES,
     );
 
-  const [totalSeats, setTotalSeats] = useState(0);
+  const [totalSeats, setTotalSeats] =
+    useState(0);
 
   const [price, setPrice] =
     useState<JourneyCreatePriceValues>(
@@ -454,30 +483,9 @@ export function JourneyCreateForm({
       INITIAL_PREFERENCES_VALUES,
     );
 
-  const [asset, setAsset] =
-    useState<JourneyCreateAssetValues>(
-      INITIAL_ASSET_VALUES,
-    );
-
-  /*
-   * The ID is supplied by the backend after createJourney().
-   *
-   * It is never generated by the frontend.
-   */
-  const [journeyPublicId, setJourneyPublicId] =
-    useState<string | null>(null);
-
-  /*
-   * Individual mutation hooks expose their own mutation state.
-   *
-   * This orchestration-level state is still necessary because one Continue
-   * operation may perform several sequential asynchronous operations.
-   */
-  const [isSubmitting, setIsSubmitting] =
-    useState(false);
-
-  const [error, setError] =
-    useState<Error | null>(null);
+  // ---------------------------------------------------------------------------
+  // Mutations
+  // ---------------------------------------------------------------------------
 
   const createJourneyMutation =
     useCreateJourney();
@@ -500,8 +508,9 @@ export function JourneyCreateForm({
   const attachPreferencesMutation =
     useAttachJourneyPreferences();
 
-  const attachAssetMutation =
-    useAttachJourneyAsset();
+  // ---------------------------------------------------------------------------
+  // Step State
+  // ---------------------------------------------------------------------------
 
   const currentStepIndex =
     JOURNEY_CREATE_STEPS.findIndex(
@@ -515,20 +524,100 @@ export function JourneyCreateForm({
     currentStepIndex ===
     JOURNEY_CREATE_STEPS.length - 1;
 
-  function updateWhere(
-    field: keyof JourneyCreateWhereValues,
-    value: string,
-  ) {
-    setWhere((current) => ({
-      ...current,
-      [field]: value,
-    }));
+  // ---------------------------------------------------------------------------
+  // Location Suggestions
+  // ---------------------------------------------------------------------------
+
+  const originSuggestions =
+    useMemo(
+      () =>
+        filterSupportedLocations(
+          originQuery,
+          SUPPORTED_LOCATIONS,
+        ),
+      [originQuery],
+    );
+
+  const destinationSuggestions =
+    useMemo(() => {
+      if (originLocation === null) {
+        return [];
+      }
+
+      const normalizedQuery =
+        normalizeLocationQuery(
+          destinationQuery,
+        );
+
+      return getSupportedDestinations(
+        originLocation.key,
+      )
+        .filter((location) => {
+          if (normalizedQuery.length === 0) {
+            return true;
+          }
+
+          return (
+            location.name
+              .toLowerCase()
+              .includes(normalizedQuery) ||
+            location.key
+              .toLowerCase()
+              .includes(normalizedQuery)
+          );
+        })
+        .slice(0, 5);
+    }, [
+      originLocation,
+      destinationQuery,
+    ]);
+
+  // ---------------------------------------------------------------------------
+  // Location Updates
+  // ---------------------------------------------------------------------------
+
+  function handleOriginQueryChange(
+    query: string,
+  ): void {
+    setOriginQuery(query);
+    setOriginLocation(null);
+
+    setDestinationQuery("");
+    setDestinationLocation(null);
   }
+
+  function handleDestinationQueryChange(
+    query: string,
+  ): void {
+    setDestinationQuery(query);
+    setDestinationLocation(null);
+  }
+
+  function handleOriginSelect(
+    location: ResolvedLocation,
+  ): void {
+    setOriginLocation(location);
+    setOriginQuery(location.name);
+
+    setDestinationLocation(null);
+    setDestinationQuery("");
+  }
+
+  function handleDestinationSelect(
+    location: ResolvedLocation,
+  ): void {
+    setDestinationLocation(location);
+    setDestinationQuery(location.name);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Field Updates
+  // ---------------------------------------------------------------------------
 
   function updateWhen(
     field: keyof JourneyCreateWhenValues,
     value: string,
-  ) {
+  ): void {
     setWhen((current) => ({
       ...current,
       [field]: value,
@@ -538,7 +627,7 @@ export function JourneyCreateForm({
   function updateVehicle(
     field: keyof JourneyCreateVehicleValues,
     value: string,
-  ) {
+  ): void {
     setVehicle((current) => ({
       ...current,
       [field]: value,
@@ -548,77 +637,114 @@ export function JourneyCreateForm({
   function updatePrice(
     field: keyof JourneyCreatePriceValues,
     value: string,
-  ) {
+  ): void {
     setPrice((current) => ({
       ...current,
       [field]: value,
     }));
   }
 
-  function updatePreferences(
-    field: keyof JourneyCreatePreferencesValues,
+  function updateBooleanPreference(
+    field: "smoking" | "pets",
     value: boolean,
-  ) {
+  ): void {
     setPreferences((current) => ({
       ...current,
       [field]: value,
     }));
   }
 
-  function updateAsset(
-    field: keyof JourneyCreateAssetValues,
-    value: string,
-  ) {
-    setAsset((current) => ({
+  function updateLuggagePreference(
+    value: JourneyLuggagePreference,
+  ): void {
+    setPreferences((current) => ({
       ...current,
-      [field]: value,
+      luggage: value,
     }));
   }
+
+  function updateConversationPreference(
+    value: JourneyConversationPreference,
+  ): void {
+    setPreferences((current) => ({
+      ...current,
+      conversation: value,
+    }));
+  }
+
+  function updateMusicPreference(
+    value: JourneyMusicPreference,
+  ): void {
+    setPreferences((current) => ({
+      ...current,
+      music: value,
+    }));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Start Journey Creation
+  // ---------------------------------------------------------------------------
+  //
+  // This is the ONLY point where the Journey root is created.
+  //
+  // No Journey component is attached here.
+  // ---------------------------------------------------------------------------
+
+  async function handleStartJourney(): Promise<void> {
+    if (isSubmitting || isStarted) {
+      return;
+    }
+
+    setError(null);
+    setIsSubmitting(true);
+
+    try {
+      const result =
+        await createJourneyMutation.create();
+
+      const publicId =
+        extractJourneyPublicId(result);
+
+      setJourneyPublicId(publicId);
+      setIsStarted(true);
+      setCurrentStep("where");
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause
+          : new Error(
+              "Unable to start journey creation.",
+            ),
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Validation
+  // ---------------------------------------------------------------------------
 
   function validateCurrentStep(): void {
     switch (currentStep) {
       case "where": {
-        validateRequiredText(
-          where.originName,
+        requireResolvedLocation(
+          originLocation,
           "Origin",
         );
 
-        validateRequiredText(
-          where.destinationName,
+        requireResolvedLocation(
+          destinationLocation,
           "Destination",
-        );
-
-        /*
-         * AttachJourneyCorridorRequest requires all four coordinates.
-         *
-         * Validation therefore happens through the required-coordinate
-         * conversion rather than an optional conversion.
-         */
-        parseRequiredCoordinate(
-          where.originLatitude,
-          "Origin latitude",
-        );
-
-        parseRequiredCoordinate(
-          where.originLongitude,
-          "Origin longitude",
-        );
-
-        parseRequiredCoordinate(
-          where.destinationLatitude,
-          "Destination latitude",
-        );
-
-        parseRequiredCoordinate(
-          where.destinationLongitude,
-          "Destination longitude",
         );
 
         return;
       }
 
       case "when": {
-        if (when.departureAt.trim().length === 0) {
+        if (
+          when.departureAt.trim().length === 0
+        ) {
           throw new Error(
             "Departure time is required.",
           );
@@ -645,13 +771,19 @@ export function JourneyCreateForm({
 
         if (
           vehicle.year.trim().length > 0 &&
-          parseOptionalInteger(vehicle.year) ===
-            undefined
+          parseOptionalInteger(
+            vehicle.year,
+          ) === undefined
         ) {
           throw new Error(
             "Enter a valid vehicle year.",
           );
         }
+
+        validateRequiredText(
+          vehicle.assetPublicId,
+          "Vehicle photo",
+        );
 
         return;
       }
@@ -679,83 +811,61 @@ export function JourneyCreateForm({
       case "preferences":
         return;
 
-      case "assets": {
-        /*
-         * Assets are optional. An empty asset reference means that this step
-         * has nothing to persist.
-         */
-        if (
-          asset.assetPublicId.trim().length === 0
-        ) {
-          return;
-        }
-
-        parseRequiredNonNegativeInteger(
-          asset.sortOrder,
-          "Asset display order",
-        );
-
-        return;
-      }
-
       default:
         return;
     }
   }
 
-  async function ensureJourneyCreated(): Promise<string> {
-    if (journeyPublicId !== null) {
-      return journeyPublicId;
+  // ---------------------------------------------------------------------------
+  // Existing Journey Guard
+  // ---------------------------------------------------------------------------
+
+  function requireJourneyPublicId(): string {
+    if (journeyPublicId === null) {
+      throw new Error(
+        "Start journey creation before configuring journey details.",
+      );
     }
 
-    const result =
-      await createJourneyMutation.create();
-
-    const publicId =
-      extractJourneyPublicId(result);
-
-    setJourneyPublicId(publicId);
-
-    return publicId;
+    return journeyPublicId;
   }
 
-  async function persistCurrentStep(
-    publicId: string,
-  ): Promise<void> {
+  // ---------------------------------------------------------------------------
+  // Step Persistence
+  // ---------------------------------------------------------------------------
+
+  async function persistCurrentStep(): Promise<void> {
+    const publicId =
+      requireJourneyPublicId();
+
     switch (currentStep) {
       case "where": {
+        const origin =
+          requireResolvedLocation(
+            originLocation,
+            "Origin",
+          );
+
+        const destination =
+          requireResolvedLocation(
+            destinationLocation,
+            "Destination",
+          );
+
         await attachCorridorMutation.attach(
           publicId,
           {
-            originName: validateRequiredText(
-              where.originName,
-              "Origin",
-            ),
+            originName: origin.name,
             originLatitude:
-              parseRequiredCoordinate(
-                where.originLatitude,
-                "Origin latitude",
-              ),
+              origin.latitude,
             originLongitude:
-              parseRequiredCoordinate(
-                where.originLongitude,
-                "Origin longitude",
-              ),
+              origin.longitude,
             destinationName:
-              validateRequiredText(
-                where.destinationName,
-                "Destination",
-              ),
+              destination.name,
             destinationLatitude:
-              parseRequiredCoordinate(
-                where.destinationLatitude,
-                "Destination latitude",
-              ),
+              destination.latitude,
             destinationLongitude:
-              parseRequiredCoordinate(
-                where.destinationLongitude,
-                "Destination longitude",
-              ),
+              destination.longitude,
           },
         );
 
@@ -766,7 +876,8 @@ export function JourneyCreateForm({
         await attachScheduleMutation.attach(
           publicId,
           {
-            departureAt: when.departureAt,
+            departureAt:
+              when.departureAt,
             arrivalAt:
               when.arrivalAt.trim().length > 0
                 ? when.arrivalAt
@@ -804,9 +915,10 @@ export function JourneyCreateForm({
                 ? vehicle.registration.trim()
                 : undefined,
             assetPublicId:
-              vehicle.assetPublicId.trim().length > 0
-                ? vehicle.assetPublicId.trim()
-                : undefined,
+              validateRequiredText(
+                vehicle.assetPublicId,
+                "Vehicle photo",
+              ),
           },
         );
 
@@ -830,85 +942,58 @@ export function JourneyCreateForm({
         await attachPricingMutation.attach(
           publicId,
           {
-            amount: parseRequiredAmount(
-              price.amount,
-            ),
-            currency: validateRequiredText(
-              price.currency,
-              "Currency",
-            ),
+            amount:
+              parseRequiredAmount(
+                price.amount,
+              ),
+            currency:
+              validateRequiredText(
+                price.currency,
+                "Currency",
+              ),
           },
         );
 
         return;
 
       case "preferences":
-        /*
-         * The presentation component currently exposes simple booleans.
-         *
-         * The backend command requires domain-specific policies. This is the
-         * correct translation boundary: presentation state is converted into
-         * the exact API contract here without weakening the API types.
-         */
         await attachPreferencesMutation.attach(
           publicId,
           {
-            smoking: toSmokingPolicy(
-              preferences.smoking,
-            ),
-            pets: toPetsPolicy(
-              preferences.pets,
-            ),
-            luggage: toLuggagePolicy(
+            smoking:
+              toSmokingPolicy(
+                preferences.smoking,
+              ),
+            pets:
+              toPetsPolicy(
+                preferences.pets,
+              ),
+            luggage:
               preferences.luggage,
-            ),
             conversation:
-              toConversationPreference(
-                preferences.conversation,
-              ),
-            music: toMusicPreference(
+              preferences.conversation,
+            music:
               preferences.music,
-            ),
           },
         );
 
         return;
-
-      case "assets": {
-        const assetPublicId =
-          asset.assetPublicId.trim();
-
-        /*
-         * Asset association is optional. Do not send an empty public ID to the
-         * backend.
-         */
-        if (assetPublicId.length === 0) {
-          return;
-        }
-
-        await attachAssetMutation.attach(
-          publicId,
-          {
-            assetPublicId,
-            type: asset.type,
-            sortOrder:
-              parseRequiredNonNegativeInteger(
-                asset.sortOrder,
-                "Asset display order",
-              ),
-          },
-        );
-
-        return;
-      }
 
       default:
         return;
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Navigation
+  // ---------------------------------------------------------------------------
+
   async function handleNext(): Promise<void> {
-    if (isSubmitting) {
+    if (
+      isSubmitting ||
+      !isStarted ||
+      journeyPublicId === null
+    ) {
       return;
     }
 
@@ -918,26 +1003,10 @@ export function JourneyCreateForm({
     try {
       validateCurrentStep();
 
-      /*
-       * The first Continue creates the Journey root and immediately persists
-       * the first component.
-       *
-       * Subsequent Continue operations use the already-created Journey public
-       * ID and invoke only the command corresponding to the current step.
-       */
-      const publicId =
-        await ensureJourneyCreated();
-
-      await persistCurrentStep(publicId);
+      await persistCurrentStep();
 
       if (isLastStep) {
-        /*
-         * Creation intentionally finishes in DRAFT.
-         *
-         * Publication is a separate lifecycle command and belongs to the
-         * caller/workflow rather than this component.
-         */
-        onCreated(publicId);
+        onCreated(journeyPublicId);
         return;
       }
 
@@ -963,7 +1032,11 @@ export function JourneyCreateForm({
   }
 
   function handleBack(): void {
-    if (isSubmitting || isFirstStep) {
+    if (
+      isSubmitting ||
+      !isStarted ||
+      isFirstStep
+    ) {
       return;
     }
 
@@ -979,14 +1052,40 @@ export function JourneyCreateForm({
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Current Step
+  // ---------------------------------------------------------------------------
+
   function renderCurrentStep() {
     switch (currentStep) {
       case "where":
         return (
           <JourneyCreateWhere
-            values={where}
-            onChange={updateWhere}
+            origin={originLocation}
+            destination={destinationLocation}
+            originQuery={originQuery}
+            destinationQuery={destinationQuery}
+            originSuggestions={
+              originSuggestions
+            }
+            destinationSuggestions={
+              destinationSuggestions
+            }
+            originError={null}
+            destinationError={null}
             disabled={isSubmitting}
+            onOriginQueryChange={
+              handleOriginQueryChange
+            }
+            onDestinationQueryChange={
+              handleDestinationQueryChange
+            }
+            onOriginSelect={
+              handleOriginSelect
+            }
+            onDestinationSelect={
+              handleDestinationSelect
+            }
           />
         );
 
@@ -1030,17 +1129,18 @@ export function JourneyCreateForm({
         return (
           <JourneyCreatePreferences
             values={preferences}
-            onChange={updatePreferences}
-            disabled={isSubmitting}
-          />
-        );
-
-      case "assets":
-        return (
-          <JourneyCreateAssets
-            values={asset}
-            options={assetOptions}
-            onChange={updateAsset}
+            onBooleanChange={
+              updateBooleanPreference
+            }
+            onLuggageChange={
+              updateLuggagePreference
+            }
+            onConversationChange={
+              updateConversationPreference
+            }
+            onMusicChange={
+              updateMusicPreference
+            }
             disabled={isSubmitting}
           />
         );
@@ -1050,72 +1150,409 @@ export function JourneyCreateForm({
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Start Screen
+  // ---------------------------------------------------------------------------
+
+  if (!isStarted) {
+    return (
+      <div
+        className={cn(
+          "min-h-[calc(100vh-4rem)]",
+          "bg-[var(--background-brand)]",
+          "px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12",
+          className,
+        )}
+      >
+        <div className="mx-auto flex min-h-[calc(100vh-10rem)] w-full max-w-3xl items-center justify-center">
+          <section
+            aria-label="Start journey creation"
+            className={cn(
+              "w-full",
+              "overflow-hidden",
+              "rounded-[var(--radius-2xl)]",
+              "border border-[var(--border)]",
+              "bg-[var(--surface)]",
+              "shadow-[var(--shadow-lg)]",
+            )}
+          >
+            <div
+              aria-hidden="true"
+              className="h-1 bg-[var(--brand)]"
+            />
+
+            <div className="p-6 sm:p-10 lg:p-12">
+              <div className="mb-10">
+                <JourneyCreateProgress
+                  isStarted={false}
+                />
+              </div>
+
+              <div className="text-center">
+                <div className="mx-auto mb-5 flex size-14 items-center justify-center rounded-[var(--radius-2xl)] bg-[var(--brand)] text-[var(--brand-foreground)] shadow-[var(--shadow-sm)]">
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    className="size-7"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M4 15.5V5.75C4 4.784 4.784 4 5.75 4h8.5C15.216 4 16 4.784 16 5.75v9.75"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    />
+
+                    <path
+                      d="M3 15.5h14M6.5 12.5h2M11.5 12.5h2"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </div>
+
+                <div className="mb-8">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--foreground-muted)]">
+                    Journey creation
+                  </p>
+
+                  <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)] sm:text-3xl">
+                    Start your journey
+                  </h1>
+
+                  <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-[var(--foreground-secondary)] sm:text-base">
+                    Create a journey draft first. You&apos;ll then add your
+                    route, departure time, vehicle and photo, seats, price,
+                    and preferences step by step.
+                  </p>
+                </div>
+
+                {error !== null && (
+                  <div className="mb-6 text-left">
+                    <ErrorState
+                      title="We couldn't start journey creation"
+                      description={error.message}
+                      retryAction={{
+                        label: "Try again",
+                        onClick:
+                          handleStartJourney,
+                        disabled:
+                          isSubmitting,
+                      }}
+                    />
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+                  {onCancel ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={onCancel}
+                      disabled={isSubmitting}
+                    >
+                      Cancel
+                    </Button>
+                  ) : null}
+
+                  <Button
+                    type="button"
+                    variant="primary"
+                    onClick={handleStartJourney}
+                    loading={isSubmitting}
+                  >
+                    Start journey
+
+                    <svg
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      className="size-4"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M4 10h11M11 6l4 4-4 4"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </Button>
+                </div>
+
+                <div className="mt-8 flex items-center justify-center gap-2 text-center">
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    className="size-4 text-[var(--foreground-subtle)]"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M10 2.75 16 5v4.5c0 3.5-2.15 6.35-6 7.75-3.85-1.4-6-4.25-6-7.75V5l6-2.25Z"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                    />
+
+                    <path
+                      d="m7.5 10 1.7 1.7 3.3-3.4"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+
+                  <p className="text-xs text-[var(--foreground-muted)]">
+                    Your journey starts as a draft and stays that way until
+                    you&apos;re ready to publish.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Render Creation Workflow
+  // ---------------------------------------------------------------------------
+
   return (
     <div
       className={cn(
-        "mx-auto w-full max-w-3xl",
-        "space-y-6",
+        "min-h-[calc(100vh-4rem)]",
+        "bg-[var(--background-brand)]",
+        "px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12",
         className,
       )}
     >
-      <JourneyCreateProgress
-        currentStep={currentStep}
-      />
+      <div className="mx-auto w-full max-w-4xl">
+        {/* ----------------------------------------------------------------- */}
+        {/* Creation Header                                                   */}
+        {/* ----------------------------------------------------------------- */}
 
-      {error !== null && (
-        <ErrorState
-          title="We couldn't save this step"
-          description={error.message}
-          retryAction={{
-            label: "Try again",
-            onClick: handleNext,
-            disabled: isSubmitting,
-          }}
-        />
-      )}
-
-      <div className="surface p-5 sm:p-6">
-        {renderCurrentStep()}
-      </div>
-
-      <div
-        className={cn(
-          "flex flex-col-reverse gap-3",
-          "sm:flex-row sm:items-center sm:justify-between",
-        )}
-      >
-        <div>
-          {isFirstStep ? (
-            onCancel ? (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={onCancel}
-                disabled={isSubmitting}
+        <div className="mb-6">
+          <div className="mb-3 flex items-center gap-2">
+            <span className="flex size-7 items-center justify-center rounded-[var(--radius-md)] bg-[var(--brand)] text-[var(--brand-foreground)] shadow-[var(--shadow-sm)]">
+              <svg
+                viewBox="0 0 20 20"
+                fill="none"
+                className="size-4"
+                aria-hidden="true"
               >
-                Cancel
-              </Button>
-            ) : null
-          ) : (
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={handleBack}
-              disabled={isSubmitting}
-            >
-              Back
-            </Button>
-          )}
+                <path
+                  d="M4 15.5V5.75C4 4.784 4.784 4 5.75 4h8.5C15.216 4 16 4.784 16 5.75v9.75"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+
+                <path
+                  d="M3 15.5h14M6.5 12.5h2M11.5 12.5h2"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </span>
+
+            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--foreground-muted)]">
+              Journey creation
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)] sm:text-3xl">
+                Create a journey
+              </h1>
+
+              <p className="mt-1 max-w-2xl text-sm text-[var(--foreground-secondary)] sm:text-base">
+                Tell travellers where you&apos;re going, when you&apos;re
+                leaving, and what the journey looks like.
+              </p>
+            </div>
+
+            <div className="inline-flex w-fit items-center gap-2 rounded-[var(--radius-full)] border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 shadow-[var(--shadow-sm)]">
+              <span
+                aria-hidden="true"
+                className="size-1.5 rounded-full bg-[var(--brand)]"
+              />
+
+              <span className="text-xs font-medium text-[var(--foreground-secondary)]">
+                Draft
+              </span>
+            </div>
+          </div>
         </div>
 
-        <Button
-          type="button"
-          variant="primary"
-          onClick={handleNext}
-          loading={isSubmitting}
+        {/* ----------------------------------------------------------------- */}
+        {/* Progress                                                          */}
+        {/* ----------------------------------------------------------------- */}
+
+        <div className="mb-6 rounded-[var(--radius-2xl)] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-[var(--shadow-sm)] sm:p-6">
+          <JourneyCreateProgress
+            isStarted={isStarted}
+            currentStep={currentStep}
+          />
+        </div>
+
+        {/* ----------------------------------------------------------------- */}
+        {/* Error                                                             */}
+        {/* ----------------------------------------------------------------- */}
+
+        {error !== null && (
+          <div className="mb-6">
+            <ErrorState
+              title="We couldn't save this step"
+              description={error.message}
+              retryAction={{
+                label: "Try again",
+                onClick: handleNext,
+                disabled: isSubmitting,
+              }}
+            />
+          </div>
+        )}
+
+        {/* ----------------------------------------------------------------- */}
+        {/* Form Surface                                                      */}
+        {/* ----------------------------------------------------------------- */}
+
+        <section
+          aria-label="Journey creation form"
+          className={cn(
+            "overflow-hidden",
+            "rounded-[var(--radius-2xl)]",
+            "border border-[var(--border)]",
+            "bg-[var(--surface)]",
+            "shadow-[var(--shadow-lg)]",
+          )}
         >
-          {isLastStep ? "Finish" : "Continue"}
-        </Button>
+          <div
+            aria-hidden="true"
+            className="h-1 bg-[var(--brand)]"
+          />
+
+          <div className="p-5 sm:p-8 lg:p-10">
+            {renderCurrentStep()}
+          </div>
+
+          {/* ----------------------------------------------------------------- */}
+          {/* Actions                                                           */}
+          {/* ----------------------------------------------------------------- */}
+
+          <div className="border-t border-[var(--border-subtle)] bg-[var(--background-subtle)] px-5 py-4 sm:px-8 sm:py-5 lg:px-10">
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                {isFirstStep ? (
+                  onCancel ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={onCancel}
+                      disabled={isSubmitting}
+                    >
+                      Cancel
+                    </Button>
+                  ) : null
+                ) : (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleBack}
+                    disabled={isSubmitting}
+                  >
+                    Back
+                  </Button>
+                )}
+              </div>
+
+              <Button
+                type="button"
+                variant="primary"
+                onClick={handleNext}
+                loading={isSubmitting}
+              >
+                {isLastStep ? (
+                  <>
+                    Finish journey
+
+                    <svg
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      className="size-4"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M4 10h11M11 6l4 4-4 4"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </>
+                ) : (
+                  <>
+                    Continue
+
+                    <svg
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      className="size-4"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M4 10h11M11 6l4 4-4 4"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </section>
+
+        {/* ----------------------------------------------------------------- */}
+        {/* Footer reassurance                                               */}
+        {/* ----------------------------------------------------------------- */}
+
+        <div className="mt-5 flex items-center justify-center gap-2 text-center">
+          <svg
+            viewBox="0 0 20 20"
+            fill="none"
+            className="size-4 text-[var(--foreground-subtle)]"
+            aria-hidden="true"
+          >
+            <path
+              d="M10 2.75 16 5v4.5c0 3.5-2.15 6.35-6 7.75-3.85-1.4-6-4.25-6-7.75V5l6-2.25Z"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinejoin="round"
+            />
+
+            <path
+              d="m7.5 10 1.7 1.7 3.3-3.4"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+
+          <p className="text-xs text-[var(--foreground-muted)]">
+            Your journey stays in draft until you&apos;re ready to publish.
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -70,26 +70,29 @@ export function JourneyPrice({
   pricing,
   className,
 }: JourneyPriceProps) {
+  const formattedPrice = formatCurrency(
+    pricing.amount,
+    pricing.currency,
+  );
+
   return (
     <span
       className={cn(
         "inline-flex",
         "min-w-0",
+        "max-w-full",
         "items-center",
-        "gap-2",
+        "gap-[clamp(0.3rem,0.55vw,0.45rem)]",
         "whitespace-nowrap",
         className,
       )}
-      aria-label={`Journey price ${formatCurrency(
-        pricing.amount,
-        pricing.currency,
-      )}`}
+      aria-label={`Journey price ${formattedPrice}`}
     >
       <span
         aria-hidden="true"
         className={cn(
           "flex",
-          "size-7",
+          "size-[clamp(1.35rem,2.2vw,1.75rem)]",
           "shrink-0",
           "items-center",
           "justify-center",
@@ -98,23 +101,24 @@ export function JourneyPrice({
           "text-[var(--brand)]",
         )}
       >
-        <Banknote className="size-3.5" />
+        <Banknote
+          aria-hidden="true"
+          className="size-[clamp(0.7rem,1vw,0.9rem)]"
+        />
       </span>
 
       <span
         className={cn(
           "min-w-0",
-          "text-[clamp(0.95rem,1.6vw,1.2rem)]",
+          "truncate",
+          "text-[clamp(0.72rem,1.25vw,1rem)]",
           "font-extrabold",
           "leading-none",
           "tracking-tight",
           "text-[var(--foreground)]",
         )}
       >
-        {formatCurrency(
-          pricing.amount,
-          pricing.currency,
-        )}
+        {formattedPrice}
       </span>
     </span>
   );

@@ -23,8 +23,7 @@ export {
 } from "./journey-create-where";
 
 export type {
-  JourneyCreateWhereValues,
-  JourneyCreateWhereProps,
+    JourneyCreateWhereProps,
 } from "./journey-create-where";
 
 export {

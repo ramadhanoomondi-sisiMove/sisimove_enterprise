@@ -43,6 +43,9 @@
 //                    ▼
 //                 Session
 //                    │
+//                    ▼
+//          AuthorizationSnapshot
+//                    │
 //             ┌──────┴──────┐
 //             │             │
 //             ▼             ▼
@@ -68,7 +71,8 @@
 // - hashes the refresh token;
 // - creates a new refresh-token family;
 // - creates the Session;
-// - generates the access JWT;
+// - resolves the CURRENT authorization snapshot;
+// - generates the access JWT containing current roles and permissions;
 // - persists the Session;
 // - returns the complete authenticated login result.
 //
@@ -89,7 +93,44 @@
 // - persist raw refresh tokens;
 // - revoke other Sessions;
 // - send notifications;
-// - perform authorization.
+// - evaluate authorization itself.
+//
+// Authorization resolution is delegated to:
+//
+//     AuthorizationSnapshotService
+//
+// through:
+//
+//     IDENTITY_TOKENS.APPLICATION_SERVICES.AUTHORIZATION_SNAPSHOT
+//
+// -----------------------------------------------------------------------------
+//
+// AUTHORIZATION SNAPSHOT
+//
+// The access token must contain the authorization state that exists when the
+// login is completed:
+//
+//     Identity
+//        │
+//        ▼
+//     active Identity roles
+//        │
+//        ▼
+//     RolePermission assignments
+//        │
+//        ▼
+//     active Permissions
+//        │
+//        ▼
+//     AuthorizationSnapshot
+//        ├── roles
+//        └── permissions
+//        │
+//        ▼
+//     JWT access token
+//
+// The authorization snapshot is resolved from the current database state.
+// The JWT therefore contains permission claims required by PermissionsGuard.
 //
 // -----------------------------------------------------------------------------
 //
@@ -126,6 +167,8 @@
 // - be logged.
 //
 // Only SessionRefreshTokenHash crosses into the Session aggregate.
+//
+// Authorization claims are also NOT placed in the refresh token.
 //
 // -----------------------------------------------------------------------------
 //
@@ -167,8 +210,9 @@
 // - whether a Device exists;
 // - whether a Device is revoked or otherwise unusable.
 //
-// Unexpected repository, domain, application, or infrastructure failures are
-// not converted into this generic result. They propagate normally.
+// Unexpected repository, domain, application, authorization-resolution, or
+// infrastructure failures are not converted into this generic result.
+// They propagate normally.
 //
 // -----------------------------------------------------------------------------
 //
@@ -219,6 +263,28 @@ import type { JwtTokenService } from '../../../../foundation/security/jwt-token-
 import type { RefreshTokenHasher } from '../../../../foundation/security/refresh-token-hasher.interface';
 
 import type { TokenGenerator } from '../../../../foundation/security/token-generator.interface';
+
+// -----------------------------------------------------------------------------
+// Identity — Application Tokens
+// -----------------------------------------------------------------------------
+//
+// The authorization snapshot is an Identity application capability.
+//
+// Authentication consumes the capability through its stable application token
+// and does not depend on the concrete implementation.
+//
+
+import { IDENTITY_TOKENS } from '../../../identity/application/identity.tokens';
+
+// -----------------------------------------------------------------------------
+// Identity — Authorization Snapshot
+// -----------------------------------------------------------------------------
+//
+// Type-only import keeps this handler dependent on the application contract,
+// not on the concrete implementation.
+//
+
+import type { AuthorizationSnapshotService } from '../../../identity/application/services/authorization-snapshot.service';
 
 // -----------------------------------------------------------------------------
 // Authentication — Application Tokens
@@ -384,6 +450,9 @@ export type AuthenticateLoginResult =
  *                    ▼
  *                  Session
  *                    │
+ *                    ▼
+ *          AuthorizationSnapshot
+ *                    │
  *              ┌─────┴─────┐
  *              │           │
  *              ▼           ▼
@@ -437,6 +506,20 @@ export class AuthenticateLoginHandler implements CommandHandler<
     private readonly sessionRepository: SessionRepository,
 
     // -------------------------------------------------------------------------
+    // Authorization Snapshot Service
+    // -------------------------------------------------------------------------
+    //
+    // Resolves CURRENT Identity roles and permissions immediately before the
+    // access JWT is issued.
+    //
+    // This prevents newly-issued login tokens from being created without the
+    // authorization claims required by PermissionsGuard.
+    //
+
+    @Inject(IDENTITY_TOKENS.APPLICATION_SERVICES.AUTHORIZATION_SNAPSHOT)
+    private readonly authorizationSnapshotService: AuthorizationSnapshotService,
+
+    // -------------------------------------------------------------------------
     // Token Generator
     // -------------------------------------------------------------------------
     //
@@ -478,10 +561,13 @@ export class AuthenticateLoginHandler implements CommandHandler<
    * Device and Session processing occur only after successful credential
    * authentication.
    *
+   * The authorization snapshot is resolved from the current Identity/RBAC
+   * state before the access token is signed.
+   *
    * Expected authentication failures return a generic failure result.
    *
-   * Unexpected application, domain, repository, or infrastructure failures
-   * propagate as exceptions.
+   * Unexpected application, domain, repository, authorization, or
+   * infrastructure failures propagate as exceptions.
    */
   public async execute(
     command: AuthenticateLoginCommand,
@@ -551,7 +637,10 @@ export class AuthenticateLoginHandler implements CommandHandler<
     //
     // Authentication already owns the opaque Identity reference.
     //
-    // No additional Identity lookup is required.
+    // No additional Identity lookup is required for authentication itself.
+    //
+    // Authorization resolution is performed separately through the dedicated
+    // AuthorizationSnapshotService.
     //
     // -------------------------------------------------------------------------
 
@@ -777,16 +866,46 @@ export class AuthenticateLoginHandler implements CommandHandler<
     session.recordCreated(command.correlationId, command.causationId);
 
     // -------------------------------------------------------------------------
-    // 19. Generate access token
+    // 19. Resolve CURRENT authorization snapshot
     // -------------------------------------------------------------------------
     //
-    // Generate the access token before persisting the Session.
+    // This is deliberately performed during login rather than relying on
+    // authorization state supplied by the client or Authentication aggregate.
     //
-    // If JWT signing fails, the Session has not yet been persisted.
+    // The service resolves:
     //
-    // The Authentication password version is included so downstream
-    // authentication infrastructure can determine the credential version
-    // under which the access token was issued.
+    //     active Identity roles
+    //          ↓
+    //     RolePermission assignments
+    //          ↓
+    //     active Permission aggregates
+    //          ↓
+    //     permission codes
+    //
+    // The returned snapshot becomes the authorization claim set of the newly
+    // issued access token.
+    //
+    // -------------------------------------------------------------------------
+
+    const authorization =
+      await this.authorizationSnapshotService.resolve(identityPublicId);
+
+    // -------------------------------------------------------------------------
+    // 20. Generate access token
+    // -------------------------------------------------------------------------
+    //
+    // The access JWT contains:
+    //
+    // - Identity public ID;
+    // - Session public ID;
+    // - Authentication password version;
+    // - current role claims;
+    // - current permission claims.
+    //
+    // PermissionsGuard later evaluates these permission claims directly from
+    // the authenticated request context.
+    //
+    // No Prisma lookup is required by PermissionsGuard.
     //
     // -------------------------------------------------------------------------
 
@@ -794,10 +913,12 @@ export class AuthenticateLoginHandler implements CommandHandler<
       identityPublicId: identityPublicId.value,
       sessionPublicId: session.publicId.value,
       authenticationVersion: authentication.passwordVersion.value,
+      roles: authorization.roles,
+      permissions: authorization.permissions,
     });
 
     // -------------------------------------------------------------------------
-    // 20. Persist Session
+    // 21. Persist Session
     // -------------------------------------------------------------------------
     //
     // Only the Session aggregate is persisted.
@@ -809,7 +930,7 @@ export class AuthenticateLoginHandler implements CommandHandler<
     await this.sessionRepository.save(session);
 
     // -------------------------------------------------------------------------
-    // 21. Return complete successful login result
+    // 22. Return complete successful login result
     // -------------------------------------------------------------------------
     //
     // The raw refresh token is returned only to the client.

@@ -4,13 +4,11 @@
 //
 // sisiMove — Journey Vehicle Summary
 //
-// Prominent presentation of a Journey vehicle for marketplace surfaces.
+// Compact one-line vehicle identification for marketplace surfaces.
 //
 // Marketplace presentation:
 //
-//   Toyota Probox
-//   2019 · White
-//   Journey vehicle
+//   Toyota Probox · 2019 · White · JOURNEY VEHICLE
 //
 // Product role:
 //
@@ -26,9 +24,9 @@
 // - present the vehicle make and model prominently;
 // - present optional year and color when supplied;
 // - keep vehicle presentation independent from Asset retrieval;
-// - avoid exposing registration in the public summary because its visibility
-//   is subject to the Journey privacy contract;
-// - provide a clear vehicle identity alongside the Journey vehicle asset.
+// - avoid exposing registration in the public summary;
+// - provide a compact vehicle identity beneath the vehicle image;
+// - remain a single-line footer summary for horizontal marketplace cards.
 //
 // This component does NOT:
 // - resolve assetPublicId into an image;
@@ -68,75 +66,142 @@ export function JourneyVehicleSummary({
   className,
 }: JourneyVehicleSummaryProps) {
   const vehicleName = [vehicle.make, vehicle.model]
-    .filter(Boolean)
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
     .join(" ");
 
   const metadata = [
-    vehicle.year !== null
-      ? String(vehicle.year)
-      : null,
-    vehicle.color,
-  ].filter(Boolean);
+    vehicle.year !== null ? String(vehicle.year) : null,
+    vehicle.color?.trim() || null,
+  ].filter(
+    (value): value is string =>
+      value !== null &&
+      value.length > 0,
+  );
+
+  const summaryParts = [
+    vehicleName || "Vehicle",
+    ...metadata,
+    "Journey vehicle",
+  ];
+
+  const summary = summaryParts.join(" · ");
 
   return (
     <div
       className={cn(
         "min-w-0",
+        "w-full",
         className,
       )}
     >
-      {/* ------------------------------------------------------------------- */}
-      {/* Vehicle identity                                                    */}
-      {/* ------------------------------------------------------------------- */}
-
-      <p
+      <div
         className={cn(
-          "truncate",
-          "text-[clamp(0.8rem,1.35vw,1rem)]",
-          "font-extrabold",
-          "leading-tight",
-          "tracking-tight",
-          "text-[var(--foreground)]",
+          "flex",
+          "min-w-0",
+          "items-center",
+          "gap-1.5",
+          "overflow-hidden",
+          "whitespace-nowrap",
         )}
+        title={summary}
       >
-        {vehicleName || "Vehicle"}
-      </p>
+        {/* ----------------------------------------------------------------- */}
+        {/* Vehicle identity                                                  */}
+        {/* ----------------------------------------------------------------- */}
 
-      {/* ------------------------------------------------------------------- */}
-      {/* Vehicle metadata                                                    */}
-      {/* ------------------------------------------------------------------- */}
-
-      {metadata.length > 0 ? (
-        <p
+        <span
           className={cn(
-            "mt-1",
+            "min-w-0",
             "truncate",
-            "text-[clamp(0.62rem,0.9vw,0.75rem)]",
-            "font-semibold",
+            "text-[clamp(0.72rem,1.15vw,0.95rem)]",
+            "font-extrabold",
             "leading-tight",
-            "text-[var(--foreground-secondary)]",
+            "tracking-tight",
+            "text-[var(--foreground)]",
           )}
         >
-          {metadata.join(" · ")}
-        </p>
-      ) : null}
+          {vehicleName || "Vehicle"}
+        </span>
 
-      {/* ------------------------------------------------------------------- */}
-      {/* Supporting label                                                    */}
-      {/* ------------------------------------------------------------------- */}
+        {/* ----------------------------------------------------------------- */}
+        {/* Optional vehicle metadata                                         */}
+        {/* ----------------------------------------------------------------- */}
 
-      <p
-        className={cn(
-          "mt-1",
-          "truncate",
-          "text-[clamp(0.55rem,0.72vw,0.65rem)]",
-          "font-medium",
-          "leading-tight",
-          "text-[var(--foreground-muted)]",
-        )}
-      >
-        Journey vehicle
-      </p>
+        {metadata.map((value, index) => (
+          <span
+            key={`${value}-${index}`}
+            className={cn(
+              "flex",
+              "shrink-0",
+              "items-center",
+              "gap-1.5",
+            )}
+          >
+            <span
+              aria-hidden="true"
+              className="text-[var(--foreground-muted)]"
+            >
+              ·
+            </span>
+
+            <span
+              className={cn(
+                "truncate",
+                "text-[clamp(0.58rem,0.8vw,0.72rem)]",
+                "font-semibold",
+                "leading-tight",
+                "text-[var(--foreground-secondary)]",
+              )}
+            >
+              {value}
+            </span>
+          </span>
+        ))}
+
+        {/* ----------------------------------------------------------------- */}
+        {/* Supporting label                                                  */}
+        {/* ----------------------------------------------------------------- */}
+
+        <span
+          className={cn(
+            "flex",
+            "shrink-0",
+            "items-center",
+            "gap-1.5",
+          )}
+        >
+          <span
+            aria-hidden="true"
+            className="text-[var(--foreground-muted)]"
+          >
+            ·
+          </span>
+
+          <span
+            aria-hidden="true"
+            className={cn(
+              "size-[clamp(0.25rem,0.4vw,0.32rem)]",
+              "shrink-0",
+              "rounded-full",
+              "bg-[var(--brand)]",
+            )}
+          />
+
+          <span
+            className={cn(
+              "text-[clamp(0.42rem,0.6vw,0.54rem)]",
+              "font-semibold",
+              "uppercase",
+              "tracking-[0.07em]",
+              "leading-none",
+              "text-[var(--foreground-muted)]",
+            )}
+          >
+            Journey vehicle
+          </span>
+        </span>
+      </div>
     </div>
   );
 }

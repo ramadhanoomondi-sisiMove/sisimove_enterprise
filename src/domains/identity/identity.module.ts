@@ -17,6 +17,7 @@
 //
 // - REST controllers;
 // - infrastructure repository providers;
+// - application services;
 // - application command handlers;
 // - application query handlers;
 // - Asset upload orchestration required by verification evidence submission.
@@ -54,6 +55,28 @@
 // RolePermission is an independent relationship aggregate.
 //
 // Authorization evaluation remains outside these aggregates.
+//
+// -----------------------------------------------------------------------------
+//
+// Authorization snapshot:
+//
+// AuthorizationSnapshotService
+// ├── IdentityRepository
+// │   └── active IdentityRoleEntity[]
+// ├── RolePermissionRepository
+// │   └── role → permission assignments
+// └── PermissionRepository
+//     └── active PermissionAggregate[]
+//
+// The service resolves the current authorization state of an Identity for
+// access-token issuance.
+//
+// Authentication/session workflows consume this application capability through:
+//
+//     IDENTITY_TOKENS.APPLICATION_SERVICES.AUTHORIZATION_SNAPSHOT
+//
+// The authorization service is intentionally not exported as a Prisma or
+// infrastructure capability. Consumers depend on the application token.
 //
 // -----------------------------------------------------------------------------
 //
@@ -142,6 +165,7 @@
 // Reviewer:
 //
 //     GET /verifications/:verificationPublicId
+//     → GET_VERIFICATION_BY_PUBLIC_ID
 //     → GET_VERIFICATION_BY_PUBLIC_ID
 //     → GetVerificationByPublicIdQuery
 //     → VerificationPublicId
@@ -358,8 +382,18 @@ import {
 
   providers: [
     // =========================================================================
-    // Infrastructure — Repository Providers
+    // Infrastructure — Repository + Application Service Providers
     // =========================================================================
+    //
+    // IDENTITY_PROVIDERS contains:
+    //
+    // - repository bindings;
+    // - AuthorizationSnapshotService binding.
+    //
+    // Keeping these bindings in the infrastructure provider collection means
+    // the module does not manually construct application services or
+    // repositories.
+    //
 
     ...IDENTITY_PROVIDERS,
 
@@ -682,6 +716,19 @@ import {
     // -------------------------------------------------------------------------
 
     IDENTITY_TOKENS.REPOSITORIES.ROLE_PERMISSION,
+
+    // =========================================================================
+    // Authorization Application Service
+    // =========================================================================
+    //
+    // Authentication/session workflows use this application capability to
+    // resolve the CURRENT roles and permissions before issuing an access JWT.
+    //
+    // It is exported as an application token rather than exposing the
+    // concrete AuthorizationSnapshotServiceImpl.
+    //
+
+    IDENTITY_TOKENS.APPLICATION_SERVICES.AUTHORIZATION_SNAPSHOT,
 
     // =========================================================================
     // Cross-Bounded-Context Application Contracts

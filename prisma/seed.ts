@@ -102,182 +102,192 @@ async function main(): Promise<void> {
 }
 
   // ===========================================================================
-  // 1. ROLES
-  // ===========================================================================
+// 1. ROLES
+// ===========================================================================
 
-  console.log('\n[1/12] Seeding roles...');
+console.log('\n[1/12] Seeding roles...');
 
-  const roleDefinitions = [
-    {
-      code: 'MEMBER',
-      name: 'Member',
-      description: 'Standard sisiMove member.',
-      displayOrder: 1,
+const roleDefinitions = [
+  {
+    code: 'MEMBER',
+    name: 'Member',
+    description: 'Standard sisiMove member.',
+    displayOrder: 1,
+  },
+  {
+    code: 'DRIVER',
+    name: 'Driver',
+    description: 'Verified member authorized to provide journeys.',
+    displayOrder: 2,
+  },
+  {
+    code: 'ADMIN',
+    name: 'Administrator',
+    description: 'Platform administrator.',
+    displayOrder: 3,
+  },
+  {
+    code: 'SUPER_ADMIN',
+    name: 'Super Administrator',
+    description: 'Highest platform administration role.',
+    displayOrder: 4,
+  },
+];
+
+const roles: Record<string, { id: string; publicId: string }> = {};
+
+for (const definition of roleDefinitions) {
+  const role = await prisma.role.upsert({
+    where: {
+      code: definition.code,
     },
-    {
-      code: 'DRIVER',
-      name: 'Driver',
-      description: 'Verified member authorized to provide journeys.',
-      displayOrder: 2,
+    update: {
+      name: definition.name,
+      description: definition.description,
+      displayOrder: definition.displayOrder,
+      isSystem: true,
+      isActive: true,
     },
-    {
-      code: 'ADMIN',
-      name: 'Administrator',
-      description: 'Platform administrator.',
-      displayOrder: 3,
+    create: {
+      publicId: `SM-ROLE-${definition.code}`,
+      code: definition.code,
+      name: definition.name,
+      description: definition.description,
+      displayOrder: definition.displayOrder,
+      isSystem: true,
+      isActive: true,
     },
-    {
-      code: 'SUPER_ADMIN',
-      name: 'Super Administrator',
-      description: 'Highest platform administration role.',
-      displayOrder: 4,
+  });
+
+  roles[definition.code] = {
+    id: role.id,
+    publicId: role.publicId,
+  };
+}
+
+// ===========================================================================
+// 2. PERMISSIONS
+// ===========================================================================
+
+console.log('[2/12] Seeding permissions...');
+
+const permissionDefinitions = [
+  // Identity
+  ['identity', 'read'],
+  ['identity', 'update'],
+  ['identity', 'manage'],
+
+  // Profile
+  ['profile', 'read'],
+  ['profile', 'update'],
+  ['profile', 'manage'],
+
+  // Journey
+  ['journey', 'read'],
+  ['journey', 'create'],
+  ['journey', 'update'],
+  ['journey', 'cancel'],
+  ['journey', 'manage'],
+
+  // Demand
+  ['demand', 'read'],
+  ['demand', 'create'],
+  ['demand', 'update'],
+  ['demand', 'cancel'],
+  ['demand', 'manage'],
+
+  // Booking
+  ['booking', 'read'],
+  ['booking', 'create'],
+  ['booking', 'cancel'],
+  ['booking', 'manage'],
+
+  // Boarding
+  ['boarding', 'read'],
+  ['boarding', 'manage'],
+
+  // Verification
+  ['verification', 'read'],
+  ['verification', 'submit'],
+  ['verification', 'review'],
+  ['verification', 'manage'],
+
+  // Assets
+  ['asset', 'read'],
+  ['asset', 'upload'],
+  ['asset', 'manage'],
+
+  // Trust
+  ['trust', 'read'],
+  ['trust', 'rate'],
+  ['trust', 'manage'],
+
+  // Financial
+  ['financial', 'read'],
+  ['financial', 'manage'],
+
+  // Support
+  ['support', 'read'],
+  ['support', 'create'],
+  ['support', 'manage'],
+
+  // Authorization
+  ['role', 'read'],
+  ['role', 'assign'],
+  ['role', 'manage'],
+  ['permission', 'read'],
+  ['permission', 'manage'],
+
+  // Administration
+  ['admin', 'read'],
+  ['admin', 'manage'],
+] as const;
+
+const permissions: Record<
+  string,
+  { id: string; publicId: string }
+> = {};
+
+for (const [resource, action] of permissionDefinitions) {
+  // Canonical sisiMove permission format:
+  //
+  //     resource:action
+  //
+  // Examples:
+  //     journey:create
+  //     journey:read
+  //     journey:update
+  //     verification:submit
+  //
+  const code = `${resource}:${action}`;
+
+  const permission = await prisma.permission.upsert({
+    where: {
+      code,
     },
-  ];
+    update: {
+      name: `${resource} ${action}`,
+      resource,
+      action,
+      isSystem: true,
+      isActive: true,
+    },
+    create: {
+      publicId: `SM-PERM-${resource.toUpperCase()}-${action.toUpperCase()}`,
+      code,
+      name: `${resource} ${action}`,
+      resource,
+      action,
+      isSystem: true,
+      isActive: true,
+    },
+  });
 
-  const roles: Record<string, { id: string; publicId: string }> = {};
-
-  for (const definition of roleDefinitions) {
-    const role = await prisma.role.upsert({
-      where: {
-        code: definition.code,
-      },
-      update: {
-        name: definition.name,
-        description: definition.description,
-        displayOrder: definition.displayOrder,
-        isSystem: true,
-        isActive: true,
-      },
-      create: {
-        publicId: `SM-ROLE-${definition.code}`,
-        code: definition.code,
-        name: definition.name,
-        description: definition.description,
-        displayOrder: definition.displayOrder,
-        isSystem: true,
-        isActive: true,
-      },
-    });
-
-    roles[definition.code] = {
-      id: role.id,
-      publicId: role.publicId,
-    };
-  }
-
-  // ===========================================================================
-  // 2. PERMISSIONS
-  // ===========================================================================
-
-  console.log('[2/12] Seeding permissions...');
-
-  const permissionDefinitions = [
-    // Identity
-    ['identity', 'read'],
-    ['identity', 'update'],
-    ['identity', 'manage'],
-
-    // Profile
-    ['profile', 'read'],
-    ['profile', 'update'],
-    ['profile', 'manage'],
-
-    // Journey
-    ['journey', 'read'],
-    ['journey', 'create'],
-    ['journey', 'update'],
-    ['journey', 'cancel'],
-    ['journey', 'manage'],
-
-    // Demand
-    ['demand', 'read'],
-    ['demand', 'create'],
-    ['demand', 'update'],
-    ['demand', 'cancel'],
-    ['demand', 'manage'],
-
-    // Booking
-    ['booking', 'read'],
-    ['booking', 'create'],
-    ['booking', 'cancel'],
-    ['booking', 'manage'],
-
-    // Boarding
-    ['boarding', 'read'],
-    ['boarding', 'manage'],
-
-    // Verification
-    ['verification', 'read'],
-    ['verification', 'submit'],
-    ['verification', 'review'],
-    ['verification', 'manage'],
-
-    // Assets
-    ['asset', 'read'],
-    ['asset', 'upload'],
-    ['asset', 'manage'],
-
-    // Trust
-    ['trust', 'read'],
-    ['trust', 'rate'],
-    ['trust', 'manage'],
-
-    // Financial
-    ['financial', 'read'],
-    ['financial', 'manage'],
-
-    // Support
-    ['support', 'read'],
-    ['support', 'create'],
-    ['support', 'manage'],
-
-    // Authorization
-    ['role', 'read'],
-    ['role', 'assign'],
-    ['role', 'manage'],
-    ['permission', 'read'],
-    ['permission', 'manage'],
-
-    // Administration
-    ['admin', 'read'],
-    ['admin', 'manage'],
-  ] as const;
-
-  const permissions: Record<
-    string,
-    { id: string; publicId: string }
-  > = {};
-
-  for (const [resource, action] of permissionDefinitions) {
-    const code = `${resource}.${action}`;
-
-    const permission = await prisma.permission.upsert({
-      where: {
-        code,
-      },
-      update: {
-        name: `${resource} ${action}`,
-        resource,
-        action,
-        isSystem: true,
-        isActive: true,
-      },
-      create: {
-        publicId: `SM-PERM-${resource.toUpperCase()}-${action.toUpperCase()}`,
-        code,
-        name: `${resource} ${action}`,
-        resource,
-        action,
-        isSystem: true,
-        isActive: true,
-      },
-    });
-
-    permissions[code] = {
-      id: permission.id,
-      publicId: permission.publicId,
-    };
-  }
+  permissions[code] = {
+    id: permission.id,
+    publicId: permission.publicId,
+  };
+}
 
 // ===========================================================================
 // 3. ROLE -> PERMISSIONS
@@ -286,78 +296,89 @@ async function main(): Promise<void> {
 console.log('[3/12] Seeding role permissions...');
 
 const memberPermissions = [
-  'identity.read',
-  'profile.read',
-  'profile.update',
-  'journey.read',
-  'demand.read',
-  'demand.create',
-  'demand.update',
-  'demand.cancel',
-  'booking.read',
-  'booking.create',
-  'booking.cancel',
-  'boarding.read',
-  'verification.read',
-  'verification.submit',
-  'asset.read',
-  'asset.upload',
-  'trust.read',
-  'trust.rate',
-  'support.read',
-  'support.create',
+  'identity:read',
+
+  'profile:read',
+  'profile:update',
+
+  'journey:read',
+
+  'demand:read',
+  'demand:create',
+  'demand:update',
+  'demand:cancel',
+
+  'booking:read',
+  'booking:create',
+  'booking:cancel',
+
+  'boarding:read',
+
+  'verification:read',
+  'verification:submit',
+
+  'asset:read',
+  'asset:upload',
+
+  'trust:read',
+  'trust:rate',
+
+  'support:read',
+  'support:create',
 ];
 
 const driverPermissions = [
   ...memberPermissions,
-  'journey.create',
-  'journey.update',
-  'journey.cancel',
-  'journey.manage',
-  'boarding.manage',
+
+  'journey:create',
+  'journey:update',
+  'journey:cancel',
+  'journey:manage',
+
+  'boarding:manage',
 ];
 
 const adminPermissions = [
-  'identity.read',
-  'identity.update',
-  'identity.manage',
+  'identity:read',
+  'identity:update',
+  'identity:manage',
 
-  'profile.read',
-  'profile.update',
-  'profile.manage',
+  'profile:read',
+  'profile:update',
+  'profile:manage',
 
-  'journey.read',
-  'journey.manage',
+  'journey:read',
+  'journey:manage',
 
-  'demand.read',
-  'demand.manage',
+  'demand:read',
+  'demand:manage',
 
-  'booking.read',
-  'booking.manage',
+  'booking:read',
+  'booking:manage',
 
-  'boarding.read',
-  'boarding.manage',
+  'boarding:read',
+  'boarding:manage',
 
-  'verification.read',
-  'verification.review',
+  'verification:read',
+  'verification:review',
 
-  'asset.read',
-  'asset.manage',
+  'asset:read',
+  'asset:manage',
 
-  'trust.read',
-  'trust.manage',
+  'trust:read',
+  'trust:manage',
 
-  'financial.read',
+  'financial:read',
 
-  'support.read',
-  'support.manage',
+  'support:read',
+  'support:manage',
 
-  'role.read',
-  'role.assign',
+  'role:read',
+  'role:assign',
 
-  'permission.read',
+  'permission:read',
 
-  'admin.read',
+  'admin:read',
 ];
 
 const superAdminPermissions = Object.keys(permissions);
@@ -399,7 +420,7 @@ for (const [roleCode, permissionCodes] of Object.entries(
       update: {},
       create: {
         publicId: `SM-RP-${roleCode}-${permissionCode
-          .replace('.', '-')
+          .replace(':', '-')
           .toUpperCase()}`,
         roleId: role.id,
         permissionId: permission.id,
@@ -407,7 +428,6 @@ for (const [roleCode, permissionCodes] of Object.entries(
     });
   }
 }
-
   // ===========================================================================
   // 4. IDENTITIES
   // ===========================================================================

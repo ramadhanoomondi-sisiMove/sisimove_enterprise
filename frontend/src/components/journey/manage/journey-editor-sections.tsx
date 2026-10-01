@@ -6,8 +6,10 @@
 // - compose the existing Journey component editors;
 // - provide each editor with its current Journey projection as initial state;
 // - forward submit callbacks to the parent JourneyEditor;
-// - provide consistent section presentation;
-// - expose one shared submitting/disabled state.
+// - provide a compact, mobile-first SisiMove presentation;
+// - expose one shared submitting/disabled state;
+// - pass the resolved vehicle Asset to the vehicle editor;
+// - allow the parent JourneyEditor to initiate vehicle-photo replacement.
 //
 // Non-responsibilities:
 // - no Journey API calls;
@@ -16,7 +18,8 @@
 // - no lifecycle handling;
 // - no authorization decisions;
 // - no domain validation;
-// - no duplicate editor implementations.
+// - no duplicate editor implementations;
+// - no Asset upload or URL resolution.
 //
 // The parent JourneyEditor owns persistence and translates presentation values
 // into the exact Journey bounded-context commands.
@@ -29,11 +32,24 @@
 //   JourneyCapacityEditor
 //   JourneyPricingEditor
 //   JourneyPreferencesEditor
-//   JourneyAssetEditor
+//
+// Vehicle photos are intentionally managed as part of the Vehicle editor.
+// A separate Journey Assets section would duplicate that responsibility.
+//
+// Visual direction:
+// - mobile-first;
+// - compact and comfortable on small screens;
+// - restrained SisiMove blue branding;
+// - strong hierarchy without oversized sections;
+// - generous touch targets;
+// - subtle surfaces and borders;
+// - no unnecessary visual noise.
 //
 // -----------------------------------------------------------------------------
 
 "use client";
+
+import type { ReactNode } from "react";
 
 import { Card, Divider } from "@/components/ui";
 import { cn } from "@/foundation/utils/cn";
@@ -50,6 +66,7 @@ import {
 
 import {
   JourneyVehicleEditor,
+  type JourneyVehicleAssetOption,
   type JourneyVehicleFieldValues,
 } from "../vehicle";
 
@@ -68,15 +85,9 @@ import {
   type JourneyPreferencesFieldValues,
 } from "../preferences";
 
-import {
-  JourneyAssetEditor,
-  type JourneyAssetFieldValues,
-  type JourneyAssetPickerOption,
-} from "../assets";
-
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export interface JourneyEditorSectionsProps {
   /**
@@ -109,11 +120,25 @@ export interface JourneyEditorSectionsProps {
   readonly vehicleInitialValue: JourneyVehicleFieldValues;
 
   /**
+   * Currently resolved vehicle Asset.
+   *
+   * The parent JourneyEditor obtains this from the Asset presentation
+   * boundary. This component does not resolve URLs or query Assets.
+   */
+  readonly vehicleSelectedAsset?: JourneyVehicleAssetOption | null;
+
+  /**
    * Persists the vehicle after the presentation editor is submitted.
    */
   readonly onVehicleSubmit: (
     values: JourneyVehicleFieldValues,
   ) => Promise<void>;
+
+  /**
+   * Requests the parent JourneyEditor to open the vehicle Asset upload or
+   * replacement workflow.
+   */
+  readonly onChangeVehicleAsset?: () => void;
 
   /**
    * Initial capacity values supplied by the current Journey projection.
@@ -141,9 +166,6 @@ export interface JourneyEditorSectionsProps {
 
   /**
    * Initial preference values supplied by the current Journey projection.
-   *
-   * The editor intentionally uses presentation booleans. Translation to the
-   * Journey preference unions belongs to JourneyEditor.
    */
   readonly preferencesInitialValue: JourneyPreferencesFieldValues;
 
@@ -152,25 +174,6 @@ export interface JourneyEditorSectionsProps {
    */
   readonly onPreferencesSubmit: (
     values: JourneyPreferencesFieldValues,
-  ) => Promise<void>;
-
-  /**
-   * Initial asset values supplied by the current Journey projection.
-   */
-  readonly assetInitialValue: JourneyAssetFieldValues;
-
-  /**
-   * Existing Asset references available for selection.
-   *
-   * Asset retrieval/upload/delete remains outside the Journey feature.
-   */
-  readonly assetOptions?: readonly JourneyAssetPickerOption[];
-
-  /**
-   * Persists the Journey asset association after submission.
-   */
-  readonly onAssetSubmit: (
-    values: JourneyAssetFieldValues,
   ) => Promise<void>;
 
   /**
@@ -192,14 +195,14 @@ export interface JourneyEditorSectionsProps {
   readonly className?: string;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Section
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 interface JourneyEditorSectionProps {
   readonly title: string;
   readonly description: string;
-  readonly children: React.ReactNode;
+  readonly children: ReactNode;
 }
 
 function JourneyEditorSection({
@@ -208,27 +211,49 @@ function JourneyEditorSection({
   children,
 }: JourneyEditorSectionProps) {
   return (
-    <Card>
-      <div className="space-y-1">
-        <h2 className="text-base font-semibold text-[var(--foreground)]">
-          {title}
-        </h2>
+    <Card
+      className={cn(
+        "overflow-hidden",
+        "border-[var(--border)]",
+        "bg-[var(--surface)]",
+        "shadow-[var(--shadow-sm)]",
+      )}
+    >
+      {/* ------------------------------------------------------------------ */}
+      {/* Section Header                                                     */}
+      {/* ------------------------------------------------------------------ */}
 
-        <p className="text-sm text-[var(--foreground-muted)]">
-          {description}
-        </p>
+      <div className="flex items-start gap-3">
+        <div
+          aria-hidden="true"
+          className="mt-1 h-8 w-1 shrink-0 rounded-full bg-[var(--brand)]"
+        />
+
+        <div className="min-w-0 flex-1 space-y-0.5">
+          <h2 className="text-base font-semibold leading-6 text-[var(--foreground)] sm:text-[1.05rem]">
+            {title}
+          </h2>
+
+          <p className="text-sm leading-5 text-[var(--foreground-muted)]">
+            {description}
+          </p>
+        </div>
       </div>
 
-      <Divider className="my-4" />
+      {/* ------------------------------------------------------------------ */}
+      {/* Section Content                                                    */}
+      {/* ------------------------------------------------------------------ */}
 
-      {children}
+      <Divider className="my-3 sm:my-4" />
+
+      <div className="min-w-0">{children}</div>
     </Card>
   );
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Component
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function JourneyEditorSections({
   corridorInitialValue,
@@ -236,16 +261,15 @@ export function JourneyEditorSections({
   scheduleInitialValue,
   onScheduleSubmit,
   vehicleInitialValue,
+  vehicleSelectedAsset = null,
   onVehicleSubmit,
+  onChangeVehicleAsset,
   capacityInitialValue,
   onCapacitySubmit,
   pricingInitialValue,
   onPricingSubmit,
   preferencesInitialValue,
   onPreferencesSubmit,
-  assetInitialValue,
-  assetOptions = [],
-  onAssetSubmit,
   onCancel,
   submitting = false,
   className,
@@ -253,7 +277,10 @@ export function JourneyEditorSections({
   return (
     <div
       className={cn(
-        "space-y-6",
+        "w-full",
+        "space-y-4",
+        "sm:space-y-5",
+        "lg:space-y-6",
         className,
       )}
     >
@@ -263,7 +290,7 @@ export function JourneyEditorSections({
 
       <JourneyEditorSection
         title="Where"
-        description="Update the Journey origin and destination."
+        description="Your Journey route."
       >
         <JourneyCorridorEditor
           initialValue={corridorInitialValue}
@@ -280,7 +307,7 @@ export function JourneyEditorSections({
 
       <JourneyEditorSection
         title="When"
-        description="Update the Journey departure and arrival details."
+        description="Your departure and arrival."
       >
         <JourneyScheduleEditor
           initialValue={scheduleInitialValue}
@@ -297,11 +324,13 @@ export function JourneyEditorSections({
 
       <JourneyEditorSection
         title="Vehicle"
-        description="Update the vehicle used for this Journey."
+        description="The vehicle your passengers will ride in."
       >
         <JourneyVehicleEditor
           initialValue={vehicleInitialValue}
+          selectedAsset={vehicleSelectedAsset}
           onSubmit={onVehicleSubmit}
+          onChangeAsset={onChangeVehicleAsset}
           onCancel={onCancel}
           submitting={submitting}
           submitLabel="Save Vehicle"
@@ -314,7 +343,7 @@ export function JourneyEditorSections({
 
       <JourneyEditorSection
         title="Seats"
-        description="Update the number of passenger seats available."
+        description="Passenger seats available."
       >
         <JourneyCapacityEditor
           initialValue={capacityInitialValue}
@@ -331,7 +360,7 @@ export function JourneyEditorSections({
 
       <JourneyEditorSection
         title="Price"
-        description="Update the cost-sharing amount for this Journey."
+        description="Your cost-sharing amount."
       >
         <JourneyPricingEditor
           initialValue={pricingInitialValue}
@@ -348,7 +377,7 @@ export function JourneyEditorSections({
 
       <JourneyEditorSection
         title="Preferences"
-        description="Update the preferences passengers should know about."
+        description="What passengers should know before joining."
       >
         <JourneyPreferencesEditor
           initialValue={preferencesInitialValue}
@@ -358,25 +387,6 @@ export function JourneyEditorSections({
           submitLabel="Save Preferences"
         />
       </JourneyEditorSection>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Assets                                                             */}
-      {/* ------------------------------------------------------------------ */}
-
-      <JourneyEditorSection
-        title="Assets"
-        description="Associate an existing SisiMove asset with this Journey."
-      >
-        <JourneyAssetEditor
-          initialValue={assetInitialValue}
-          options={assetOptions}
-          onSubmit={onAssetSubmit}
-          onCancel={onCancel}
-          submitting={submitting}
-          submitLabel="Save Asset"
-        />
-      </JourneyEditorSection>
     </div>
   );
 }
-

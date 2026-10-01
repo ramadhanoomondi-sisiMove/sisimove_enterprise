@@ -23,8 +23,8 @@
 //
 // That identifier is a cross-domain reference to the member/provider identity
 // associated with the Journey. It is deliberately not a Prisma relation and
-// does not make Traveller Profile or Trust Profile part of the Journey
-// aggregate.
+// does not make Traveller Profile, Trust Profile, or Assets part of the
+// Journey aggregate.
 //
 // The public Journey query composes:
 //
@@ -38,43 +38,95 @@
 //        │
 //        └── Journey-owned public data
 //
+// The authenticated Journey read boundary may additionally resolve Asset
+// presentation references through the exported Asset public-reference
+// capability.
+//
 // Therefore:
 //
 // - Journey remains the owner of Journey creation;
 // - Journey remains the owner of Journey persistence;
 // - Traveller Profile remains owned by its bounded context;
 // - Trust Profile remains owned by its bounded context;
+// - Asset remains owned by the Asset bounded context;
+// - Journey consumes Asset public-reference resolution as an application
+//   capability;
 // - the public Journey query is responsible only for read-side composition.
 //
 // Journey does NOT:
 //
 // - inject TravellerProfileRepository;
 // - inject TrustProfileRepository;
-// - query Traveller or Trust persistence directly;
+// - inject AssetRepository;
+// - query Traveller, Trust, or Asset persistence directly;
 // - construct TravellerProfileAggregate;
 // - construct TrustProfileAggregate;
-// - register Traveller or Trust query handlers locally.
+// - construct AssetAggregate;
+// - register external query handlers locally.
 //
-// Instead, Journey imports the modules that export the public application
+// Instead, Journey imports the modules that export the application
 // capabilities it consumes.
 //
 // -----------------------------------------------------------------------------
 //
 // MODULE DEPENDENCY DIRECTION
 //
-//     Journey public read boundary
+//     Journey read boundary
 //          │
 //          ├──────────────► SocialModule
 //          │                    │
 //          │                    └── public Traveller capability
 //          │
-//          └──────────────► TrustModule
+//          ├──────────────► TrustModule
+//          │                    │
+//          │                    └── public Trust capability
+//          │
+//          └──────────────► AssetsModule
 //                               │
-//                               └── public Trust capability
+//                               └── public Asset reference capability
 //
 // These are application-level read dependencies, not domain ownership
 // relationships.
 //
+// -----------------------------------------------------------------------------
+//
+// ASSET PUBLIC REFERENCE
+//
+// JourneyVehicle stores only:
+//
+//     assetPublicId
+//
+// Journey does not construct an Asset URL.
+//
+// When the authenticated Journey read boundary needs the vehicle image:
+//
+//     JourneyController
+//          │
+//          ▼
+//     GetPublicAssetReferenceHandler
+//          │
+//          ▼
+//     AssetsModule
+//          │
+//          ▼
+//     AssetDeliveryPort
+//          │
+//          ▼
+//     { publicId, url }
+//
+// The Asset bounded context remains responsible for:
+//
+// - validating the Asset;
+// - validating Asset usability/visibility;
+// - resolving the consumer-facing URL;
+// - deciding how the Asset is physically delivered.
+//
+// Journey only consumes the reduced public Asset reference.
+//
+// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+//
+// NestJS
 // -----------------------------------------------------------------------------
 
 import { Module } from '@nestjs/common';
@@ -86,6 +138,7 @@ import { Module } from '@nestjs/common';
 import { IdentityModule } from '../identity/identity.module';
 import { SocialModule } from '../social/social.module';
 import { TrustModule } from '../trust/trust.module';
+import { AssetsModule } from '../assets/assets.module';
 
 // -----------------------------------------------------------------------------
 // Infrastructure
@@ -163,9 +216,9 @@ import {
   SearchPublishedJourneysQueryHandler,
 } from './application/query-handlers/journey';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Module
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 @Module({
   // ===========================================================================
@@ -204,10 +257,6 @@ import {
     //
     // SocialModule owns the Traveller Profile application boundary and exports
     // the public Traveller query capability consumed by Journey.
-    //
-    // This import makes that exported application contract available to
-    // GetPublicJourneysQueryHandler through NestJS dependency injection.
-    //
     // =========================================================================
 
     SocialModule,
@@ -228,26 +277,39 @@ import {
     // - Trust verification;
     // - Trust-related projections.
     //
-    // Journey does not:
+    // Journey does not access Trust persistence directly.
     //
-    // - inject TrustProfileRepository;
-    // - access Trust persistence directly;
-    // - reconstruct TrustProfileAggregate;
-    // - register GetPublicTrustProfileByMemberQueryHandler locally.
-    //
-    // TrustModule owns the Trust application boundary and explicitly exports:
-    //
-    //   TRUST_PROFILE_TOKENS.QUERY_HANDLERS
-    //     .GET_PUBLIC_BY_MEMBER_PUBLIC_ID
-    //
-    // Importing TrustModule therefore makes the public Trust application
-    // capability available to GetPublicJourneysQueryHandler through NestJS
-    // dependency injection.
-    //
-    // This is read-side composition, not Trust ownership of Journey.
     // =========================================================================
 
     TrustModule,
+
+    // =========================================================================
+    // Assets / Public Asset Reference Boundary
+    //
+    // JourneyVehicle stores only an opaque assetPublicId.
+    //
+    // Journey does not own Asset data and does not access Asset persistence
+    // directly.
+    //
+    // AssetsModule owns the public Asset reference capability:
+    //
+    //   ASSET_TOKENS.QUERY_HANDLERS.GET_PUBLIC_ASSET_REFERENCE
+    //
+    // Importing AssetsModule makes that exported application capability
+    // available to JourneyController.
+    //
+    // This is a read-side application dependency only.
+    //
+    // Journey does not:
+    //
+    // - inject AssetRepository;
+    // - construct AssetAggregate;
+    // - construct AssetDeliveryPort implementations;
+    // - construct storage implementations;
+    // - resolve Asset URLs itself.
+    // =========================================================================
+
+    AssetsModule,
 
     // =========================================================================
     // Prisma

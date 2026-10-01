@@ -13,64 +13,75 @@
 // - Does not determine whether the overall demand is valid.
 // - Parent create form owns workflow state and submission.
 //
-// This step captures the route information needed by the creation flow:
-// - origin;
-// - destination.
+// Location architecture:
+// - Uses the SisiMove-supported location catalogue.
+// - Does not use Mapbox, Google, or any external geocoding service.
+// - From and To are selected from SisiMove-supported locations.
+// - The selected locations already contain their coordinates.
+// - The parent receives the resolved locations and corridor information
+//   through the normal controlled-form flow.
 //
-// Waypoint management is intentionally not embedded here because the existing
-// corridor editor owns waypoint editing as a distinct concern. The parent may
-// compose that editor when waypoint capture is required.
+// Waypoint management remains a separate concern.
+// -----------------------------------------------------------------------------
 //
-// The values represented here are form values, not backend domain objects.
+// Path:
+// src/features/journey-demand/components/create/JourneyDemandCreateWhere.tsx
 // -----------------------------------------------------------------------------
 
 'use client';
 
-import { Input } from '@/components/ui';
+import {
+  LocationSelector,
+  type ResolvedLocation,
+} from '@/foundation/location';
+
 import { cn } from '@/foundation';
 
 export interface JourneyDemandCreateWhereValue {
-  readonly origin: string;
-  readonly destination: string;
+  readonly origin: ResolvedLocation | null;
+  readonly destination: ResolvedLocation | null;
 }
 
 export interface JourneyDemandCreateWhereProps {
   readonly value: JourneyDemandCreateWhereValue;
-  readonly onChange: (value: JourneyDemandCreateWhereValue) => void;
+
+  readonly originQuery: string;
+  readonly destinationQuery: string;
+
+  readonly originSuggestions: readonly ResolvedLocation[];
+  readonly destinationSuggestions: readonly ResolvedLocation[];
+
+  readonly originError?: string | null;
+  readonly destinationError?: string | null;
+
   readonly disabled?: boolean;
   readonly className?: string;
+
+  readonly onOriginQueryChange: (query: string) => void;
+  readonly onDestinationQueryChange: (query: string) => void;
+
+  readonly onOriginSelect: (location: ResolvedLocation) => void;
+  readonly onDestinationSelect: (location: ResolvedLocation) => void;
 }
 
 export function JourneyDemandCreateWhere({
   value,
-  onChange,
+  originQuery,
+  destinationQuery,
+  originSuggestions,
+  destinationSuggestions,
+  originError = null,
+  destinationError = null,
   disabled = false,
   className,
+  onOriginQueryChange,
+  onDestinationQueryChange,
+  onOriginSelect,
+  onDestinationSelect,
 }: JourneyDemandCreateWhereProps) {
-  const handleOriginChange = (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ): void => {
-    onChange({
-      ...value,
-      origin: event.target.value,
-    });
-  };
-
-  const handleDestinationChange = (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ): void => {
-    onChange({
-      ...value,
-      destination: event.target.value,
-    });
-  };
-
   return (
     <section
-      className={cn(
-        'min-w-0',
-        className,
-      )}
+      className={cn('min-w-0', className)}
       aria-labelledby="journey-demand-create-where-heading"
     >
       <div className="min-w-0">
@@ -91,31 +102,36 @@ export function JourneyDemandCreateWhere({
       </div>
 
       <div className="mt-6 grid min-w-0 gap-4 sm:grid-cols-2">
-        <Input
-          id="journey-demand-create-origin"
-          name="origin"
+        <LocationSelector
           label="From"
-          placeholder="e.g. Nairobi"
+          placeholder="Select starting point"
           value={value.origin}
-          onChange={handleOriginChange}
+          query={originQuery}
+          suggestions={originSuggestions}
           disabled={disabled}
-          autoComplete="off"
-          fullWidth
+          error={originError}
+          onQueryChange={onOriginQueryChange}
+          onSelect={onOriginSelect}
         />
 
-        <Input
-          id="journey-demand-create-destination"
-          name="destination"
+        <LocationSelector
           label="To"
-          placeholder="e.g. Bungoma"
+          placeholder={
+            value.origin
+              ? 'Select destination'
+              : 'Select starting point first'
+          }
           value={value.destination}
-          onChange={handleDestinationChange}
-          disabled={disabled}
-          autoComplete="off"
-          fullWidth
+          query={destinationQuery}
+          suggestions={destinationSuggestions}
+          disabled={disabled || value.origin === null}
+          error={destinationError}
+          onQueryChange={onDestinationQueryChange}
+          onSelect={onDestinationSelect}
         />
       </div>
     </section>
   );
 }
 
+export default JourneyDemandCreateWhere;

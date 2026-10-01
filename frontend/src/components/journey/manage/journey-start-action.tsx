@@ -34,9 +34,9 @@ import { cn } from "@/foundation/utils/cn";
 
 import { useStartJourney } from "@/features/journey/hooks/mutations";
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Icons
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 function StartIcon() {
   return (
@@ -57,9 +57,9 @@ function StartIcon() {
   );
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export interface JourneyStartActionProps {
   /**
@@ -98,9 +98,9 @@ export interface JourneyStartActionProps {
   readonly className?: string;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Component
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function JourneyStartAction({
   journeyPublicId,
@@ -114,11 +114,15 @@ export function JourneyStartAction({
 
   const startJourneyMutation = useStartJourney();
 
+  const isPending = startJourneyMutation.isPending;
+  const isDisabled = disabled || isPending;
+
+  // ===========================================================================
+  // Start
+  // ===========================================================================
+
   async function handleStart(): Promise<void> {
-    if (
-      disabled ||
-      startJourneyMutation.isPending
-    ) {
+    if (isDisabled) {
       return;
     }
 
@@ -154,12 +158,14 @@ export function JourneyStartAction({
     }
   }
 
-  const isPending =
-    startJourneyMutation.isPending;
+  // ===========================================================================
+  // Render
+  // ===========================================================================
 
   return (
     <div
       className={cn(
+        "w-full",
         "space-y-2",
         className,
       )}
@@ -171,7 +177,7 @@ export function JourneyStartAction({
           retryAction={{
             label: "Try again",
             onClick: handleStart,
-            disabled: isPending || disabled,
+            disabled: isDisabled,
           }}
         />
       )}
@@ -182,11 +188,10 @@ export function JourneyStartAction({
         leadingIcon={<StartIcon />}
         onClick={handleStart}
         loading={isPending}
-        disabled={disabled}
+        disabled={isDisabled}
       >
         {isPending ? startingLabel : label}
       </Button>
     </div>
   );
 }
-

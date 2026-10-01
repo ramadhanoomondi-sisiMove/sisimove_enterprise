@@ -7,6 +7,7 @@
 // Covers:
 //
 // - repositories;
+// - application services;
 // - command handlers;
 // - query handlers.
 //
@@ -18,40 +19,6 @@
 // RoleAggregate
 // PermissionAggregate
 // RolePermissionAggregate
-//
-// IMPORTANT:
-//
-// Verification and VerificationRequest are distinct domain responsibilities.
-//
-// Verification commands operate on the Verification aggregate:
-//
-// - create verification;
-// - grant MEMBER verification;
-// - grant DRIVER verification;
-// - reject verification;
-// - reopen verification;
-// - expire verification;
-// - revoke verification.
-//
-// Verification Request commands operate on an individual child request:
-//
-// - submit verification request;
-// - create request;
-// - approve request;
-// - reject request;
-// - cancel request.
-//
-// `SUBMIT_VERIFICATION_REQUEST` is the user-facing orchestration operation.
-//
-// `CREATE_VERIFICATION_REQUEST` remains the lower-level application operation
-// that creates the child request inside an existing Verification aggregate.
-//
-// There is intentionally no generic `APPROVE_VERIFICATION` command because
-// approving a VerificationRequest and granting Verification are different
-// business operations.
-//
-// VerificationRequest expiration is intentionally not exposed as a separate
-// application command.
 //
 // -----------------------------------------------------------------------------
 
@@ -70,6 +37,41 @@ export const IDENTITY_TOKENS = {
     PERMISSION: Symbol('PermissionRepository'),
 
     ROLE_PERMISSION: Symbol('RolePermissionRepository'),
+  } as const,
+
+  // ===========================================================================
+  // Application Services
+  // ===========================================================================
+
+  APPLICATION_SERVICES: {
+    /**
+     * Resolves the current authorization state of an Identity.
+     *
+     * Composition:
+     *
+     *     Identity
+     *         ↓
+     *     active identity roles
+     *         ↓
+     *     role permissions
+     *         ↓
+     *     active permissions
+     *         ↓
+     *     authorization snapshot
+     *
+     * The resulting snapshot is used when issuing access JWTs.
+     *
+     * The service is intentionally separate from:
+     *
+     * - IdentityRepository;
+     * - RolePermissionRepository;
+     * - PermissionRepository;
+     * - authentication;
+     * - session management.
+     *
+     * Those remain separate bounded responsibilities.
+     */
+    AUTHORIZATION_SNAPSHOT: Symbol('AuthorizationSnapshotService'),
   } as const,
 
   // ===========================================================================
