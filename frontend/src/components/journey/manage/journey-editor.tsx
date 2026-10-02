@@ -12,6 +12,8 @@
 // - own component mutation pending/error state;
 // - refresh the Journey projection after successful mutations;
 // - acknowledge successful component changes through SuccessModal;
+// - acknowledge successful publication through SuccessModal;
+// - provide publication next-action presentation supplied by the owning page;
 // - provide the existing Journey projection as initial values;
 // - safely initialize editors for progressively assembled Draft Journeys;
 // - pass resolved Asset presentation data to the vehicle editor;
@@ -40,10 +42,23 @@
 // - component mutations are owned by their respective mutation hooks;
 // - successful mutations refresh the authoritative Journey projection;
 // - success is acknowledged only after the refresh succeeds;
-// - SuccessModal is owned outside the keyed editing surface so that a route
-//   refresh/remount cannot discard the acknowledgement;
+// - component SuccessModal is owned outside the keyed editing surface so that a
+//   route refresh/remount cannot discard the acknowledgement;
 // - the modal does not perform navigation or mutation;
 // - failed mutations remain represented by ErrorState.
+//
+// Publication UX:
+// - JourneyPublishAction owns the publish mutation;
+// - successful publication immediately acknowledges success through the stable
+//   outer editor;
+// - the Journey projection refresh is triggered after publication so the
+//   editing surface can converge on the authoritative published projection;
+// - publication acknowledgement is not blocked by the projection refresh;
+// - publication acknowledgement is owned by the stable outer editor;
+// - publication next-action controls are supplied by the owning page;
+// - the editor never performs navigation;
+// - published Journeys become read-only when the refreshed projection reports
+//   PUBLISHED.
 //
 // Where workflow:
 // - JourneyEditor owns the controlled From / To selections;
@@ -122,6 +137,7 @@
 import {
   useMemo,
   useState,
+  type ReactNode,
 } from "react";
 
 import {
@@ -218,13 +234,14 @@ export interface JourneyEditorProps {
   readonly showPublishAction?: boolean;
 
   /**
-   * Called after the publish command succeeds and the Journey projection
-   * has been refreshed.
+   * Optional actions presented after successful publication.
    *
-   * The parent owns the successful-publication acknowledgement and any
-   * subsequent navigation or presentation response.
+   * The owning page supplies these actions because navigation belongs to the
+   * owning route surface, not to JourneyEditor.
+   *
+   * JourneyEditor only presents the supplied React nodes inside SuccessModal.
    */
-  readonly onPublished?: () => void | Promise<void>;
+  readonly publishedActions?: ReactNode;
 
   readonly className?: string;
 }
@@ -236,8 +253,8 @@ export interface JourneyEditorProps {
 interface JourneyEditorContentProps
   extends JourneyEditorProps {
   /**
-   * Completes the component-change acknowledgement after the owning Journey
-   * projection has refreshed.
+   * Completes a successful Journey component-change acknowledgement after the
+   * owning Journey projection has refreshed.
    *
    * This callback intentionally belongs to the stable outer editor so that
    * SuccessModal state survives route-keyed remounts of the editing surface.
@@ -259,23 +276,12 @@ interface LocationLike {
   readonly longitude: number;
 }
 
-/**
- * The Journey route projection intentionally does not contain the supported
- * catalogue key. It contains only the physical-world representation.
- *
- * Therefore route points are resolved against the supported location catalogue
- * before they enter the controlled editor state.
- */
 interface JourneyRoutePointLike {
   readonly name: string;
   readonly latitude: number;
   readonly longitude: number;
 }
 
-/**
- * Converts a keyed supported-catalogue location into the presentation
- * ResolvedLocation shape.
- */
 function toResolvedLocation(
   location: LocationLike,
 ): ResolvedLocation {
@@ -288,11 +294,10 @@ function toResolvedLocation(
 }
 
 /**
- * The supported location catalogue is derived from the existing supported
- * corridor definitions.
+ * Unique locations derived from the existing supported corridor catalogue.
  *
- * This does not create a second catalogue. It merely exposes the unique
- * locations already owned by SUPPORTED_CORRIDORS for the From selector.
+ * This is a projection of SUPPORTED_CORRIDORS, not a second location
+ * catalogue.
  */
 const SUPPORTED_LOCATIONS:
   readonly ResolvedLocation[] =
@@ -303,8 +308,7 @@ const SUPPORTED_LOCATIONS:
         ResolvedLocation
       >();
 
-    for (const corridor of
-      SUPPORTED_CORRIDORS) {
+    for (const corridor of SUPPORTED_CORRIDORS) {
       const candidates:
         readonly LocationLike[] = [
         corridor.origin,
@@ -315,22 +319,17 @@ const SUPPORTED_LOCATIONS:
         ),
       ];
 
-      for (const location of
-        candidates) {
+      for (const location of candidates) {
         const key =
           location.key
             .trim()
             .toUpperCase();
 
-        if (
-          key.length === 0
-        ) {
+        if (key.length === 0) {
           continue;
         }
 
-        if (
-          !locations.has(key)
-        ) {
+        if (!locations.has(key)) {
           locations.set(
             key,
             toResolvedLocation(
@@ -346,16 +345,6 @@ const SUPPORTED_LOCATIONS:
     );
   })();
 
-/**
- * Resolves a Journey read-model route point against the supported location
- * catalogue.
- *
- * JourneyRoutePoint does not own the catalogue key, so it must never be
- * passed directly to a function requiring LocationLike.
- *
- * Matching uses the physical location represented by the Journey projection.
- * The returned object always comes from the supported catalogue.
- */
 function resolveJourneyRoutePoint(
   location:
     | JourneyRoutePointLike
@@ -406,12 +395,10 @@ function filterLocations(
     .filter(
       (location) => {
         const name =
-          location.name
-            .toLowerCase();
+          location.name.toLowerCase();
 
         const key =
-          location.key
-            .toLowerCase();
+          location.key.toLowerCase();
 
         return (
           name.includes(
@@ -456,9 +443,7 @@ function parseOptionalInteger(
   const parsed =
     Number(normalized);
 
-  if (
-    !Number.isInteger(parsed)
-  ) {
+  if (!Number.isInteger(parsed)) {
     throw new Error(
       "Enter a valid whole number.",
     );
@@ -484,9 +469,7 @@ function parseRequiredAmount(
   const parsed =
     Number(normalized);
 
-  if (
-    !Number.isFinite(parsed)
-  ) {
+  if (!Number.isFinite(parsed)) {
     throw new Error(
       "Enter a valid price amount.",
     );
@@ -582,13 +565,6 @@ function toDateTimeLocalValue(
 // Journey route synchronization
 // =============================================================================
 
-/**
- * Produces a stable identity for the authoritative route projection.
- *
- * This is deliberately based on route content rather than object identity.
- * The parent may reconstruct the MyJourney object after a refresh, while the
- * actual route remains unchanged.
- */
 function getJourneyRouteKey(
   journey: MyJourney,
 ): string {
@@ -610,33 +586,19 @@ function getJourneyRouteKey(
 }
 
 // =============================================================================
-// Component
+// Public JourneyEditor
 // =============================================================================
 
 /**
- * Public JourneyEditor boundary.
+ * Stable JourneyEditor boundary.
  *
- * The route key deliberately remounts the editing surface when the
- * authoritative Journey route changes. This is preferable to synchronously
- * calling setState from an effect merely to copy server projection into local
- * form state.
+ * Success acknowledgement is deliberately outside the keyed editing surface.
+ * A refreshed Journey projection may cause the editing surface to remount, but
+ * that must not close or discard an acknowledgement that has already been
+ * earned.
  *
- * Success acknowledgement intentionally lives at this stable boundary.
- *
- * This gives the following lifecycle:
- *
- *   mutation
- *      ↓
- *   onChanged()
- *      ↓
- *   refreshed Journey projection
- *      ↓
- *   success state
- *      ↓
- *   route-keyed editing surface may remount
- *
- * Because SuccessModal is outside the keyed child, the acknowledgement is not
- * lost when the refreshed route causes JourneyEditorContent to remount.
+ * Both component changes and publication therefore converge on the same
+ * stable SuccessModal boundary.
  */
 export function JourneyEditor(
   props: JourneyEditorProps,
@@ -646,6 +608,9 @@ export function JourneyEditor(
     setSuccessMessage,
   ] =
     useState<{
+      kind:
+        | "change"
+        | "publication";
       title: string;
       description: string;
     } | null>(null);
@@ -655,11 +620,13 @@ export function JourneyEditor(
       props.journey,
     );
 
+  // ---------------------------------------------------------------------------
+  // Component change acknowledgement
+  // ---------------------------------------------------------------------------
+
   /**
-   * A component mutation is only acknowledged after the owning workflow has
+   * Component mutation success is acknowledged only after the parent has
    * successfully refreshed the authoritative Journey projection.
-   *
-   * If onChanged fails, the success modal is not opened.
    */
   async function completeChange(
     title: string,
@@ -668,10 +635,59 @@ export function JourneyEditor(
     await props.onChanged?.();
 
     setSuccessMessage({
+      kind: "change",
       title,
       description,
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // Publication acknowledgement
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Publication success is intentionally different from component-change
+   * success.
+   *
+   * The publish API has already succeeded before this callback is invoked.
+   * The success acknowledgement must therefore not be blocked by the query
+   * refresh.
+   *
+   * Order:
+   *
+   *   publish API succeeds
+   *        ↓
+   *   acknowledge publication
+   *        ↓
+   *   SuccessModal opens
+   *        ↓
+   *   refresh Journey projection
+   *
+   * The refresh still runs so the editing surface converges on the
+   * authoritative published projection. The modal remains owned by this
+   * stable outer component and therefore survives any resulting keyed
+   * remount.
+   */
+  function completePublication(): void {
+    setSuccessMessage({
+      kind: "publication",
+      title: "Your Journey is now live",
+      description:
+        "Your Journey has been published successfully and is now available for travellers to discover and book.",
+    });
+
+    /**
+     * Refresh independently from the acknowledgement lifecycle.
+     *
+     * A refresh failure must not turn an already successful publication into
+     * a publication failure from the user's perspective.
+     */
+    void props.onChanged?.();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
     <>
@@ -681,6 +697,9 @@ export function JourneyEditor(
         onCompleteChange={
           completeChange
         }
+        onCompletePublication={
+          completePublication
+        }
       />
 
       <SuccessModal
@@ -688,8 +707,7 @@ export function JourneyEditor(
           successMessage !== null
         }
         title={
-          successMessage?.title ??
-          ""
+          successMessage?.title ?? ""
         }
         description={
           successMessage?.description
@@ -699,7 +717,21 @@ export function JourneyEditor(
             null,
           )
         }
-      />
+        actions={
+          successMessage?.kind ===
+          "publication"
+            ? props.publishedActions
+            : undefined
+        }
+      >
+        {successMessage?.kind ===
+          "publication" && (
+          <p className="text-sm leading-6 text-[var(--foreground-muted)]">
+            You can continue managing your Journey here, return to your
+            Journeys, or open the published Journey as travellers will see it.
+          </p>
+        )}
+      </SuccessModal>
     </>
   );
 }
@@ -708,31 +740,38 @@ export function JourneyEditor(
 // Editing surface
 // =============================================================================
 
+interface JourneyEditorContentWithPublicationProps
+  extends JourneyEditorContentProps {
+  /**
+   * Completes publication acknowledgement after the publish operation
+   * succeeds.
+   *
+   * The outer editor owns the acknowledgement so it survives remounts of
+   * this keyed editing surface.
+   */
+  readonly onCompletePublication: () => void;
+}
+
 function JourneyEditorContent({
   journey,
-  onChanged,
   onChangeVehicleAsset,
   showPublishAction = false,
-  onPublished,
   className,
   onCompleteChange,
-}: JourneyEditorContentProps) {
+  onCompletePublication,
+}: JourneyEditorContentWithPublicationProps) {
   // ---------------------------------------------------------------------------
   // General editor state
   // ---------------------------------------------------------------------------
 
   const [error, setError] =
-    useState<Error | null>(
-      null,
-    );
+    useState<Error | null>(null);
 
   const [
     activeMutation,
     setActiveMutation,
   ] =
-    useState<string | null>(
-      null,
-    );
+    useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
   // Published lifecycle presentation
@@ -769,14 +808,6 @@ function JourneyEditorContent({
 
   // ---------------------------------------------------------------------------
   // Controlled Where state
-  // ---------------------------------------------------------------------------
-  //
-  // Because JourneyEditorContent is keyed by the authoritative route
-  // projection, these initializers execute again whenever the refreshed
-  // Journey route actually changes.
-  //
-  // No useEffect is necessary and no synchronous setState occurs inside an
-  // effect.
   // ---------------------------------------------------------------------------
 
   const initialOrigin =
@@ -850,9 +881,7 @@ function JourneyEditorContent({
           SUPPORTED_LOCATIONS,
           originQuery,
         ),
-      [
-        originQuery,
-      ],
+      [originQuery],
     );
 
   // ---------------------------------------------------------------------------
@@ -877,9 +906,7 @@ function JourneyEditorContent({
             ),
         );
       },
-      [
-        origin,
-      ],
+      [origin],
     );
 
   const destinationSuggestions =
@@ -902,16 +929,9 @@ function JourneyEditorContent({
   function handleOriginQueryChange(
     query: string,
   ): void {
-    setOriginQuery(
-      query,
-    );
-
+    setOriginQuery(query);
     setOrigin(null);
 
-    /**
-     * Destination validity depends on the selected origin. Once From is
-     * being changed, the previous To is no longer authoritative.
-     */
     setDestination(null);
     setDestinationQuery("");
 
@@ -927,7 +947,6 @@ function JourneyEditorContent({
     );
 
     setDestination(null);
-
     setDestinationError(null);
   }
 
@@ -951,10 +970,6 @@ function JourneyEditorContent({
       resolvedLocation.name,
     );
 
-    /**
-     * A changed origin invalidates the previous destination until a supported
-     * destination is selected from the new origin.
-     */
     setDestination(null);
     setDestinationQuery("");
 
@@ -1017,32 +1032,19 @@ function JourneyEditorContent({
           label: "Vehicle photo",
         };
       },
-      [
-        journey.vehicle?.asset,
-      ],
+      [journey.vehicle?.asset],
     );
 
   // ---------------------------------------------------------------------------
   // Current Journey component initial values
   // ---------------------------------------------------------------------------
 
-  /**
-   * JourneyCorridorFormValues intentionally requires complete physical
-   * locations because it represents a submitted Where value.
-   *
-   * The actual interactive editor still uses nullable `origin` and
-   * `destination` props and prevents submission until both are selected.
-   *
-   * The empty value is therefore only a presentation fallback for a Draft
-   * Journey that has not yet received a corridor.
-   */
   const corridorInitialValue =
     useMemo(
       (): JourneyCorridorFormValues => ({
         origin:
           origin ??
-          initialOrigin ??
-          {
+          initialOrigin ?? {
             key: "",
             name: "",
             latitude: 0,
@@ -1051,8 +1053,7 @@ function JourneyEditorContent({
 
         destination:
           destination ??
-          initialDestination ??
-          {
+          initialDestination ?? {
             key: "",
             name: "",
             latitude: 0,
@@ -1121,8 +1122,7 @@ function JourneyEditorContent({
           "",
 
         assetPublicId:
-          journey.vehicle
-            ?.assetPublicId ??
+          journey.vehicle?.assetPublicId ??
           "",
       }),
       [
@@ -1130,10 +1130,8 @@ function JourneyEditorContent({
         journey.vehicle?.model,
         journey.vehicle?.year,
         journey.vehicle?.color,
-        journey.vehicle
-          ?.registration,
-        journey.vehicle
-          ?.assetPublicId,
+        journey.vehicle?.registration,
+        journey.vehicle?.assetPublicId,
       ],
     );
 
@@ -1182,13 +1180,11 @@ function JourneyEditorContent({
           ("NOT_ALLOWED" satisfies JourneySmokingPolicy),
 
         pets:
-          journey.preferences
-            ?.pets ??
+          journey.preferences?.pets ??
           ("NOT_ALLOWED" satisfies JourneyPetsPolicy),
 
         luggage:
-          journey.preferences
-            ?.luggage ??
+          journey.preferences?.luggage ??
           ("STANDARD" satisfies JourneyLuggagePolicy),
 
         conversation:
@@ -1197,16 +1193,14 @@ function JourneyEditorContent({
           ("MODERATE" satisfies JourneyConversationPreference),
 
         music:
-          journey.preferences
-            ?.music ??
+          journey.preferences?.music ??
           ("LOW" satisfies JourneyMusicPreference),
       }),
       [
         journey.preferences?.smoking,
         journey.preferences?.pets,
         journey.preferences?.luggage,
-        journey.preferences
-          ?.conversation,
+        journey.preferences?.conversation,
         journey.preferences?.music,
       ],
     );
@@ -1228,9 +1222,16 @@ function JourneyEditorContent({
   // Publish success
   // ---------------------------------------------------------------------------
 
-  async function handlePublished(): Promise<void> {
-    await onChanged?.();
-    await onPublished?.();
+  /**
+   * Publication acknowledgement is owned by the stable outer editor.
+   *
+   * JourneyPublishAction invokes this only after the publish API succeeds.
+   *
+   * The outer editor immediately opens SuccessModal and independently refreshes
+   * the Journey projection.
+   */
+  function handlePublished(): void {
+    onCompletePublication();
   }
 
   // ---------------------------------------------------------------------------
@@ -1266,9 +1267,7 @@ function JourneyEditorContent({
         const message =
           "Choose a valid starting point.";
 
-        setOriginError(
-          message,
-        );
+        setOriginError(message);
 
         throw new Error(
           message,
@@ -1276,8 +1275,7 @@ function JourneyEditorContent({
       }
 
       if (
-        destinationKey.length ===
-        0
+        destinationKey.length === 0
       ) {
         const message =
           "Choose a valid destination.";
@@ -1291,13 +1289,6 @@ function JourneyEditorContent({
         );
       }
 
-      /**
-       * The resolver is the single authority for supported Journey
-       * directionality.
-       *
-       * It accepts both canonical and reverse directional selections while
-       * retaining the canonical corridor identity internally.
-       */
       const resolvedCorridor =
         resolveSupportedCorridor(
           originKey,
@@ -1320,11 +1311,6 @@ function JourneyEditorContent({
         );
       }
 
-      /**
-       * The resolver returns the authoritative directional physical
-       * locations. These are used for the persistence request rather than
-       * trusting arbitrary presentation metadata.
-       */
       const resolvedOrigin =
         resolvedCorridor.origin;
 
@@ -1372,15 +1358,11 @@ function JourneyEditorContent({
               "Unable to save the Journey corridor.",
             );
 
-      setError(
-        nextError,
-      );
+      setError(nextError);
 
       throw nextError;
     } finally {
-      setActiveMutation(
-        null,
-      );
+      setActiveMutation(null);
     }
   }
 
@@ -1434,15 +1416,11 @@ function JourneyEditorContent({
               "Unable to save the Journey schedule.",
             );
 
-      setError(
-        nextError,
-      );
+      setError(nextError);
 
       throw nextError;
     } finally {
-      setActiveMutation(
-        null,
-      );
+      setActiveMutation(null);
     }
   }
 
@@ -1500,11 +1478,8 @@ function JourneyEditorContent({
             ? { registration }
             : {}),
 
-          ...(assetPublicId.length >
-          0
-            ? {
-                assetPublicId,
-              }
+          ...(assetPublicId.length > 0
+            ? { assetPublicId }
             : {}),
         },
       );
@@ -1521,15 +1496,11 @@ function JourneyEditorContent({
               "Unable to save the Journey vehicle.",
             );
 
-      setError(
-        nextError,
-      );
+      setError(nextError);
 
       throw nextError;
     } finally {
-      setActiveMutation(
-        null,
-      );
+      setActiveMutation(null);
     }
   }
 
@@ -1577,15 +1548,11 @@ function JourneyEditorContent({
               "Unable to save Journey capacity.",
             );
 
-      setError(
-        nextError,
-      );
+      setError(nextError);
 
       throw nextError;
     } finally {
-      setActiveMutation(
-        null,
-      );
+      setActiveMutation(null);
     }
   }
 
@@ -1630,15 +1597,11 @@ function JourneyEditorContent({
               "Unable to save Journey pricing.",
             );
 
-      setError(
-        nextError,
-      );
+      setError(nextError);
 
       throw nextError;
     } finally {
-      setActiveMutation(
-        null,
-      );
+      setActiveMutation(null);
     }
   }
 
@@ -1687,15 +1650,11 @@ function JourneyEditorContent({
               "Unable to save the Journey preferences.",
             );
 
-      setError(
-        nextError,
-      );
+      setError(nextError);
 
       throw nextError;
     } finally {
-      setActiveMutation(
-        null,
-      );
+      setActiveMutation(null);
     }
   }
 
@@ -1716,15 +1675,11 @@ function JourneyEditorContent({
       {error !== null && (
         <ErrorState
           title="We couldn't save the Journey"
-          description={
-            error.message
-          }
+          description={error.message}
           retryAction={{
             label: "Dismiss",
             onClick: () =>
-              setError(
-                null,
-              ),
+              setError(null),
             disabled:
               isSubmitting,
           }}
@@ -1766,9 +1721,7 @@ function JourneyEditorContent({
       <JourneyEditorSections
         origin={origin}
         destination={destination}
-        originQuery={
-          originQuery
-        }
+        originQuery={originQuery}
         destinationQuery={
           destinationQuery
         }
@@ -1778,9 +1731,7 @@ function JourneyEditorContent({
         destinationSuggestions={
           destinationSuggestions
         }
-        originError={
-          originError
-        }
+        originError={originError}
         destinationError={
           destinationError
         }
@@ -1838,12 +1789,8 @@ function JourneyEditorContent({
         onPreferencesSubmit={
           handlePreferencesSubmit
         }
-        submitting={
-          isSubmitting
-        }
-        readOnly={
-          isPublished
-        }
+        submitting={isSubmitting}
+        readOnly={isPublished}
       />
 
       {showPublishAction &&

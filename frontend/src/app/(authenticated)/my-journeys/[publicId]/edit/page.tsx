@@ -21,8 +21,7 @@
 // - render loading/error/not-found states;
 // - compose the JourneyEditor;
 // - enable Journey management actions;
-// - acknowledge successful publication;
-// - provide clear next actions after publication;
+// - provide explicit next actions after successful publication;
 // - refresh the Journey projection after editor changes.
 //
 // Non-responsibilities:
@@ -30,7 +29,10 @@
 // - no publish mutation logic;
 // - no lifecycle transition implementation;
 // - no aggregate reconstruction;
-// - no public Journey querying.
+// - no public Journey querying;
+// - no publication success state;
+// - no SuccessModal ownership;
+// - no automatic navigation after publication.
 //
 // Publication flow:
 //
@@ -38,15 +40,21 @@
 //      ↓
 //   Backend confirms publication
 //      ↓
-//   JourneyEditor refreshes the projection
+//   JourneyEditor acknowledges success
 //      ↓
-//   This page acknowledges successful publication
+//   SuccessModal opens
 //      ↓
-//   User sees that the Journey is live and can receive bookings
-//      ↓
-//   User chooses the next destination.
+//   User chooses the next destination
+//
+// The JourneyEditor refreshes the Journey projection independently after
+// successful publication. The acknowledgement itself is owned by the editor
+// so the success dialog is not dependent on the query refresh completing.
 //
 // Navigation is therefore user-directed rather than automatic.
+//
+// The JourneyEditor owns the publication acknowledgement because it also owns
+// the component-change success lifecycle. This page supplies only the
+// navigation actions that are appropriate after publication.
 //
 // -----------------------------------------------------------------------------
 //
@@ -54,28 +62,25 @@
 //
 // - View My Journeys
 // - View Published Journey
+// - Done / close the success dialog
 //
 // -----------------------------------------------------------------------------
-//
 
 "use client";
 
-import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { JourneyEditor } from "@/components/journey/manage";
 import { useMyJourney } from "@/features/journey/hooks/queries/use-my-journey";
 import { AUTHENTICATED_ROUTES } from "@/foundation/routing";
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Page
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export default function EditMyJourneyPage() {
   const params = useParams<{ publicId: string }>();
   const router = useRouter();
-
-  const [published, setPublished] = useState(false);
 
   const publicId = params.publicId;
 
@@ -145,87 +150,53 @@ export default function EditMyJourneyPage() {
   }
 
   // ---------------------------------------------------------------------------
-  // Published Success
+  // Publication Next Actions
+  //
+  // These actions are intentionally supplied to JourneyEditor as presentation
+  // content. JourneyEditor owns the success acknowledgement; this page owns
+  // navigation because navigation is a page concern.
   // ---------------------------------------------------------------------------
-  //
-  // Publication has already succeeded on the backend.
-  //
-  // The user remains on the current management surface and is explicitly told
-  // what changed before being offered the next destinations.
-  //
+
+  const publishedActions = (
+    <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+      <button
+        type="button"
+        onClick={() => {
+          router.push(AUTHENTICATED_ROUTES.MY_JOURNEYS);
+        }}
+        className="inline-flex min-h-10 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)] focus-visible:outline-2 focus-visible:outline-[var(--brand)] focus-visible:outline-offset-2"
+      >
+        View My Journeys
+      </button>
+
+      <button
+        type="button"
+        onClick={() => {
+          router.push(
+            `/journeys/${encodeURIComponent(journey.publicId)}`,
+          );
+        }}
+        className="inline-flex min-h-10 items-center justify-center rounded-[var(--radius-md)] bg-[var(--brand)] px-4 py-2 text-sm font-medium text-[var(--brand-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-[var(--brand)] focus-visible:outline-offset-2"
+      >
+        View Published Journey
+      </button>
+    </div>
+  );
+
+  // ---------------------------------------------------------------------------
+  // Render
   // ---------------------------------------------------------------------------
 
   return (
     <main className="page-shell">
       <div className="page-container py-6 sm:py-8">
         <div className="mx-auto w-full max-w-5xl">
-          <div className="space-y-6">
-            {published && (
-              <section
-                aria-live="polite"
-                aria-labelledby="journey-published-title"
-                className="rounded-[var(--radius-xl)] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-[var(--shadow-sm)] sm:p-6"
-              >
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm font-medium text-[var(--success)]">
-                      Journey published successfully
-                    </p>
-
-                    <h1
-                      id="journey-published-title"
-                      className="mt-1 text-lg font-semibold text-[var(--foreground)] sm:text-xl"
-                    >
-                      Your Journey is now live
-                    </h1>
-
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--foreground-muted)]">
-                      Your Journey is now available for travellers to
-                      discover. It can receive bookings and be appreciated
-                      by the SisiMove community.
-                    </p>
-                  </div>
-
-                  <div className="flex flex-col gap-3 sm:flex-row">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        router.push(
-                          AUTHENTICATED_ROUTES.MY_JOURNEYS,
-                        );
-                      }}
-                      className="inline-flex min-h-10 items-center justify-center rounded-[var(--radius-md)] bg-[var(--foreground)] px-4 py-2 text-sm font-medium text-[var(--background)] transition-opacity hover:opacity-90"
-                    >
-                      View My Journeys
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        router.push(
-                          `/journeys/${encodeURIComponent(
-                            journey.publicId,
-                          )}`,
-                        );
-                      }}
-                      className="inline-flex min-h-10 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
-                    >
-                      View Published Journey
-                    </button>
-                  </div>
-                </div>
-              </section>
-            )}
-
-            <JourneyEditor
-              journey={journey}
-              onChanged={refetch}
-              showPublishAction={!published}
-              onPublished={() => {
-                setPublished(true);
-              }}
-            />
-          </div>
+          <JourneyEditor
+            journey={journey}
+            onChanged={refetch}
+            showPublishAction
+            publishedActions={publishedActions}
+          />
         </div>
       </div>
     </main>

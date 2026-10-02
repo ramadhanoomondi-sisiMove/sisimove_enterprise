@@ -22,6 +22,10 @@
 // The parent decides whether this action should be rendered and may supply
 // additional disabled state or a success callback.
 //
+// Publication success and parent acknowledgement are deliberately separated:
+// a successful publish must not be reported as a publish failure merely because
+// the parent's projection refresh or success-acknowledgement callback fails.
+//
 // -----------------------------------------------------------------------------
 
 "use client";
@@ -89,6 +93,9 @@ export interface JourneyPublishActionProps {
    *
    * The parent can use this to refetch the Journey projection or update
    * management presentation state.
+   *
+   * This callback is not part of the publish mutation itself. A failure from
+   * the callback must therefore not be presented as a publish failure.
    */
   readonly onPublished?: () => void | Promise<void>;
 
@@ -150,12 +157,18 @@ export function JourneyPublishAction({
 
     setError(null);
 
+    // -------------------------------------------------------------------------
+    // Publish mutation
+    // -------------------------------------------------------------------------
+    //
+    // Only the backend publish command belongs inside this error boundary.
+    // Once it succeeds, the Journey has been published regardless of what the
+    // parent subsequently does with the refreshed projection or UI state.
+    //
     try {
       await publishJourneyMutation.publish(
         normalizedJourneyPublicId,
       );
-
-      await onPublished?.();
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -164,12 +177,29 @@ export function JourneyPublishAction({
               "Unable to publish the Journey.",
             ),
       );
+
+      return;
     }
+
+    // -------------------------------------------------------------------------
+    // Parent acknowledgement
+    // -------------------------------------------------------------------------
+    //
+    // The publish command has already succeeded at this point.
+    //
+    // The parent may:
+    // - refresh the Journey projection;
+    // - open a success modal;
+    // - update management presentation state.
+    //
+    // Any error here is intentionally not converted into a publish error.
+    //
+    await onPublished?.();
   }
 
-  // ===========================================================================
+  // =============================================================================
   // Render
-  // ===========================================================================
+  // =============================================================================
 
   return (
     <div

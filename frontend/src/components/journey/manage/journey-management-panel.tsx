@@ -7,6 +7,7 @@
 // - Own the single-Journey query boundary.
 // - Handle loading, error, and successful states.
 // - Provide refetch to the management composition.
+// - Provide route-owned publication success actions to the management surface.
 // - Keep route/query concerns outside the lower-level management components.
 //
 // Non-responsibilities:
@@ -15,6 +16,7 @@
 // - No capability inference.
 // - No authorization decisions.
 // - No recreation of the Journey aggregate.
+// - No navigation construction.
 //
 // Architecture:
 //
@@ -25,13 +27,31 @@
 //          │
 //          ├── useMyJourney(publicId)
 //          │
-//          ├── loading / error boundary
+//          ├── loading / error / not-found boundary
 //          │
 //          ▼
 //   JourneyManagement
 //          │
 //          ├── JourneyEditor
-//          └── JourneyActions
+//          ├── JourneyActions
+//          └── SuccessModal
+//                   │
+//                   └── publicationSuccessActions
+//
+// Navigation ownership:
+//
+//   MyJourneyPage
+//          │
+//          └── publicationSuccessActions
+//                    │
+//                    ▼
+//             JourneyManagementPanel
+//                    │
+//                    ▼
+//             JourneyManagement
+//
+// The panel forwards the route-owned acknowledgement actions without
+// interpreting, constructing, or owning navigation destinations.
 //
 // Important React rule:
 //
@@ -40,11 +60,24 @@
 //
 // The hook itself is responsible for safely ignoring an empty identifier.
 //
+// Mutation acknowledgement:
+//
+// JourneyManagementPanel owns the authoritative projection refresh through
+// `refetch`. Lower-level mutation components notify JourneyManagement when a
+// mutation succeeds. JourneyManagement decides whether that refresh should be
+// awaited or performed in the background depending on the mutation flow.
+//
+// In particular, publication success must not wait for projection refresh before
+// showing its success acknowledgement.
+//
 // -----------------------------------------------------------------------------
 
 "use client";
 
+import type { ReactNode } from "react";
+
 import { ErrorState, Spinner } from "@/components/ui";
+import { cn } from "@/foundation/utils/cn";
 
 import { useMyJourney } from "@/features/journey/hooks/queries/use-my-journey";
 
@@ -63,6 +96,14 @@ export interface JourneyManagementPanelProps {
   readonly journeyPublicId: string;
 
   /**
+   * Optional actions rendered by the publication success acknowledgement.
+   *
+   * Navigation is owned by the route/page boundary. The management panel only
+   * transports the already-composed presentation content to JourneyManagement.
+   */
+  readonly publicationSuccessActions?: ReactNode;
+
+  /**
    * Optional additional class name.
    */
   readonly className?: string;
@@ -75,7 +116,7 @@ export interface JourneyManagementPanelProps {
 function JourneyManagementLoadingState() {
   return (
     <div
-      className={[
+      className={cn(
         "flex",
         "min-h-64",
         "items-center",
@@ -85,7 +126,7 @@ function JourneyManagementLoadingState() {
         "border-[var(--border)]",
         "bg-[var(--surface)]",
         "shadow-[var(--shadow-sm)]",
-      ].join(" ")}
+      )}
       role="status"
       aria-label="Loading Journey"
     >
@@ -106,6 +147,7 @@ function JourneyManagementLoadingState() {
 
 export function JourneyManagementPanel({
   journeyPublicId,
+  publicationSuccessActions,
   className,
 }: JourneyManagementPanelProps) {
   const normalizedJourneyPublicId = journeyPublicId.trim();
@@ -189,6 +231,7 @@ export function JourneyManagementPanel({
   // ===========================================================================
   //
   // The query completed without an error but did not produce a Journey.
+  //
   // Keep this separate from the transport/error state because the management
   // layer should never receive an undefined Journey.
   //
@@ -220,6 +263,7 @@ export function JourneyManagementPanel({
       <JourneyManagement
         journey={journey}
         onRefresh={refetch}
+        publicationSuccessActions={publicationSuccessActions}
       />
     </div>
   );

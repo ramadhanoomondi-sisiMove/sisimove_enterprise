@@ -38,6 +38,25 @@
 // presentation. This component presents authenticated Journey lifecycle
 // management actions.
 //
+// Lifecycle callback contract:
+//
+//   lifecycle mutation succeeds
+//              ↓
+//   individual action notifies this component's parent callback
+//              ↓
+//   parent refreshes projection / updates presentation
+//
+// Publication uses a dedicated callback because publication acknowledgement
+// is intentionally independent from the normal projection-refresh callback:
+//
+//   publication succeeds
+//              ↓
+//   onPublished()
+//              ├── acknowledge publication immediately
+//              └── refresh projection independently
+//
+// This component does not interpret or transform callback failures.
+//
 // -----------------------------------------------------------------------------
 
 "use client";
@@ -46,15 +65,15 @@ import { cn } from "@/foundation/utils/cn";
 
 import type { MyJourney } from "@/features/journey/models";
 
+import { JourneyCancelAction } from "./journey-cancel-action";
+import { JourneyCompleteAction } from "./journey-complete-action";
+import { JourneyExpireAction } from "./journey-expire-action";
 import { JourneyPublishAction } from "./journey-publish-action";
 import { JourneyStartAction } from "./journey-start-action";
-import { JourneyCompleteAction } from "./journey-complete-action";
-import { JourneyCancelAction } from "./journey-cancel-action";
-import { JourneyExpireAction } from "./journey-expire-action";
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export interface JourneyActionsProps {
   /**
@@ -103,11 +122,27 @@ export interface JourneyActionsProps {
   readonly disabled?: boolean;
 
   /**
-   * Called after any lifecycle action succeeds.
+   * Called after a successful non-publication lifecycle mutation.
    *
-   * The usual implementation is to refetch the My Journey projection.
+   * The usual implementation is to refresh the authoritative Journey
+   * projection and update the owning management surface.
+   *
+   * This component only forwards the callback. It does not own refresh,
+   * success acknowledgement, navigation, or presentation state.
    */
   readonly onChanged?: () => void | Promise<void>;
+
+  /**
+   * Called after the Journey has been successfully published.
+   *
+   * Publication has a dedicated callback because the management surface may
+   * need to acknowledge publication immediately without waiting for the
+   * authoritative projection refresh.
+   *
+   * This component only forwards the callback. It does not own the success
+   * acknowledgement or refresh behavior.
+   */
+  readonly onPublished?: () => void | Promise<void>;
 
   /**
    * Optional additional classes.
@@ -115,9 +150,9 @@ export interface JourneyActionsProps {
   readonly className?: string;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Component
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function JourneyActions({
   journey,
@@ -128,6 +163,7 @@ export function JourneyActions({
   showExpire = false,
   disabled = false,
   onChanged,
+  onPublished,
   className,
 }: JourneyActionsProps) {
   const hasActions =
@@ -141,8 +177,11 @@ export function JourneyActions({
     return null;
   }
 
-  const journeyPublicId =
-    journey.publicId;
+  const journeyPublicId = journey.publicId;
+
+  // ===========================================================================
+  // Render
+  // ===========================================================================
 
   return (
     <section
@@ -162,13 +201,21 @@ export function JourneyActions({
           "sm:items-center",
         )}
       >
+        {/* ----------------------------------------------------------------- */}
+        {/* Publish                                                           */}
+        {/* ----------------------------------------------------------------- */}
+
         {showPublish && (
           <JourneyPublishAction
             journeyPublicId={journeyPublicId}
             disabled={disabled}
-            onPublished={onChanged}
+            onPublished={onPublished}
           />
         )}
+
+        {/* ----------------------------------------------------------------- */}
+        {/* Start                                                             */}
+        {/* ----------------------------------------------------------------- */}
 
         {showStart && (
           <JourneyStartAction
@@ -178,6 +225,10 @@ export function JourneyActions({
           />
         )}
 
+        {/* ----------------------------------------------------------------- */}
+        {/* Complete                                                          */}
+        {/* ----------------------------------------------------------------- */}
+
         {showComplete && (
           <JourneyCompleteAction
             journeyPublicId={journeyPublicId}
@@ -186,6 +237,10 @@ export function JourneyActions({
           />
         )}
 
+        {/* ----------------------------------------------------------------- */}
+        {/* Cancel                                                            */}
+        {/* ----------------------------------------------------------------- */}
+
         {showCancel && (
           <JourneyCancelAction
             journeyPublicId={journeyPublicId}
@@ -193,6 +248,10 @@ export function JourneyActions({
             onCancelled={onChanged}
           />
         )}
+
+        {/* ----------------------------------------------------------------- */}
+        {/* Expire                                                            */}
+        {/* ----------------------------------------------------------------- */}
 
         {showExpire && (
           <JourneyExpireAction
@@ -205,4 +264,3 @@ export function JourneyActions({
     </section>
   );
 }
-

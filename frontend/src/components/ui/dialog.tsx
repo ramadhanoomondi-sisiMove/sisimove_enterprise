@@ -5,18 +5,19 @@
 // Reusable modal/dialog primitive for the sisiMove design system.
 //
 // Responsibilities:
-// - Provide an accessible modal surface
-// - Manage open/closed presentation
-// - Support Escape-to-close
-// - Support backdrop interaction
-// - Restore focus when closed
-// - Provide consistent dialog styling
-// - Remain completely domain-agnostic
+// - provide an accessible modal surface;
+// - manage open/closed presentation;
+// - support Escape-to-close;
+// - support backdrop interaction;
+// - restore focus when closed;
+// - provide consistent dialog styling;
+// - remain completely domain-agnostic.
 //
 // The component intentionally contains no business/domain logic.
+//
 // -----------------------------------------------------------------------------
 
-'use client';
+"use client";
 
 import {
   useEffect,
@@ -24,93 +25,89 @@ import {
   useRef,
   type HTMLAttributes,
   type ReactNode,
-} from 'react';
+} from "react";
 
-import { cn } from '../../foundation/utils/cn';
+import { cn } from "../../foundation/utils/cn";
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Types
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export interface DialogProps
-  extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
+  extends Omit<HTMLAttributes<HTMLDivElement>, "title"> {
   /**
    * Controls whether the dialog is visible.
    */
-  open: boolean;
+  readonly open: boolean;
 
   /**
    * Called when the dialog requests to close.
    */
-  onOpenChange: (open: boolean) => void;
+  readonly onOpenChange: (open: boolean) => void;
 
   /**
    * Dialog heading.
    */
-  title: string;
+  readonly title: string;
 
   /**
    * Optional supporting description.
    */
-  description?: string;
+  readonly description?: string;
 
   /**
    * Dialog content.
    */
-  children: ReactNode;
+  readonly children: ReactNode;
 
   /**
    * Optional content rendered in the dialog footer.
    */
-  footer?: ReactNode;
+  readonly footer?: ReactNode;
 
   /**
    * Controls the maximum width of the dialog.
    */
-  size?: DialogSize;
+  readonly size?: DialogSize;
 
   /**
    * Whether clicking the backdrop closes the dialog.
    *
    * Defaults to true.
    */
-  closeOnBackdropClick?: boolean;
+  readonly closeOnBackdropClick?: boolean;
 
   /**
    * Whether pressing Escape closes the dialog.
    *
    * Defaults to true.
    */
-  closeOnEscape?: boolean;
+  readonly closeOnEscape?: boolean;
 
   /**
    * Whether the close button is displayed.
    *
    * Defaults to true.
    */
-  showCloseButton?: boolean;
+  readonly showCloseButton?: boolean;
 }
 
-export type DialogSize =
-  | 'sm'
-  | 'md'
-  | 'lg'
-  | 'xl';
+export type DialogSize = "sm" | "md" | "lg" | "xl";
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Size Classes
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 const sizeClasses: Record<DialogSize, string> = {
-  sm: 'max-w-md',
-  md: 'max-w-lg',
-  lg: 'max-w-2xl',
-  xl: 'max-w-4xl',
+  sm: "max-w-md",
+  md: "max-w-lg",
+  lg: "max-w-2xl",
+  xl: "max-w-4xl",
 };
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Dialog
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function Dialog({
   open,
@@ -119,7 +116,7 @@ export function Dialog({
   description,
   children,
   footer,
-  size = 'md',
+  size = "md",
   closeOnBackdropClick = true,
   closeOnEscape = true,
   showCloseButton = true,
@@ -149,17 +146,27 @@ export function Dialog({
 
     const previousOverflow = document.body.style.overflow;
 
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = "hidden";
 
-    requestAnimationFrame(() => {
+    const focusFrame = requestAnimationFrame(() => {
       dialogRef.current?.focus();
     });
 
     return () => {
+      cancelAnimationFrame(focusFrame);
+
       document.body.style.overflow = previousOverflow;
 
-      previouslyFocusedElementRef.current?.focus();
+      const previouslyFocusedElement =
+        previouslyFocusedElementRef.current;
+
       previouslyFocusedElementRef.current = null;
+
+      if (previouslyFocusedElement !== null) {
+        requestAnimationFrame(() => {
+          previouslyFocusedElement.focus();
+        });
+      }
     };
   }, [open]);
 
@@ -172,8 +179,8 @@ export function Dialog({
       return;
     }
 
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== 'Escape') {
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key !== "Escape") {
         return;
       }
 
@@ -181,16 +188,12 @@ export function Dialog({
       onOpenChange(false);
     }
 
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [
-    open,
-    closeOnEscape,
-    onOpenChange,
-  ]);
+  }, [open, closeOnEscape, onOpenChange]);
 
   // ---------------------------------------------------------------------------
   // Closed
@@ -207,15 +210,15 @@ export function Dialog({
   return (
     <div
       className={[
-        'fixed',
-        'inset-0',
-        'z-50',
-        'flex',
-        'items-center',
-        'justify-center',
-        'p-4',
-        'sm:p-6',
-      ].join(' ')}
+        "fixed",
+        "inset-0",
+        "z-50",
+        "flex",
+        "items-center",
+        "justify-center",
+        "p-4",
+        "sm:p-6",
+      ].join(" ")}
       role="presentation"
     >
       {/* ------------------------------------------------------------------- */}
@@ -225,11 +228,11 @@ export function Dialog({
       <div
         aria-hidden="true"
         className={[
-          'absolute',
-          'inset-0',
-          'bg-[rgb(15_23_42_/_0.45)]',
-          'backdrop-blur-[2px]',
-        ].join(' ')}
+          "absolute",
+          "inset-0",
+          "bg-[rgb(15_23_42_/_0.45)]",
+          "backdrop-blur-[2px]",
+        ].join(" ")}
         onMouseDown={(event) => {
           if (
             closeOnBackdropClick &&
@@ -255,20 +258,20 @@ export function Dialog({
         }
         tabIndex={-1}
         className={cn(
-          'relative',
-          'z-10',
-          'flex',
-          'max-h-[calc(100vh-2rem)]',
-          'w-full',
-          'flex-col',
-          'overflow-hidden',
-          'rounded-[var(--radius-xl)]',
-          'border',
-          'border-[var(--border)]',
-          'bg-[var(--surface)]',
-          'shadow-[var(--shadow-lg)]',
-          'outline-none',
-          'sm:max-h-[calc(100vh-3rem)]',
+          "relative",
+          "z-10",
+          "flex",
+          "max-h-[calc(100vh-2rem)]",
+          "w-full",
+          "flex-col",
+          "overflow-hidden",
+          "rounded-[var(--radius-xl)]",
+          "border",
+          "border-[var(--border)]",
+          "bg-[var(--surface)]",
+          "shadow-[var(--shadow-lg)]",
+          "outline-none",
+          "sm:max-h-[calc(100vh-3rem)]",
           sizeClasses[size],
           className,
         )}
@@ -279,29 +282,29 @@ export function Dialog({
 
         <div
           className={[
-            'flex',
-            'shrink-0',
-            'items-start',
-            'justify-between',
-            'gap-4',
-            'border-b',
-            'border-[var(--border-subtle)]',
-            'px-4',
-            'py-4',
-            'sm:px-6',
-            'sm:py-5',
-          ].join(' ')}
+            "flex",
+            "shrink-0",
+            "items-start",
+            "justify-between",
+            "gap-4",
+            "border-b",
+            "border-[var(--border-subtle)]",
+            "px-4",
+            "py-4",
+            "sm:px-6",
+            "sm:py-5",
+          ].join(" ")}
         >
           <div className="min-w-0">
             <h2
               id={titleId}
               className={[
-                'text-base',
-                'font-semibold',
-                'leading-6',
-                'text-[var(--foreground)]',
-                'sm:text-lg',
-              ].join(' ')}
+                "text-base",
+                "font-semibold",
+                "leading-6",
+                "text-[var(--foreground)]",
+                "sm:text-lg",
+              ].join(" ")}
             >
               {title}
             </h2>
@@ -310,11 +313,11 @@ export function Dialog({
               <p
                 id={descriptionId}
                 className={[
-                  'mt-1',
-                  'text-sm',
-                  'leading-5',
-                  'text-[var(--foreground-muted)]',
-                ].join(' ')}
+                  "mt-1",
+                  "text-sm",
+                  "leading-5",
+                  "text-[var(--foreground-muted)]",
+                ].join(" ")}
               >
                 {description}
               </p>
@@ -327,25 +330,25 @@ export function Dialog({
               aria-label="Close dialog"
               onClick={() => onOpenChange(false)}
               className={[
-                'inline-flex',
-                'h-9',
-                'w-9',
-                'shrink-0',
-                'items-center',
-                'justify-center',
-                'rounded-[var(--radius-md)]',
-                'border',
-                'border-transparent',
-                'text-[var(--foreground-muted)]',
-                'transition-colors',
-                'duration-150',
-                'ease-out',
-                'hover:bg-[var(--background-subtle)]',
-                'hover:text-[var(--foreground)]',
-                'focus-visible:outline-2',
-                'focus-visible:outline-[var(--brand)]',
-                'focus-visible:outline-offset-2',
-              ].join(' ')}
+                "inline-flex",
+                "h-9",
+                "w-9",
+                "shrink-0",
+                "items-center",
+                "justify-center",
+                "rounded-[var(--radius-md)]",
+                "border",
+                "border-transparent",
+                "text-[var(--foreground-muted)]",
+                "transition-colors",
+                "duration-150",
+                "ease-out",
+                "hover:bg-[var(--background-subtle)]",
+                "hover:text-[var(--foreground)]",
+                "focus-visible:outline-2",
+                "focus-visible:outline-[var(--brand)]",
+                "focus-visible:outline-offset-2",
+              ].join(" ")}
             >
               <svg
                 viewBox="0 0 20 20"
@@ -370,14 +373,14 @@ export function Dialog({
 
         <div
           className={[
-            'min-h-0',
-            'flex-1',
-            'overflow-y-auto',
-            'px-4',
-            'py-5',
-            'sm:px-6',
-            'sm:py-6',
-          ].join(' ')}
+            "min-h-0",
+            "flex-1",
+            "overflow-y-auto",
+            "px-4",
+            "py-5",
+            "sm:px-6",
+            "sm:py-6",
+          ].join(" ")}
         >
           {children}
         </div>
@@ -389,20 +392,20 @@ export function Dialog({
         {footer && (
           <div
             className={[
-              'flex',
-              'shrink-0',
-              'flex-col-reverse',
-              'gap-2',
-              'border-t',
-              'border-[var(--border-subtle)]',
-              'px-4',
-              'py-4',
-              'sm:flex-row',
-              'sm:items-center',
-              'sm:justify-end',
-              'sm:px-6',
-              'sm:py-5',
-            ].join(' ')}
+              "flex",
+              "shrink-0",
+              "flex-col-reverse",
+              "gap-2",
+              "border-t",
+              "border-[var(--border-subtle)]",
+              "px-4",
+              "py-4",
+              "sm:flex-row",
+              "sm:items-center",
+              "sm:justify-end",
+              "sm:px-6",
+              "sm:py-5",
+            ].join(" ")}
           >
             {footer}
           </div>

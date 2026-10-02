@@ -77,6 +77,10 @@
 // JourneyEditor owns the controlled location state and the supported-corridor
 // resolver owns canonical/reverse direction resolution.
 //
+// Published Journeys are presented from the latest Journey projection supplied
+// by the parent. This component does not independently query or determine
+// whether the Journey is published.
+//
 // -----------------------------------------------------------------------------
 
 "use client";
