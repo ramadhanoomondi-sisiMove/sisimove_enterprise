@@ -175,19 +175,6 @@ export class PrismaJourneyRepository implements JourneyRepository {
       // -----------------------------------------------------------------------
       // Journey
       // -----------------------------------------------------------------------
-      //
-      // IMPORTANT:
-      //
-      // vehicleId is deliberately NOT written during the initial Journey
-      // upsert.
-      //
-      // Journey.vehicleId is a foreign key to JourneyVehicle.id. Therefore the
-      // JourneyVehicle row must exist before Journey.vehicleId can reference
-      // it.
-      //
-      // The vehicle relationship is populated only after the vehicle has been
-      // persisted below.
-      // -----------------------------------------------------------------------
 
       await tx.journey.upsert({
         where: {
@@ -213,6 +200,7 @@ export class PrismaJourneyRepository implements JourneyRepository {
           createdAt: persistence.journey.createdAt,
           updatedAt: persistence.journey.updatedAt,
 
+          // Vehicle FK is populated after JourneyVehicle exists.
           vehicleId: null,
         },
 
@@ -234,16 +222,12 @@ export class PrismaJourneyRepository implements JourneyRepository {
         },
       });
 
-      // -----------------------------------------------------------------------
-      // Corridor
-      // -----------------------------------------------------------------------
-
       if (persistence.corridor !== undefined) {
         const corridor = persistence.corridor;
 
         await tx.journeyCorridor.upsert({
           where: {
-            id: corridor.id,
+            journeyId,
           },
 
           create: {
@@ -337,7 +321,7 @@ export class PrismaJourneyRepository implements JourneyRepository {
       if (persistence.schedule !== undefined) {
         await tx.journeySchedule.upsert({
           where: {
-            id: persistence.schedule.id,
+            journeyId,
           },
 
           create: persistence.schedule,
@@ -390,7 +374,7 @@ export class PrismaJourneyRepository implements JourneyRepository {
         });
 
         // ---------------------------------------------------------------------
-        // Only after the vehicle exists can the FK be populated.
+        // Only after the vehicle exists can the Journey FK be populated.
         // ---------------------------------------------------------------------
 
         await tx.journey.update({
@@ -421,7 +405,7 @@ export class PrismaJourneyRepository implements JourneyRepository {
       if (persistence.capacity !== undefined) {
         await tx.journeyCapacity.upsert({
           where: {
-            id: persistence.capacity.id,
+            journeyId,
           },
 
           create: persistence.capacity,
@@ -445,12 +429,22 @@ export class PrismaJourneyRepository implements JourneyRepository {
 
       // -----------------------------------------------------------------------
       // Pricing
+      //
+      // JourneyPricing is a Journey-owned 1:1 component.
+      //
+      // CREATE:
+      //   No pricing row exists for this Journey.
+      //
+      // UPDATE:
+      //   Pricing already exists for this Journey.
+      //
+      // journeyId is therefore the persistence identity for this component.
       // -----------------------------------------------------------------------
 
       if (persistence.pricing !== undefined) {
         await tx.journeyPricing.upsert({
           where: {
-            id: persistence.pricing.id,
+            journeyId,
           },
 
           create: persistence.pricing,
@@ -535,8 +529,12 @@ export class PrismaJourneyRepository implements JourneyRepository {
           },
         });
       }
+
       // -----------------------------------------------------------------------
       // Assets
+      //
+      // Assets are a 1:N collection, so the aggregate snapshot replaces the
+      // persisted collection.
       // -----------------------------------------------------------------------
 
       await tx.journeyAsset.deleteMany({

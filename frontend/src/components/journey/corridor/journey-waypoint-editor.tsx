@@ -4,30 +4,90 @@
 //
 // Presentation-only editor for one Journey waypoint.
 //
-// Responsibilities:
-// - collect primitive form values;
-// - keep coordinates and sequence as strings while editing;
-// - expose the complete form state through onSubmit;
-// - allow the owning workflow to decide how values are validated, converted,
-//   persisted, and navigated.
+// State ownership:
 //
-// This component does NOT:
+//   Owning Journey workflow
+//        │
+//        ├── location
+//        └── locationQuery
+//                 │
+//                 ▼
+//        JourneyWaypointEditor
+//
+// This component does NOT keep local location state.
+//
+// The owning workflow remains responsible for:
+// - resolved location state;
+// - location query state;
+// - supported-location filtering;
+// - location selection;
+// - domain validation;
+// - primitive-to-domain conversion;
+// - waypoint persistence;
+// - workflow navigation.
+//
+// User-facing requirement:
+// - Location
+//
+// The user never enters:
+// - latitude;
+// - longitude;
+// - coordinates;
+// - geocoding/provider details.
+//
+// LocationSelector owns:
+// - location input;
+// - location suggestions;
+// - location selection.
+//
+// This component remains responsible for:
+// - waypoint type;
+// - sequence;
+// - passenger permissions;
+// - exposing the complete presentation form state.
+//
+// It does NOT:
 // - call the Journey API;
 // - perform domain validation;
 // - construct backend/domain value objects;
 // - infer pickup/dropoff permissions from waypoint type;
-// - convert coordinate or sequence strings into numbers.
+// - resolve or serialize geographic coordinates.
 //
-// The owning application workflow remains responsible for primitive-to-domain
-// conversion and backend mutation.
+// -----------------------------------------------------------------------------
+//
+// Physical-world model:
+//
+// The waypoint represents a physical place on the Journey:
+//
+//   Location
+//
+// The editor deals with that place as a ResolvedLocation. It does not expose
+// the geographic representation of the place as separate form fields.
+//
+// Coordinates and other location-resolution details remain behind the
+// presentation/application boundary.
 //
 // -----------------------------------------------------------------------------
 
 "use client";
 
-import { type FormEvent, useState } from "react";
+import {
+  type FormEvent,
+  useMemo,
+  useState,
+} from "react";
 
-import { Button, Input, Select } from "@/components/ui";
+import {
+  Button,
+  Input,
+  Select,
+} from "@/components/ui";
+
+import {
+  LocationSelector,
+  type ResolvedLocation,
+} from "@/foundation/location";
+
 import { cn } from "@/foundation";
 
 import {
@@ -53,16 +113,13 @@ export interface JourneyWaypointFormValues {
    */
   readonly sequence: string;
 
-  readonly name: string;
-
   /**
-   * Coordinates remain strings until workflow submission.
+   * Selected physical waypoint location.
    *
-   * This prevents Number("") === 0 from accidentally turning an empty field
-   * into a valid-looking coordinate.
+   * Geographic details remain encapsulated by ResolvedLocation rather than
+   * being exposed as separate presentation fields.
    */
-  readonly latitude: string;
-  readonly longitude: string;
+  readonly location: ResolvedLocation;
 
   /**
    * These permissions are independent of waypoint type.
@@ -75,20 +132,51 @@ export interface JourneyWaypointFormValues {
 
 export interface JourneyWaypointEditorProps {
   /**
-   * Initial values are read once when the editor mounts.
+   * Currently selected waypoint location.
    *
-   * This component intentionally does not synchronize its local state from
-   * subsequent initialValue changes. The owning workflow controls whether
-   * the editor is mounted/remounted for a different waypoint.
+   * Controlled by the owning Journey workflow.
    */
-  readonly initialValue?: Partial<JourneyWaypointFormValues>;
+  readonly location: ResolvedLocation | null;
+
+  /**
+   * Current location search text.
+   *
+   * Controlled by the owning Journey workflow.
+   */
+  readonly locationQuery: string;
+
+  /**
+   * SisiMove-supported locations available to the waypoint selector.
+   */
+  readonly locationSuggestions: readonly ResolvedLocation[];
+
+  readonly locationError?: string | null;
+
+  /**
+   * Initial non-location waypoint values.
+   *
+   * These are read once when the editor mounts.
+   */
+  readonly initialValue?: Partial<
+    Omit<JourneyWaypointFormValues, "location">
+  >;
 
   /**
    * Presentation-only submission boundary.
    *
    * Persistence and domain validation belong to the parent workflow.
    */
-  readonly onSubmit: (values: JourneyWaypointFormValues) => void;
+  readonly onSubmit: (
+    values: JourneyWaypointFormValues,
+  ) => void;
+
+  readonly onLocationQueryChange: (
+    query: string,
+  ) => void;
+
+  readonly onLocationSelect: (
+    location: ResolvedLocation,
+  ) => void;
 
   readonly onCancel?: () => void;
 
@@ -99,6 +187,8 @@ export interface JourneyWaypointEditorProps {
 
   readonly submitLabel?: string;
 
+  readonly disabled?: boolean;
+
   readonly className?: string;
 }
 
@@ -106,12 +196,12 @@ export interface JourneyWaypointEditorProps {
 // Defaults
 // =============================================================================
 
-const EMPTY_VALUES: JourneyWaypointFormValues = {
+const EMPTY_VALUES: Omit<
+  JourneyWaypointFormValues,
+  "location"
+> = {
   type: "WAYPOINT",
   sequence: "1",
-  name: "",
-  latitude: "",
-  longitude: "",
   pickupAllowed: false,
   dropoffAllowed: false,
 };
@@ -125,7 +215,9 @@ const EMPTY_VALUES: JourneyWaypointFormValues = {
  *
  * Backend/API values remain unchanged.
  */
-function getWaypointTypeLabel(type: JourneyWaypointType): string {
+function getWaypointTypeLabel(
+  type: JourneyWaypointType,
+): string {
   switch (type) {
     case "ORIGIN":
       return "Origin";
@@ -144,29 +236,78 @@ function getWaypointTypeLabel(type: JourneyWaypointType): string {
   }
 }
 
+/**
+ * Keeps the Select boundary type-safe without asserting the DOM value.
+ *
+ * The browser always provides a string, so only values present in the
+ * supported Journey waypoint type catalogue are accepted.
+ */
+function parseWaypointType(
+  value: string,
+): JourneyWaypointType {
+  const matchedType = JOURNEY_WAYPOINT_TYPES.find(
+    (type) => type === value,
+  );
+
+  return matchedType ?? "WAYPOINT";
+}
+
 // =============================================================================
 // Component
 // =============================================================================
 
 export function JourneyWaypointEditor({
+  location,
+  locationQuery,
+  locationSuggestions,
+  locationError = null,
   initialValue,
   onSubmit,
+  onLocationQueryChange,
+  onLocationSelect,
   onCancel,
   submitting = false,
   submitLabel = "Add waypoint",
+  disabled = false,
   className,
 }: JourneyWaypointEditorProps) {
-  const [values, setValues] = useState<JourneyWaypointFormValues>(() => ({
-    ...EMPTY_VALUES,
-    ...initialValue,
-  }));
+  const [values, setValues] =
+    useState<Omit<
+      JourneyWaypointFormValues,
+      "location"
+    >>(() => ({
+      ...EMPTY_VALUES,
+      ...initialValue,
+    }));
+
+  const waypointTypeOptions = useMemo(
+    () =>
+      JOURNEY_WAYPOINT_TYPES.map((type) => ({
+        value: type,
+        label: getWaypointTypeLabel(type),
+      })),
+    [],
+  );
+
+  // ===========================================================================
+  // Field updates
+  // ===========================================================================
 
   /**
-   * Update one presentation value without performing domain conversion.
+   * Update one non-location presentation value without performing domain
+   * conversion.
    */
-  function updateField<K extends keyof JourneyWaypointFormValues>(
+  function updateField<
+    K extends keyof Omit<
+      JourneyWaypointFormValues,
+      "location"
+    >
+  >(
     field: K,
-    value: JourneyWaypointFormValues[K],
+    value: Omit<
+      JourneyWaypointFormValues,
+      "location"
+    >[K],
   ): void {
     setValues((current) => ({
       ...current,
@@ -174,16 +315,34 @@ export function JourneyWaypointEditor({
     }));
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
+  // ===========================================================================
+  // Submit
+  // ===========================================================================
+
+  function handleSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ): void {
     event.preventDefault();
 
-    onSubmit(values);
+    /**
+     * A waypoint location is selected through LocationSelector.
+     *
+     * The selected physical location is passed through unchanged. The owning
+     * workflow remains responsible for validation, conversion, and persistence.
+     */
+    if (location === null) {
+      return;
+    }
+
+    onSubmit({
+      ...values,
+      location,
+    });
   }
 
-  const waypointTypeOptions = JOURNEY_WAYPOINT_TYPES.map((type) => ({
-    value: type,
-    label: getWaypointTypeLabel(type),
-  }));
+  // ===========================================================================
+  // Render
+  // ===========================================================================
 
   return (
     <form
@@ -205,10 +364,11 @@ export function JourneyWaypointEditor({
           onChange={(event) => {
             updateField(
               "type",
-              event.target.value as JourneyWaypointType,
+              parseWaypointType(event.target.value),
             );
           }}
           options={waypointTypeOptions}
+          disabled={disabled || submitting}
           fullWidth
         />
 
@@ -218,9 +378,13 @@ export function JourneyWaypointEditor({
           inputMode="numeric"
           value={values.sequence}
           onChange={(event) => {
-            updateField("sequence", event.target.value);
+            updateField(
+              "sequence",
+              event.target.value,
+            );
           }}
           placeholder="e.g. 1"
+          disabled={disabled || submitting}
           fullWidth
         />
       </div>
@@ -229,41 +393,17 @@ export function JourneyWaypointEditor({
       {/* Location                                                           */}
       {/* ------------------------------------------------------------------ */}
 
-      <Input
-        label="Location name"
-        value={values.name}
-        onChange={(event) => {
-          updateField("name", event.target.value);
-        }}
-        placeholder="e.g. Voi"
-        fullWidth
+      <LocationSelector
+        label="Location"
+        placeholder="Select waypoint location"
+        value={location}
+        query={locationQuery}
+        suggestions={locationSuggestions}
+        disabled={disabled || submitting}
+        error={locationError}
+        onQueryChange={onLocationQueryChange}
+        onSelect={onLocationSelect}
       />
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Input
-          label="Latitude"
-          type="text"
-          inputMode="decimal"
-          value={values.latitude}
-          onChange={(event) => {
-            updateField("latitude", event.target.value);
-          }}
-          placeholder="e.g. -3.396"
-          fullWidth
-        />
-
-        <Input
-          label="Longitude"
-          type="text"
-          inputMode="decimal"
-          value={values.longitude}
-          onChange={(event) => {
-            updateField("longitude", event.target.value);
-          }}
-          placeholder="e.g. 38.556"
-          fullWidth
-        />
-      </div>
 
       {/* ------------------------------------------------------------------ */}
       {/* Passenger permissions                                              */}
@@ -290,8 +430,12 @@ export function JourneyWaypointEditor({
             type="checkbox"
             checked={values.pickupAllowed}
             onChange={(event) => {
-              updateField("pickupAllowed", event.target.checked);
+              updateField(
+                "pickupAllowed",
+                event.target.checked,
+              );
             }}
+            disabled={disabled || submitting}
             className="mt-0.5 size-4 accent-[var(--brand)]"
           />
 
@@ -322,8 +466,12 @@ export function JourneyWaypointEditor({
             type="checkbox"
             checked={values.dropoffAllowed}
             onChange={(event) => {
-              updateField("dropoffAllowed", event.target.checked);
+              updateField(
+                "dropoffAllowed",
+                event.target.checked,
+              );
             }}
+            disabled={disabled || submitting}
             className="mt-0.5 size-4 accent-[var(--brand)]"
           />
 
@@ -343,13 +491,21 @@ export function JourneyWaypointEditor({
       {/* Actions                                                            */}
       {/* ------------------------------------------------------------------ */}
 
-      <div className="flex flex-wrap items-center justify-end gap-3">
-        {onCancel ? (
+      <div
+        className={cn(
+          "flex",
+          "flex-wrap",
+          "items-center",
+          "justify-end",
+          "gap-3",
+        )}
+      >
+        {onCancel !== undefined ? (
           <Button
             type="button"
             variant="ghost"
             onClick={onCancel}
-            disabled={submitting}
+            disabled={disabled || submitting}
           >
             Cancel
           </Button>
@@ -359,6 +515,11 @@ export function JourneyWaypointEditor({
           type="submit"
           variant="primary"
           loading={submitting}
+          disabled={
+            disabled ||
+            submitting ||
+            location === null
+          }
         >
           {submitLabel}
         </Button>
@@ -366,3 +527,5 @@ export function JourneyWaypointEditor({
     </form>
   );
 }
+
+export default JourneyWaypointEditor;

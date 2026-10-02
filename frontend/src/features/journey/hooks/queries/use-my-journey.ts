@@ -35,6 +35,7 @@ import type { MyJourney } from "../../models";
 export interface UseMyJourneyResult {
   readonly journey: MyJourney | null;
   readonly isLoading: boolean;
+  readonly isFetching: boolean;
   readonly error: Error | null;
   readonly refetch: () => Promise<void>;
 }
@@ -51,55 +52,24 @@ export function useMyJourney(
   // ---------------------------------------------------------------------------
   // Query state
   // ---------------------------------------------------------------------------
-  //
-  // The initial loading state is represented directly by the initial state.
-  // We therefore do not need an effect to synchronously call setIsLoading(true).
-  // ---------------------------------------------------------------------------
 
   const [journeys, setJourneys] = useState<readonly MyJourney[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(
+    normalizedJourneyPublicId.length > 0,
+  );
   const [requestError, setRequestError] = useState<Error | null>(null);
-
-  // ---------------------------------------------------------------------------
-  // Fetch authenticated My Journeys
-  // ---------------------------------------------------------------------------
-  //
-  // The state transitions happen after the asynchronous API operation
-  // completes. This keeps the effect from synchronously cascading a render.
-  // ---------------------------------------------------------------------------
-
-  const fetchJourneys = useCallback(async (): Promise<void> => {
-    if (normalizedJourneyPublicId.length === 0) {
-      return;
-    }
-
-    setIsLoading(true);
-    setRequestError(null);
-
-    try {
-      const result = await getMyJourneys();
-
-      setJourneys(result);
-    } catch (cause) {
-      const nextError =
-        cause instanceof Error
-          ? cause
-          : new Error("Failed to load your journey.");
-
-      setRequestError(nextError);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [normalizedJourneyPublicId]);
 
   // ---------------------------------------------------------------------------
   // Initial / identifier-change load
   // ---------------------------------------------------------------------------
   //
-  // The asynchronous function is invoked from the effect, but the effect does
-  // not itself synchronously mutate React state.
+  // IMPORTANT:
   //
-  // The API request yields before the successful/error state is committed.
+  // This effect deliberately performs NO synchronous React state updates.
+  //
+  // It only starts the external asynchronous request. React state is updated
+  // from the Promise completion handlers.
+  //
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
@@ -107,31 +77,39 @@ export function useMyJourney(
       return;
     }
 
-    void (async () => {
-      try {
-        const result = await getMyJourneys();
+    let cancelled = false;
+
+    void getMyJourneys()
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
 
         setJourneys(result);
         setRequestError(null);
-      } catch (cause) {
+        setIsLoading(false);
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) {
+          return;
+        }
+
         const nextError =
           cause instanceof Error
             ? cause
-            : new Error("Failed to load your journey.");
+            : new Error("Failed to load your journeys.");
 
         setRequestError(nextError);
-      } finally {
         setIsLoading(false);
-      }
-    })();
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [normalizedJourneyPublicId]);
 
   // ---------------------------------------------------------------------------
   // Identifier validation
-  // ---------------------------------------------------------------------------
-  //
-  // This is derived state. We do not store "missing Journey ID" in React state
-  // because it is completely determined by the hook input.
   // ---------------------------------------------------------------------------
 
   const identifierError = useMemo<Error | null>(() => {
@@ -144,10 +122,6 @@ export function useMyJourney(
 
   // ---------------------------------------------------------------------------
   // Selected Journey
-  // ---------------------------------------------------------------------------
-  //
-  // The backend returns the authenticated user's Journeys. The frontend only
-  // selects the requested public ID from that already-authorized collection.
   // ---------------------------------------------------------------------------
 
   const journey = useMemo(
@@ -168,17 +142,39 @@ export function useMyJourney(
   // Explicit refetch
   // ---------------------------------------------------------------------------
   //
-  // Refetch is a user/component-triggered operation, so it may explicitly
-  // transition the loading state before making the request.
+  // Refetch is NOT tied to `isLoading`.
+  //
+  // This is critical for the Journey editor:
+  //
+  //     mutation
+  //        ↓
+  //     refetch
+  //        ↓
+  //     existing JourneyEditor remains mounted
+  //        ↓
+  //     projection refreshed
+  //        ↓
+  //     JourneyEditor shows success modal
+  //
   // ---------------------------------------------------------------------------
 
   const refetch = useCallback(async (): Promise<void> => {
-    if (normalizedJourneyPublicId.length === 0) {
-      return;
-    }
+    try {
+      const result = await getMyJourneys();
 
-    await fetchJourneys();
-  }, [fetchJourneys, normalizedJourneyPublicId]);
+      setJourneys(result);
+      setRequestError(null);
+    } catch (cause) {
+      const nextError =
+        cause instanceof Error
+          ? cause
+          : new Error("Failed to load your journeys.");
+
+      setRequestError(nextError);
+
+      throw nextError;
+    }
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Result
@@ -187,8 +183,8 @@ export function useMyJourney(
   return {
     journey,
     isLoading,
+    isFetching: false,
     error,
     refetch,
   };
 }
-

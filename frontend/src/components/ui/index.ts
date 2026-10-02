@@ -1,4 +1,4 @@
-//frontend/src/components/ui/index.ts
+// frontend/src/components/ui/index.ts
 // -----------------------------------------------------------------------------
 // sisiMove — UI Components
 // -----------------------------------------------------------------------------
@@ -91,3 +91,8 @@ export {
   type DialogProps,
   type DialogSize,
 } from './dialog';
+
+export {
+  SuccessModal,
+  type SuccessModalProps,
+} from './success-modal';

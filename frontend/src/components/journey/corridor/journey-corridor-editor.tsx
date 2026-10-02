@@ -4,48 +4,174 @@
 //
 // Presentation-only editor for Journey corridor configuration.
 //
-// Responsibilities:
-// - collect origin/destination names;
-// - collect origin/destination coordinates;
-// - expose submit/cancel interactions;
-// - report primitive values to the owning workflow.
+// State ownership:
 //
-// This component does NOT:
+//   JourneyEditor
+//        │
+//        ├── origin
+//        ├── destination
+//        ├── originQuery
+//        └── destinationQuery
+//                 │
+//                 ▼
+//        JourneyCorridorEditor
+//
+// This component does NOT keep local location state.
+//
+// Therefore when the user moves:
+//
+//   Corridor → another Journey component → Corridor
+//
+// the previously selected From / To values remain available because the
+// owning Journey workflow remains the single source of truth.
+//
+// User-facing requirement:
+// - From
+// - To
+//
+// The user never enters:
+// - latitude;
+// - longitude;
+// - coordinates;
+// - geocoding/provider details.
+//
+// Supported locations are supplied by the owning Journey workflow.
+//
+// The component does not:
+// - resolve locations;
+// - search locations;
+// - geocode locations;
 // - call the Journey API;
 // - create a JourneyCorridor entity;
 // - construct domain value objects;
-// - validate backend domain invariants;
 // - persist anything.
 //
-// The parent workflow owns mutation orchestration.
+// JourneyEditor / owning workflow owns:
+// - resolved location state;
+// - location query state;
+// - supported-location filtering;
+// - corridor resolution;
+// - Journey API mutation;
+// - validation;
+// - refresh.
+//
+// LocationSelector owns:
+// - location input;
+// - location suggestions;
+// - location selection.
+//
+// -----------------------------------------------------------------------------
+//
+// Physical-world model:
+//
+// The editor represents the Journey's physical corridor:
+//
+//   From → To
+//
+// It does not expose the geographic representation of those places.
+// Coordinates and other location-resolution details remain behind the
+// presentation/application boundary.
+//
+// -----------------------------------------------------------------------------
+//
+// Directionality:
+//
+// Supported corridors are resolved independently of direction.
+//
+// Therefore both:
+//
+//   Nairobi → Kisumu
+//
+// and:
+//
+//   Kisumu → Nairobi
+//
+// may be presented by the owning workflow when supported by the canonical
+// corridor catalogue.
+//
+// The editor itself does not contain corridor-resolution logic.
 //
 // -----------------------------------------------------------------------------
 
 "use client";
 
-import type { ChangeEvent, FormEvent } from "react";
-import { useState } from "react";
+import type { FormEvent } from "react";
 
-import { Button, Input } from "@/components/ui";
-import { cn } from "@/foundation";
+import {
+  Button,
+} from "@/components/ui";
+
+import {
+  LocationSelector,
+  type ResolvedLocation,
+} from "@/foundation/location";
+
+import { cn } from "@/foundation/utils/cn";
 
 // =============================================================================
 // Types
 // =============================================================================
 
 export interface JourneyCorridorFormValues {
-  readonly originName: string;
-  readonly originLatitude: string;
-  readonly originLongitude: string;
-  readonly destinationName: string;
-  readonly destinationLatitude: string;
-  readonly destinationLongitude: string;
+  readonly origin: ResolvedLocation;
+  readonly destination: ResolvedLocation;
 }
 
 export interface JourneyCorridorEditorProps {
-  readonly initialValue?: Partial<JourneyCorridorFormValues>;
+  /**
+   * Previously selected origin.
+   *
+   * Controlled by the owning Journey workflow so the selection survives
+   * component remounting and editor navigation.
+   */
+  readonly origin: ResolvedLocation | null;
 
-  readonly onSubmit: (values: JourneyCorridorFormValues) => void;
+  /**
+   * Previously selected destination.
+   *
+   * Controlled by the owning Journey workflow.
+   */
+  readonly destination: ResolvedLocation | null;
+
+  /**
+   * Current origin search text.
+   *
+   * Controlled by the owning Journey workflow.
+   */
+  readonly originQuery: string;
+
+  /**
+   * Current destination search text.
+   *
+   * Controlled by the owning Journey workflow.
+   */
+  readonly destinationQuery: string;
+
+  /**
+   * SisiMove-supported locations available for the origin selector.
+   */
+  readonly originSuggestions: readonly ResolvedLocation[];
+
+  /**
+   * SisiMove-supported destinations available for the selected origin.
+   */
+  readonly destinationSuggestions: readonly ResolvedLocation[];
+
+  readonly originError?: string | null;
+
+  readonly destinationError?: string | null;
+
+  readonly disabled?: boolean;
+
+  /**
+   * Presentation-only submission boundary.
+   *
+   * The owning workflow decides how the selected physical locations are
+   * validated, resolved into a corridor, and persisted.
+   */
+  readonly onSubmit: (
+    values: JourneyCorridorFormValues,
+  ) => void;
 
   readonly onCancel?: () => void;
 
@@ -54,87 +180,89 @@ export interface JourneyCorridorEditorProps {
   readonly submitLabel?: string;
 
   readonly className?: string;
+
+  readonly onOriginQueryChange: (
+    query: string,
+  ) => void;
+
+  readonly onDestinationQueryChange: (
+    query: string,
+  ) => void;
+
+  readonly onOriginSelect: (
+    location: ResolvedLocation,
+  ) => void;
+
+  readonly onDestinationSelect: (
+    location: ResolvedLocation,
+  ) => void;
 }
 
 // =============================================================================
-// Defaults
+// Helpers
 // =============================================================================
 
-const EMPTY_VALUES: JourneyCorridorFormValues = {
-  originName: "",
-  originLatitude: "",
-  originLongitude: "",
-  destinationName: "",
-  destinationLatitude: "",
-  destinationLongitude: "",
-};
+function toFormValues(
+  origin: ResolvedLocation,
+  destination: ResolvedLocation,
+): JourneyCorridorFormValues {
+  return {
+    origin,
+    destination,
+  };
+}
 
 // =============================================================================
 // Component
 // =============================================================================
 
 export function JourneyCorridorEditor({
-  initialValue,
+  origin,
+  destination,
+  originQuery,
+  destinationQuery,
+  originSuggestions,
+  destinationSuggestions,
+  originError = null,
+  destinationError = null,
+  disabled = false,
   onSubmit,
   onCancel,
   submitting = false,
   submitLabel = "Save corridor",
   className,
+  onOriginQueryChange,
+  onDestinationQueryChange,
+  onOriginSelect,
+  onDestinationSelect,
 }: JourneyCorridorEditorProps) {
-  const [values, setValues] = useState<JourneyCorridorFormValues>(() => ({
-    originName:
-      initialValue?.originName !== undefined
-        ? initialValue.originName
-        : EMPTY_VALUES.originName,
+  // ===========================================================================
+  // Submit
+  // ===========================================================================
 
-    originLatitude:
-      initialValue?.originLatitude !== undefined
-        ? initialValue.originLatitude
-        : EMPTY_VALUES.originLatitude,
-
-    originLongitude:
-      initialValue?.originLongitude !== undefined
-        ? initialValue.originLongitude
-        : EMPTY_VALUES.originLongitude,
-
-    destinationName:
-      initialValue?.destinationName !== undefined
-        ? initialValue.destinationName
-        : EMPTY_VALUES.destinationName,
-
-    destinationLatitude:
-      initialValue?.destinationLatitude !== undefined
-        ? initialValue.destinationLatitude
-        : EMPTY_VALUES.destinationLatitude,
-
-    destinationLongitude:
-      initialValue?.destinationLongitude !== undefined
-        ? initialValue.destinationLongitude
-        : EMPTY_VALUES.destinationLongitude,
-  }));
-
-  function updateField(
-    field: keyof JourneyCorridorFormValues,
-    value: string,
+  function handleSubmit(
+    event: FormEvent<HTMLFormElement>,
   ): void {
-    setValues((current) => ({
-      ...current,
-      [field]: value,
-    }));
-  }
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
 
-    onSubmit({
-      originName: values.originName,
-      originLatitude: values.originLatitude,
-      originLongitude: values.originLongitude,
-      destinationName: values.destinationName,
-      destinationLatitude: values.destinationLatitude,
-      destinationLongitude: values.destinationLongitude,
-    });
+    if (
+      origin === null ||
+      destination === null
+    ) {
+      return;
+    }
+
+    onSubmit(
+      toFormValues(
+        origin,
+        destination,
+      ),
+    );
   }
+
+  // ===========================================================================
+  // Render
+  // ===========================================================================
 
   return (
     <form
@@ -146,104 +274,75 @@ export function JourneyCorridorEditor({
       )}
     >
       {/* --------------------------------------------------------------------- */}
-      {/* Origin                                                                */}
+      {/* Header                                                                */}
       {/* --------------------------------------------------------------------- */}
 
-      <fieldset className="space-y-3">
-        <legend className="text-sm font-semibold text-[var(--foreground)]">
-          Starting point
-        </legend>
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold text-[var(--foreground)]">
+          Where are you going?
+        </h2>
 
-        <Input
-          label="Origin"
-          value={values.originName}
-          onChange={(event: ChangeEvent<HTMLInputElement>) => {
-            updateField("originName", event.target.value);
-          }}
-          placeholder="e.g. Nairobi"
-          autoComplete="address-level2"
-          fullWidth
+        <p className="text-sm text-[var(--foreground-secondary)]">
+          Choose your starting point and destination.
+        </p>
+      </div>
+
+      {/* --------------------------------------------------------------------- */}
+      {/* Location Selection                                                    */}
+      {/* --------------------------------------------------------------------- */}
+
+      <div className="grid gap-5 sm:grid-cols-2">
+        {/* ------------------------------------------------------------------- */}
+        {/* Origin                                                              */}
+        {/* ------------------------------------------------------------------- */}
+
+        <LocationSelector
+          label="From"
+          placeholder="Select starting point"
+          value={origin}
+          query={originQuery}
+          suggestions={originSuggestions}
+          disabled={
+            disabled ||
+            submitting
+          }
+          error={originError}
+          onQueryChange={
+            onOriginQueryChange
+          }
+          onSelect={
+            onOriginSelect
+          }
         />
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Input
-            label="Latitude"
-            type="text"
-            inputMode="decimal"
-            value={values.originLatitude}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => {
-              updateField("originLatitude", event.target.value);
-            }}
-            placeholder="e.g. -1.286389"
-            fullWidth
-          />
+        {/* ------------------------------------------------------------------- */}
+        {/* Destination                                                         */}
+        {/* ------------------------------------------------------------------- */}
 
-          <Input
-            label="Longitude"
-            type="text"
-            inputMode="decimal"
-            value={values.originLongitude}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => {
-              updateField("originLongitude", event.target.value);
-            }}
-            placeholder="e.g. 36.817223"
-            fullWidth
-          />
-        </div>
-      </fieldset>
-
-      {/* --------------------------------------------------------------------- */}
-      {/* Destination                                                           */}
-      {/* --------------------------------------------------------------------- */}
-
-      <fieldset className="space-y-3">
-        <legend className="text-sm font-semibold text-[var(--foreground)]">
-          Destination
-        </legend>
-
-        <Input
-          label="Destination"
-          value={values.destinationName}
-          onChange={(event: ChangeEvent<HTMLInputElement>) => {
-            updateField("destinationName", event.target.value);
-          }}
-          placeholder="e.g. Mombasa"
-          autoComplete="address-level2"
-          fullWidth
+        <LocationSelector
+          label="To"
+          placeholder={
+            origin !== null
+              ? "Select destination"
+              : "Select starting point first"
+          }
+          value={destination}
+          query={destinationQuery}
+          suggestions={destinationSuggestions}
+          disabled={
+            disabled ||
+            submitting ||
+            origin === null
+          }
+          error={destinationError}
+          onQueryChange={
+            onDestinationQueryChange
+          }
+          onSelect={
+            onDestinationSelect
+          }
         />
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Input
-            label="Latitude"
-            type="text"
-            inputMode="decimal"
-            value={values.destinationLatitude}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => {
-              updateField(
-                "destinationLatitude",
-                event.target.value,
-              );
-            }}
-            placeholder="e.g. -4.043477"
-            fullWidth
-          />
-
-          <Input
-            label="Longitude"
-            type="text"
-            inputMode="decimal"
-            value={values.destinationLongitude}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => {
-              updateField(
-                "destinationLongitude",
-                event.target.value,
-              );
-            }}
-            placeholder="e.g. 39.668206"
-            fullWidth
-          />
-        </div>
-      </fieldset>
+      </div>
 
       {/* --------------------------------------------------------------------- */}
       {/* Actions                                                               */}
@@ -263,7 +362,10 @@ export function JourneyCorridorEditor({
             type="button"
             variant="ghost"
             onClick={onCancel}
-            disabled={submitting}
+            disabled={
+              disabled ||
+              submitting
+            }
           >
             Cancel
           </Button>
@@ -273,6 +375,11 @@ export function JourneyCorridorEditor({
           type="submit"
           variant="primary"
           loading={submitting}
+          disabled={
+            disabled ||
+            origin === null ||
+            destination === null
+          }
         >
           {submitLabel}
         </Button>
@@ -280,3 +387,5 @@ export function JourneyCorridorEditor({
     </form>
   );
 }
+
+export default JourneyCorridorEditor;
