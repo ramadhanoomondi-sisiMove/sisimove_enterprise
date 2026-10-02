@@ -133,6 +133,7 @@ export function JourneyManagement({
 
       <JourneyActions
         journey={journey}
+        showPublish
         onChanged={handleChanged}
       />
 

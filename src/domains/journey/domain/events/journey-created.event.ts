@@ -1,6 +1,21 @@
-// src/domains/journey/domain/events/journey-created.event.ts
+// -----------------------------------------------------------------------------
+// Path: src/domains/journey/domain/events/journey-created.event.ts
+// -----------------------------------------------------------------------------
+//
+// sisiMove — Journey Created Event
+//
+// Emitted when a Journey aggregate is created.
+//
+// The concrete event is frozen after construction so the completed event
+// remains immutable.
+//
+// -----------------------------------------------------------------------------
 
 import { JourneyDomainEvent } from './journey-domain.event';
+
+// -----------------------------------------------------------------------------
+// Journey Created Event
+// -----------------------------------------------------------------------------
 
 export class JourneyCreatedEvent extends JourneyDomainEvent {
   constructor(

@@ -1,6 +1,21 @@
-// src/domains/journey/domain/events/journey-expired.event.ts
+// -----------------------------------------------------------------------------
+// Path: src/domains/journey/domain/events/journey-expired.event.ts
+// -----------------------------------------------------------------------------
+//
+// sisiMove — Journey Expired Event
+//
+// Emitted when a Journey transitions to EXPIRED.
+//
+// The concrete event is frozen only after all event-specific properties have
+// been initialized.
+//
+// -----------------------------------------------------------------------------
 
 import { JourneyDomainEvent } from './journey-domain.event';
+
+// -----------------------------------------------------------------------------
+// Journey Expired Event
+// -----------------------------------------------------------------------------
 
 export class JourneyExpiredEvent extends JourneyDomainEvent {
   constructor(

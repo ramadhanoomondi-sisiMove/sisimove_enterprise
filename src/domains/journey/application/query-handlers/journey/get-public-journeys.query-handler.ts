@@ -8,7 +8,8 @@
 // Responsibilities:
 // - retrieve publicly discoverable Journeys from the Journey repository;
 // - project Journey domain state into the public marketplace representation;
-// - enrich the Journey with public Traveller and Trust information.
+// - enrich the Journey with public Traveller and Trust information;
+// - resolve public Asset references for Journey-owned Asset references.
 //
 // It deliberately does NOT:
 // - expose JourneyEntity directly;
@@ -17,10 +18,12 @@
 // - expose internal lifecycle timestamps;
 // - create or own a Provider aggregate;
 // - fetch Traveller/Trust inside the Journey repository;
-// - make the Journey domain depend on Social or Trust.
+// - access Asset persistence directly;
+// - access Asset storage directly;
+// - construct Asset URLs.
 //
 // Journey remains the owner of Journey creation and Journey lifecycle.
-// Traveller and Trust remain separate bounded contexts.
+// Traveller, Trust, and Asset remain separate bounded contexts.
 // The application query handler composes their public read models.
 //
 // -----------------------------------------------------------------------------
@@ -56,10 +59,24 @@ import type { JourneyRepository } from '../../../domain/repositories/journey.rep
 // -----------------------------------------------------------------------------
 
 import { JOURNEY_TOKENS } from '../../journey.tokens';
+
 import {
   PublicJourneyMapper,
   type PublicJourneyProjection,
 } from '../../mappers/public-journey.mapper';
+
+// -----------------------------------------------------------------------------
+// Asset
+// -----------------------------------------------------------------------------
+
+import { AssetPublicId } from '../../../../assets/domain/value-objects';
+
+import {
+  GetPublicAssetReferenceQuery,
+  type PublicAssetReference,
+} from '../../../../assets/application/queries/get-public-asset-reference.query';
+
+import { ASSET_TOKENS } from '../../../../assets/application/asset.tokens';
 
 // -----------------------------------------------------------------------------
 // Social / Traveller Profile
@@ -147,6 +164,12 @@ export class GetPublicJourneysQueryHandler implements QueryHandler<
       GetPublicTrustProfileByMemberQuery,
       PublicTrustProfile
     >,
+
+    @Inject(ASSET_TOKENS.QUERY_HANDLERS.GET_PUBLIC_ASSET_REFERENCE)
+    private readonly getPublicAssetReferenceHandler: QueryHandler<
+      GetPublicAssetReferenceQuery,
+      PublicAssetReference
+    >,
   ) {}
 
   // ===========================================================================
@@ -219,6 +242,7 @@ export class GetPublicJourneysQueryHandler implements QueryHandler<
    * Journey owns the Journey data.
    * Traveller owns the public traveller profile.
    * Trust owns the public trust profile.
+   * Asset owns public Asset visibility and delivery.
    *
    * The application layer is the correct place to compose those independent
    * read models into the public Journey marketplace object.
@@ -230,7 +254,9 @@ export class GetPublicJourneysQueryHandler implements QueryHandler<
 
     const memberPublicId = new MemberPublicId(providerPublicId);
 
-    const [traveller, trust] = await Promise.all([
+    const publicJourney = PublicJourneyMapper.fromEntity(journey);
+
+    const [traveller, trust, vehicleAsset] = await Promise.all([
       this.getPublicTravellerByMemberHandler.execute(
         new GetPublicTravellerByMemberQuery(memberPublicId),
       ),
@@ -238,17 +264,53 @@ export class GetPublicJourneysQueryHandler implements QueryHandler<
       this.getPublicTrustProfileByMemberHandler.execute(
         new GetPublicTrustProfileByMemberQuery(memberPublicId.value),
       ),
-    ]);
 
-    const publicJourney = PublicJourneyMapper.fromEntity(journey);
+      this.resolveVehicleAsset(publicJourney.vehicle.assetPublicId),
+    ]);
 
     return {
       ...publicJourney,
+
+      vehicle: {
+        ...publicJourney.vehicle,
+        asset: vehicleAsset,
+      },
 
       provider: {
         traveller,
         trust,
       },
     };
+  }
+
+  // ===========================================================================
+  // Vehicle Asset Composition
+  // ===========================================================================
+
+  /**
+   * Resolve the vehicle's opaque Asset public identifier through the Asset
+   * bounded context.
+   *
+   * Journey never constructs the Asset URL and never accesses Asset
+   * persistence or physical storage directly.
+   *
+   * A Journey without a vehicle Asset remains valid and receives:
+   *
+   *     asset: null
+   *
+   * A referenced Asset that cannot be publicly resolved is allowed to propagate
+   * the Asset application's public-reference exception. This prevents the
+   * marketplace from silently presenting an invalid public Asset reference.
+   */
+  private async resolveVehicleAsset(
+    assetPublicId: string | null,
+  ): Promise<PublicAssetReference | null> {
+    if (assetPublicId === null) {
+      return null;
+    }
+
+    return this.getPublicAssetReferenceHandler.execute(
+      new GetPublicAssetReferenceQuery(new AssetPublicId(assetPublicId)),
+    );
   }
 }

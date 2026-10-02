@@ -32,11 +32,16 @@
 // This mapper does NOT:
 // - fetch Traveller data;
 // - fetch Trust data;
+// - fetch Asset data;
 // - query another bounded context;
 // - decide whether a Journey is publicly visible.
 //
 // Public visibility belongs to the Journey repository's public-read boundary.
 // Cross-domain enrichment belongs to the public Journey query handler.
+//
+// Asset resolution is intentionally handled by the public Journey query
+// handler. This mapper only preserves the opaque Asset public identifier
+// owned by the Journey vehicle reference.
 //
 // -----------------------------------------------------------------------------
 
@@ -98,7 +103,26 @@ export interface PublicJourneyVehicle {
   readonly year: number | null;
   readonly color: string | null;
   readonly registration: string | null;
+
+  /**
+   * Opaque reference to the Asset bounded context.
+   *
+   * Journey owns this reference but does not own the Asset itself.
+   */
   readonly assetPublicId: string | null;
+
+  /**
+   * Resolved public Asset reference.
+   *
+   * This is populated by the public Journey query handler through the Asset
+   * bounded context's GetPublicAssetReferenceQuery.
+   *
+   * The mapper deliberately does not resolve Assets.
+   */
+  readonly asset: {
+    readonly publicId: string;
+    readonly url: string;
+  } | null;
 }
 
 export interface PublicJourneyCapacity {
@@ -170,6 +194,8 @@ export class PublicJourneyMapper {
    * Journey. We still validate at the application boundary instead of using
    * non-null assertions, because a malformed persistence record should fail
    * explicitly rather than produce an incomplete marketplace response.
+   *
+   * Asset URL resolution is intentionally outside this mapper.
    */
   public static fromEntity(entity: JourneyEntity): PublicJourneyProjection {
     const corridor = this.requireCorridor(entity);
@@ -349,6 +375,14 @@ export class PublicJourneyMapper {
       registration: entity.registration?.value ?? null,
 
       assetPublicId: entity.assetPublicId?.value ?? null,
+
+      /**
+       * The Asset bounded context resolves the browser-facing URL.
+       *
+       * The public Journey query handler replaces this null value with the
+       * resolved PublicAssetReference when an Asset reference exists.
+       */
+      asset: null,
     };
   }
 

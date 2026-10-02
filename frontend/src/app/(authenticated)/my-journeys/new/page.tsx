@@ -12,14 +12,21 @@
 // - leaves the Journey in DRAFT;
 // - returns the backend-generated journeyPublicId when complete.
 //
+// After successful creation, ownership of the existing Journey passes to the
+// JourneyEditor surface at:
+//
+//   /my-journeys/:publicId/edit
+//
+// The review surface is reached later, after editing is complete.
+//
 // -----------------------------------------------------------------------------
 
 "use client";
 
 import { useRouter } from "next/navigation";
 
-import { AUTHENTICATED_ROUTES } from "@/foundation/routing";
 import { JourneyCreateForm } from "@/components/journey/create";
+import { AUTHENTICATED_ROUTES } from "@/foundation/routing";
 
 // -----------------------------------------------------------------------------
 // Page
@@ -32,11 +39,15 @@ export default function NewMyJourneyPage() {
     <JourneyCreateForm
       onCreated={(journeyPublicId) => {
         router.push(
-          AUTHENTICATED_ROUTES.JOURNEY_EDIT(journeyPublicId),
+          AUTHENTICATED_ROUTES.JOURNEY_CREATE(
+            journeyPublicId,
+          ),
         );
       }}
       onCancel={() => {
-        router.push(AUTHENTICATED_ROUTES.MY_JOURNEYS);
+        router.push(
+          AUTHENTICATED_ROUTES.MY_JOURNEYS,
+        );
       }}
     />
   );

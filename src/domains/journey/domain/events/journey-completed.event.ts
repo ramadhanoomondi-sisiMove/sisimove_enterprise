@@ -1,6 +1,21 @@
-// src/domains/journey/domain/events/journey-completed.event.ts
+// -----------------------------------------------------------------------------
+// Path: src/domains/journey/domain/events/journey-completed.event.ts
+// -----------------------------------------------------------------------------
+//
+// sisiMove — Journey Completed Event
+//
+// Emitted when a Journey transitions to COMPLETED.
+//
+// The concrete event is frozen only after all event-specific properties have
+// been initialized.
+//
+// -----------------------------------------------------------------------------
 
 import { JourneyDomainEvent } from './journey-domain.event';
+
+// -----------------------------------------------------------------------------
+// Journey Completed Event
+// -----------------------------------------------------------------------------
 
 export class JourneyCompletedEvent extends JourneyDomainEvent {
   constructor(

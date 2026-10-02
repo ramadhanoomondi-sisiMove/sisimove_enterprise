@@ -11,19 +11,38 @@
 // - provide the existing Journey projection as initial values;
 // - safely initialize editors for progressively assembled Draft Journeys;
 // - pass resolved Asset presentation data to the vehicle editor;
-// - allow the owning Asset workflow to initiate vehicle-photo replacement.
+// - allow the owning Asset workflow to initiate vehicle-photo replacement;
+// - optionally compose the Journey publish action.
 //
 // Non-responsibilities:
-// - no Journey lifecycle transitions;
-// - no publish/start/complete/cancel/expire handling;
-// - no navigation;
+// - no Journey lifecycle implementation;
+// - no direct publish mutation;
+// - no status inference for publish eligibility;
 // - no authorization decisions;
 // - no verification decisions;
+// - no navigation;
 // - no backend aggregate reconstruction;
 // - no generic Journey update command;
 // - no Asset URL construction;
 // - no Asset upload implementation;
 // - no standalone Journey Asset editing.
+//
+// Publish action:
+// - JourneyEditor does not perform the publish mutation itself;
+// - JourneyPublishAction owns the publish mutation and its pending/error state;
+// - JourneyEditor only decides whether the action is rendered;
+// - successful publication refreshes the authenticated Journey projection;
+// - JourneyEditor reports successful publication to its parent;
+// - the parent decides how to acknowledge successful publication;
+// - navigation remains the responsibility of the parent page;
+// - the backend remains authoritative for publication eligibility.
+//
+// Publication UX:
+// - publication success must be communicated to the user;
+// - the user should know that the Journey is now live;
+// - the user should know that the Journey can receive bookings;
+// - the user should be given explicit next-step choices;
+// - JourneyEditor does not automatically navigate after publication.
 //
 // Asset presentation:
 // - JourneyVehicle stores assetPublicId as the opaque Asset reference;
@@ -63,6 +82,7 @@ import {
 import type { JourneyVehicleAssetOption } from "../vehicle";
 
 import { JourneyEditorSections } from "./journey-editor-sections";
+import { JourneyPublishAction } from "./journey-publish-action";
 
 // =============================================================================
 // Props
@@ -80,6 +100,25 @@ export interface JourneyEditorProps {
    * Asset upload/replacement remains owned by the Asset capability.
    */
   readonly onChangeVehicleAsset?: () => void;
+
+  /**
+   * Controls whether the publish action is rendered.
+   *
+   * The editor does not infer publish eligibility. The parent management
+   * surface decides whether the action belongs in this presentation.
+   *
+   * The backend remains authoritative for whether publication can succeed.
+   */
+  readonly showPublishAction?: boolean;
+
+  /**
+   * Called after the publish command succeeds and the Journey projection
+   * has been refreshed.
+   *
+   * The parent owns the successful-publication acknowledgement and any
+   * subsequent navigation or presentation response.
+   */
+  readonly onPublished?: () => void | Promise<void>;
 
   readonly className?: string;
 }
@@ -205,6 +244,8 @@ export function JourneyEditor({
   journey,
   onChanged,
   onChangeVehicleAsset,
+  showPublishAction = false,
+  onPublished,
   className,
 }: JourneyEditorProps) {
   const [error, setError] =
@@ -240,19 +281,6 @@ export function JourneyEditor({
 
   // ---------------------------------------------------------------------------
   // Current vehicle Asset
-  // ---------------------------------------------------------------------------
-  //
-  // The authenticated My Journey response resolves the vehicle Asset:
-  //
-  //   vehicle.assetPublicId
-  //   vehicle.asset
-  //       ├── publicId
-  //       └── url
-  //
-  // The resolved Asset is consumed directly by the Vehicle editor.
-  //
-  // The editor does not construct Asset URLs and does not search a generic
-  // Asset collection to determine the current vehicle photo.
   // ---------------------------------------------------------------------------
 
   const selectedVehicleAsset =
@@ -474,6 +502,29 @@ export function JourneyEditor({
 
   async function refreshAfterChange(): Promise<void> {
     await onChanged?.();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Publish success
+  // ---------------------------------------------------------------------------
+  //
+  // Publishing belongs entirely to JourneyPublishAction.
+  //
+  // After the command succeeds:
+  //
+  //   1. refresh the authoritative MyJourney projection;
+  //   2. notify the parent;
+  //
+  // JourneyEditor does not perform navigation.
+  //
+  // The parent decides how to communicate the successful publication and
+  // which next actions should be presented to the user.
+  //
+  // ---------------------------------------------------------------------------
+
+  async function handlePublished(): Promise<void> {
+    await refreshAfterChange();
+    await onPublished?.();
   }
 
   // ---------------------------------------------------------------------------
@@ -785,7 +836,7 @@ export function JourneyEditor({
         cause instanceof Error
           ? cause
           : new Error(
-              "Unable to save Journey preferences.",
+              "Unable to save the Journey preferences.",
             );
 
       setError(nextError);
@@ -866,6 +917,37 @@ export function JourneyEditor({
         }
         submitting={isSubmitting}
       />
+
+      {showPublishAction && (
+        <section
+          aria-label="Journey actions"
+          className={cn(
+            "rounded-[var(--radius-xl)]",
+            "border border-[var(--border)]",
+            "bg-[var(--surface)]",
+            "p-4",
+            "shadow-[var(--shadow-sm)]",
+            "sm:p-5",
+          )}
+        >
+          <div className="mb-4">
+            <h2 className="text-sm font-semibold text-[var(--foreground)]">
+              Journey actions
+            </h2>
+
+            <p className="mt-1 text-sm text-[var(--foreground-muted)]">
+              When your Journey is ready, publish it for travellers to
+              discover and book.
+            </p>
+          </div>
+
+          <JourneyPublishAction
+            journeyPublicId={journeyPublicId}
+            disabled={isSubmitting}
+            onPublished={handlePublished}
+          />
+        </section>
+      )}
     </div>
   );
 }

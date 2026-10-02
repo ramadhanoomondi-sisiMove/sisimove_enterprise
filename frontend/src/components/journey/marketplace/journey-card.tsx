@@ -32,7 +32,7 @@
 // - Vehicle image is a primary marketplace visual.
 // - The vehicle image owns the available vehicle column space.
 // - Vehicle summary remains as a compact one-line footer beneath the image.
-// - Vehicle image is resolved only from supplied PublicAsset references.
+// - Vehicle Asset URL comes from the resolved PublicJourney vehicle projection.
 // - Price is the commercial anchor.
 // - Capacity is an immediate availability signal.
 // - Footer remains compact and horizontal.
@@ -45,6 +45,23 @@
 //   into an additional layout mode.
 //
 // -----------------------------------------------------------------------------
+//
+// Asset boundary:
+//
+// PublicJourney.vehicle.asset is the resolved browser-facing Asset reference.
+// The JourneyCard consumes that projection directly.
+//
+// The card does NOT:
+// - resolve Asset public IDs;
+// - receive a separate PublicAsset collection;
+// - fetch Assets;
+// - construct Asset URLs;
+// - call the Asset API.
+//
+// The public Journey query boundary is responsible for supplying the resolved
+// vehicle Asset reference.
+//
+// -----------------------------------------------------------------------------
 
 "use client";
 
@@ -53,7 +70,6 @@ import { Clock3, UsersRound } from "lucide-react";
 
 import { Card } from "@/components/ui";
 
-import type { PublicAsset } from "@/features/assets/models";
 import type { PublicJourney } from "@/features/journey/models";
 
 import { formatTime } from "@/foundation/formatters";
@@ -74,14 +90,6 @@ import {
 
 export interface JourneyCardProps {
   readonly journey: PublicJourney;
-
-  /**
-   * Public Asset references already resolved through the public Asset
-   * delivery boundary.
-   *
-   * JourneyCard never constructs or infers Asset URLs.
-   */
-  readonly publicAssets?: readonly PublicAsset[];
 
   readonly emphasis?: "compact" | "default";
   readonly className?: string;
@@ -108,37 +116,11 @@ export interface JourneyCardProps {
 }
 
 // -----------------------------------------------------------------------------
-// Asset helpers
-// -----------------------------------------------------------------------------
-
-function getVehicleAssetUrl(
-  journey: PublicJourney,
-  publicAssets: readonly PublicAsset[],
-): string | null {
-  const vehicleAsset = journey.assets.find(
-    (asset) => asset.type === "VEHICLE",
-  );
-
-  if (!vehicleAsset) {
-    return null;
-  }
-
-  const publicAsset = publicAssets.find(
-    (asset) => asset.publicId === vehicleAsset.assetPublicId,
-  );
-
-  const url = publicAsset?.url?.trim();
-
-  return url || null;
-}
-
-// -----------------------------------------------------------------------------
 // Component
 // -----------------------------------------------------------------------------
 
 export function JourneyCard({
   journey,
-  publicAssets = [],
   emphasis = "compact",
   className,
   onView,
@@ -153,12 +135,21 @@ export function JourneyCard({
   bookLabel = "Book Journey",
   bookingLabel = "Booking…",
 }: JourneyCardProps) {
-  const isCompact = emphasis === "compact";
+  const isCompact =
+    emphasis === "compact";
 
-  const vehicleImageUrl = getVehicleAssetUrl(
-    journey,
-    publicAssets,
-  );
+  // ---------------------------------------------------------------------------
+  // Vehicle Asset
+  //
+  // The public Journey projection already contains the resolved browser-facing
+  // Asset reference.
+  //
+  // JourneyCard consumes the URL supplied by the backend projection and never
+  // resolves the Asset itself.
+  // ---------------------------------------------------------------------------
+
+  const vehicleImageUrl =
+    journey.vehicle.asset?.url?.trim() || null;
 
   // ---------------------------------------------------------------------------
   // Public Traveller
@@ -428,10 +419,6 @@ export function JourneyCard({
                 />
               </div>
 
-              {/* -------------------------------------------------------------
-                  Provider
-                  ------------------------------------------------------------- */}
-
               <div
                 className={cn(
                   "mt-[clamp(0.35rem,0.7vw,0.65rem)]",
@@ -520,10 +507,6 @@ export function JourneyCard({
 
           {/* -----------------------------------------------------------------
               Vehicle
-
-              The vehicle column remains image-first, but its width is now
-              slightly reduced so the commercial column retains visibility
-              as the card becomes narrower.
               ----------------------------------------------------------------- */}
 
           <section
@@ -537,10 +520,6 @@ export function JourneyCard({
             )}
           >
             <div className="flex min-w-0 flex-col">
-              {/* -------------------------------------------------------------
-                  Vehicle image
-                  ------------------------------------------------------------- */}
-
               <div
                 className={cn(
                   "relative",
@@ -598,10 +577,6 @@ export function JourneyCard({
                 )}
               </div>
 
-              {/* -------------------------------------------------------------
-                  Vehicle summary footer
-                  ------------------------------------------------------------- */}
-
               <div
                 className={cn(
                   "min-w-0",
@@ -619,11 +594,6 @@ export function JourneyCard({
 
           {/* -----------------------------------------------------------------
               Price + Capacity
-
-              This column is intentionally 20% rather than 18%.
-
-              Price is a primary marketplace signal, so it receives more
-              proportional width instead of disappearing as the card scales.
               ----------------------------------------------------------------- */}
 
           <section
@@ -723,8 +693,6 @@ export function JourneyCard({
             "py-[clamp(0.28rem,0.55vw,0.48rem)]",
           )}
         >
-          {/* Route context */}
-
           <div className="min-w-0 flex-1">
             <div
               className={cn(
@@ -780,8 +748,6 @@ export function JourneyCard({
             </div>
           </div>
 
-          {/* Actions */}
-
           <div className="min-w-0 shrink-0">
             <JourneyActions
               onView={onView}
@@ -804,4 +770,3 @@ export function JourneyCard({
     </Card>
   );
 }
-

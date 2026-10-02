@@ -14,7 +14,7 @@
 //     AUTHENTICATION_ROUTES
 //         Registration and login entry points.
 //
-// This file identifies canonical authenticated application URLs only.
+// This file defines URL construction only.
 //
 // This file does NOT:
 // - authenticate users;
@@ -22,7 +22,8 @@
 // - restore sessions;
 // - redirect unauthenticated users;
 // - enforce verification;
-// - enforce marketplace capabilities;
+// - enforce permissions;
+// - determine lifecycle capabilities;
 // - perform navigation;
 // - define Next.js middleware.
 //
@@ -62,7 +63,8 @@
 //
 // The entry page creates the Journey aggregate exactly once.
 //
-// After creation, every subsequent step is identified by journeyPublicId:
+// After creation, every subsequent creation step operates on that existing
+// Journey:
 //
 //     /my-journeys/[journeyPublicId]/edit
 //     /my-journeys/[journeyPublicId]/edit/route
@@ -74,7 +76,8 @@
 //     /my-journeys/[journeyPublicId]/edit/photos
 //     /my-journeys/[journeyPublicId]/edit/review
 //
-// The frontend therefore never creates a Journey aggregate for each step.
+// The frontend therefore never creates a new Journey aggregate for an
+// individual creation step.
 //
 // -----------------------------------------------------------------------------
 //
@@ -87,7 +90,7 @@
 //
 // The entry page creates the JourneyDemand aggregate exactly once.
 //
-// Subsequent steps operate on the existing journeyDemandPublicId:
+// Subsequent steps operate on that existing JourneyDemand:
 //
 //     /my-demands/[journeyDemandPublicId]/edit
 //     /my-demands/[journeyDemandPublicId]/edit/route
@@ -117,14 +120,51 @@
 //
 //     /my-demands/[publicId]
 //
-// Public informational pages such as:
+// The public and authenticated resources intentionally have different
+// namespaces.
 //
-//     /how-it-works
+// -----------------------------------------------------------------------------
 //
-// belong to PUBLIC_ROUTES and are intentionally not defined here.
+// JOURNEY MANAGEMENT RULE
+// -----------------------------------------------------------------------------
 //
-// This separation is intentional and required by Next.js dynamic route
-// matching.
+// The canonical authenticated Journey management surface is:
+//
+//     /my-journeys/[journeyPublicId]
+//
+// This is the permanent owner-facing Journey detail/management surface.
+//
+// The progressive creation/editor workflow is:
+//
+//     /my-journeys/[journeyPublicId]/edit
+//
+// and its child steps:
+//
+//     /my-journeys/[journeyPublicId]/edit/route
+//     /my-journeys/[journeyPublicId]/edit/schedule
+//     /my-journeys/[journeyPublicId]/edit/vehicle
+//     /my-journeys/[journeyPublicId]/edit/seats
+//     /my-journeys/[journeyPublicId]/edit/pricing
+//     /my-journeys/[journeyPublicId]/edit/preferences
+//     /my-journeys/[journeyPublicId]/edit/photos
+//     /my-journeys/[journeyPublicId]/edit/review
+//
+// There is intentionally no separate /journeys/[publicId]/edit route.
+//
+// -----------------------------------------------------------------------------
+//
+// JOURNEY OPERATIONAL SURFACES
+// -----------------------------------------------------------------------------
+//
+// Operational Journey surfaces remain below the authenticated Journey
+// namespace:
+//
+//     /my-journeys/[journeyPublicId]/boarding
+//     /my-journeys/[journeyPublicId]/completion
+//
+// The Journey management surface remains:
+//
+//     /my-journeys/[journeyPublicId]
 //
 // -----------------------------------------------------------------------------
 //
@@ -139,15 +179,14 @@
 //
 // -----------------------------------------------------------------------------
 
+
 export const AUTHENTICATED_ROUTES = {
   // ===========================================================================
-  // Marketplace
+  // Application Home
   // ===========================================================================
 
   /**
-   * Authenticated marketplace home.
-   *
-   * The marketplace remains the central application surface after login.
+   * Authenticated application home / marketplace entry point.
    */
   HOME: "/home",
 
@@ -161,51 +200,50 @@ export const AUTHENTICATED_ROUTES = {
 
   /**
    * Authenticated traveller's Journey collection.
+   *
+   * Source:
+   *
+   *     useMyJourneys()
+   *         ↓
+   *     GET /journeys/me
    */
   MY_JOURNEYS: "/my-journeys",
 
   /**
    * Journey creation entry point.
    *
-   * This page creates the Journey draft exactly once.
+   * This page creates the Journey aggregate exactly once.
    */
   MY_JOURNEY_NEW: "/my-journeys/new",
 
   /**
-   * Authenticated Journey owner-management surface.
+   * Canonical authenticated Journey management/detail surface.
+   *
+   * This is the permanent owner-facing route for an existing Journey.
    */
   MY_JOURNEY: (journeyPublicId: string) =>
     `/my-journeys/${encodeURIComponent(journeyPublicId)}`,
 
-  /**
-   * Authenticated Journey editing surface.
-   */
-  MY_JOURNEY_EDIT: (journeyPublicId: string) =>
-    `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit`,
-
   // ===========================================================================
-  // Journey creation workflow
+  // Journey Creation / Editing Workflow
   // ===========================================================================
   //
-  // The Journey aggregate is created by:
+  // These routes operate on an already-created Journey aggregate.
   //
-  //     POST /journeys
-  //
-  // through the /my-journeys/new entry surface.
-  //
-  // Once created, the existing Journey aggregate is progressively assembled
-  // through its actual application commands.
+  // The frontend does not create a new aggregate for any of these steps.
   //
   // ===========================================================================
 
   /**
-   * Journey creation/edit root.
+   * Journey creation/edit workflow root.
    */
   JOURNEY_CREATE: (journeyPublicId: string) =>
     `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit`,
 
   /**
    * Journey route creation/edit step.
+   *
+   * Route includes the corridor and optional waypoints.
    */
   JOURNEY_CREATE_ROUTE: (journeyPublicId: string) =>
     `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit/route`,
@@ -223,7 +261,7 @@ export const AUTHENTICATED_ROUTES = {
     `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit/vehicle`,
 
   /**
-   * Journey seats creation/edit step.
+   * Journey capacity / seats creation/edit step.
    */
   JOURNEY_CREATE_SEATS: (journeyPublicId: string) =>
     `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit/seats`,
@@ -241,43 +279,31 @@ export const AUTHENTICATED_ROUTES = {
     `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit/preferences`,
 
   /**
-   * Journey photos creation/edit step.
+   * Journey asset/photo creation/edit step.
    */
   JOURNEY_CREATE_PHOTOS: (journeyPublicId: string) =>
     `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit/photos`,
 
   /**
-   * Journey review creation/edit step.
+   * Journey final review step before publication.
    */
   JOURNEY_CREATE_REVIEW: (journeyPublicId: string) =>
     `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit/review`,
 
   // ===========================================================================
-  // Journey operational surfaces
+  // Journey Operational Surfaces
   // ===========================================================================
 
   /**
-   * Authenticated Journey management/detail surface.
-   */
-  JOURNEY: (journeyPublicId: string) =>
-    `/my-journeys/${encodeURIComponent(journeyPublicId)}`,
-
-  /**
-   * Authenticated Journey editor.
-   */
-  JOURNEY_EDIT: (journeyPublicId: string) =>
-    `/my-journeys/${encodeURIComponent(journeyPublicId)}/edit`,
-
-  /**
    * Journey boarding operational surface.
+   *
+   * Journey management remains at MY_JOURNEY.
    */
   JOURNEY_BOARDING: (journeyPublicId: string) =>
     `/my-journeys/${encodeURIComponent(journeyPublicId)}/boarding`,
 
   /**
    * Journey completion operational surface.
-   *
-   * Journey.publicId identifies the operational Journey context.
    */
   JOURNEY_COMPLETION: (journeyPublicId: string) =>
     `/my-journeys/${encodeURIComponent(journeyPublicId)}/completion`,
@@ -303,33 +329,20 @@ export const AUTHENTICATED_ROUTES = {
   MY_DEMAND_NEW: "/my-demands/new",
 
   /**
-   * Authenticated Journey Demand owner-management surface.
+   * Canonical authenticated Journey Demand management/detail surface.
    */
   MY_DEMAND: (journeyDemandPublicId: string) =>
     `/my-demands/${encodeURIComponent(journeyDemandPublicId)}`,
 
   /**
-   * Authenticated Journey Demand editing surface.
+   * Journey Demand creation/edit workflow root.
    */
   MY_DEMAND_EDIT: (journeyDemandPublicId: string) =>
     `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit`,
 
   // ===========================================================================
-  // Journey Demand creation workflow
+  // Journey Demand Creation / Editing Workflow
   // ===========================================================================
-  //
-  // The JourneyDemand aggregate is created by the /my-demands/new entry
-  // surface exactly once.
-  //
-  // Subsequent steps operate on that existing aggregate.
-  //
-  // ===========================================================================
-
-  /**
-   * Journey Demand creation/edit root.
-   */
-  JOURNEY_DEMAND_CREATE: (journeyDemandPublicId: string) =>
-    `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit`,
 
   /**
    * Journey Demand route creation/edit step.
@@ -356,7 +369,7 @@ export const AUTHENTICATED_ROUTES = {
     `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit/pricing`,
 
   /**
-   * Journey Demand review creation/edit step.
+   * Journey Demand final review step.
    */
   JOURNEY_DEMAND_CREATE_REVIEW: (journeyDemandPublicId: string) =>
     `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit/review`,
@@ -373,8 +386,8 @@ export const AUTHENTICATED_ROUTES = {
   /**
    * Authenticated booking detail.
    *
-   * Booking URLs use the /bookings namespace because booking ownership and
-   * access are determined by the authenticated application boundary.
+   * Booking uses its own public namespace because a booking is a separate
+   * aggregate and application boundary.
    */
   BOOKING: (journeyBookingPublicId: string) =>
     `/bookings/${encodeURIComponent(journeyBookingPublicId)}`,
@@ -503,12 +516,12 @@ export const AUTHENTICATED_ROUTES = {
 } as const;
 
 // -----------------------------------------------------------------------------
-// Route type
+// Route Type
 // -----------------------------------------------------------------------------
 //
 // Static routes are represented directly.
 //
-// Dynamic route builders are functions and therefore are intentionally excluded
+// Dynamic route builders are functions and therefore intentionally excluded
 // from AuthenticatedRoute.
 //
 // -----------------------------------------------------------------------------

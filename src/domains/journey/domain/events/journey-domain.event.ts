@@ -1,4 +1,16 @@
-// src/domains/journey/domain/events/journey-domain.event.ts
+// -----------------------------------------------------------------------------
+// Path: src/domains/journey/domain/events/journey-domain.event.ts
+// -----------------------------------------------------------------------------
+//
+// sisiMove — Journey Domain Event
+//
+// Base event abstraction for Journey domain events.
+//
+// The concrete Journey event is responsible for freezing the completed event
+// instance. This is intentional because TypeScript initializes subclass
+// parameter properties only after `super()` returns.
+//
+// -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
 // Foundation
@@ -30,8 +42,6 @@ export abstract class JourneyDomainEvent extends DomainEvent {
       eventVersion,
       eventSchemaVersion,
     );
-
-    Object.freeze(this);
   }
 
   protected getBasePayload(): Record<string, unknown> {

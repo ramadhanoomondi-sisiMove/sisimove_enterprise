@@ -1,6 +1,21 @@
-// src/domains/journey/domain/events/journey-cancelled.event.ts
+// -----------------------------------------------------------------------------
+// Path: src/domains/journey/domain/events/journey-cancelled.event.ts
+// -----------------------------------------------------------------------------
+//
+// sisiMove — Journey Cancelled Event
+//
+// Emitted when a Journey transitions to CANCELLED.
+//
+// The concrete event is frozen only after all event-specific properties have
+// been initialized.
+//
+// -----------------------------------------------------------------------------
 
 import { JourneyDomainEvent } from './journey-domain.event';
+
+// -----------------------------------------------------------------------------
+// Journey Cancelled Event
+// -----------------------------------------------------------------------------
 
 export class JourneyCancelledEvent extends JourneyDomainEvent {
   constructor(

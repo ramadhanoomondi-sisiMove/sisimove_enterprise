@@ -36,6 +36,9 @@
 //          |
 //          v
 //   Journey remains DRAFT
+//          |
+//          v
+//   Journey Editor
 //
 // Publication is a separate lifecycle command and is intentionally NOT
 // performed by this form.
@@ -56,6 +59,17 @@
 // - Users never enter latitude/longitude manually.
 // - No external geocoding service is used.
 // - The frontend never generates a Journey public ID.
+//
+// Completion:
+// - Completing this form does NOT publish the Journey.
+// - The final step hands the completed DRAFT to the authenticated Journey
+//   editing surface.
+// - The receiving route is:
+//
+//       /my-journeys/:publicId/edit
+//
+// - JourneyEditor owns subsequent Journey editing.
+// - Review and publication remain separate from this creation form.
 //
 // Preference contract:
 //
@@ -164,6 +178,11 @@ export interface JourneyCreateFormProps {
    * been successfully persisted.
    *
    * Publishing is deliberately outside this form.
+   *
+   * The receiving workflow should take the user to the authenticated Journey
+   * editing surface:
+   *
+   *   /my-journeys/:publicId/edit
    */
   readonly onCreated: (journeyPublicId: string) => void;
 
@@ -1306,7 +1325,7 @@ export function JourneyCreateForm({
 
                   <p className="text-xs text-[var(--foreground-muted)]">
                     Your journey starts as a draft and stays that way until
-                    you&apos;re ready to publish.
+                    you&apos;re ready to review and publish.
                   </p>
                 </div>
               </div>
@@ -1480,7 +1499,7 @@ export function JourneyCreateForm({
               >
                 {isLastStep ? (
                   <>
-                    Finish journey
+                    Continue to editor
 
                     <svg
                       viewBox="0 0 20 20"
@@ -1550,7 +1569,8 @@ export function JourneyCreateForm({
           </svg>
 
           <p className="text-xs text-[var(--foreground-muted)]">
-            Your journey stays in draft until you&apos;re ready to publish.
+            Your journey stays in draft until you&apos;re ready to review and
+            publish.
           </p>
         </div>
       </div>

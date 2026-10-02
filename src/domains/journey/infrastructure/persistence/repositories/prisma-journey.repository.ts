@@ -479,7 +479,7 @@ export class PrismaJourneyRepository implements JourneyRepository {
       if (persistence.preferences !== undefined) {
         await tx.journeyPreferences.upsert({
           where: {
-            id: persistence.preferences.id,
+            journeyId,
           },
 
           create: {
@@ -535,7 +535,6 @@ export class PrismaJourneyRepository implements JourneyRepository {
           },
         });
       }
-
       // -----------------------------------------------------------------------
       // Assets
       // -----------------------------------------------------------------------

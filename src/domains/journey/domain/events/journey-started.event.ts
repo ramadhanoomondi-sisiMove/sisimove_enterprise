@@ -1,6 +1,21 @@
-// src/domains/journey/domain/events/journey-started.event.ts
+// -----------------------------------------------------------------------------
+// Path: src/domains/journey/domain/events/journey-started.event.ts
+// -----------------------------------------------------------------------------
+//
+// sisiMove — Journey Started Event
+//
+// Emitted when a Journey transitions to IN_PROGRESS.
+//
+// The concrete event is frozen only after all event-specific properties have
+// been initialized.
+//
+// -----------------------------------------------------------------------------
 
 import { JourneyDomainEvent } from './journey-domain.event';
+
+// -----------------------------------------------------------------------------
+// Journey Started Event
+// -----------------------------------------------------------------------------
 
 export class JourneyStartedEvent extends JourneyDomainEvent {
   constructor(

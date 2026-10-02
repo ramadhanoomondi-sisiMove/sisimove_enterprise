@@ -1,6 +1,21 @@
-// src/domains/journey/domain/events/journey-published.event.ts
+// -----------------------------------------------------------------------------
+// Path: src/domains/journey/domain/events/journey-published.event.ts
+// -----------------------------------------------------------------------------
+//
+// sisiMove — Journey Published Event
+//
+// Emitted when a Journey transitions to PUBLISHED.
+//
+// The complete concrete event is frozen only after all concrete-event
+// properties have been initialized.
+//
+// -----------------------------------------------------------------------------
 
 import { JourneyDomainEvent } from './journey-domain.event';
+
+// -----------------------------------------------------------------------------
+// Journey Published Event
+// -----------------------------------------------------------------------------
 
 export class JourneyPublishedEvent extends JourneyDomainEvent {
   constructor(
