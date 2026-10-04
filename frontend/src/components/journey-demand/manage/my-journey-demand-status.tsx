@@ -15,24 +15,21 @@
 //   CANCELLED
 //   EXPIRED
 //
-// It deliberately does NOT reuse JourneyDemandStatusBadge because that badge
-// belongs to the public Journey Demand projection and accepts only:
+// It deliberately does not reuse JourneyDemandStatusBadge because that badge
+// belongs to the public Journey Demand projection and accepts only the public
+// marketplace status contract.
 //
-//   PublicJourneyDemandStatus
-//
-// The owner lifecycle contains additional states that are intentionally not
-// part of the public marketplace status contract.
-//
-// Architecture rules:
-// - Presentation only.
-// - Receives an already-loaded MyJourneyDemand.
-// - Does not fetch the demand.
-// - Does not determine ownership.
-// - Does not perform authorization.
-// - Does not call lifecycle mutations.
-// - Does not infer lifecycle history.
-// - Does not reconstruct backend state transitions.
-// - Does not cast authenticated status into a public status.
+// Architecture:
+// - presentation only;
+// - receives an already-loaded MyJourneyDemand;
+// - does not fetch the demand;
+// - does not determine ownership;
+// - does not perform authorization;
+// - does not call lifecycle mutations;
+// - does not determine available management actions;
+// - does not infer lifecycle history;
+// - does not reconstruct backend state transitions;
+// - does not cast owner status into a public status.
 //
 // -----------------------------------------------------------------------------
 
@@ -45,9 +42,6 @@ import { cn } from '@/foundation';
 // Props
 // =============================================================================
 
-/**
- * Props for the authenticated owner's Journey Demand status section.
- */
 export interface MyJourneyDemandStatusProps {
   readonly demand: MyJourneyDemand;
   readonly className?: string;
@@ -57,30 +51,13 @@ export interface MyJourneyDemandStatusProps {
 // Component
 // =============================================================================
 
-/**
- * Presents the current Journey Demand lifecycle status.
- *
- * The status is rendered exactly from the authenticated-owner read contract.
- *
- * This component deliberately does not:
- *
- * - infer lifecycle history;
- * - determine available management actions;
- * - perform authorization;
- * - call lifecycle mutations;
- * - reconstruct backend state transitions;
- * - convert the status into a public-only status.
- */
 export function MyJourneyDemandStatus({
   demand,
   className,
 }: MyJourneyDemandStatusProps) {
   return (
     <section
-      className={cn(
-        'surface min-w-0 p-4 sm:p-5',
-        className,
-      )}
+      className={cn('surface min-w-0 p-4 sm:p-5', className)}
       aria-labelledby="my-journey-demand-status-heading"
     >
       <div className="flex min-w-0 items-center justify-between gap-4">
@@ -113,15 +90,11 @@ interface MyJourneyDemandStatusBadgeProps {
   readonly status: MyJourneyDemand['status'];
 }
 
-/**
- * Owner-facing status badge.
- *
- * This badge intentionally accepts the complete authenticated Journey Demand
- * status union rather than PublicJourneyDemandStatus.
- */
 function MyJourneyDemandStatusBadge({
   status,
 }: MyJourneyDemandStatusBadgeProps) {
+  const label = formatJourneyDemandStatus(status);
+
   return (
     <span
       className={cn(
@@ -130,9 +103,9 @@ function MyJourneyDemandStatusBadge({
         'px-2.5 py-1',
         'text-xs font-medium text-foreground',
       )}
-      aria-label={`Journey Demand status: ${formatJourneyDemandStatus(status)}`}
+      aria-label={`Journey Demand status: ${label}`}
     >
-      {formatJourneyDemandStatus(status)}
+      {label}
     </span>
   );
 }
@@ -142,10 +115,10 @@ function MyJourneyDemandStatusBadge({
 // =============================================================================
 
 /**
- * Converts the backend enum representation into readable UI text.
+ * Presentation-only formatting of the backend lifecycle enum.
  *
- * This is presentation formatting only. It does not transform the underlying
- * lifecycle state or map it to another status contract.
+ * This does not transform the lifecycle state or map it to another status
+ * contract.
  */
 function formatJourneyDemandStatus(
   status: MyJourneyDemand['status'],
@@ -155,4 +128,3 @@ function formatJourneyDemandStatus(
     .toLowerCase()
     .replace(/\b\w/g, (character) => character.toUpperCase());
 }
-

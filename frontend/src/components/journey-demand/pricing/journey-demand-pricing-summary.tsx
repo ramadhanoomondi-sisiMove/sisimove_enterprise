@@ -11,16 +11,26 @@
 // - Does not infer pricing constraints.
 // - Does not expose authenticated pricing flags.
 //
-// Pricing represents the traveller's requested/preferred pricing conditions.
-// It is not a confirmed fare, booking amount, commission, settlement amount,
-// wallet balance, or accounting value.
+// Current pricing contract:
+//
+//     maximumPricePerSeat
+//
+// The Journey Demand currently expresses only the traveller's maximum
+// acceptable price per seat.
+//
+// This is NOT:
+// - a confirmed fare;
+// - a booking amount;
+// - a commission;
+// - a settlement amount;
+// - a wallet balance;
+// - an accounting value.
 //
 // Marketplace presentation:
 // - Compact by default.
 // - Designed to fit inside the Journey Demand marketplace card.
 // - Avoids nested card/surface treatment.
-// - Keeps the commercial value visually prominent.
-// - Uses a single compact pricing row rather than large stacked panels.
+// - Keeps the maximum acceptable price visually prominent.
 // -----------------------------------------------------------------------------
 
 import type { PublicJourneyDemandPricing } from '@/features/journey-demand/models';
@@ -50,8 +60,7 @@ export function JourneyDemandPricingSummary({
     >
       <div
         className={cn(
-          'flex min-w-0 items-center justify-between gap-4',
-          isCompact ? 'gap-3' : 'gap-4',
+          'flex min-w-0 items-center justify-between gap-3',
         )}
       >
         <div className="min-w-0">
@@ -61,7 +70,7 @@ export function JourneyDemandPricingSummary({
               isCompact ? 'text-[11px]' : 'text-xs',
             )}
           >
-            Preferred price
+            Maximum price
           </p>
 
           <p
@@ -70,37 +79,8 @@ export function JourneyDemandPricingSummary({
               isCompact ? 'mt-0.5 text-sm' : 'mt-1 text-base',
             )}
           >
-            {pricing.preferredPricePerSeat === null
-              ? 'Not specified'
-              : formatPrice(
-                  pricing.preferredPricePerSeat,
-                  pricing.currency,
-                )}
-          </p>
-        </div>
-
-        <div
-          className={cn(
-            'min-w-0 shrink-0 text-right',
-            'border-l border-[var(--border-subtle)] pl-3',
-          )}
-        >
-          <p
-            className={cn(
-              'font-medium text-[var(--foreground-muted)]',
-              isCompact ? 'text-[10px]' : 'text-xs',
-            )}
-          >
-            Maximum
-          </p>
-
-          <p
-            className={cn(
-              'truncate font-semibold text-[var(--foreground)]',
-              isCompact ? 'mt-0.5 text-xs' : 'mt-1 text-sm',
-            )}
-          >
-            {pricing.maximumPricePerSeat === null
+            {pricing.maximumPricePerSeat === null ||
+            pricing.maximumPricePerSeat === undefined
               ? 'Not specified'
               : formatPrice(
                   pricing.maximumPricePerSeat,

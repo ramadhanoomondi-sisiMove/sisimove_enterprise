@@ -4,6 +4,39 @@
 //
 // Transport boundary for the Journey Demand bounded context.
 //
+// Architectural responsibility:
+//
+// HTTP Request
+//     ↓
+// Controller
+//     ↓
+// DTO → Application Command / Query
+//     ↓
+// Command / Query Handler
+//     ↓
+// JourneyDemandAggregate
+//     ↓
+// Repository
+//
+// The controller intentionally contains no domain logic.
+//
+// It is responsible for:
+//
+// - HTTP routing
+// - authentication / authorization guards
+// - DTO → application command/query translation
+// - primitive → domain value-object conversion where required by queries
+// - returning application/query results
+//
+// It does NOT:
+//
+// - mutate domain entities directly
+// - construct domain aggregates
+// - enforce aggregate invariants
+// - increment aggregate versions
+// - create domain events
+// - persist entities directly
+//
 // Authorization permissions intentionally match the seeded Journey Demand
 // permission vocabulary:
 //
@@ -14,6 +47,38 @@
 //
 // No additional Journey Demand permissions are assumed here.
 //
+// -----------------------------------------------------------------------------
+// PUBLIC MARKETPLACE
+// -----------------------------------------------------------------------------
+//
+// Public Journey Demand discovery supports:
+//
+//   minPrice?
+//   maxPrice?
+//
+// These filters apply to the requester's maximum acceptable per-seat price:
+//
+//   maximumPricePerSeat
+//
+// Inclusive range:
+//
+//   minPrice <= maximumPricePerSeat <= maxPrice
+//
+// Either boundary may be supplied independently.
+//
+// Public lifecycle visibility is controlled by the public query handlers.
+// The controller does not perform status filtering.
+//
+// The public marketplace must not expose:
+//
+//   CANCELLED
+//   EXPIRED
+//
+// The public query/projection layer is responsible for enforcing that rule.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
 // -----------------------------------------------------------------------------
 
 import {
@@ -28,6 +93,10 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+
+// -----------------------------------------------------------------------------
+// Swagger
+// -----------------------------------------------------------------------------
 
 import {
   ApiBearerAuth,
@@ -92,7 +161,6 @@ import {
   FindJourneyDemandsByScheduleQuery,
   FindMatchableJourneyDemandsQuery,
   FindOpenJourneyDemandsQuery,
-  GetJourneyDemandByPublicIdQuery,
   GetJourneyDemandCapacityQuery,
   GetJourneyDemandCorridorQuery,
   GetJourneyDemandParticipantQuery,
@@ -114,6 +182,15 @@ import {
   MyJourneyDemandMapper,
   type MyJourneyDemandResponse,
 } from '../../mappers/my-journey-demand.mapper';
+
+// -----------------------------------------------------------------------------
+// Journey Demand Response
+// -----------------------------------------------------------------------------
+
+import {
+  JourneyDemandResponse,
+  JourneyDemandResponseMapper,
+} from '../../mappers';
 
 // -----------------------------------------------------------------------------
 // Public Journey Demand Responses
@@ -196,7 +273,7 @@ import {
 @ApiTags('Journey Demands')
 @Controller('journey-demands')
 export class JourneyDemandController {
-  constructor(
+  public constructor(
     // =========================================================================
     // Lifecycle Command Handlers
     // =========================================================================
@@ -356,19 +433,13 @@ export class JourneyDemandController {
     >,
 
     // =========================================================================
-    // Generic / Protected Query Handlers
+    // Authenticated Owner Query Handlers
     // =========================================================================
-
-    @Inject(JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.GET_BY_PUBLIC_ID)
-    private readonly getJourneyDemandByPublicIdHandler: QueryHandler<
-      GetJourneyDemandByPublicIdQuery,
-      JourneyDemandAggregate
-    >,
 
     @Inject(JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.GET_MY)
     private readonly getMyJourneyDemandsHandler: QueryHandler<
       GetMyJourneyDemandsQuery,
-      JourneyDemandEntity[]
+      JourneyDemandAggregate[]
     >,
 
     @Inject(JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.GET_MY_ONE)
@@ -376,6 +447,10 @@ export class JourneyDemandController {
       GetMyJourneyDemandQuery,
       JourneyDemandEntity | null
     >,
+
+    // =========================================================================
+    // Protected Collection Query Handlers
+    // =========================================================================
 
     @Inject(JOURNEY_DEMAND_TOKENS.QUERY_HANDLERS.FIND_OPEN)
     private readonly findOpenJourneyDemandsHandler: QueryHandler<
@@ -462,7 +537,7 @@ export class JourneyDemandController {
   @ApiOperation({
     summary: 'Get public journey demands',
     description:
-      'Returns publicly discoverable Journey Demands for marketplace browsing and optional filtering.',
+      'Returns publicly discoverable Journey Demands for marketplace browsing and optional filtering. Public results exclude cancelled and expired Journey Demands. Price filtering applies inclusively to the requester maximum acceptable per-seat price.',
   })
   @ApiQuery({
     name: 'from',
@@ -481,6 +556,20 @@ export class JourneyDemandController {
     required: false,
     type: String,
     description: 'Requested travel date in YYYY-MM-DD format.',
+  })
+  @ApiQuery({
+    name: 'minPrice',
+    required: false,
+    type: Number,
+    description:
+      'Minimum acceptable per-seat price in KES. Inclusive. Filters against maximumPricePerSeat.',
+  })
+  @ApiQuery({
+    name: 'maxPrice',
+    required: false,
+    type: Number,
+    description:
+      'Maximum acceptable per-seat price in KES. Inclusive. Filters against maximumPricePerSeat.',
   })
   @ApiQuery({
     name: 'limit',
@@ -502,6 +591,8 @@ export class JourneyDemandController {
         dto.from,
         dto.to,
         dto.date,
+        dto.minPrice,
+        dto.maxPrice,
         dto.limit,
         dto.offset,
       ),
@@ -518,7 +609,7 @@ export class JourneyDemandController {
   @ApiOperation({
     summary: 'Get my journey demands',
     description:
-      'Returns journey demands belonging to the currently authenticated requester.',
+      'Returns Journey Demands belonging to the currently authenticated requester.',
   })
   @ApiQuery({
     name: 'limit',
@@ -534,7 +625,7 @@ export class JourneyDemandController {
     @auth.CurrentIdentity() identity: auth.AuthenticatedIdentity,
     @Query() dto: GetMyJourneyDemandsQueryDto,
   ): Promise<readonly MyJourneyDemandResponse[]> {
-    const entities = await this.getMyJourneyDemandsHandler.execute(
+    const aggregates = await this.getMyJourneyDemandsHandler.execute(
       new GetMyJourneyDemandsQuery(
         new RequesterPublicId(identity.identityPublicId),
         dto.limit,
@@ -542,7 +633,9 @@ export class JourneyDemandController {
       ),
     );
 
-    return entities.map((entity) => MyJourneyDemandMapper.fromEntity(entity));
+    return aggregates.map((aggregate) =>
+      MyJourneyDemandMapper.fromAggregate(aggregate),
+    );
   }
 
   // ===========================================================================
@@ -580,7 +673,7 @@ export class JourneyDemandController {
   }
 
   // ===========================================================================
-  // OTHER PROTECTED COLLECTION QUERIES
+  // PROTECTED COLLECTION QUERIES
   // ===========================================================================
 
   @Get('open')
@@ -750,7 +843,7 @@ export class JourneyDemandController {
   @ApiOperation({
     summary: 'Get public journey demand by public ID',
     description:
-      'Returns the publicly discoverable Journey Demand marketplace read model.',
+      'Returns the publicly discoverable Journey Demand marketplace read model. Cancelled and expired Journey Demands are not publicly discoverable.',
   })
   @ApiParam({
     name: 'journeyDemandPublicId',
@@ -875,18 +968,34 @@ export class JourneyDemandController {
   @auth.RequirePermissions('demand:create')
   @ApiOperation({
     summary: 'Create journey demand',
-    description: 'Creates a new Journey Demand.',
+    description:
+      'Creates a new Journey Demand in DRAFT state. Component configuration and publication are performed through the subsequent Journey Demand commands.',
   })
   public async create(
     @Body() dto: CreateJourneyDemandDto,
-  ): Promise<JourneyDemandAggregate> {
-    return this.createJourneyDemandHandler.execute(
+  ): Promise<JourneyDemandResponse> {
+    // -------------------------------------------------------------------------
+    // Creation is intentionally performed exactly once.
+    //
+    // The application workflow subsequently updates the aggregate through
+    // corridor, schedule, capacity, and pricing commands.
+    // -------------------------------------------------------------------------
+
+    const aggregate = await this.createJourneyDemandHandler.execute(
       new CreateJourneyDemandCommand(
         dto.requesterPublicId,
         dto.correlationId,
         dto.causationId,
       ),
     );
+
+    // -------------------------------------------------------------------------
+    // The HTTP contract returns the mapped aggregate response.
+    //
+    // The controller does not expose the aggregate itself.
+    // -------------------------------------------------------------------------
+
+    return JourneyDemandResponseMapper.toResponse(aggregate);
   }
 
   @Put(':journeyDemandPublicId')
@@ -895,7 +1004,8 @@ export class JourneyDemandController {
   @auth.RequirePermissions('demand:update')
   @ApiOperation({
     summary: 'Update journey demand',
-    description: 'Updates an existing Journey Demand.',
+    description:
+      'Records a root-level Journey Demand update. Aggregate versioning, audit timestamp, and the JourneyDemandUpdatedEvent are handled by the aggregate.',
   })
   @ApiParam({
     name: 'journeyDemandPublicId',
@@ -921,7 +1031,7 @@ export class JourneyDemandController {
   @ApiOperation({
     summary: 'Publish journey demand',
     description:
-      'Publishes a Journey Demand for public discovery and matching.',
+      'Publishes a complete Journey Demand for public discovery and matching.',
   })
   @ApiParam({
     name: 'journeyDemandPublicId',
@@ -946,7 +1056,7 @@ export class JourneyDemandController {
   @auth.RequirePermissions('demand:update')
   @ApiOperation({
     summary: 'Match journey demand',
-    description: 'Matches a Journey Demand with a Journey.',
+    description: 'Matches a Journey Demand with an existing Journey.',
   })
   @ApiParam({
     name: 'journeyDemandPublicId',
@@ -973,7 +1083,7 @@ export class JourneyDemandController {
   @ApiOperation({
     summary: 'Convert journey demand',
     description:
-      'Converts a Journey Demand into the corresponding Journey flow.',
+      'Converts a matched Journey Demand into the corresponding Journey flow.',
   })
   @ApiParam({
     name: 'journeyDemandPublicId',
@@ -999,7 +1109,7 @@ export class JourneyDemandController {
   @auth.RequirePermissions('demand:update')
   @ApiOperation({
     summary: 'Fulfill journey demand',
-    description: 'Marks a Journey Demand as fulfilled.',
+    description: 'Marks a converted Journey Demand as fulfilled.',
   })
   @ApiParam({
     name: 'journeyDemandPublicId',
@@ -1024,7 +1134,7 @@ export class JourneyDemandController {
   @auth.RequirePermissions('demand:cancel')
   @ApiOperation({
     summary: 'Cancel journey demand',
-    description: 'Cancels an existing Journey Demand.',
+    description: 'Cancels an active Journey Demand.',
   })
   @ApiParam({
     name: 'journeyDemandPublicId',
@@ -1079,7 +1189,8 @@ export class JourneyDemandController {
   @auth.RequirePermissions('demand:update')
   @ApiOperation({
     summary: 'Update journey demand corridor',
-    description: 'Updates the origin and destination corridor.',
+    description:
+      'Creates the Journey Demand corridor when it does not yet exist, or updates the existing corridor origin and destination when it does.',
   })
   @ApiParam({
     name: 'journeyDemandPublicId',
@@ -1089,11 +1200,33 @@ export class JourneyDemandController {
     @Param('journeyDemandPublicId') journeyDemandPublicId: string,
     @Body() dto: UpdateJourneyDemandCorridorDto,
   ): Promise<void> {
+    // -------------------------------------------------------------------------
+    // Important:
+    //
+    // The first corridor update may create the corridor child entity.
+    //
+    // JourneyDemandCorridorEntity requires complete geographic coordinates
+    // during creation:
+    //
+    //   originCoordinates
+    //   destinationCoordinates
+    //
+    // Existing corridor updates continue to modify only the origin/destination
+    // names through JourneyDemandAggregate.updateCorridor().
+    //
+    // Therefore the transport DTO supplies the coordinates required by the
+    // first-time creation path.
+    // -------------------------------------------------------------------------
+
     await this.updateCorridorHandler.execute(
       new UpdateJourneyDemandCorridorCommand(
         journeyDemandPublicId,
         dto.origin,
+        dto.originLatitude,
+        dto.originLongitude,
         dto.destination,
+        dto.destinationLatitude,
+        dto.destinationLongitude,
         dto.correlationId,
         dto.causationId,
       ),
@@ -1110,7 +1243,7 @@ export class JourneyDemandController {
   @auth.RequirePermissions('demand:update')
   @ApiOperation({
     summary: 'Add journey demand waypoint',
-    description: 'Adds a waypoint to a Journey Demand.',
+    description: 'Adds a new waypoint to the Journey Demand corridor.',
   })
   @ApiParam({
     name: 'journeyDemandPublicId',
@@ -1148,7 +1281,7 @@ export class JourneyDemandController {
   })
   @ApiParam({
     name: 'waypointPublicId',
-    description: 'Public identifier of the waypoint.',
+    description: 'Public identifier of the Journey Demand waypoint.',
   })
   public async updateWaypoint(
     @Param('journeyDemandPublicId') journeyDemandPublicId: string,
@@ -1175,7 +1308,7 @@ export class JourneyDemandController {
   @auth.RequirePermissions('demand:update')
   @ApiOperation({
     summary: 'Remove journey demand waypoint',
-    description: 'Removes a waypoint from a Journey Demand.',
+    description: 'Removes an existing waypoint from a Journey Demand.',
   })
   @ApiParam({
     name: 'journeyDemandPublicId',
@@ -1183,7 +1316,7 @@ export class JourneyDemandController {
   })
   @ApiParam({
     name: 'waypointPublicId',
-    description: 'Public identifier of the waypoint.',
+    description: 'Public identifier of the Journey Demand waypoint.',
   })
   public async removeWaypoint(
     @Param('journeyDemandPublicId') journeyDemandPublicId: string,
@@ -1210,7 +1343,8 @@ export class JourneyDemandController {
   @auth.RequirePermissions('demand:update')
   @ApiOperation({
     summary: 'Update journey demand schedule',
-    description: 'Updates the requested travel schedule.',
+    description:
+      'Creates or updates the requested travel schedule for a Journey Demand.',
   })
   @ApiParam({
     name: 'journeyDemandPublicId',
@@ -1248,7 +1382,8 @@ export class JourneyDemandController {
   @auth.RequirePermissions('demand:update')
   @ApiOperation({
     summary: 'Update journey demand capacity',
-    description: 'Updates the number of seats required.',
+    description:
+      'Creates or updates the number of seats required by the Journey Demand.',
   })
   @ApiParam({
     name: 'journeyDemandPublicId',
@@ -1278,7 +1413,7 @@ export class JourneyDemandController {
   @auth.RequirePermissions('demand:update')
   @ApiOperation({
     summary: 'Update journey demand pricing',
-    description: 'Updates pricing for a Journey Demand.',
+    description: 'Creates or updates pricing for a Journey Demand.',
   })
   @ApiParam({
     name: 'journeyDemandPublicId',
@@ -1344,7 +1479,7 @@ export class JourneyDemandController {
   })
   @ApiParam({
     name: 'participantPublicId',
-    description: 'Public identifier of the participant.',
+    description: 'Public identifier of the Journey Demand participant.',
   })
   public async updateParticipant(
     @Param('journeyDemandPublicId') journeyDemandPublicId: string,
@@ -1376,7 +1511,7 @@ export class JourneyDemandController {
   })
   @ApiParam({
     name: 'participantPublicId',
-    description: 'Public identifier of the participant.',
+    description: 'Public identifier of the Journey Demand participant.',
   })
   public async withdrawParticipant(
     @Param('journeyDemandPublicId') journeyDemandPublicId: string,
@@ -1407,7 +1542,7 @@ export class JourneyDemandController {
   })
   @ApiParam({
     name: 'participantPublicId',
-    description: 'Public identifier of the participant.',
+    description: 'Public identifier of the Journey Demand participant.',
   })
   public async removeParticipant(
     @Param('journeyDemandPublicId') journeyDemandPublicId: string,
@@ -1464,7 +1599,7 @@ export class JourneyDemandController {
   })
   @ApiParam({
     name: 'participantPublicId',
-    description: 'Public identifier of the participant.',
+    description: 'Public identifier of the Journey Demand participant.',
   })
   public async getParticipant(
     @Param('journeyDemandPublicId') journeyDemandPublicId: string,

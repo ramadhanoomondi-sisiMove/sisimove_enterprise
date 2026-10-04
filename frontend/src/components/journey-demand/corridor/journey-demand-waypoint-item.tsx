@@ -2,10 +2,10 @@
 // sisiMove — Journey Demand Waypoint Item
 // -----------------------------------------------------------------------------
 //
-// Read-only presentation of a single public Journey Demand waypoint.
+// Read-only presentation of a single authenticated Journey Demand waypoint.
 //
 // Architecture:
-// - Consumes the public Journey Demand waypoint projection.
+// - Consumes the authenticated Journey Demand waypoint model.
 // - Does not fetch data.
 // - Does not mutate data.
 // - Does not reconstruct backend value objects.
@@ -13,22 +13,23 @@
 // - Uses the backend-provided sequence for display.
 // - Does not infer additional business meaning from pickup/drop-off flags.
 //
-// The parent waypoint collection (098) owns iteration and list composition.
+// The parent waypoint collection owns iteration and list composition.
 // This component owns the presentation of one waypoint.
 //
-// IMPORTANT:
-// Public corridor components use PublicJourneyDemandWaypoint.
-// The authenticated JourneyDemandWaypoint model is intentionally not used
-// here because it contains editor/persistence fields such as coordinates,
-// createdAt, and updatedAt that are not required by this presentation.
+// The authenticated JourneyDemandWaypoint model provides coordinates through:
+//
+//     waypoint.coordinates.latitude
+//     waypoint.coordinates.longitude
+//
+// This component does not flatten or transform that representation.
 //
 // -----------------------------------------------------------------------------
 
-import type { PublicJourneyDemandWaypoint } from '@/features/journey-demand/models';
+import type { JourneyDemandWaypoint } from '@/features/journey-demand/models';
 import { cn } from '@/foundation';
 
 export interface JourneyDemandWaypointItemProps {
-  readonly waypoint: PublicJourneyDemandWaypoint;
+  readonly waypoint: JourneyDemandWaypoint;
   readonly emphasis?: 'compact' | 'default';
   readonly className?: string;
 }
@@ -50,9 +51,8 @@ export function JourneyDemandWaypointItem({
       {/* ---------------------------------------------------------------------
           Sequence marker
 
-          The sequence is supplied by the backend/public projection and is
-          therefore displayed directly rather than reconstructed from the
-          array position.
+          The sequence is supplied by the backend and is therefore displayed
+          directly rather than reconstructed from the array position.
       --------------------------------------------------------------------- */}
       <span
         className={cn(
@@ -92,10 +92,32 @@ export function JourneyDemandWaypointItem({
         </div>
 
         {/* -------------------------------------------------------------------
+            Coordinates
+
+            Coordinates belong to the authenticated waypoint model and are
+            represented as a nested value:
+
+                waypoint.coordinates.latitude
+                waypoint.coordinates.longitude
+
+            They are displayed directly without deriving additional route
+            information.
+        ------------------------------------------------------------------- */}
+        <p
+          className={cn(
+            'mt-1 text-foreground-muted',
+            isCompact ? 'text-[11px]' : 'text-xs',
+          )}
+        >
+          {waypoint.coordinates.latitude},{' '}
+          {waypoint.coordinates.longitude}
+        </p>
+
+        {/* -------------------------------------------------------------------
             Explicit operational requirements
 
-            These values come directly from the public projection. No business
-            state is inferred when either flag is false.
+            These values come directly from the backend waypoint model.
+            No business state is inferred when either flag is false.
         ------------------------------------------------------------------- */}
         {waypoint.pickupRequired || waypoint.dropoffRequired ? (
           <div
@@ -124,7 +146,7 @@ export function JourneyDemandWaypointItem({
 // -----------------------------------------------------------------------------
 
 function formatWaypointType(
-  type: PublicJourneyDemandWaypoint['type'],
+  type: JourneyDemandWaypoint['type'],
 ): string {
   switch (type) {
     case 'ORIGIN':
@@ -146,4 +168,3 @@ function formatWaypointType(
       return type;
   }
 }
-

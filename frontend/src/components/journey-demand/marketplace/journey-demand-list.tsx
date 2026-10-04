@@ -22,7 +22,15 @@
 // - no loading/error/empty-state ownership;
 // - no navigation;
 // - no lifecycle logic;
-// - no public projection transformation.
+// - no public projection transformation;
+// - no client-side price filtering.
+//
+// Price filtering:
+// - Journey Demand price filtering is performed by the marketplace query;
+// - the backend filters against maximumPricePerSeat;
+// - minPrice/maxPrice are inclusive query boundaries;
+// - this list renders only the projections returned by the backend;
+// - no client-side price filtering or sorting is performed here.
 //
 // -----------------------------------------------------------------------------
 

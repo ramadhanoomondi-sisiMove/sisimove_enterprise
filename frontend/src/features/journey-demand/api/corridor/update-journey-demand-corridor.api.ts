@@ -19,9 +19,11 @@
 // Architectural boundary:
 //
 // - Journey Demand remains the owner of its corridor.
-// - The frontend sends the requested corridor values to the backend.
+// - The frontend sends the selected corridor values and their coordinates.
 // - The backend aggregate/application layer owns validation and state change.
 // - The frontend does not calculate coordinates, corridor keys, or waypoints.
+// - Coordinates originate from the selected/resolved location and are passed
+//   through this adapter unchanged.
 // - The frontend does not reconstruct the Journey Demand aggregate.
 // - Query invalidation/refetching belongs to the hook layer.
 //
@@ -60,6 +62,30 @@ export interface UpdateJourneyDemandCorridorRequest {
   readonly origin: string;
 
   /**
+   * Latitude of the selected Journey Demand corridor origin.
+   *
+   * Backend validation:
+   *
+   * - required;
+   * - number;
+   * - minimum: -90;
+   * - maximum: 90.
+   */
+  readonly originLatitude: number;
+
+  /**
+   * Longitude of the selected Journey Demand corridor origin.
+   *
+   * Backend validation:
+   *
+   * - required;
+   * - number;
+   * - minimum: -180;
+   * - maximum: 180.
+   */
+  readonly originLongitude: number;
+
+  /**
    * New destination name for the Journey Demand corridor.
    *
    * Backend validation:
@@ -70,6 +96,30 @@ export interface UpdateJourneyDemandCorridorRequest {
    * - maximum length: 200.
    */
   readonly destination: string;
+
+  /**
+   * Latitude of the selected Journey Demand corridor destination.
+   *
+   * Backend validation:
+   *
+   * - required;
+   * - number;
+   * - minimum: -90;
+   * - maximum: 90.
+   */
+  readonly destinationLatitude: number;
+
+  /**
+   * Longitude of the selected Journey Demand corridor destination.
+   *
+   * Backend validation:
+   *
+   * - required;
+   * - number;
+   * - minimum: -180;
+   * - maximum: 180.
+   */
+  readonly destinationLongitude: number;
 
   /**
    * Correlation identifier for distributed tracing.
@@ -101,6 +151,10 @@ const JOURNEY_DEMANDS_PATH = '/journey-demands';
  * The backend command owns the actual corridor transition. This adapter only
  * translates the frontend request into the backend HTTP contract.
  *
+ * Coordinates are deliberately passed through without modification. The
+ * selected `ResolvedLocation` is the source of those values in the creation
+ * workflow.
+ *
  * The endpoint returns no representation after the mutation, therefore this
  * function deliberately returns `Promise<void>`.
  *
@@ -111,7 +165,7 @@ const JOURNEY_DEMANDS_PATH = '/journey-demands';
  *   Public identifier of the Journey Demand whose corridor is being updated.
  *
  * @param request
- *   New origin, destination, and command tracing metadata.
+ *   New origin, destination, coordinates, and command tracing metadata.
  */
 export async function updateJourneyDemandCorridor(
   journeyDemandPublicId: string,
@@ -122,3 +176,4 @@ export async function updateJourneyDemandCorridor(
     request,
   );
 }
+

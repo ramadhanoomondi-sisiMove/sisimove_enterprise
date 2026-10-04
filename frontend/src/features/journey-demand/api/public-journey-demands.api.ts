@@ -1,4 +1,7 @@
 // -----------------------------------------------------------------------------
+// Path: src/features/journey-demand/api/get-public-journey-demands.ts
+// -----------------------------------------------------------------------------
+//
 // sisiMove — Public Journey Demand API
 // -----------------------------------------------------------------------------
 //
@@ -24,6 +27,16 @@
 //
 // The frontend consumes public read models only. It does not depend on the
 // backend's JourneyDemandAggregate or persistence representation.
+//
+// Marketplace price filtering:
+// - minPrice and maxPrice are optional per-seat KES boundaries;
+// - filtering is inclusive;
+// - minPrice filters Journey Demands whose maximumPricePerSeat is greater
+//   than or equal to the supplied value;
+// - maxPrice filters Journey Demands whose maximumPricePerSeat is less than
+//   or equal to the supplied value;
+// - the backend remains authoritative for the filtering operation;
+// - this API does not perform client-side filtering.
 //
 // -----------------------------------------------------------------------------
 
@@ -64,8 +77,13 @@ const JOURNEY_DEMANDS_PATH = '/journey-demands';
  * - from: origin location;
  * - to: destination location;
  * - date: requested departure date;
+ * - minPrice: minimum acceptable maximumPricePerSeat in KES;
+ * - maxPrice: maximum acceptable maximumPricePerSeat in KES;
  * - limit: maximum number of results;
  * - offset: number of results to skip.
+ *
+ * Price filtering is inclusive and is evaluated by the backend against
+ * Journey Demand pricing.maximumPricePerSeat.
  *
  * Backend:
  *
@@ -85,6 +103,12 @@ export async function getPublicJourneyDemands(
         ...(query?.from !== undefined ? { from: query.from } : {}),
         ...(query?.to !== undefined ? { to: query.to } : {}),
         ...(query?.date !== undefined ? { date: query.date } : {}),
+        ...(query?.minPrice !== undefined
+          ? { minPrice: query.minPrice }
+          : {}),
+        ...(query?.maxPrice !== undefined
+          ? { maxPrice: query.maxPrice }
+          : {}),
         ...(query?.limit !== undefined ? { limit: query.limit } : {}),
         ...(query?.offset !== undefined ? { offset: query.offset } : {}),
       },

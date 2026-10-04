@@ -5,6 +5,12 @@
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
+// NestJS Dependency Injection
+// -----------------------------------------------------------------------------
+
+import { Inject } from '@nestjs/common';
+
+// -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
@@ -15,6 +21,12 @@ import type { CommandHandler } from '../../../../foundation/kernel/application/c
 // -----------------------------------------------------------------------------
 
 import type { ConvertJourneyDemandCommand } from '../commands/convert-journey-demand.command';
+
+// -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_DEMAND_TOKENS } from '../journey-demand.tokens';
 
 // -----------------------------------------------------------------------------
 // Domain Exceptions
@@ -41,11 +53,14 @@ import { MatchedJourneyPublicId } from '../../domain/value-objects/matched-journ
 // -----------------------------------------------------------------------------
 
 export class ConvertJourneyDemandHandler implements CommandHandler<ConvertJourneyDemandCommand> {
-  constructor(private readonly repository: JourneyDemandRepository) {}
+  constructor(
+    @Inject(JOURNEY_DEMAND_TOKENS.REPOSITORY)
+    private readonly repository: JourneyDemandRepository,
+  ) {}
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Execute
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   async execute(command: ConvertJourneyDemandCommand): Promise<void> {
     // -------------------------------------------------------------------------

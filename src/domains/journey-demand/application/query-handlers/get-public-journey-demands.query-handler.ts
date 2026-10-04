@@ -64,6 +64,26 @@
 //     from
 //     to
 //     date
+//     minPrice
+//     maxPrice
+//
+// Price filtering applies to the Demand's maximum acceptable price per seat:
+//
+//     minPrice <= maximumPricePerSeat <= maxPrice
+//
+// Both price boundaries are inclusive.
+//
+// If only minPrice is supplied:
+//
+//     maximumPricePerSeat >= minPrice
+//
+// If only maxPrice is supplied:
+//
+//     maximumPricePerSeat <= maxPrice
+//
+// If neither is supplied:
+//
+//     no price restriction is applied.
 //
 // The public collection is therefore marketplace-first:
 //
@@ -373,6 +393,16 @@ export class GetPublicJourneyDemandsQueryHandler implements QueryHandler<
    *
    *     "Return all publicly discoverable Journey Demands."
    *
+   * Supported filters:
+   *
+   *     from
+   *     to
+   *     date
+   *     minPrice
+   *     maxPrice
+   *
+   * Price filters apply to the Demand's maximum acceptable price per seat.
+   *
    * The repository decides which Demands are publicly visible.
    *
    * Once retrieved, this handler composes every Demand into the public
@@ -400,6 +430,11 @@ export class GetPublicJourneyDemandsQueryHandler implements QueryHandler<
       ...(query.from !== undefined ? { from: query.from } : {}),
       ...(query.to !== undefined ? { to: query.to } : {}),
       ...(query.date !== undefined ? { date: query.date } : {}),
+
+      ...(query.minPrice !== undefined ? { minPrice: query.minPrice } : {}),
+
+      ...(query.maxPrice !== undefined ? { maxPrice: query.maxPrice } : {}),
+
       ...(query.limit !== undefined ? { limit: query.limit } : {}),
       ...(query.offset !== undefined ? { offset: query.offset } : {}),
     };

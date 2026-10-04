@@ -14,12 +14,20 @@
 // - Does not calculate a fare, booking amount, commission, or settlement.
 // - Parent create form owns workflow state and submission.
 //
-// Pricing expresses the traveller's requested pricing conditions:
-// - preferred price per seat;
-// - maximum price per seat.
+// Backend pricing contract:
 //
-// Both values are optional. The backend remains authoritative for pricing
-// validation and interpretation.
+//   maxFare
+//   currency
+//
+// Therefore this creation step collects only:
+//
+//   maximumPricePerSeat
+//
+// Preferred pricing is intentionally not collected here because the current
+// backend creation/update command does not expose a preferred-price mutation.
+//
+// The backend remains authoritative for pricing validation and interpretation.
+//
 // -----------------------------------------------------------------------------
 
 'use client';
@@ -29,36 +37,67 @@ import type { ChangeEvent } from 'react';
 import { Input } from '@/components/ui';
 import { cn } from '@/foundation';
 
+// -----------------------------------------------------------------------------
+// Value
+// -----------------------------------------------------------------------------
+
 export interface JourneyDemandCreatePriceValue {
-  readonly preferredPricePerSeat: number | undefined;
+  /**
+   * Maximum amount the traveller is willing to pay per seat.
+   *
+   * Maps to the backend pricing command field `maxFare`.
+   */
   readonly maximumPricePerSeat: number | undefined;
 }
 
+// -----------------------------------------------------------------------------
+// Props
+// -----------------------------------------------------------------------------
+
 export interface JourneyDemandCreatePriceProps {
   readonly value: JourneyDemandCreatePriceValue;
-  readonly onChange: (value: JourneyDemandCreatePriceValue) => void;
+
+  readonly onChange: (
+    value: JourneyDemandCreatePriceValue,
+  ) => void;
+
+  /**
+   * Validation error supplied by the parent form.
+   *
+   * Input.error expects string | undefined.
+   */
+  readonly maximumPriceError?: string;
+
   readonly currency?: string;
   readonly disabled?: boolean;
   readonly className?: string;
 }
 
+// -----------------------------------------------------------------------------
+// Component
+// -----------------------------------------------------------------------------
+
 export function JourneyDemandCreatePrice({
   value,
   onChange,
+  maximumPriceError,
   currency = 'KES',
   disabled = false,
   className,
 }: JourneyDemandCreatePriceProps) {
-  const handleChange =
-    (field: keyof JourneyDemandCreatePriceValue) =>
-    (event: ChangeEvent<HTMLInputElement>): void => {
-      const rawValue = event.target.value;
+  const handleMaximumPriceChange = (
+    event: ChangeEvent<HTMLInputElement>,
+  ): void => {
+    onChange({
+      ...value,
+      maximumPricePerSeat: parseOptionalPrice(
+        event.target.value,
+      ),
+    });
+  };
 
-      onChange({
-        ...value,
-        [field]: parseOptionalPrice(rawValue),
-      });
-    };
+  const hasMaximumPrice =
+    value.maximumPricePerSeat !== undefined;
 
   return (
     <section
@@ -68,79 +107,177 @@ export function JourneyDemandCreatePrice({
       )}
       aria-labelledby="journey-demand-create-price-heading"
     >
+      {/* ---------------------------------------------------------------------
+          Header
+      --------------------------------------------------------------------- */}
+
       <div className="min-w-0">
-        <p className="text-sm font-medium text-[var(--brand)]">
-          Step 4
-        </p>
+        <div
+          className={cn(
+            'flex h-8 w-8 items-center justify-center',
+            'rounded-full',
+            'bg-[var(--brand-soft)]',
+            'text-sm font-semibold text-[var(--brand)]',
+          )}
+          aria-hidden="true"
+        >
+          4
+        </div>
 
         <h2
           id="journey-demand-create-price-heading"
-          className="mt-1 text-lg font-semibold text-foreground sm:text-xl"
+          className="mt-4 text-xl font-semibold tracking-tight text-[var(--foreground)] sm:text-2xl"
         >
           What price works for you?
         </h2>
 
-        <p className="mt-1 max-w-2xl text-sm leading-6 text-foreground-muted">
-          Set the price conditions you would prefer for this travel need.
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--foreground-secondary)]">
+          Set the maximum price you are willing to pay for
+          this travel need.
         </p>
       </div>
 
-      <div className="mt-6 grid min-w-0 gap-4 sm:grid-cols-2">
-        <Input
-          id="journey-demand-create-preferred-price"
-          name="preferredPricePerSeat"
-          type="number"
-          label={`Preferred price per seat (${currency})`}
-          value={value.preferredPricePerSeat ?? ''}
-          onChange={handleChange('preferredPricePerSeat')}
-          disabled={disabled}
-          min={0}
-          step="0.01"
-          inputMode="decimal"
-          helperText="Your preferred price per seat."
-          fullWidth
-        />
+      {/* ---------------------------------------------------------------------
+          Pricing field
+      --------------------------------------------------------------------- */}
 
-        <Input
-          id="journey-demand-create-maximum-price"
-          name="maximumPricePerSeat"
-          type="number"
-          label={`Maximum price per seat (${currency})`}
-          value={value.maximumPricePerSeat ?? ''}
-          onChange={handleChange('maximumPricePerSeat')}
-          disabled={disabled}
-          min={0}
-          step="0.01"
-          inputMode="decimal"
-          helperText="The highest price per seat you are willing to consider."
-          fullWidth
-        />
+      <div
+        className={cn(
+          'mt-7 min-w-0',
+          'rounded-[var(--radius-lg)]',
+          'border border-[var(--border)]',
+          'bg-[var(--background-subtle)]',
+          'p-5 sm:p-6',
+        )}
+      >
+        <div className="max-w-md">
+          <Input
+            id="journey-demand-create-maximum-price"
+            name="maximumPricePerSeat"
+            type="number"
+            label={`Maximum price per seat (${currency})`}
+            value={value.maximumPricePerSeat ?? ''}
+            onChange={handleMaximumPriceChange}
+            disabled={disabled}
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            error={maximumPriceError}
+            helperText={
+              !maximumPriceError
+                ? `The highest price per seat you would consider (${currency}).`
+                : undefined
+            }
+            fullWidth
+          />
+        </div>
+
+        {/* -------------------------------------------------------------------
+            Selection summary
+        ------------------------------------------------------------------- */}
+
+        {hasMaximumPrice ? (
+          <div
+            className={cn(
+              'mt-5 border-t border-[var(--border-subtle)] pt-4',
+              'text-sm',
+            )}
+          >
+            <p className="font-medium text-[var(--foreground)]">
+              Your pricing preference
+            </p>
+
+            <p className="mt-2 text-[var(--foreground-secondary)]">
+              Maximum:{' '}
+              <span className="font-medium text-[var(--foreground)]">
+                {formatPrice(
+                  value.maximumPricePerSeat,
+                  currency,
+                )}
+              </span>
+            </p>
+          </div>
+        ) : null}
       </div>
 
-      <p className="mt-4 text-xs leading-5 text-foreground-muted">
-        Prices are travel preferences, not a confirmed fare or booking amount.
-      </p>
+      {/* ---------------------------------------------------------------------
+          Pricing guidance
+      --------------------------------------------------------------------- */}
+
+      <div
+        className={cn(
+          'mt-5 flex items-start gap-3',
+          'rounded-[var(--radius-md)]',
+          'border border-[var(--border-subtle)]',
+          'bg-[var(--surface)]',
+          'px-4 py-3',
+        )}
+      >
+        <div
+          className={cn(
+            'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center',
+            'rounded-full',
+            'bg-[var(--brand-soft)]',
+            'text-xs font-semibold text-[var(--brand)]',
+          )}
+          aria-hidden="true"
+        >
+          i
+        </div>
+
+        <p className="min-w-0 text-xs leading-5 text-[var(--foreground-muted)]">
+          This is your maximum acceptable price per seat,
+          not a confirmed fare or booking amount. Final pricing
+          remains subject to SisiMove pricing rules and the
+          journey offered to you.
+        </p>
+      </div>
     </section>
   );
 }
 
 // -----------------------------------------------------------------------------
-// Formatting
+// Parsing
 // -----------------------------------------------------------------------------
 
 function parseOptionalPrice(
   rawValue: string,
 ): number | undefined {
-  if (rawValue.trim() === '') {
+  const trimmedValue = rawValue.trim();
+
+  if (trimmedValue === '') {
     return undefined;
   }
 
-  const parsedValue = Number(rawValue);
+  const parsedValue = Number(trimmedValue);
 
   if (!Number.isFinite(parsedValue)) {
+    return undefined;
+  }
+
+  if (parsedValue < 0) {
     return undefined;
   }
 
   return parsedValue;
 }
 
+// -----------------------------------------------------------------------------
+// Formatting
+// -----------------------------------------------------------------------------
+
+function formatPrice(
+  value: number | undefined,
+  currency: string,
+): string {
+  if (value === undefined) {
+    return '';
+  }
+
+  return `${currency} ${value.toLocaleString('en-KE', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+export default JourneyDemandCreatePrice;

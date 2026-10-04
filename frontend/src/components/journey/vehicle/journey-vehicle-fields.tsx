@@ -9,9 +9,13 @@
 // Vehicle values remain primitive presentation values. The owning workflow
 // validates and converts them before invoking the Journey vehicle command.
 //
-// Asset selection is presentation-only. The component receives already
-// resolved Asset references from the owning workflow and never constructs
+// Asset selection is presentation-only. The component receives an already
+// resolved Asset reference from the owning workflow and never constructs
 // Asset URLs or performs uploads.
+//
+// The JourneyVehicleEditor owns the Asset presentation workflow. This
+// component only exposes the photo state and emits the user's request to
+// add or change the vehicle photo.
 //
 // -----------------------------------------------------------------------------
 
@@ -52,16 +56,16 @@ export interface JourneyVehicleFieldsProps {
   /**
    * The currently resolved vehicle Asset, if one is attached.
    *
-   * The URL is supplied by the Asset capability's public delivery boundary.
+   * The URL is supplied by the Asset capability's delivery boundary.
    * This component never constructs or derives the URL itself.
    */
   readonly selectedAsset?: JourneyVehicleAssetOption | null;
 
   /**
-   * Called when the user wants to upload or replace the vehicle photo.
+   * Called when the user wants to add or change the vehicle photo.
    *
-   * The owning workflow is responsible for opening the appropriate Asset
-   * workflow. This component only presents the action.
+   * JourneyVehicleEditor owns the Asset workflow that handles this request.
+   * This component only presents the action.
    */
   readonly onChangeAsset?: () => void;
 
@@ -83,7 +87,8 @@ export function JourneyVehicleFields({
   className,
 }: JourneyVehicleFieldsProps) {
   const vehicleLabel =
-    `${values.make} ${values.model}`.trim() || "Vehicle";
+    `${values.make} ${values.model}`.trim() ||
+    "Vehicle";
 
   const hasVehiclePhoto =
     selectedAsset !== null &&
@@ -125,7 +130,10 @@ export function JourneyVehicleFields({
             <div className="relative aspect-video w-full">
               <Image
                 src={selectedAsset.url}
-                alt={selectedAsset.label ?? vehicleLabel}
+                alt={
+                  selectedAsset.label ??
+                  vehicleLabel
+                }
                 fill
                 sizes="(max-width: 640px) 100vw, 640px"
                 className="object-cover"
@@ -191,7 +199,10 @@ export function JourneyVehicleFields({
           label="Make"
           value={values.make}
           onChange={(event) => {
-            onChange("make", event.target.value);
+            onChange(
+              "make",
+              event.target.value,
+            );
           }}
           placeholder="e.g. Toyota"
           disabled={disabled}
@@ -202,13 +213,20 @@ export function JourneyVehicleFields({
           label="Model"
           value={values.model}
           onChange={(event) => {
-            onChange("model", event.target.value);
+            onChange(
+              "model",
+              event.target.value,
+            );
           }}
           placeholder="e.g. Noah"
           disabled={disabled}
           fullWidth
         />
       </div>
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Vehicle details                                                     */}
+      {/* ------------------------------------------------------------------- */}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Input
@@ -217,7 +235,10 @@ export function JourneyVehicleFields({
           inputMode="numeric"
           value={values.year}
           onChange={(event) => {
-            onChange("year", event.target.value);
+            onChange(
+              "year",
+              event.target.value,
+            );
           }}
           placeholder="e.g. 2022"
           helperText="Optional."
@@ -229,7 +250,10 @@ export function JourneyVehicleFields({
           label="Color"
           value={values.color}
           onChange={(event) => {
-            onChange("color", event.target.value);
+            onChange(
+              "color",
+              event.target.value,
+            );
           }}
           placeholder="e.g. White"
           helperText="Optional."
@@ -238,11 +262,18 @@ export function JourneyVehicleFields({
         />
       </div>
 
+      {/* ------------------------------------------------------------------- */}
+      {/* Registration                                                        */}
+      {/* ------------------------------------------------------------------- */}
+
       <Input
         label="Registration"
         value={values.registration}
         onChange={(event) => {
-          onChange("registration", event.target.value);
+          onChange(
+            "registration",
+            event.target.value,
+          );
         }}
         placeholder="e.g. KDA 123A"
         helperText="Keep this information private until the appropriate trust boundary."

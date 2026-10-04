@@ -39,7 +39,6 @@
 
 import { useCallback, useState } from 'react';
 
-import { Button } from '@/components/ui';
 import {
   useUpdateJourneyDemandCapacity,
   useUpdateJourneyDemandCorridor,
@@ -64,18 +63,18 @@ import { JourneyDemandScheduleEditor } from '../schedule/journey-demand-schedule
 import { MyJourneyDemandError } from './my-journey-demand-error';
 import { MyJourneyDemandLoading } from './my-journey-demand-loading';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export interface MyJourneyDemandEditRouteProps {
   readonly journeyDemandPublicId: string;
   readonly className?: string;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Route
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function MyJourneyDemandEditRoute({
   journeyDemandPublicId,
@@ -132,17 +131,17 @@ export function MyJourneyDemandEditRoute({
   );
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Edit Surface
-// -----------------------------------------------------------------------------
+// =============================================================================
 //
-// This is deliberately separated from the query/loading route.
+// Deliberately separated from the query/loading route.
 //
-// The `key` supplied by MyJourneyDemandEditRoute means this component receives
-// a fresh mount whenever the owner navigates from one Journey Demand to another.
+// The key supplied by MyJourneyDemandEditRoute causes a fresh mount whenever
+// the owner navigates from one Journey Demand to another.
 //
-// Consequently, draft state can be initialized directly from `demand` without
-// an effect that copies server state into local state.
+// Draft state can therefore be initialized directly from demand without an
+// effect that copies server state into local state.
 //
 // -----------------------------------------------------------------------------
 
@@ -157,9 +156,9 @@ function MyJourneyDemandEditSurface({
   refetch,
   className,
 }: MyJourneyDemandEditSurfaceProps) {
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Mutation hooks
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   const {
     isLoading: isSavingCorridor,
@@ -185,15 +184,16 @@ function MyJourneyDemandEditSurface({
     updateJourneyDemandPricing,
   } = useUpdateJourneyDemandPricing();
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Draft state
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   //
   // These are UI drafts only.
   //
   // They are initialized directly from the authenticated owner projection.
   // They are not domain entities and do not replace the backend aggregate.
-  // ---------------------------------------------------------------------------
+  //
+  // ===========================================================================
 
   const [corridorDraft, setCorridorDraft] =
     useState<JourneyDemandCorridor | undefined>(
@@ -215,9 +215,9 @@ function MyJourneyDemandEditSurface({
       demand.pricing,
     );
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Corridor
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   //
   // The backend corridor DTO currently accepts only:
   //
@@ -227,7 +227,8 @@ function MyJourneyDemandEditSurface({
   // - causationId
   //
   // Coordinates, corridorKey, and waypoints are intentionally not sent.
-  // ---------------------------------------------------------------------------
+  //
+  // ===========================================================================
 
   const handleSaveCorridor = useCallback(async (): Promise<void> => {
     if (corridorDraft === undefined) {
@@ -248,9 +249,9 @@ function MyJourneyDemandEditSurface({
     updateJourneyDemandCorridor,
   ]);
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Schedule
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   //
   // Frontend models use Date objects.
   //
@@ -258,7 +259,8 @@ function MyJourneyDemandEditSurface({
   //
   // targetArrival and maximumArrival remain independent constraints.
   // Neither is used as a fallback for the other.
-  // ---------------------------------------------------------------------------
+  //
+  // ===========================================================================
 
   const handleSaveSchedule = useCallback(async (): Promise<void> => {
     if (scheduleDraft === undefined) {
@@ -287,7 +289,6 @@ function MyJourneyDemandEditSurface({
         : {}),
 
       timezone: scheduleDraft.timezone,
-
       correlationId: crypto.randomUUID(),
     });
 
@@ -299,14 +300,15 @@ function MyJourneyDemandEditSurface({
     updateJourneyDemandSchedule,
   ]);
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Capacity
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   //
   // Only requestedSeats is writable.
   //
-  // matchedSeats and all capacity convenience flags remain backend-owned.
-  // ---------------------------------------------------------------------------
+  // matchedSeats and capacity convenience flags remain backend-owned.
+  //
+  // ===========================================================================
 
   const handleSaveCapacity = useCallback(async (): Promise<void> => {
     if (capacityDraft === undefined) {
@@ -326,9 +328,9 @@ function MyJourneyDemandEditSurface({
     updateJourneyDemandCapacity,
   ]);
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Pricing
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   //
   // The currently implemented backend pricing mutation accepts:
   //
@@ -337,7 +339,8 @@ function MyJourneyDemandEditSurface({
   //
   // preferredPricePerSeat exists in the read model but is not currently a
   // writable field. We therefore do not send or invent a mutation for it.
-  // ---------------------------------------------------------------------------
+  //
+  // ===========================================================================
 
   const handleSavePricing = useCallback(async (): Promise<void> => {
     if (pricingDraft === undefined) {
@@ -362,9 +365,9 @@ function MyJourneyDemandEditSurface({
     updateJourneyDemandPricing,
   ]);
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Render
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   return (
     <main
@@ -406,7 +409,7 @@ function MyJourneyDemandEditSurface({
               corridor={corridorDraft}
               onChange={setCorridorDraft}
               onSave={() => {
-                void handleSaveCorridor();
+                void handleSaveCorridor().catch(() => undefined);
               }}
               isSaving={isSavingCorridor}
             />
@@ -428,7 +431,7 @@ function MyJourneyDemandEditSurface({
               schedule={scheduleDraft}
               onChange={setScheduleDraft}
               onSave={() => {
-                void handleSaveSchedule();
+                void handleSaveSchedule().catch(() => undefined);
               }}
               isSaving={isSavingSchedule}
             />
@@ -450,7 +453,7 @@ function MyJourneyDemandEditSurface({
               capacity={capacityDraft}
               onChange={setCapacityDraft}
               onSave={() => {
-                void handleSaveCapacity();
+                void handleSaveCapacity().catch(() => undefined);
               }}
               isSaving={isSavingCapacity}
             />
@@ -472,7 +475,7 @@ function MyJourneyDemandEditSurface({
               pricing={pricingDraft}
               onChange={setPricingDraft}
               onSave={() => {
-                void handleSavePricing();
+                void handleSavePricing().catch(() => undefined);
               }}
               isSaving={isSavingPricing}
             />
@@ -496,9 +499,9 @@ function MyJourneyDemandEditSurface({
   );
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Mutation Error
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 interface MutationErrorProps {
   readonly message: string;
@@ -525,9 +528,9 @@ function MutationError({
   );
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Edit Boundary Notice
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 function EditBoundaryNotice() {
   return (
@@ -556,4 +559,3 @@ function EditBoundaryNotice() {
     </section>
   );
 }
-

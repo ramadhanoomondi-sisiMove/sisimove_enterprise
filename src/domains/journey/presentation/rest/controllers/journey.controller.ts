@@ -495,14 +495,6 @@ export class JourneyController {
     // =========================================================================
     // Asset Domain — Public Asset Reference Query
     // =========================================================================
-    //
-    // Journey consumes only the reduced presentation contract:
-    //
-    //     { publicId, url }
-    //
-    // Journey does not query Asset storage or construct the URL itself.
-    //
-    // =========================================================================
 
     @Inject(ASSET_TOKENS.QUERY_HANDLERS.GET_PUBLIC_ASSET_REFERENCE)
     private readonly getPublicAssetReferenceHandler: QueryHandler<
@@ -545,14 +537,53 @@ export class JourneyController {
     description: 'Optional departure date filter in YYYY-MM-DD format.',
     example: '2026-09-18',
   })
+  @ApiQuery({
+    name: 'minPrice',
+    type: Number,
+    required: false,
+    description:
+      'Optional minimum Journey price per seat in KES. Journeys below this price are excluded.',
+    example: 500,
+  })
+  @ApiQuery({
+    name: 'maxPrice',
+    type: Number,
+    required: false,
+    description:
+      'Optional maximum Journey price per seat in KES. Journeys above this price are excluded.',
+    example: 1500,
+  })
   @Get('public')
   public async getPublicJourneys(
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('date') date?: string,
+    @Query('minPrice') minPrice?: string,
+    @Query('maxPrice') maxPrice?: string,
   ): Promise<readonly PublicJourneyResponse[]> {
+    const parsedMinPrice = this.parseOptionalPriceFilter(minPrice, 'minPrice');
+
+    const parsedMaxPrice = this.parseOptionalPriceFilter(maxPrice, 'maxPrice');
+
+    if (
+      parsedMinPrice !== undefined &&
+      parsedMaxPrice !== undefined &&
+      parsedMinPrice > parsedMaxPrice
+    ) {
+      throw new BadRequestException(
+        'minPrice cannot be greater than maxPrice.',
+      );
+    }
+
     return this.getPublicJourneysQueryHandler.execute(
-      new GetPublicJourneysQuery(undefined, from, to, date),
+      new GetPublicJourneysQuery(
+        undefined,
+        from,
+        to,
+        date,
+        parsedMinPrice,
+        parsedMaxPrice,
+      ),
     );
   }
 
@@ -605,23 +636,6 @@ export class JourneyController {
 
   // ---------------------------------------------------------------------------
   // Get My Journeys
-  // ---------------------------------------------------------------------------
-  //
-  // The Journey aggregate stores only vehicle.assetPublicId.
-  //
-  // For the authenticated editor/read model we additionally resolve that
-  // reference through the Asset domain's public reference query so the
-  // frontend receives:
-  //
-  //   vehicle.asset.publicId
-  //   vehicle.asset.url
-  //
-  // The URL is never added to JourneyVehicleEntity.
-  //
-  // If the referenced Asset is not currently publicly usable, the Journey
-  // response remains available and simply contains asset: null. The opaque
-  // assetPublicId is preserved by the Journey mapper.
-  //
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -1773,6 +1787,45 @@ export class JourneyController {
     } catch {
       return null;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Parse Optional Price Filter
+  // ---------------------------------------------------------------------------
+  //
+  // HTTP query parameters arrive as strings.
+  //
+  // The application query receives numbers because price filtering is a
+  // numeric concern owned by the Journey query layer.
+  //
+  // Empty values are treated as absent.
+  //
+  // Invalid numeric values are rejected at the HTTP boundary rather than
+  // silently becoming NaN or being passed deeper into the application layer.
+  //
+  // ---------------------------------------------------------------------------
+
+  private parseOptionalPriceFilter(
+    value: string | undefined,
+    parameterName: string,
+  ): number | undefined {
+    const normalized = value?.trim();
+
+    if (!normalized) {
+      return undefined;
+    }
+
+    const parsed = Number(normalized);
+
+    if (!Number.isFinite(parsed)) {
+      throw new BadRequestException(`${parameterName} must be a valid number.`);
+    }
+
+    if (parsed < 0) {
+      throw new BadRequestException(`${parameterName} cannot be negative.`);
+    }
+
+    return parsed;
   }
 
   // ---------------------------------------------------------------------------

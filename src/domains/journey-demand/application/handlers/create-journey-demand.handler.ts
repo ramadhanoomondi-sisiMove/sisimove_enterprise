@@ -3,6 +3,12 @@
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
+// NestJS Dependency Injection
+// -----------------------------------------------------------------------------
+
+import { Inject } from '@nestjs/common';
+
+// -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
@@ -13,6 +19,12 @@ import type { CommandHandler } from '../../../../foundation/kernel/application/c
 // -----------------------------------------------------------------------------
 
 import type { CreateJourneyDemandCommand } from '../commands/create-journey-demand.command';
+
+// -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_DEMAND_TOKENS } from '../journey-demand.tokens';
 
 // -----------------------------------------------------------------------------
 // Aggregate
@@ -51,7 +63,10 @@ export class CreateJourneyDemandHandler implements CommandHandler<
   CreateJourneyDemandCommand,
   JourneyDemandAggregate
 > {
-  constructor(private readonly repository: JourneyDemandRepository) {}
+  constructor(
+    @Inject(JOURNEY_DEMAND_TOKENS.REPOSITORY)
+    private readonly repository: JourneyDemandRepository,
+  ) {}
 
   // ===========================================================================
   // Execute
@@ -92,9 +107,7 @@ export class CreateJourneyDemandHandler implements CommandHandler<
 
     const journeyDemand = JourneyDemandEntity.create({
       publicId: journeyDemandPublicId,
-
       requesterPublicId,
-
       status: new JourneyDemandStatusValueObject(JourneyDemandStatus.DRAFT),
     });
 

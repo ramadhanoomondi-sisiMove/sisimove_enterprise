@@ -553,6 +553,20 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
 
   /**
    * Public marketplace collection lookup.
+   *
+   * Public Journey Demand discovery is intentionally constrained to OPEN
+   * demands. Additional filters are applied here because the repository is
+   * the persistence boundary for public discovery.
+   *
+   * Price semantics:
+   *
+   *   minPrice -> maximumPricePerSeat >= minPrice
+   *   maxPrice -> maximumPricePerSeat <= maxPrice
+   *
+   * Both boundaries are inclusive.
+   *
+   * Journey Demand pricing represents the requester's maximum acceptable
+   * price per passenger seat.
    */
   public async findPublicJourneyDemands(
     filters?: PublicJourneyDemandFilters,
@@ -583,6 +597,7 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
       where.corridor = {
         is: {
           ...existingCorridorFilter,
+
           destinationName: {
             contains: filters.to.trim(),
             mode: 'insensitive',
@@ -619,6 +634,36 @@ export class PrismaJourneyDemandRepository implements JourneyDemandRepository {
           latestDeparture: {
             gte: start,
           },
+        },
+      };
+    }
+
+    // -------------------------------------------------------------------------
+    // Price Range
+    // -------------------------------------------------------------------------
+    //
+    // Journey Demand uses maximumPricePerSeat as the marketplace budget
+    // boundary:
+    //
+    //   minPrice <= maximumPricePerSeat <= maxPrice
+    //
+    // The filter object is intentionally inferred from the Prisma schema.
+    // This avoids forcing a DecimalFilter onto an Int field when the Prisma
+    // schema stores Journey Demand prices as integers.
+    //
+
+    if (filters?.minPrice !== undefined || filters?.maxPrice !== undefined) {
+      const minPrice = filters.minPrice;
+      const maxPrice = filters.maxPrice;
+
+      const priceFilter = {
+        ...(minPrice !== undefined ? { gte: minPrice } : {}),
+        ...(maxPrice !== undefined ? { lte: maxPrice } : {}),
+      };
+
+      where.pricing = {
+        is: {
+          maximumPricePerSeat: priceFilter,
         },
       };
     }

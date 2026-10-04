@@ -5,6 +5,12 @@
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
+// NestJS Dependency Injection
+// -----------------------------------------------------------------------------
+
+import { Inject } from '@nestjs/common';
+
+// -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
@@ -15,6 +21,12 @@ import type { CommandHandler } from '../../../../foundation/kernel/application/c
 // -----------------------------------------------------------------------------
 
 import type { CancelJourneyDemandCommand } from '../commands/cancel-journey-demand.command';
+
+// -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_DEMAND_TOKENS } from '../journey-demand.tokens';
 
 // -----------------------------------------------------------------------------
 // Domain Exceptions
@@ -34,29 +46,32 @@ import type { JourneyDemandRepository } from '../../domain/repositories/journey-
 
 import { JourneyDemandPublicId } from '../../domain/value-objects/journey-demand-public-id.vo';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Handler
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export class CancelJourneyDemandHandler implements CommandHandler<CancelJourneyDemandCommand> {
-  constructor(private readonly repository: JourneyDemandRepository) {}
+  constructor(
+    @Inject(JOURNEY_DEMAND_TOKENS.REPOSITORY)
+    private readonly repository: JourneyDemandRepository,
+  ) {}
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Execute
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   async execute(command: CancelJourneyDemandCommand): Promise<void> {
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Journey Demand Identity
-    // -------------------------------------------------------------------------
+    // =========================================================================
 
     const journeyDemandPublicId = new JourneyDemandPublicId(
       command.journeyDemandPublicId,
     );
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Load Aggregate
-    // -------------------------------------------------------------------------
+    // =========================================================================
 
     const aggregate = await this.repository.findByPublicId(
       journeyDemandPublicId,
@@ -66,12 +81,12 @@ export class CancelJourneyDemandHandler implements CommandHandler<CancelJourneyD
       throw new JourneyDemandNotFoundException(command.journeyDemandPublicId);
     }
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Cancel Aggregate
     //
     // The aggregate owns lifecycle transition rules and domain-event
     // recording. The handler only supplies the command context.
-    // -------------------------------------------------------------------------
+    // =========================================================================
 
     aggregate.cancel(
       command.correlationId,
@@ -79,9 +94,9 @@ export class CancelJourneyDemandHandler implements CommandHandler<CancelJourneyD
       command.reason,
     );
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Persist Aggregate
-    // -------------------------------------------------------------------------
+    // =========================================================================
 
     await this.repository.save(aggregate);
   }

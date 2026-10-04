@@ -2,36 +2,57 @@
 // sisiMove — Journey Demand Waypoints
 // -----------------------------------------------------------------------------
 //
-// Read-only presentation of public Journey Demand waypoints.
+// Read-only presentation of Journey Demand waypoints.
 //
 // Architecture:
-// - Consumes the public Journey Demand waypoint projection.
+// - Consumes the authenticated Journey Demand waypoint model.
 // - Does not fetch data.
 // - Does not mutate data.
 // - Does not create, remove, or reorder waypoints.
 // - Does not calculate route distance, duration, or geometry.
-// - Delegates individual waypoint presentation to 097.
+// - Delegates individual waypoint presentation to JourneyDemandWaypointItem.
 //
-// The backend/public projection owns waypoint ordering through `sequence`.
-// This component therefore preserves the supplied array order and does not
-// sort or reconstruct the collection.
+// The backend owns waypoint ordering through `sequence`.
+// This component therefore preserves the supplied collection order and does
+// not sort or reconstruct the collection.
 //
-// Public detail components intentionally consume PublicJourneyDemandWaypoint.
-// Authenticated/editor components may consume the richer JourneyDemandWaypoint
-// model where coordinates and persistence metadata are required.
+// Authenticated/editor components consume `JourneyDemandWaypoint`, which
+// contains the complete waypoint representation required by the Journey
+// Demand management workflow.
 //
 // -----------------------------------------------------------------------------
 
-import type { PublicJourneyDemandWaypoint } from '@/features/journey-demand/models';
+import type { JourneyDemandWaypoint } from '@/features/journey-demand/models';
 import { cn } from '@/foundation';
 
 import { JourneyDemandWaypointItem } from './journey-demand-waypoint-item';
 
+// -----------------------------------------------------------------------------
+// Props
+// -----------------------------------------------------------------------------
+
 export interface JourneyDemandWaypointsProps {
-  readonly waypoints: readonly PublicJourneyDemandWaypoint[];
+  /**
+   * Ordered Journey Demand waypoint collection.
+   *
+   * Ordering supplied by the backend is preserved.
+   */
+  readonly waypoints: readonly JourneyDemandWaypoint[];
+
+  /**
+   * Presentation density.
+   */
   readonly emphasis?: 'compact' | 'default';
+
+  /**
+   * Optional additional class names.
+   */
   readonly className?: string;
 }
+
+// -----------------------------------------------------------------------------
+// Component
+// -----------------------------------------------------------------------------
 
 export function JourneyDemandWaypoints({
   waypoints,
@@ -40,9 +61,17 @@ export function JourneyDemandWaypoints({
 }: JourneyDemandWaypointsProps) {
   const isCompact = emphasis === 'compact';
 
+  // ---------------------------------------------------------------------------
+  // Empty state
+  // ---------------------------------------------------------------------------
+
   if (waypoints.length === 0) {
     return null;
   }
+
+  // ---------------------------------------------------------------------------
+  // Presentation
+  // ---------------------------------------------------------------------------
 
   return (
     <section
@@ -55,6 +84,7 @@ export function JourneyDemandWaypoints({
       {/* ---------------------------------------------------------------------
           Collection heading
       --------------------------------------------------------------------- */}
+
       <div className="flex min-w-0 items-center justify-between gap-3">
         <h3
           id="journey-demand-waypoints-heading"
@@ -79,10 +109,14 @@ export function JourneyDemandWaypoints({
 
       {/* ---------------------------------------------------------------------
           Waypoint collection
+          
+          IMPORTANT:
+          The backend-provided order is preserved.
 
-          The supplied backend order is preserved. Do not sort here because
-          ordering is part of the Journey Demand corridor representation.
+          Do not sort by sequence here. The collection is already represented
+          in its authoritative order by the backend response.
       --------------------------------------------------------------------- */}
+
       <ol
         className={cn(
           'mt-3',

@@ -5,7 +5,7 @@
 // Authenticated API operation for creating a new Journey Demand.
 //
 // Backend:
-// 
+//
 //     POST /journey-demands
 //
 // Creation intentionally creates only the Journey Demand root in DRAFT state.
@@ -17,14 +17,14 @@
 // objects. It sends the command contract required by the HTTP boundary.
 //
 // Authentication:
-// 
+//
 //     authenticatedApiClient
 //
 // The authenticated client obtains the current access token and injects it
 // into the request. This API adapter therefore does not access auth session
 // storage directly.
 //
-// ----------------------------------------------------------------------------- 
+// -----------------------------------------------------------------------------
 
 import { authenticatedApiClient } from '@/features/authentication';
 
@@ -61,6 +61,33 @@ export interface CreateJourneyDemandRequest {
 }
 
 // =============================================================================
+// Response
+// =============================================================================
+
+/**
+ * HTTP response returned after creating a Journey Demand.
+ *
+ * The backend creates the Journey Demand aggregate and returns it.
+ * The frontend deliberately exposes only the public identifier required
+ * for subsequent Journey Demand-owned update operations.
+ *
+ * The complete backend aggregate is not exposed as a frontend API model.
+ */
+export interface CreateJourneyDemandResponse {
+  /**
+   * Public identifier of the newly-created Journey Demand.
+   *
+   * This identifier is required by subsequent operations such as:
+   *
+   * - updating the corridor;
+   * - updating the schedule;
+   * - updating capacity;
+   * - updating pricing.
+   */
+  readonly publicId: string;
+}
+
+// =============================================================================
 // API Paths
 // =============================================================================
 
@@ -82,22 +109,21 @@ const JOURNEY_DEMANDS_PATH = '/journey-demands';
  *
  * The backend creates the Journey Demand in DRAFT state.
  *
- * Important:
+ * The backend returns the created Journey Demand aggregate. This adapter
+ * intentionally exposes only its public identifier to the frontend.
  *
- * The current backend handler returns JourneyDemandAggregate. That aggregate
- * is a backend domain object and is intentionally NOT exposed as a frontend
- * API response type.
- *
- * The frontend therefore treats this operation as a command whose successful
- * result is only completion of the HTTP operation.
- *
- * Subsequent reads should use the appropriate Journey Demand query API.
+ * The returned public identifier is required because the remaining
+ * Journey Demand configuration is performed through separate HTTP
+ * operations that address the Journey Demand by public identifier.
  */
 export async function createJourneyDemand(
   request: CreateJourneyDemandRequest,
-): Promise<void> {
-  await authenticatedApiClient.post<unknown>(
-    JOURNEY_DEMANDS_PATH,
-    request,
-  );
+): Promise<CreateJourneyDemandResponse> {
+  const response =
+    await authenticatedApiClient.post<CreateJourneyDemandResponse>(
+      JOURNEY_DEMANDS_PATH,
+      request,
+    );
+
+  return response;
 }

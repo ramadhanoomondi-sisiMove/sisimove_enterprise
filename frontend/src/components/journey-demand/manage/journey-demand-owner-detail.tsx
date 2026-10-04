@@ -4,28 +4,21 @@
 //
 // Authenticated owner-facing Journey Demand detail composition.
 //
-// This component consumes MyJourneyDemand because the backend exposes a
-// dedicated authenticated-owner read contract.
+// Architecture:
+// - Consumes MyJourneyDemand only.
+// - Receives an already-authorized owner read model.
+// - Delegates detail presentation to MyJourneyDemandDetail.
+// - Receives management UI from the parent/container.
+// - Does not own mutation state or mutation execution.
 //
-// It must remain separate from the public JourneyDemandDetail:
-//
-//   PublicJourneyDemand
-//       → public marketplace/detail presentation
-//
-//   MyJourneyDemand
-//       → authenticated owner's detail/presentation
-//
-// The owner boundary may receive management actions from its parent, but it
-// does not decide which actions are permitted.
-//
-// Architecture rules:
-// - No data fetching.
-// - No ownership checks.
-// - No authorization decisions.
-// - No mutation calls.
-// - No lifecycle inference.
-// - No public-model casts.
-// - No reconstruction of backend aggregates/value objects.
+// Responsibilities deliberately excluded:
+// - data fetching;
+// - ownership checks;
+// - authorization decisions;
+// - lifecycle decisions;
+// - mutation calls;
+// - public-model conversion;
+// - backend aggregate reconstruction.
 //
 // -----------------------------------------------------------------------------
 
@@ -42,20 +35,18 @@ import { MyJourneyDemandDetail } from './my-journey-demand-detail';
 // Props
 // =============================================================================
 
-/**
- * Props for the authenticated owner's Journey Demand detail view.
- *
- * Ownership and authorization are established by the parent route/container.
- * This component receives the already-authorized owner read model.
- */
 export interface JourneyDemandOwnerDetailProps {
   /**
    * Authenticated-owner Journey Demand read contract.
+   *
+   * Ownership and authorization are established by the parent route/container.
    */
   readonly demand: MyJourneyDemand;
 
   /**
-   * Optional management actions supplied by the owning container.
+   * Optional management UI supplied by the owning container.
+   *
+   * This component does not determine which actions are available.
    */
   readonly actions?: ReactNode;
 
@@ -69,17 +60,9 @@ export interface JourneyDemandOwnerDetailProps {
 /**
  * Presents the authenticated owner's Journey Demand detail.
  *
- * This component deliberately does not:
- *
- * - fetch the demand;
- * - determine ownership;
- * - perform authorization;
- * - call mutations;
- * - infer lifecycle capabilities;
- * - cast MyJourneyDemand to PublicJourneyDemand;
- * - expose or reconstruct internal Journey Demand identifiers.
- *
- * Management actions are supplied separately by the owning container.
+ * Management remains external to this component's responsibility. The parent
+ * decides what management UI to provide; MyJourneyDemandDetail composes it
+ * with the owner detail presentation.
  */
 export function JourneyDemandOwnerDetail({
   demand,
@@ -88,14 +71,10 @@ export function JourneyDemandOwnerDetail({
 }: JourneyDemandOwnerDetailProps) {
   return (
     <div className={cn('min-w-0', className)}>
-      <MyJourneyDemandDetail demand={demand} />
-
-      {actions ? (
-        <div className="mt-5 min-w-0 border-t border-border pt-5">
-          {actions}
-        </div>
-      ) : null}
+      <MyJourneyDemandDetail
+        demand={demand}
+        management={actions}
+      />
     </div>
   );
 }
-

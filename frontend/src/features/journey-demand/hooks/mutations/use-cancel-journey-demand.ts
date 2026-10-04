@@ -3,13 +3,30 @@
 // -----------------------------------------------------------------------------
 // sisiMove — Cancel Journey Demand Mutation Hook
 // -----------------------------------------------------------------------------
+//
+// Owns client-side mutation state for cancelling a Journey Demand.
+//
+// Architecture:
+// - delegates the HTTP operation to the API module;
+// - owns loading state;
+// - owns normalized mutation error state;
+// - does not perform authorization checks;
+// - does not inspect Journey Demand lifecycle state;
+// - does not determine whether cancellation is allowed;
+// - does not update or recreate Journey Demand state locally.
+//
+// -----------------------------------------------------------------------------
 
 import { useCallback, useState } from 'react';
 
-import { cancelJourneyDemand } from '../../api/journey-demands/cancel-journey-demand.api';
+import {
+  cancelJourneyDemand,
+  type CancelJourneyDemandRequest,
+} from '../../api/journey-demands/cancel-journey-demand.api';
 
-type CancelJourneyDemandRequest =
-  Parameters<typeof cancelJourneyDemand>[1];
+// =============================================================================
+// Result
+// =============================================================================
 
 export interface UseCancelJourneyDemandResult {
   readonly isLoading: boolean;
@@ -20,6 +37,10 @@ export interface UseCancelJourneyDemandResult {
     request: CancelJourneyDemandRequest,
   ) => Promise<void>;
 }
+
+// =============================================================================
+// Hook
+// =============================================================================
 
 export function useCancelJourneyDemand(): UseCancelJourneyDemandResult {
   const [isLoading, setIsLoading] = useState(false);

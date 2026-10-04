@@ -37,6 +37,11 @@
 //   from
 //   to
 //   date
+//   minPrice
+//   maxPrice
+//
+// Price filtering is expressed as a per-seat KES range against the Journey
+// Demand's maximum acceptable price per seat.
 //
 // Pagination is kept at the application-query boundary so the controller can
 // bind HTTP primitives and construct this query without exposing HTTP concerns
@@ -91,9 +96,17 @@
 //
 // Filters are optional and are applied to the public collection:
 //
-//   from  → origin/location filter
-//   to    → destination/location filter
-//   date  → journey-date filter
+//   from      → origin/location filter
+//   to        → destination/location filter
+//   date      → journey-date filter
+//   minPrice  → minimum acceptable price boundary
+//   maxPrice  → maximum acceptable price boundary
+//
+// Price boundaries are inclusive:
+//
+//   minPrice <= maximumPricePerSeat <= maxPrice
+//
+// When only one boundary is supplied, the other side remains unrestricted.
 //
 // The query therefore supports both:
 //
@@ -118,6 +131,9 @@ import { Query } from '../../../../foundation/kernel/application/query';
  *
  * All filters are optional.
  *
+ * Price filters apply to the Journey Demand's maximum acceptable price per
+ * passenger seat and are expressed in KES.
+ *
  * An instance with no filters requests the complete publicly discoverable
  * collection.
  */
@@ -126,6 +142,8 @@ export class GetPublicJourneyDemandsQuery extends Query {
     public readonly from?: string,
     public readonly to?: string,
     public readonly date?: string,
+    public readonly minPrice?: number,
+    public readonly maxPrice?: number,
     public readonly limit?: number,
     public readonly offset?: number,
   ) {

@@ -23,7 +23,10 @@
 //   becomes narrower.
 // - Capacity is an immediate availability signal.
 // - Footer remains compact and horizontal.
-// - Manage action remains the authenticated entry point.
+// - Active Journeys retain the authenticated Manage entry point.
+// - CANCELLED Journeys remain visible in My Journeys.
+// - CANCELLED Journeys are presented as terminal/read-only Journey records.
+// - CANCELLED Journeys expose no View or Manage navigation action.
 // - Progressively assembled Draft Journeys remain safe to render.
 // - No Journey fetching.
 // - No Journey mutations.
@@ -44,8 +47,8 @@ import { Clock3, UsersRound } from "lucide-react";
 import Link from "next/link";
 
 import { Card } from "@/components/ui";
-import { AUTHENTICATED_ROUTES } from "@/foundation/routing";
 import { formatTime } from "@/foundation/formatters";
+import { AUTHENTICATED_ROUTES } from "@/foundation/routing";
 import { cn } from "@/foundation/utils/cn";
 
 import type { MyJourney } from "@/features/journey/models/my-journey";
@@ -96,6 +99,22 @@ export function MyJourneyCard({
   const vehicle = journey.vehicle;
   const capacity = journey.capacity;
   const pricing = journey.pricing;
+
+  // ---------------------------------------------------------------------------
+  // Terminal presentation
+  //
+  // CANCELLED is a persisted terminal status supplied by the backend.
+  //
+  // The card does not decide what that status means operationally. It only
+  // uses the status to provide appropriate presentation.
+  //
+  // CANCELLED Journeys remain visible as historical records but expose no
+  // navigation action from this card.
+  //
+  // No mutation, transition, or capability decision is made here.
+  // ---------------------------------------------------------------------------
+
+  const isCancelled = journey.status === "CANCELLED";
 
   // ---------------------------------------------------------------------------
   // Vehicle asset
@@ -198,7 +217,7 @@ export function MyJourneyCard({
       <article
         className="min-w-0"
         aria-label={[
-          "My Journey",
+          isCancelled ? "Cancelled Journey" : "My Journey",
           "from",
           routeOrigin,
           "to",
@@ -585,7 +604,7 @@ export function MyJourneyCard({
           {/* -----------------------------------------------------------------
               Price + Capacity
 
-              Price receives 20% of the body width rather than 18%.
+              Price receives 20% of the body width.
 
               This keeps the commercial anchor visible as the complete card
               scales down.
@@ -701,6 +720,9 @@ export function MyJourneyCard({
 
         {/* -------------------------------------------------------------------
             Footer
+
+            CANCELLED Journeys intentionally have no navigation action.
+            They remain visible as historical records only.
             ------------------------------------------------------------------- */}
 
         <footer
@@ -792,43 +814,45 @@ export function MyJourneyCard({
             </div>
           </div>
 
-          {/* Management */}
+          {/* Management / navigation */}
 
-          <div className="min-w-0 shrink-0">
-            <Link
-              href={AUTHENTICATED_ROUTES.MY_JOURNEY(
-                journey.publicId,
-              )}
-              className={cn(
-                "inline-flex",
-                "min-h-[clamp(1.8rem,2.7vw,2.25rem)]",
-                "shrink-0",
-                "items-center",
-                "justify-center",
-                "rounded-[var(--radius-md)]",
-                "border",
-                "border-[var(--border)]",
-                "bg-[var(--surface)]",
-                "px-[clamp(0.55rem,1vw,0.75rem)]",
-                "py-[clamp(0.3rem,0.5vw,0.4rem)]",
-                "text-[clamp(0.52rem,0.7vw,0.75rem)]",
-                "font-semibold",
-                "text-[var(--foreground)]",
-                "transition-colors",
-                "hover:border-[var(--brand)]",
-                "hover:bg-[var(--brand-soft)]",
-                "hover:text-[var(--brand)]",
-                "focus-visible:outline-none",
-                "focus-visible:ring-2",
-                "focus-visible:ring-[var(--brand)]",
-              )}
-            >
-              Manage
-            </Link>
-          </div>
+          {!isCancelled ? (
+            <div className="min-w-0 shrink-0">
+              <Link
+                href={AUTHENTICATED_ROUTES.MY_JOURNEY(
+                  journey.publicId,
+                )}
+                aria-label="Manage Journey"
+                className={cn(
+                  "inline-flex",
+                  "min-h-[clamp(1.8rem,2.7vw,2.25rem)]",
+                  "shrink-0",
+                  "items-center",
+                  "justify-center",
+                  "rounded-[var(--radius-md)]",
+                  "border",
+                  "border-[var(--border)]",
+                  "bg-[var(--surface)]",
+                  "px-[clamp(0.55rem,1vw,0.75rem)]",
+                  "py-[clamp(0.3rem,0.5vw,0.4rem)]",
+                  "text-[clamp(0.52rem,0.7vw,0.75rem)]",
+                  "font-semibold",
+                  "text-[var(--foreground)]",
+                  "transition-colors",
+                  "hover:border-[var(--brand)]",
+                  "hover:bg-[var(--brand-soft)]",
+                  "hover:text-[var(--brand)]",
+                  "focus-visible:outline-none",
+                  "focus-visible:ring-2",
+                  "focus-visible:ring-[var(--brand)]",
+                )}
+              >
+                Manage
+              </Link>
+            </div>
+          ) : null}
         </footer>
       </article>
     </Card>
   );
 }
-

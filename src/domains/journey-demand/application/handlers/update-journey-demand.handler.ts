@@ -5,6 +5,12 @@
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
+// NestJS Dependency Injection
+// -----------------------------------------------------------------------------
+
+import { Inject } from '@nestjs/common';
+
+// -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
@@ -15,6 +21,12 @@ import type { CommandHandler } from '../../../../foundation/kernel/application/c
 // -----------------------------------------------------------------------------
 
 import type { UpdateJourneyDemandCommand } from '../commands/update-journey-demand.command';
+
+// -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_DEMAND_TOKENS } from '../journey-demand.tokens';
 
 // -----------------------------------------------------------------------------
 // Exceptions
@@ -43,7 +55,10 @@ export class UpdateJourneyDemandHandler implements CommandHandler<UpdateJourneyD
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly repository: JourneyDemandRepository) {}
+  constructor(
+    @Inject(JOURNEY_DEMAND_TOKENS.REPOSITORY)
+    private readonly repository: JourneyDemandRepository,
+  ) {}
 
   // ===========================================================================
   // Execute

@@ -3,13 +3,30 @@
 // -----------------------------------------------------------------------------
 // sisiMove — Match Journey Demand Mutation Hook
 // -----------------------------------------------------------------------------
+//
+// Owns client-side mutation state for matching a Journey Demand.
+//
+// Architecture:
+// - delegates the HTTP operation to the API module;
+// - owns loading state;
+// - owns normalized mutation error state;
+// - does not perform authorization checks;
+// - does not inspect Journey Demand lifecycle state;
+// - does not determine whether matching is allowed;
+// - does not update or recreate Journey Demand state locally.
+//
+// -----------------------------------------------------------------------------
 
 import { useCallback, useState } from 'react';
 
-import { matchJourneyDemand } from '../../api/journey-demands/match-journey-demand.api';
+import {
+  matchJourneyDemand,
+  type MatchJourneyDemandRequest,
+} from '../../api/journey-demands/match-journey-demand.api';
 
-type MatchJourneyDemandRequest =
-  Parameters<typeof matchJourneyDemand>[1];
+// =============================================================================
+// Result
+// =============================================================================
 
 export interface UseMatchJourneyDemandResult {
   readonly isLoading: boolean;
@@ -20,6 +37,10 @@ export interface UseMatchJourneyDemandResult {
     request: MatchJourneyDemandRequest,
   ) => Promise<void>;
 }
+
+// =============================================================================
+// Hook
+// =============================================================================
 
 export function useMatchJourneyDemand(): UseMatchJourneyDemandResult {
   const [isLoading, setIsLoading] = useState(false);

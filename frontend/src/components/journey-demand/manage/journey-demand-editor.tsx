@@ -6,7 +6,7 @@
 //
 // The editor consumes the generic JourneyDemand application/HTTP model.
 //
-// Architecture rules:
+// Architecture:
 // - Composition/presentation only.
 // - Receives an already-loaded JourneyDemand.
 // - Does not fetch Journey Demand data.
@@ -69,7 +69,7 @@ export interface JourneyDemandEditorProps {
   /**
    * Optional footer supplied by the owning container.
    *
-   * This is typically where save/cancel controls are composed.
+   * The editor does not determine what controls belong here.
    */
   readonly footer?: ReactNode;
 
@@ -83,17 +83,8 @@ export interface JourneyDemandEditorProps {
 /**
  * Composes the Journey Demand editing surface.
  *
- * This component deliberately does not:
- *
- * - fetch Journey Demand data;
- * - call mutation APIs;
- * - own mutation state;
- * - determine editing capabilities;
- * - infer lifecycle transitions;
- * - reconstruct backend aggregates or value objects.
- *
- * The owning route/container supplies the demand and editable section
- * components.
+ * The component delegates all editable content to the supplied sections and
+ * all footer content to the owning container.
  */
 export function JourneyDemandEditor({
   demand,
@@ -104,12 +95,7 @@ export function JourneyDemandEditor({
   className,
 }: JourneyDemandEditorProps) {
   return (
-    <div
-      className={cn(
-        'min-w-0',
-        className,
-      )}
-    >
+    <div className={cn('min-w-0', className)}>
       <JourneyDemandEditorHeader
         demand={demand}
         title={title}
@@ -117,9 +103,7 @@ export function JourneyDemandEditor({
       />
 
       <div className="mt-5 min-w-0">
-        <JourneyDemandEditorSections
-          sections={sections}
-        />
+        <JourneyDemandEditorSections sections={sections} />
       </div>
 
       {footer ? (
@@ -130,4 +114,3 @@ export function JourneyDemandEditor({
     </div>
   );
 }
-

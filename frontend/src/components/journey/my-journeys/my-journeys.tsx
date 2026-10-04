@@ -10,6 +10,11 @@
 // - provide Journey creation navigation to the empty state;
 // - delegate Journey collection rendering to MyJourneysList.
 //
+// Collection contract:
+// - includes all Journeys returned by the backend, including CANCELLED Journeys;
+// - preserves the authoritative backend ordering;
+// - does not hide or remove terminal Journeys from the collection.
+//
 // Non-responsibilities:
 // - no direct API calls;
 // - no Journey mutations;
@@ -116,9 +121,7 @@ export function MyJourneys() {
     return (
       <MyJourneyEmptyState
         onCreateJourney={() => {
-          router.push(
-            AUTHENTICATED_ROUTES.MY_JOURNEY_NEW,
-          );
+          router.push(AUTHENTICATED_ROUTES.MY_JOURNEY_NEW);
         }}
       />
     );
@@ -128,11 +131,12 @@ export function MyJourneys() {
   // Success
   // ---------------------------------------------------------------------------
   //
+  // All Journeys returned by the backend are rendered, including terminal
+  // CANCELLED Journeys.
+  //
   // The list receives the authoritative ordering returned by the backend.
   // No client-side sorting or filtering is introduced here.
   //
 
-  return (
-    <MyJourneysList journeys={journeys} />
-  );
+  return <MyJourneysList journeys={journeys} />;
 }

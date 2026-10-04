@@ -1,22 +1,77 @@
 // src/domains/journey-demand/application/handlers/fulfill-journey-demand.handler.ts
 
+// -----------------------------------------------------------------------------
+// Journey Demand — Fulfill Handler
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS Dependency Injection
+// -----------------------------------------------------------------------------
+
+import { Inject } from '@nestjs/common';
+
+// -----------------------------------------------------------------------------
+// Foundation
+// -----------------------------------------------------------------------------
+
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
+
+// -----------------------------------------------------------------------------
+// Command
+// -----------------------------------------------------------------------------
 
 import type { FulfillJourneyDemandCommand } from '../commands/fulfill-journey-demand.command';
 
+// -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_DEMAND_TOKENS } from '../journey-demand.tokens';
+
+// -----------------------------------------------------------------------------
+// Domain Exceptions
+// -----------------------------------------------------------------------------
+
 import { JourneyDemandNotFoundException } from '../../domain/exceptions';
+
+// -----------------------------------------------------------------------------
+// Domain Repository
+// -----------------------------------------------------------------------------
 
 import type { JourneyDemandRepository } from '../../domain/repositories/journey-demand.repository';
 
+// -----------------------------------------------------------------------------
+// Domain Value Objects
+// -----------------------------------------------------------------------------
+
 import { JourneyDemandPublicId } from '../../domain/value-objects';
 
+// -----------------------------------------------------------------------------
+// Handler
+// -----------------------------------------------------------------------------
+
 export class FulfillJourneyDemandHandler implements CommandHandler<FulfillJourneyDemandCommand> {
-  constructor(private readonly repository: JourneyDemandRepository) {}
+  constructor(
+    @Inject(JOURNEY_DEMAND_TOKENS.REPOSITORY)
+    private readonly repository: JourneyDemandRepository,
+  ) {}
+
+  // ===========================================================================
+  // Execute
+  // ===========================================================================
 
   async execute(command: FulfillJourneyDemandCommand): Promise<void> {
+    // -------------------------------------------------------------------------
+    // Journey Demand Identity
+    // -------------------------------------------------------------------------
+
     const journeyDemandPublicId = new JourneyDemandPublicId(
       command.journeyDemandPublicId,
     );
+
+    // -------------------------------------------------------------------------
+    // Load Aggregate
+    // -------------------------------------------------------------------------
 
     const aggregate = await this.repository.findByPublicId(
       journeyDemandPublicId,
@@ -26,7 +81,15 @@ export class FulfillJourneyDemandHandler implements CommandHandler<FulfillJourne
       throw new JourneyDemandNotFoundException();
     }
 
+    // -------------------------------------------------------------------------
+    // Fulfill Journey Demand
+    // -------------------------------------------------------------------------
+
     aggregate.fulfill(command.correlationId, command.causationId);
+
+    // -------------------------------------------------------------------------
+    // Persist Aggregate
+    // -------------------------------------------------------------------------
 
     await this.repository.save(aggregate);
   }

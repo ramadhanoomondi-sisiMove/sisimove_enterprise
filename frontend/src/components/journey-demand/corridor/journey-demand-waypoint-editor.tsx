@@ -14,12 +14,13 @@
 // - Emits a complete updated waypoint through onChange.
 // - Parent/container owns persistence, validation orchestration, and errors.
 //
-// This component is intentionally separate from the public waypoint
-// presentation component (097). The editor uses the richer authenticated
-// JourneyDemandWaypoint model because editing may require fields that are not
-// exposed by the public marketplace projection.
+// This component is intentionally separate from the read-only waypoint
+// presentation component.
 //
-// The parent corridor editor (099) owns the collection-level orchestration.
+// The authenticated JourneyDemandWaypoint model is used because the Journey
+// Demand editing workflow operates on the richer authenticated representation.
+//
+// The parent corridor editor owns collection-level orchestration.
 // This component owns editing one waypoint.
 //
 // -----------------------------------------------------------------------------
@@ -28,11 +29,16 @@
 
 import type { ChangeEvent } from 'react';
 
-import type {
-  JourneyDemandWaypoint,
-  JourneyDemandWaypointType,
+import {
+  JOURNEY_DEMAND_WAYPOINT_TYPES,
+  type JourneyDemandWaypoint,
+  type JourneyDemandWaypointType,
 } from '@/features/journey-demand/models';
 import { cn } from '@/foundation';
+
+// -----------------------------------------------------------------------------
+// Props
+// -----------------------------------------------------------------------------
 
 export interface JourneyDemandWaypointEditorProps {
   readonly waypoint: JourneyDemandWaypoint;
@@ -42,6 +48,10 @@ export interface JourneyDemandWaypointEditorProps {
   readonly className?: string;
 }
 
+// -----------------------------------------------------------------------------
+// Component
+// -----------------------------------------------------------------------------
+
 export function JourneyDemandWaypointEditor({
   waypoint,
   onChange,
@@ -49,6 +59,10 @@ export function JourneyDemandWaypointEditor({
   disabled = false,
   className,
 }: JourneyDemandWaypointEditorProps) {
+  // ---------------------------------------------------------------------------
+  // Name
+  // ---------------------------------------------------------------------------
+
   const handleNameChange = (
     event: ChangeEvent<HTMLInputElement>,
   ): void => {
@@ -57,6 +71,10 @@ export function JourneyDemandWaypointEditor({
       name: event.target.value,
     });
   };
+
+  // ---------------------------------------------------------------------------
+  // Type
+  // ---------------------------------------------------------------------------
 
   const handleTypeChange = (
     event: ChangeEvent<HTMLSelectElement>,
@@ -67,6 +85,10 @@ export function JourneyDemandWaypointEditor({
     });
   };
 
+  // ---------------------------------------------------------------------------
+  // Pickup requirement
+  // ---------------------------------------------------------------------------
+
   const handlePickupRequiredChange = (
     event: ChangeEvent<HTMLInputElement>,
   ): void => {
@@ -76,6 +98,10 @@ export function JourneyDemandWaypointEditor({
     });
   };
 
+  // ---------------------------------------------------------------------------
+  // Drop-off requirement
+  // ---------------------------------------------------------------------------
+
   const handleDropoffRequiredChange = (
     event: ChangeEvent<HTMLInputElement>,
   ): void => {
@@ -84,6 +110,10 @@ export function JourneyDemandWaypointEditor({
       dropoffRequired: event.target.checked,
     });
   };
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
     <fieldset
@@ -98,6 +128,10 @@ export function JourneyDemandWaypointEditor({
       <legend className="sr-only">
         Edit waypoint {waypoint.sequence}
       </legend>
+
+      {/* ---------------------------------------------------------------------
+          Header
+      --------------------------------------------------------------------- */}
 
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
@@ -147,7 +181,15 @@ export function JourneyDemandWaypointEditor({
         ) : null}
       </div>
 
+      {/* ---------------------------------------------------------------------
+          Editable fields
+      --------------------------------------------------------------------- */}
+
       <div className="mt-4 grid min-w-0 gap-4">
+        {/* -------------------------------------------------------------------
+            Name
+        ------------------------------------------------------------------- */}
+
         <label className="grid gap-1.5">
           <span className="text-sm font-medium text-foreground">
             Name
@@ -173,6 +215,10 @@ export function JourneyDemandWaypointEditor({
           />
         </label>
 
+        {/* -------------------------------------------------------------------
+            Type
+        ------------------------------------------------------------------- */}
+
         <label className="grid gap-1.5">
           <span className="text-sm font-medium text-foreground">
             Type
@@ -193,13 +239,17 @@ export function JourneyDemandWaypointEditor({
               'disabled:bg-[var(--background-muted)]',
             )}
           >
-            <option value="ORIGIN">Origin</option>
-            <option value="DESTINATION">Destination</option>
-            <option value="PICKUP">Pickup</option>
-            <option value="DROPOFF">Drop-off</option>
-            <option value="WAYPOINT">Waypoint</option>
+            {JOURNEY_DEMAND_WAYPOINT_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {formatWaypointType(type)}
+              </option>
+            ))}
           </select>
         </label>
+
+        {/* -------------------------------------------------------------------
+            Pickup / drop-off requirements
+        ------------------------------------------------------------------- */}
 
         <div className="grid gap-3 sm:grid-cols-2">
           <label
@@ -261,3 +311,30 @@ export function JourneyDemandWaypointEditor({
   );
 }
 
+// -----------------------------------------------------------------------------
+// Presentation labels
+// -----------------------------------------------------------------------------
+
+function formatWaypointType(
+  type: JourneyDemandWaypointType,
+): string {
+  switch (type) {
+    case 'ORIGIN':
+      return 'Origin';
+
+    case 'DESTINATION':
+      return 'Destination';
+
+    case 'PICKUP':
+      return 'Pickup';
+
+    case 'DROPOFF':
+      return 'Drop-off';
+
+    case 'WAYPOINT':
+      return 'Waypoint';
+
+    default:
+      return type;
+  }
+}

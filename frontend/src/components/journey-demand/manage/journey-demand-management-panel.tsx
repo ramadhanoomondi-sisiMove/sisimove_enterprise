@@ -1,6 +1,42 @@
 'use client';
 
-import { useState } from 'react';
+// -----------------------------------------------------------------------------
+// sisiMove — Journey Demand Management Panel
+// -----------------------------------------------------------------------------
+//
+// Composition container for Journey Demand management actions.
+//
+// Responsibilities:
+// - render the management section;
+// - compose JourneyDemandActions;
+// - pass the owning container's action contract through unchanged.
+//
+// Architecture:
+// - owns no server state;
+// - owns no mutation hooks;
+// - performs no API requests;
+// - performs no authorization checks;
+// - does not determine lifecycle capabilities;
+// - does not manage cancellation confirmation state;
+// - does not construct command requests;
+// - does not execute lifecycle commands.
+//
+// Individual action components own their respective mutations:
+//
+//     JourneyDemandPublishAction
+//     JourneyDemandCancelAction
+//     JourneyDemandMatchAction
+//     JourneyDemandConvertAction
+//     JourneyDemandFulfillAction
+//
+// The owning container remains responsible for:
+// - authorization;
+// - capability decisions;
+// - supplying the Journey Demand public ID;
+// - supplying command requests;
+// - refreshing the authoritative Journey Demand projection.
+//
+// -----------------------------------------------------------------------------
 
 import { cn } from '@/foundation';
 
@@ -8,22 +44,11 @@ import {
   JourneyDemandActions,
   type JourneyDemandActionsProps,
 } from './journey-demand-actions';
-import { JourneyDemandCancelDialog } from './journey-demand-cancel-dialog';
 
-/**
- * Props for the Journey Demand management panel.
- *
- * The panel coordinates presentation of management actions and the
- * cancellation confirmation dialog.
- *
- * The owning container remains responsible for:
- * - authorization;
- * - capability decisions;
- * - mutation hooks;
- * - server requests;
- * - mutation success/error handling;
- * - refetching or updating Journey Demand data.
- */
+// =============================================================================
+// Props
+// =============================================================================
+
 export interface JourneyDemandManagementPanelProps
   extends JourneyDemandActionsProps {
   readonly title?: string;
@@ -31,27 +56,19 @@ export interface JourneyDemandManagementPanelProps
   readonly className?: string;
 }
 
-/**
- * Presents the management controls for a Journey Demand.
- *
- * The panel owns only local UI state for opening/closing the cancellation
- * confirmation dialog. It does not own the cancellation mutation itself.
- */
+// =============================================================================
+// Component
+// =============================================================================
+
 export function JourneyDemandManagementPanel({
   title = 'Manage demand',
   description = 'Manage the available actions for this travel need.',
   className,
-  canCancel = false,
-  onCancel,
-  isCancelling = false,
-  disabled = false,
   ...actionsProps
 }: JourneyDemandManagementPanelProps) {
-  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
-
   const hasActions =
-    canCancel ||
     actionsProps.canPublish ||
+    actionsProps.canCancel ||
     actionsProps.canMatch ||
     actionsProps.canConvert ||
     actionsProps.canFulfill;
@@ -60,69 +77,29 @@ export function JourneyDemandManagementPanel({
     return null;
   }
 
-  const handleCancelRequest = () => {
-    if (!canCancel || !onCancel || disabled || isCancelling) {
-      return;
-    }
-
-    setIsCancelDialogOpen(true);
-  };
-
-  const handleCancelConfirm = () => {
-    if (!onCancel || disabled || isCancelling) {
-      return;
-    }
-
-    onCancel();
-  };
-
-  const handleCancelDialogClose = () => {
-    if (isCancelling) {
-      return;
-    }
-
-    setIsCancelDialogOpen(false);
-  };
-
   return (
-    <>
-      <section
-        className={cn('surface min-w-0 p-4 sm:p-5', className)}
-        aria-labelledby="journey-demand-management-panel-heading"
-      >
-        <div className="min-w-0">
-          <h2
-            id="journey-demand-management-panel-heading"
-            className="text-base font-semibold text-foreground"
-          >
-            {title}
-          </h2>
+    <section
+      className={cn('surface min-w-0 p-4 sm:p-5', className)}
+      aria-labelledby="journey-demand-management-panel-heading"
+    >
+      <div className="min-w-0">
+        <h2
+          id="journey-demand-management-panel-heading"
+          className="text-base font-semibold text-foreground"
+        >
+          {title}
+        </h2>
 
-          {description ? (
-            <p className="mt-1 text-sm text-foreground-muted">
-              {description}
-            </p>
-          ) : null}
-        </div>
+        {description ? (
+          <p className="mt-1 text-sm text-foreground-muted">
+            {description}
+          </p>
+        ) : null}
+      </div>
 
-        <div className="mt-4">
-          <JourneyDemandActions
-            {...actionsProps}
-            canCancel={canCancel}
-            onCancel={handleCancelRequest}
-            isCancelling={isCancelling}
-            disabled={disabled}
-          />
-        </div>
-      </section>
-
-      <JourneyDemandCancelDialog
-        open={isCancelDialogOpen}
-        onClose={handleCancelDialogClose}
-        onConfirm={handleCancelConfirm}
-        isCancelling={isCancelling}
-        disabled={disabled}
-      />
-    </>
+      <div className="mt-4">
+        <JourneyDemandActions {...actionsProps} />
+      </div>
+    </section>
   );
 }

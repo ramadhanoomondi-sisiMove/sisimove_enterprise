@@ -4,25 +4,12 @@
 //
 // Authenticated/application Journey Demand editor header.
 //
-// This component consumes the generic JourneyDemand application/HTTP model.
+// This component consumes the generic JourneyDemand application model.
 //
-// It is intentionally separate from the public Journey Demand presentation
-// because the generic response exposes the complete backend lifecycle:
-//
-//     DRAFT
-//     OPEN
-//     MATCHED
-//     CONVERTED
-//     FULFILLED
-//     CANCELLED
-//     EXPIRED
-//
-// The public Journey Demand status projection intentionally exposes only the
-// statuses that are publicly visible.
-//
-// Architecture rules:
+// Architecture:
 // - Presentation only.
 // - Receives an already-loaded JourneyDemand.
+// - Displays the backend-supplied application lifecycle status.
 // - Does not fetch the demand.
 // - Does not mutate the demand.
 // - Does not determine editing permissions.
@@ -31,8 +18,8 @@
 // - Does not recreate backend lifecycle rules.
 // - Does not convert JourneyDemand into PublicJourneyDemand.
 //
-// The owning editor/container supplies the loaded application model and owns
-// authorization, mutation, navigation, and form behaviour.
+// The owning editor/container remains responsible for authorization,
+// mutation, navigation, and form behaviour.
 //
 // -----------------------------------------------------------------------------
 
@@ -69,9 +56,10 @@ export interface JourneyDemandEditorHeaderProps {
 // =============================================================================
 
 /**
- * Presents the heading and lifecycle context for a Journey Demand editor.
+ * Presents the heading and current application lifecycle status for the
+ * Journey Demand editor.
  *
- * Lifecycle status is displayed exactly as supplied by the backend.
+ * The status is displayed exactly as supplied by the application read model.
  */
 export function JourneyDemandEditorHeader({
   demand,
@@ -99,9 +87,7 @@ export function JourneyDemandEditorHeader({
           ) : null}
         </div>
 
-        <JourneyDemandEditorStatus
-          status={demand.status}
-        />
+        <JourneyDemandEditorStatus status={demand.status} />
       </div>
     </header>
   );
@@ -118,12 +104,10 @@ interface JourneyDemandEditorStatusProps {
 /**
  * Presents the complete application-level Journey Demand status.
  *
- * We deliberately do not use JourneyDemandStatusBadge here because that
- * shared component is typed for PublicJourneyDemandStatus and therefore
- * cannot represent the complete JourneyDemandStatus contract.
+ * This status type belongs to JourneyDemand and is intentionally not replaced
+ * with the narrower public Journey Demand status contract.
  *
- * No lifecycle meaning is inferred here. The value comes directly from the
- * backend response.
+ * No lifecycle rules or capabilities are inferred from the value.
  */
 function JourneyDemandEditorStatus({
   status,
@@ -136,6 +120,7 @@ function JourneyDemandEditorStatus({
         'px-2.5 py-1',
         'text-xs font-medium text-foreground',
       )}
+      aria-label={`Journey Demand status: ${formatJourneyDemandStatus(status)}`}
     >
       {formatJourneyDemandStatus(status)}
     </span>
@@ -149,8 +134,7 @@ function JourneyDemandEditorStatus({
 /**
  * Converts the backend enum representation into readable UI text.
  *
- * This is display formatting only; it does not change or reinterpret the
- * lifecycle status.
+ * Display formatting only. The underlying lifecycle value is unchanged.
  */
 function formatJourneyDemandStatus(
   status: JourneyDemand['status'],
@@ -160,4 +144,3 @@ function formatJourneyDemandStatus(
     .toLowerCase()
     .replace(/\b\w/g, (character) => character.toUpperCase());
 }
-

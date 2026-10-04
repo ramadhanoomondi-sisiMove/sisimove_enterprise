@@ -1,37 +1,47 @@
+// -----------------------------------------------------------------------------
+// sisiMove — New Journey Demand Page
+// -----------------------------------------------------------------------------
+//
+// Authenticated entry point for creating a new Journey Demand.
+//
+// Flow:
+//
+//     /my-demands/new
+//           |
+//           | create aggregate
+//           v
+//     Journey Demand DRAFT
+//           |
+//           | receive publicId
+//           v
+//     /my-demands/[publicId]/edit
+//
+// The edit surface then allows the requester to configure the Journey Demand
+// and eventually publish it.
+//
+// -----------------------------------------------------------------------------
 
-// -----------------------------------------------------------------------------
-// sisiMove — Create Journey Demand Page
-// -----------------------------------------------------------------------------
-//
-// Authenticated route entry point for starting a new Journey Demand.
-//
-// Route:
-//
-//   /my-demands/new
-//
-// Responsibilities:
-// - establish the create Journey Demand route;
-// - compose the Journey Demand creation form.
-//
-// Non-responsibilities:
-// - authentication/authorization;
-// - API requests;
-// - Journey Demand aggregate construction;
-// - backend validation;
-// - persistence;
-// - lifecycle/business-state logic.
-//
-// JourneyDemandCreateForm owns its temporary client-side creation workflow.
-// The route remains a thin composition boundary.
-//
-// Creation flow:
-//
-//   Where → When → Seats → Price
-// -----------------------------------------------------------------------------
+'use client';
+
+import { useRouter } from 'next/navigation';
 
 import { JourneyDemandCreateForm } from '@/components/journey-demand/create';
+import { AUTHENTICATED_ROUTES } from '@/foundation/routing';
+
+// -----------------------------------------------------------------------------
+// Page
+// -----------------------------------------------------------------------------
 
 export default function NewJourneyDemandPage() {
-  return <JourneyDemandCreateForm />;
-}
+  const router = useRouter();
 
+  return (
+    <JourneyDemandCreateForm
+      onCreated={(publicId) => {
+        router.push(
+          AUTHENTICATED_ROUTES.MY_DEMAND_EDIT(publicId),
+        );
+      }}
+    />
+  );
+}

@@ -6,7 +6,7 @@
 //
 // Architecture:
 // - Consumes JourneyDemandCapacity.
-// - Composes JourneyDemandSeatControl (107).
+// - Composes JourneyDemandSeatControl.
 // - Does not fetch data.
 // - Does not call mutation hooks.
 // - Does not persist data directly.
@@ -60,6 +60,10 @@ export function JourneyDemandCapacityEditor({
       )}
       aria-labelledby="journey-demand-capacity-editor-heading"
     >
+      {/* ------------------------------------------------------------------- */}
+      {/* Header                                                              */}
+      {/* ------------------------------------------------------------------- */}
+
       <div className="min-w-0">
         <h2
           id="journey-demand-capacity-editor-heading"
@@ -73,6 +77,10 @@ export function JourneyDemandCapacityEditor({
         </p>
       </div>
 
+      {/* ------------------------------------------------------------------- */}
+      {/* Requested Seats                                                     */}
+      {/* ------------------------------------------------------------------- */}
+
       <div className="mt-5 max-w-sm">
         <JourneyDemandSeatControl
           value={capacity.requestedSeats}
@@ -80,6 +88,10 @@ export function JourneyDemandCapacityEditor({
           disabled={isDisabled}
         />
       </div>
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Matched Seats                                                       */}
+      {/* ------------------------------------------------------------------- */}
 
       <div
         className={cn(
@@ -98,12 +110,12 @@ export function JourneyDemandCapacityEditor({
         </p>
       </div>
 
+      {/* ------------------------------------------------------------------- */}
+      {/* Save                                                                */}
+      {/* ------------------------------------------------------------------- */}
+
       {onSave ? (
-        <div
-          className={cn(
-            'mt-5 flex justify-end',
-          )}
-        >
+        <div className="mt-5 flex justify-end">
           <button
             type="button"
             onClick={onSave}
@@ -131,4 +143,3 @@ export function JourneyDemandCapacityEditor({
     </section>
   );
 }
-

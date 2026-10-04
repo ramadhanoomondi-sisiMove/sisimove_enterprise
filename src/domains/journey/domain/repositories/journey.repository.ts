@@ -86,6 +86,68 @@ import type { JourneyAssetId } from '../value-objects/journey-asset-id.vo';
 import type { JourneyAssetPublicId } from '../value-objects/journey-asset-public-id.vo';
 import type { JourneyAssetPublicIdReference } from '../value-objects/journey-asset-public-id-reference.vo';
 
+// -----------------------------------------------------------------------------
+// Public Journey Discovery Filters
+// -----------------------------------------------------------------------------
+
+/**
+ * Filters used by the public Journey marketplace read boundary.
+ *
+ * These filters narrow an already-publicly-discoverable Journey collection.
+ *
+ * Price values represent the offered Journey price PER PASSENGER SEAT.
+ *
+ * Currency:
+ *
+ *   KES
+ *
+ * Price boundaries are inclusive:
+ *
+ *   minPrice <= pricePerSeat <= maxPrice
+ *
+ * An omitted boundary means that side of the price range is unrestricted.
+ *
+ * Public visibility itself is NOT represented here. It remains an invariant
+ * of the public repository methods.
+ */
+export interface PublicJourneyDiscoveryFilters {
+  /**
+   * Optional origin filter.
+   */
+  readonly from?: string;
+
+  /**
+   * Optional destination filter.
+   */
+  readonly to?: string;
+
+  /**
+   * Optional departure calendar-date filter.
+   *
+   * The infrastructure implementation is responsible for translating this
+   * calendar date into the appropriate persisted departure-time boundary.
+   */
+  readonly date?: string;
+
+  /**
+   * Optional minimum Journey price per passenger seat.
+   *
+   * Currency:
+   *
+   *   KES
+   */
+  readonly minPrice?: number;
+
+  /**
+   * Optional maximum Journey price per passenger seat.
+   *
+   * Currency:
+   *
+   *   KES
+   */
+  readonly maxPrice?: number;
+}
+
 /**
  * Repository abstraction for the Journey aggregate.
  *
@@ -170,28 +232,113 @@ export interface JourneyRepository {
   // ===========================================================================
   // Journey Queries
   // ===========================================================================
+
   /**
-   * Find currently publicly discoverable Journeys.
+   * Find Journeys currently eligible for public marketplace discovery.
    *
-   * An empty filter object returns the complete public Journey collection.
+   * An empty filter object returns the complete Journey collection that is
+   * currently publicly discoverable.
    *
-   * Optional filters narrow the same public collection by origin,
-   * destination, and departure date.
+   * Optional filters narrow that same public collection by:
    *
-   * Public visibility must always be enforced by the repository
-   * implementation. These filters must never expose unpublished, cancelled,
-   * expired, or otherwise undiscoverable Journeys.
+   * - origin;
+   * - destination;
+   * - departure date;
+   * - minimum price per passenger seat;
+   * - maximum price per passenger seat.
+   *
+   * ---------------------------------------------------------------------------
+   * Price Boundary
+   * ---------------------------------------------------------------------------
+   *
+   * Price filtering applies to the Journey's OFFERED PRICE PER PASSENGER SEAT.
+   *
+   * Currency:
+   *
+   *   KES
+   *
+   * Boundaries are inclusive:
+   *
+   *   minPrice <= pricePerSeat <= maxPrice
+   *
+   * Therefore:
+   *
+   *   minPrice = 500
+   *
+   * means:
+   *
+   *   pricePerSeat >= KES 500
+   *
+   * while:
+   *
+   *   maxPrice = 1500
+   *
+   * means:
+   *
+   *   pricePerSeat <= KES 1,500
+   *
+   * ---------------------------------------------------------------------------
+   * Public Visibility Boundary
+   * ---------------------------------------------------------------------------
+   *
+   * Public visibility requires BOTH:
+   *
+   *   1. marketplace-visible lifecycle status;
+   *   2. departureAt > now.
+   *
+   * Marketplace-visible lifecycle states are:
+   *
+   *   PUBLISHED
+   *   FULL
+   *   BOARDING
+   *   IN_PROGRESS
+   *   COMPLETION_PENDING
+   *
+   * Therefore a Journey is not publicly discoverable when:
+   *
+   *   - its lifecycle state is not marketplace-visible; OR
+   *   - its scheduled departure time has elapsed.
+   *
+   * The following lifecycle states must never be returned:
+   *
+   *   DRAFT
+   *   COMPLETED
+   *   CANCELLED
+   *   EXPIRED
+   *
+   * Additionally, a Journey that remains PUBLISHED, FULL, BOARDING,
+   * IN_PROGRESS, or COMPLETION_PENDING but whose departure time has elapsed
+   * must not be returned.
+   *
+   * This means public discoverability does NOT depend on a Journey first being
+   * transitioned to EXPIRED.
+   *
+   * A Journey may therefore remain persisted as PUBLISHED after departure
+   * while already being excluded from public discovery.
+   *
+   * Public visibility is a repository-level read boundary and must be applied
+   * consistently by the infrastructure implementation.
+   *
+   * CANCELLED and EXPIRED Journeys remain available to provider-owned history
+   * queries but are excluded from public discovery.
    */
-  findPublicJourneys(filters: {
-    readonly from?: string;
-    readonly to?: string;
-    readonly date?: string;
-  }): Promise<JourneyEntity[]>;
+  findPublicJourneys(
+    filters: PublicJourneyDiscoveryFilters,
+  ): Promise<JourneyEntity[]>;
+
   /**
    * Find published Journeys matching a route and departure-date window.
    *
    * The supplied dates represent an absolute time range constructed by the
    * application layer from the requested calendar date.
+   *
+   * This query is intentionally narrower than the general public marketplace
+   * query and is used by route/date discovery that specifically requires
+   * PUBLISHED Journeys.
+   *
+   * Infrastructure implementations should still ensure that returned
+   * Journeys have not passed their departure time when this query is used as
+   * a public discovery boundary.
    */
   findPublishedJourneysByRouteAndDate(
     origin: string,
@@ -202,29 +349,55 @@ export interface JourneyRepository {
 
   /**
    * Find only the Journey entity by internal identifier.
+   *
+   * This is a general Journey lookup and does not imply public visibility.
    */
   findJourneyById(id: JourneyId): Promise<JourneyEntity | null>;
 
   /**
    * Find only the Journey entity by public identifier.
    *
-   * This is a general Journey lookup and does not imply that the Journey is
-   * publicly discoverable.
+   * This is a general Journey lookup and does not imply public visibility.
+   *
+   * A Journey may therefore be returned even when it is DRAFT, COMPLETED,
+   * CANCELLED, EXPIRED, or has already passed its departure time.
    */
   findJourneyByPublicId(
     publicId: JourneyPublicId,
   ): Promise<JourneyEntity | null>;
 
   /**
-   * Find only a publicly discoverable Journey by public identifier.
+   * Find only a currently publicly discoverable Journey by public identifier.
    *
    * Public visibility is enforced by the repository implementation.
    *
-   * A Journey that exists but is not currently publicly discoverable must
-   * therefore be returned as null.
+   * The Journey must satisfy the same public marketplace visibility rules
+   * used by findPublicJourneys().
    *
-   * This method intentionally remains separate from findJourneyByPublicId()
-   * because a public identifier does not imply public visibility.
+   * Public visibility requires BOTH:
+   *
+   *   1. marketplace-visible lifecycle status;
+   *   2. departureAt > now.
+   *
+   * Therefore a Journey that exists but is currently:
+   *
+   *   DRAFT
+   *   COMPLETED
+   *   CANCELLED
+   *   EXPIRED
+   *
+   * is returned as null.
+   *
+   * A Journey that remains in a marketplace-visible status but whose
+   * departure time has elapsed is also returned as null.
+   *
+   * This method intentionally remains separate from
+   * findJourneyByPublicId() because:
+   *
+   *   public identifier != public discoverability
+   *
+   * The public identifier identifies the Journey, while this method resolves
+   * it through the marketplace visibility boundary.
    */
   findPublicJourneyByPublicId(
     publicId: JourneyPublicId,
@@ -246,6 +419,8 @@ export interface JourneyRepository {
 
   /**
    * Find Journeys by lifecycle status.
+   *
+   * This is a general status query and does not imply public visibility.
    */
   findJourneysByStatus(
     status: JourneyStatusValueObject,
@@ -253,6 +428,9 @@ export interface JourneyRepository {
 
   /**
    * Find Journeys belonging to a provider with a specific status.
+   *
+   * This is a provider-owned operational query and does not imply public
+   * visibility.
    */
   findJourneysByProviderAndStatus(
     providerPublicId: JourneyProviderPublicId,
@@ -447,7 +625,7 @@ export interface JourneyRepository {
   findPricing(journeyId: JourneyId): Promise<JourneyPricingEntity | null>;
 
   /**
-   * Find a Journey pricing configuration by internal identifier.
+   * Find a Journey pricing configuration by its internal identifier.
    */
   findPricingById(
     journeyId: JourneyId,
@@ -455,7 +633,7 @@ export interface JourneyRepository {
   ): Promise<JourneyPricingEntity | null>;
 
   /**
-   * Find a Journey pricing configuration by public identifier.
+   * Find a Journey pricing configuration by its public identifier.
    */
   findPricingByPublicId(
     journeyId: JourneyId,

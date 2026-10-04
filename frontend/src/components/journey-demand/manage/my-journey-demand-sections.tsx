@@ -4,39 +4,60 @@ import type { ReactNode } from 'react';
 
 import { cn } from '@/foundation';
 
-/**
- * A section supplied to the owner's Journey Demand detail composition.
- *
- * The content is owned by the parent/container. This component only controls
- * layout and ordering.
- */
+// -----------------------------------------------------------------------------
+// sisiMove — My Journey Demand Sections
+// -----------------------------------------------------------------------------
+//
+// Presentation/composition component for the authenticated owner's Journey
+// Demand detail view.
+//
+// Architecture:
+// - owns no server state;
+// - performs no API requests;
+// - performs no authorization checks;
+// - does not determine ownership;
+// - does not derive lifecycle capabilities;
+// - does not call mutation hooks;
+// - does not construct backend domain objects;
+// - controls only section layout and ordering.
+//
+// The owning detail/container supplies the sections and their content.
+// -----------------------------------------------------------------------------
+
+// =============================================================================
+// Section
+// =============================================================================
+
 export interface MyJourneyDemandSection {
+  /**
+   * Stable identifier used for React rendering and heading linkage.
+   */
   readonly id: string;
+
+  /**
+   * Accessible section label.
+   */
   readonly label: string;
+
+  /**
+   * Already-composed section content supplied by the owner.
+   */
   readonly content: ReactNode;
 }
 
-/**
- * Props for the owner's Journey Demand sections.
- */
+// =============================================================================
+// Props
+// =============================================================================
+
 export interface MyJourneyDemandSectionsProps {
   readonly sections: readonly MyJourneyDemandSection[];
   readonly className?: string;
 }
 
-/**
- * Composes the authenticated owner's Journey Demand sections.
- *
- * This component deliberately does not:
- * - fetch Journey Demand data;
- * - determine ownership;
- * - perform authorization;
- * - derive lifecycle capabilities;
- * - call mutations;
- * - construct backend domain objects.
- *
- * The owning detail/container supplies the sections to render.
- */
+// =============================================================================
+// Component
+// =============================================================================
+
 export function MyJourneyDemandSections({
   sections,
   className,
@@ -47,10 +68,7 @@ export function MyJourneyDemandSections({
 
   return (
     <div
-      className={cn(
-        'min-w-0 space-y-4',
-        className,
-      )}
+      className={cn('min-w-0 space-y-4', className)}
       aria-label="Journey Demand sections"
     >
       {sections.map((section) => (
@@ -72,4 +90,3 @@ export function MyJourneyDemandSections({
     </div>
   );
 }
-

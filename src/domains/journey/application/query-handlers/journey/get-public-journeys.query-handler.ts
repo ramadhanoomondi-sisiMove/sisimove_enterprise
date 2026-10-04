@@ -1,30 +1,99 @@
+// src/domains/journey/application/query-handlers/public/get-public-journeys.query-handler.ts
+
 // -----------------------------------------------------------------------------
 // sisiMove — Get Public Journeys Query Handler
 // -----------------------------------------------------------------------------
 //
-// This handler is the application-layer composition boundary for public
-// Journey discovery.
+// Application-layer composition boundary for public Journey marketplace
+// discovery.
 //
 // Responsibilities:
 // - retrieve publicly discoverable Journeys from the Journey repository;
 // - project Journey domain state into the public marketplace representation;
 // - enrich the Journey with public Traveller and Trust information;
-// - resolve public Asset references for Journey-owned Asset references.
+// - resolve public Asset references;
+// - pass supported marketplace discovery filters to the Journey repository.
 //
-// It deliberately does NOT:
-// - expose JourneyEntity directly;
-// - expose providerPublicId;
-// - expose internal entity identifiers;
-// - expose internal lifecycle timestamps;
-// - create or own a Provider aggregate;
-// - fetch Traveller/Trust inside the Journey repository;
-// - access Asset persistence directly;
-// - access Asset storage directly;
-// - construct Asset URLs.
+// -----------------------------------------------------------------------------
+// Public Visibility
+// -----------------------------------------------------------------------------
 //
-// Journey remains the owner of Journey creation and Journey lifecycle.
-// Traveller, Trust, and Asset remain separate bounded contexts.
-// The application query handler composes their public read models.
+// Public visibility is enforced exclusively by the Journey repository public
+// read boundary:
+//
+//   findPublicJourneys()
+//   findPublicJourneyByPublicId()
+//
+// A Journey is publicly discoverable only when BOTH conditions are satisfied:
+//
+//   1. its lifecycle status is marketplace-visible;
+//   2. its scheduled departure time has not elapsed.
+//
+// Therefore:
+//
+//   marketplace-visible status
+//   AND
+//   departureAt > now
+//   =
+//   publicly discoverable
+//
+// The handler deliberately does NOT reproduce these visibility rules.
+//
+// In particular, the handler does not:
+//
+// - inspect Journey status;
+// - compare departureAt with the current time;
+// - filter CANCELLED Journeys;
+// - filter EXPIRED Journeys;
+// - filter departed PUBLISHED Journeys;
+// - apply a second marketplace visibility predicate.
+//
+// The repository is the single public-read visibility boundary.
+//
+// This applies equally to:
+//
+//   GET /journeys/public
+//   GET /journeys/search
+//   GET /journeys/:journeyPublicId
+//
+// A Journey whose departure time has elapsed is therefore not returned from
+// the public marketplace even if its persisted lifecycle status is still
+// PUBLISHED.
+//
+// EXPIRED and CANCELLED Journeys are likewise never returned.
+//
+// Provider-owned Journey history is a separate read boundary and is not
+// governed by this handler.
+//
+// -----------------------------------------------------------------------------
+// Marketplace Filters
+// -----------------------------------------------------------------------------
+//
+// Public Journey collection discovery supports:
+//
+//   - from
+//   - to
+//   - date
+//   - minPrice
+//   - maxPrice
+//
+// Price filters represent the Journey's OFFERED PRICE PER PASSENGER SEAT.
+//
+// Currency:
+//
+//   KES
+//
+// Price boundaries are inclusive:
+//
+//   minPrice <= pricePerSeat <= maxPrice
+//
+// The handler does not perform marketplace visibility filtering itself.
+// It simply passes caller-supplied discovery constraints to the repository,
+// which remains responsible for the public-read boundary.
+//
+// When a public Journey is requested directly by publicId, collection filters
+// are intentionally ignored. Public detail remains governed only by the
+// public Journey visibility boundary.
 //
 // -----------------------------------------------------------------------------
 
@@ -51,8 +120,8 @@ import type { GetPublicJourneysQuery } from '../../queries/journey/get-public-jo
 // -----------------------------------------------------------------------------
 
 import type { JourneyEntity } from '../../../domain/entities/journey.entity';
-import { JourneyPublicId } from '../../../domain/value-objects/journey-public-id.vo';
 import type { JourneyRepository } from '../../../domain/repositories/journey.repository';
+import { JourneyPublicId } from '../../../domain/value-objects/journey-public-id.vo';
 
 // -----------------------------------------------------------------------------
 // Journey Application
@@ -116,26 +185,30 @@ export interface PublicJourneyProvider {
 /**
  * Canonical public Journey marketplace response.
  *
- * Notice that this type intentionally does NOT contain:
- *
- *   journey: JourneyEntity
- *
- * The domain entity must never be serialized as the public API contract.
- *
- * The public contract is deliberately flat so that the frontend consumes the
- * marketplace object directly:
- *
- *   provider
- *   route
- *   schedule
- *   vehicle
- *   capacity
- *   pricing
- *   preferences
- *   assets
+ * The public response is composed from independent bounded-context
+ * read models. JourneyEntity itself is never exposed.
  */
 export interface PublicJourneyResponse extends PublicJourneyProjection {
   readonly provider: PublicJourneyProvider;
+}
+
+// -----------------------------------------------------------------------------
+// Public Journey Repository Filters
+// -----------------------------------------------------------------------------
+
+/**
+ * Repository-facing public Journey discovery filters.
+ *
+ * These filters narrow an already-publicly-discoverable Journey collection.
+ *
+ * Price values represent the offered price per passenger seat in KES.
+ */
+interface PublicJourneyRepositoryFilters {
+  readonly from?: string;
+  readonly to?: string;
+  readonly date?: string;
+  readonly minPrice?: number;
+  readonly maxPrice?: number;
 }
 
 // -----------------------------------------------------------------------------
@@ -195,22 +268,43 @@ export class GetPublicJourneysQueryHandler implements QueryHandler<
   // ===========================================================================
 
   /**
-   * Resolve either:
+   * Retrieve only Journeys that are currently eligible for public marketplace
+   * discovery.
    *
-   *   GET public collection
+   * Collection and detail deliberately use the same repository-level public
+   * visibility boundary.
    *
-   * or:
+   * Therefore:
    *
-   *   GET public Journey by publicId
+   *   GET /journeys/public
+   *   GET /journeys/search
+   *   GET /journeys/:journeyPublicId
    *
-   * through the same plural query.
+   * cannot accidentally apply different public visibility rules.
    *
-   * An individual Journey is represented as a one-item collection internally
-   * so that the public query architecture remains plural and consistent.
+   * The repository is responsible for enforcing BOTH public visibility
+   * conditions:
+   *
+   *   1. marketplace-visible lifecycle status;
+   *   2. departureAt > now.
+   *
+   * Consequently, the repository excludes:
+   *
+   *   - DRAFT
+   *   - COMPLETED
+   *   - CANCELLED
+   *   - EXPIRED
+   *   - marketplace-visible Journeys whose departure time has elapsed
+   *
+   * The handler intentionally performs none of these checks itself.
    */
   private async findPublicJourneys(
     query: GetPublicJourneysQuery,
   ): Promise<readonly JourneyEntity[]> {
+    // -------------------------------------------------------------------------
+    // Public Journey Detail
+    // -------------------------------------------------------------------------
+
     if (query.publicId !== undefined) {
       const journey = await this.repository.findPublicJourneyByPublicId(
         new JourneyPublicId(query.publicId),
@@ -219,14 +313,16 @@ export class GetPublicJourneysQueryHandler implements QueryHandler<
       return journey === null ? [] : [journey];
     }
 
-    const filters: {
-      readonly from?: string;
-      readonly to?: string;
-      readonly date?: string;
-    } = {
+    // -------------------------------------------------------------------------
+    // Public Journey Collection
+    // -------------------------------------------------------------------------
+
+    const filters: PublicJourneyRepositoryFilters = {
       ...(query.from !== undefined ? { from: query.from } : {}),
       ...(query.to !== undefined ? { to: query.to } : {}),
       ...(query.date !== undefined ? { date: query.date } : {}),
+      ...(query.minPrice !== undefined ? { minPrice: query.minPrice } : {}),
+      ...(query.maxPrice !== undefined ? { maxPrice: query.maxPrice } : {}),
     };
 
     return this.repository.findPublicJourneys(filters);
@@ -239,13 +335,13 @@ export class GetPublicJourneysQueryHandler implements QueryHandler<
   /**
    * Compose the complete public marketplace representation.
    *
-   * Journey owns the Journey data.
-   * Traveller owns the public traveller profile.
-   * Trust owns the public trust profile.
+   * Journey owns Journey data.
+   * Traveller owns the public Traveller profile.
+   * Trust owns the public Trust profile.
    * Asset owns public Asset visibility and delivery.
    *
-   * The application layer is the correct place to compose those independent
-   * read models into the public Journey marketplace object.
+   * The application layer composes those independent read models into the
+   * public Journey marketplace representation.
    */
   private async composePublicJourney(
     journey: JourneyEntity,
@@ -257,13 +353,25 @@ export class GetPublicJourneysQueryHandler implements QueryHandler<
     const publicJourney = PublicJourneyMapper.fromEntity(journey);
 
     const [traveller, trust, vehicleAsset] = await Promise.all([
+      // -----------------------------------------------------------------------
+      // Traveller
+      // -----------------------------------------------------------------------
+
       this.getPublicTravellerByMemberHandler.execute(
         new GetPublicTravellerByMemberQuery(memberPublicId),
       ),
 
+      // -----------------------------------------------------------------------
+      // Trust
+      // -----------------------------------------------------------------------
+
       this.getPublicTrustProfileByMemberHandler.execute(
         new GetPublicTrustProfileByMemberQuery(memberPublicId.value),
       ),
+
+      // -----------------------------------------------------------------------
+      // Vehicle Asset
+      // -----------------------------------------------------------------------
 
       this.resolveVehicleAsset(publicJourney.vehicle.assetPublicId),
     ]);
@@ -271,10 +379,18 @@ export class GetPublicJourneysQueryHandler implements QueryHandler<
     return {
       ...publicJourney,
 
+      // -----------------------------------------------------------------------
+      // Vehicle
+      // -----------------------------------------------------------------------
+
       vehicle: {
         ...publicJourney.vehicle,
         asset: vehicleAsset,
       },
+
+      // -----------------------------------------------------------------------
+      // Provider
+      // -----------------------------------------------------------------------
 
       provider: {
         traveller,
@@ -296,11 +412,11 @@ export class GetPublicJourneysQueryHandler implements QueryHandler<
    *
    * A Journey without a vehicle Asset remains valid and receives:
    *
-   *     asset: null
+   *   asset: null
    *
-   * A referenced Asset that cannot be publicly resolved is allowed to propagate
-   * the Asset application's public-reference exception. This prevents the
-   * marketplace from silently presenting an invalid public Asset reference.
+   * A referenced Asset that cannot be publicly resolved is allowed to
+   * propagate the Asset application's public-reference exception rather than
+   * silently returning an invalid public Asset reference.
    */
   private async resolveVehicleAsset(
     assetPublicId: string | null,

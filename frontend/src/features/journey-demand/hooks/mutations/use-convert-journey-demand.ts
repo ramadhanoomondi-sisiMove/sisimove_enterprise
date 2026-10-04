@@ -3,13 +3,30 @@
 // -----------------------------------------------------------------------------
 // sisiMove — Convert Journey Demand Mutation Hook
 // -----------------------------------------------------------------------------
+//
+// Owns client-side mutation state for converting a Journey Demand.
+//
+// Architecture:
+// - delegates the HTTP operation to the API module;
+// - owns loading state;
+// - owns normalized mutation error state;
+// - does not perform authorization checks;
+// - does not inspect Journey Demand lifecycle state;
+// - does not determine whether conversion is allowed;
+// - does not update or recreate Journey Demand state locally.
+//
+// -----------------------------------------------------------------------------
 
 import { useCallback, useState } from 'react';
 
-import { convertJourneyDemand } from '../../api/journey-demands/convert-journey-demand.api';
+import {
+  convertJourneyDemand,
+  type ConvertJourneyDemandRequest,
+} from '../../api/journey-demands/convert-journey-demand.api';
 
-type ConvertJourneyDemandRequest =
-  Parameters<typeof convertJourneyDemand>[1];
+// =============================================================================
+// Result
+// =============================================================================
 
 export interface UseConvertJourneyDemandResult {
   readonly isLoading: boolean;
@@ -20,6 +37,10 @@ export interface UseConvertJourneyDemandResult {
     request: ConvertJourneyDemandRequest,
   ) => Promise<void>;
 }
+
+// =============================================================================
+// Hook
+// =============================================================================
 
 export function useConvertJourneyDemand(): UseConvertJourneyDemandResult {
   const [isLoading, setIsLoading] = useState(false);

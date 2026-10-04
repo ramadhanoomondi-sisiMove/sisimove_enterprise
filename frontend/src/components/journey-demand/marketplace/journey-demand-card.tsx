@@ -147,6 +147,49 @@ export interface JourneyDemandCardProps {
 }
 
 // -----------------------------------------------------------------------------
+// Schedule Safety
+// -----------------------------------------------------------------------------
+//
+// JSON responses contain strings, not JavaScript Date instances.
+//
+// The card deliberately does not reconstruct or mutate the backend schedule.
+// It only verifies that required schedule values are valid before handing the
+// projection to presentation components that perform date formatting.
+//
+// Invalid schedule data should ultimately be corrected at the API/model
+// boundary. These guards prevent a malformed projection from crashing the
+// marketplace surface while that correction is made.
+//
+// -----------------------------------------------------------------------------
+
+function isValidDateValue(value: unknown): boolean {
+  if (value instanceof Date) {
+    return !Number.isNaN(value.getTime());
+  }
+
+  if (typeof value !== "string" && typeof value !== "number") {
+    return false;
+  }
+
+  const timestamp = new Date(value).getTime();
+
+  return !Number.isNaN(timestamp);
+}
+
+function hasValidSchedule(
+  schedule: PublicJourneyDemand["schedule"],
+): boolean {
+  if (!schedule) {
+    return false;
+  }
+
+  return (
+    isValidDateValue(schedule.earliestDeparture) &&
+    isValidDateValue(schedule.latestDeparture)
+  );
+}
+
+// -----------------------------------------------------------------------------
 // Small local icon
 // -----------------------------------------------------------------------------
 
@@ -313,6 +356,8 @@ export function JourneyDemandCard({
 
   const waypointCount = demand.route.waypoints.length;
 
+  const scheduleIsValid = hasValidSchedule(demand.schedule);
+
   return (
     <Card
       className={cn(
@@ -377,41 +422,61 @@ export function JourneyDemandCard({
               isCompact ? "lg:py-3" : "lg:py-5",
             )}
           >
-            <JourneyDemandDate
-              schedule={demand.schedule}
-              emphasis={emphasis}
-            />
+            {scheduleIsValid ? (
+              <>
+                <JourneyDemandDate
+                  schedule={demand.schedule}
+                  emphasis={emphasis}
+                />
 
-            <div
-              className={cn(
-                "mt-2",
-                "flex",
-                "min-w-0",
-                "items-center",
-                "gap-1",
-                "overflow-hidden",
-                "text-xs",
-                "font-medium",
-                "text-[var(--foreground-muted)]",
-              )}
-            >
-              <MarketplaceIcon
-                type="clock"
-                className="size-3.5 text-[var(--brand)]"
-              />
+                <div
+                  className={cn(
+                    "mt-2",
+                    "flex",
+                    "min-w-0",
+                    "items-center",
+                    "gap-1",
+                    "overflow-hidden",
+                    "text-xs",
+                    "font-medium",
+                    "text-[var(--foreground-muted)]",
+                  )}
+                >
+                  <MarketplaceIcon
+                    type="clock"
+                    className="size-3.5 text-[var(--brand)]"
+                  />
 
-              <JourneyDemandScheduleSummary
-                schedule={demand.schedule}
-                emphasis="compact"
-              />
-            </div>
+                  <JourneyDemandScheduleSummary
+                    schedule={demand.schedule}
+                    emphasis="compact"
+                  />
+                </div>
+              </>
+            ) : (
+              <div
+                className={cn(
+                  "flex",
+                  "min-w-0",
+                  "flex-col",
+                  "gap-1",
+                  "text-[var(--foreground-muted)]",
+                )}
+                aria-label="Schedule unavailable"
+              >
+                <span className="text-xs font-semibold">
+                  Schedule
+                </span>
+
+                <span className="text-[0.68rem] font-medium">
+                  Unavailable
+                </span>
+              </div>
+            )}
           </div>
 
           {/* ---------------------------------------------------------------
               Requester
-
-              JourneyDemandRequesterSummary already renders the @handle.
-              Keep the handle in exactly one place to avoid duplication.
               --------------------------------------------------------------- */}
 
           <div

@@ -8,9 +8,10 @@
 // IMPORTANT:
 //
 // JourneyEntity is the domain model.
-// JourneyResponseMapper is the internal REST/domain response representation.
+// PublicJourneyProjection is the internal application-layer marketplace
+// projection.
 //
-// Neither should be exposed directly by the public marketplace.
+// Neither should be exposed directly by the public marketplace controller.
 //
 // The marketplace has a deliberately different contract:
 //
@@ -18,7 +19,7 @@
 //       ↓
 //   PublicJourneyMapper
 //       ↓
-//   PublicJourney
+//   PublicJourneyProjection
 //
 // The public representation:
 // - exposes only marketplace-safe Journey information;
@@ -29,19 +30,40 @@
 // - removes internal lifecycle timestamps and version;
 // - does not expose booking, financial, settlement, or operational data.
 //
+// Public lifecycle visibility is NOT decided here.
+//
+// The Journey repository owns the public-read visibility boundary:
+//
+//   marketplace-visible status
+//       AND
+//   schedule.departureAt > now
+//
+// Therefore this mapper may receive Journeys in any currently marketplace-
+// visible lifecycle state:
+//
+//   PUBLISHED
+//   FULL
+//   BOARDING
+//   IN_PROGRESS
+//   COMPLETION_PENDING
+//
+// A Journey whose departure time has elapsed must already have been excluded
+// by the repository before this mapper is called.
+//
 // This mapper does NOT:
 // - fetch Traveller data;
 // - fetch Trust data;
 // - fetch Asset data;
 // - query another bounded context;
-// - decide whether a Journey is publicly visible.
+// - decide whether a Journey is publicly visible;
+// - determine whether a Journey has departed.
 //
-// Public visibility belongs to the Journey repository's public-read boundary.
 // Cross-domain enrichment belongs to the public Journey query handler.
 //
 // Asset resolution is intentionally handled by the public Journey query
-// handler. This mapper only preserves the opaque Asset public identifier
-// owned by the Journey vehicle reference.
+// handler. This mapper preserves the opaque Asset public identifier owned by
+// the Journey vehicle reference and initializes the resolved public Asset
+// reference to null.
 //
 // -----------------------------------------------------------------------------
 
@@ -114,8 +136,8 @@ export interface PublicJourneyVehicle {
   /**
    * Resolved public Asset reference.
    *
-   * This is populated by the public Journey query handler through the Asset
-   * bounded context's GetPublicAssetReferenceQuery.
+   * The public Journey query handler resolves this through the Asset bounded
+   * context's GetPublicAssetReferenceQuery.
    *
    * The mapper deliberately does not resolve Assets.
    */
@@ -181,8 +203,11 @@ export class PublicJourneyMapper {
   /**
    * Project a fully hydrated JourneyEntity into the public marketplace model.
    *
-   * A published Journey must contain the mandatory components required by the
-   * Journey aggregate before it can become publicly discoverable:
+   * The repository is responsible for ensuring that the Journey has already
+   * crossed the public-read visibility boundary before this mapper is called.
+   *
+   * A publicly discoverable Journey must contain the mandatory components
+   * required by the Journey aggregate:
    *
    *   - corridor
    *   - schedule
@@ -190,10 +215,11 @@ export class PublicJourneyMapper {
    *   - capacity
    *   - pricing
    *
-   * The aggregate therefore guarantees these components for a valid published
-   * Journey. We still validate at the application boundary instead of using
-   * non-null assertions, because a malformed persistence record should fail
-   * explicitly rather than produce an incomplete marketplace response.
+   * These components are required for a valid public marketplace projection.
+   *
+   * The mapper validates their presence explicitly rather than using
+   * non-null assertions. A malformed persistence record therefore fails
+   * explicitly instead of producing an incomplete marketplace response.
    *
    * Asset URL resolution is intentionally outside this mapper.
    */
@@ -233,7 +259,7 @@ export class PublicJourneyMapper {
   private static requireCorridor(entity: JourneyEntity): JourneyCorridorEntity {
     if (entity.corridor === undefined) {
       throw new Error(
-        `Published Journey "${entity.publicId.value}" is missing its corridor.`,
+        `Public Journey "${entity.publicId.value}" is missing its corridor.`,
       );
     }
 
@@ -243,7 +269,7 @@ export class PublicJourneyMapper {
   private static requireSchedule(entity: JourneyEntity): JourneyScheduleEntity {
     if (entity.schedule === undefined) {
       throw new Error(
-        `Published Journey "${entity.publicId.value}" is missing its schedule.`,
+        `Public Journey "${entity.publicId.value}" is missing its schedule.`,
       );
     }
 
@@ -253,7 +279,7 @@ export class PublicJourneyMapper {
   private static requireVehicle(entity: JourneyEntity): JourneyVehicleEntity {
     if (entity.vehicle === undefined) {
       throw new Error(
-        `Published Journey "${entity.publicId.value}" is missing its vehicle.`,
+        `Public Journey "${entity.publicId.value}" is missing its vehicle.`,
       );
     }
 
@@ -263,7 +289,7 @@ export class PublicJourneyMapper {
   private static requireCapacity(entity: JourneyEntity): JourneyCapacityEntity {
     if (entity.capacity === undefined) {
       throw new Error(
-        `Published Journey "${entity.publicId.value}" is missing its capacity.`,
+        `Public Journey "${entity.publicId.value}" is missing its capacity.`,
       );
     }
 
@@ -273,7 +299,7 @@ export class PublicJourneyMapper {
   private static requirePricing(entity: JourneyEntity): JourneyPricingEntity {
     if (entity.pricing === undefined) {
       throw new Error(
-        `Published Journey "${entity.publicId.value}" is missing its pricing.`,
+        `Public Journey "${entity.publicId.value}" is missing its pricing.`,
       );
     }
 

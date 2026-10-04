@@ -21,6 +21,22 @@
 //
 // Query parameters are passed to the backend public Journey projection.
 //
+// PRICE FILTERS
+// -------------
+//
+// Journey marketplace prices are per-seat prices in KES.
+//
+//   minPrice → minimum acceptable Journey price
+//   maxPrice → maximum acceptable Journey price
+//
+// The hook transports committed price boundaries to the public Journey API.
+// It does not filter the returned Journey collection locally.
+//
+// `undefined` means that the corresponding price boundary is not active.
+//
+// Invalid ranges (`minPrice > maxPrice`) should be prevented by the owning
+// marketplace filter component before they reach this hook.
+//
 // -----------------------------------------------------------------------------
 
 "use client";
@@ -112,6 +128,12 @@ export function usePublicJourneys(
   const date =
     query.date?.trim() ?? "";
 
+  const minPrice =
+    query.minPrice;
+
+  const maxPrice =
+    query.maxPrice;
+
   // ===========================================================================
   // Explicit Refetch
   // ===========================================================================
@@ -192,6 +214,10 @@ export function usePublicJourneys(
 
                 date:
                   date || undefined,
+
+                minPrice,
+
+                maxPrice,
               },
               {
                 context: {
@@ -276,6 +302,8 @@ export function usePublicJourneys(
     from,
     to,
     date,
+    minPrice,
+    maxPrice,
     refetchVersion,
   ]);
 

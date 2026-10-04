@@ -2,19 +2,33 @@
 
 import { ValueObject } from '../../../../foundation/kernel/domain/value-object';
 
+// -----------------------------------------------------------------------------
+// Journey Status
+// -----------------------------------------------------------------------------
+
 export enum JourneyStatus {
   DRAFT = 'DRAFT',
   PUBLISHED = 'PUBLISHED',
+  FULL = 'FULL',
+  BOARDING = 'BOARDING',
   IN_PROGRESS = 'IN_PROGRESS',
-  COMPLETION_REQUESTED = 'COMPLETION_REQUESTED',
+  COMPLETION_PENDING = 'COMPLETION_PENDING',
   COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
   EXPIRED = 'EXPIRED',
 }
 
+// -----------------------------------------------------------------------------
+// Props
+// -----------------------------------------------------------------------------
+
 interface JourneyStatusProps {
   value: JourneyStatus;
 }
+
+// -----------------------------------------------------------------------------
+// Value Object
+// -----------------------------------------------------------------------------
 
 export class JourneyStatusValueObject extends ValueObject<JourneyStatusProps> {
   constructor(status: JourneyStatus) {
@@ -27,9 +41,17 @@ export class JourneyStatusValueObject extends ValueObject<JourneyStatusProps> {
     });
   }
 
+  // ===========================================================================
+  // Value
+  // ===========================================================================
+
   get value(): JourneyStatus {
     return this.props.value;
   }
+
+  // ===========================================================================
+  // Status Checks
+  // ===========================================================================
 
   get isDraft(): boolean {
     return this.props.value === JourneyStatus.DRAFT;
@@ -39,12 +61,20 @@ export class JourneyStatusValueObject extends ValueObject<JourneyStatusProps> {
     return this.props.value === JourneyStatus.PUBLISHED;
   }
 
+  get isFull(): boolean {
+    return this.props.value === JourneyStatus.FULL;
+  }
+
+  get isBoarding(): boolean {
+    return this.props.value === JourneyStatus.BOARDING;
+  }
+
   get isInProgress(): boolean {
     return this.props.value === JourneyStatus.IN_PROGRESS;
   }
 
-  get isCompletionRequested(): boolean {
-    return this.props.value === JourneyStatus.COMPLETION_REQUESTED;
+  get isCompletionPending(): boolean {
+    return this.props.value === JourneyStatus.COMPLETION_PENDING;
   }
 
   get isCompleted(): boolean {
@@ -59,12 +89,59 @@ export class JourneyStatusValueObject extends ValueObject<JourneyStatusProps> {
     return this.props.value === JourneyStatus.EXPIRED;
   }
 
+  // ===========================================================================
+  // Lifecycle Classification
+  // ===========================================================================
+
+  get isTerminal(): boolean {
+    return (
+      this.props.value === JourneyStatus.COMPLETED ||
+      this.props.value === JourneyStatus.CANCELLED ||
+      this.props.value === JourneyStatus.EXPIRED
+    );
+  }
+
+  get isActive(): boolean {
+    return (
+      this.props.value === JourneyStatus.PUBLISHED ||
+      this.props.value === JourneyStatus.FULL ||
+      this.props.value === JourneyStatus.BOARDING ||
+      this.props.value === JourneyStatus.IN_PROGRESS ||
+      this.props.value === JourneyStatus.COMPLETION_PENDING
+    );
+  }
+
+  // ===========================================================================
+  // Marketplace Visibility
+  // ===========================================================================
+
+  get isMarketplaceVisible(): boolean {
+    return (
+      this.props.value === JourneyStatus.PUBLISHED ||
+      this.props.value === JourneyStatus.FULL ||
+      this.props.value === JourneyStatus.BOARDING ||
+      this.props.value === JourneyStatus.IN_PROGRESS ||
+      this.props.value === JourneyStatus.COMPLETION_PENDING
+    );
+  }
+
+  get isMarketplaceHidden(): boolean {
+    return !this.isMarketplaceVisible;
+  }
+
+  // ===========================================================================
+  // Lifecycle Transitions
+  // ===========================================================================
+
   get canPublish(): boolean {
     return this.props.value === JourneyStatus.DRAFT;
   }
 
   get canStart(): boolean {
-    return this.props.value === JourneyStatus.PUBLISHED;
+    return (
+      this.props.value === JourneyStatus.PUBLISHED ||
+      this.props.value === JourneyStatus.FULL
+    );
   }
 
   get canRequestCompletion(): boolean {
@@ -72,19 +149,24 @@ export class JourneyStatusValueObject extends ValueObject<JourneyStatusProps> {
   }
 
   get canComplete(): boolean {
-    return this.props.value === JourneyStatus.COMPLETION_REQUESTED;
+    return this.props.value === JourneyStatus.COMPLETION_PENDING;
   }
 
   get canCancel(): boolean {
     return [
       JourneyStatus.DRAFT,
       JourneyStatus.PUBLISHED,
+      JourneyStatus.FULL,
+      JourneyStatus.BOARDING,
       JourneyStatus.IN_PROGRESS,
-      JourneyStatus.COMPLETION_REQUESTED,
+      JourneyStatus.COMPLETION_PENDING,
     ].includes(this.props.value);
   }
 
   get canExpire(): boolean {
-    return this.props.value === JourneyStatus.PUBLISHED;
+    return (
+      this.props.value === JourneyStatus.PUBLISHED ||
+      this.props.value === JourneyStatus.FULL
+    );
   }
 }

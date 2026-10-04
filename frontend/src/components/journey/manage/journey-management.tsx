@@ -180,6 +180,7 @@ export function JourneyManagement({
         <JourneyActions
           journey={journey}
           showPublish
+          showCancel={journey.status === "DRAFT"}
           onChanged={handleChanged}
           onPublished={handlePublished}
         />

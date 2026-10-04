@@ -3,6 +3,25 @@
 // -----------------------------------------------------------------------------
 // Get Public Journey Demands — Query DTO
 // -----------------------------------------------------------------------------
+//
+// Transport DTO for public Journey Demand marketplace discovery.
+//
+// Supported filters:
+//
+//   from
+//   to
+//   date
+//   minPrice
+//   maxPrice
+//
+// Price filtering applies to the requester's maximum acceptable per-seat price
+// (`maximumPricePerSeat`) and is inclusive:
+//
+//   minPrice <= maximumPricePerSeat <= maxPrice
+//
+// Either price boundary may be supplied independently.
+//
+// -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
 // NestJS / Swagger
@@ -66,6 +85,36 @@ export class GetPublicJourneyDemandsQueryDto {
   @IsOptional()
   @IsDateString()
   date?: string;
+
+  // ===========================================================================
+  // Minimum Price
+  // ===========================================================================
+
+  @ApiPropertyOptional({
+    description:
+      'Minimum acceptable per-seat price in KES. Inclusive. Filters against maximumPricePerSeat.',
+    example: 500,
+    minimum: 0,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  minPrice?: number;
+
+  // ===========================================================================
+  // Maximum Price
+  // ===========================================================================
+
+  @ApiPropertyOptional({
+    description:
+      'Maximum acceptable per-seat price in KES. Inclusive. Filters against maximumPricePerSeat.',
+    example: 1500,
+    minimum: 0,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  maxPrice?: number;
 
   // ===========================================================================
   // Pagination

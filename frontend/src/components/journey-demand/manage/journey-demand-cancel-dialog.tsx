@@ -3,33 +3,40 @@
 import { Button, Dialog } from '@/components/ui';
 import { cn } from '@/foundation';
 
-/**
- * Props for the Journey Demand cancellation confirmation dialog.
- *
- * The dialog does not perform cancellation itself. The parent owns the
- * mutation and supplies the confirmation callback and request state.
- */
+// -----------------------------------------------------------------------------
+// sisiMove — Journey Demand Cancel Dialog
+// -----------------------------------------------------------------------------
+//
+// Presentational cancellation confirmation dialog.
+//
+// Architecture:
+// - owns no API requests;
+// - owns no mutation state;
+// - does not perform authorization checks;
+// - does not inspect Journey Demand lifecycle state;
+// - does not determine whether cancellation is permitted;
+// - does not update or refetch the Journey Demand.
+//
+// The owning JourneyDemandCancelAction supplies:
+// - whether the dialog is open;
+// - the close callback;
+// - the confirmation callback;
+// - the mutation loading state;
+// - the disabled state.
+//
+// The dialog is intentionally unaware of where the confirmation callback
+// performs its work.
+// -----------------------------------------------------------------------------
+
 export interface JourneyDemandCancelDialogProps {
   readonly open: boolean;
   readonly onClose: () => void;
-  readonly onConfirm?: () => void;
+  readonly onConfirm: () => void | Promise<void>;
   readonly isCancelling?: boolean;
   readonly disabled?: boolean;
   readonly className?: string;
 }
 
-/**
- * Confirms that the owner wants to cancel a Journey Demand.
- *
- * This component deliberately does not:
- * - call the cancellation API;
- * - own mutation state;
- * - determine whether cancellation is permitted;
- * - inspect Journey Demand lifecycle state;
- * - update or refetch the Journey Demand.
- *
- * Those responsibilities remain with the owning management/container layer.
- */
 export function JourneyDemandCancelDialog({
   open,
   onClose,
@@ -71,7 +78,7 @@ export function JourneyDemandCancelDialog({
             size="md"
             onClick={onConfirm}
             loading={isCancelling}
-            disabled={controlsDisabled || !onConfirm}
+            disabled={controlsDisabled}
           >
             Cancel demand
           </Button>

@@ -14,6 +14,22 @@
 // It describes what the visitor wants to discover, not how a Journey Demand
 // is represented internally.
 //
+// Price filtering:
+//
+// - `minPrice` and `maxPrice` are expressed in KES per seat;
+// - they filter against the Demand's `maximumPricePerSeat`;
+// - both boundaries are inclusive;
+// - `minPrice` means:
+//
+//       maximumPricePerSeat >= minPrice
+//
+// - `maxPrice` means:
+//
+//       maximumPricePerSeat <= maxPrice
+//
+// The frontend only carries these criteria. The backend remains authoritative
+// for applying the actual marketplace filter.
+//
 // -----------------------------------------------------------------------------
 
 export interface PublicJourneyDemandQuery {
@@ -48,6 +64,26 @@ export interface PublicJourneyDemandQuery {
    * flexible departure window within that date.
    */
   readonly date?: string;
+
+  /**
+   * Minimum acceptable maximum price per seat in KES.
+   *
+   * Inclusive marketplace filter against the Demand's
+   * `maximumPricePerSeat`.
+   *
+   *     maximumPricePerSeat >= minPrice
+   */
+  readonly minPrice?: number;
+
+  /**
+   * Maximum acceptable maximum price per seat in KES.
+   *
+   * Inclusive marketplace filter against the Demand's
+   * `maximumPricePerSeat`.
+   *
+   *     maximumPricePerSeat <= maxPrice
+   */
+  readonly maxPrice?: number;
 
   /**
    * Maximum number of public Journey Demands to return.

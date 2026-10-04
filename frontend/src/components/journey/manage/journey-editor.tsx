@@ -16,10 +16,10 @@
 // - provide publication next-action presentation supplied by the owning page;
 // - provide the existing Journey projection as initial values;
 // - safely initialize editors for progressively assembled Draft Journeys;
-// - pass resolved Asset presentation data to the vehicle editor;
-// - allow the owning Asset workflow to initiate vehicle-photo replacement;
+// - pass the authoritative resolved Asset presentation to the vehicle editor;
 // - optionally compose the Journey publish action;
-// - present published Journeys as read-only.
+// - present published Journeys as read-only;
+// - present cancelled Journeys as read-only historical records.
 //
 // Non-responsibilities:
 // - no Journey lifecycle implementation;
@@ -59,6 +59,16 @@
 // - the editor never performs navigation;
 // - published Journeys become read-only when the refreshed projection reports
 //   PUBLISHED.
+//
+// Cancelled Journey:
+// - CANCELLED is a terminal persisted status supplied by the backend;
+// - cancelled Journeys remain visible as historical records;
+// - cancelled Journeys are presented as read-only;
+// - component mutation controls are not reachable through the cancelled UI;
+// - publication controls are not rendered;
+// - the editor does not provide a cancel action;
+// - no lifecycle transition is inferred or implemented here;
+// - the backend aggregate remains the final invariant boundary.
 //
 // Where workflow:
 // - JourneyEditor owns the controlled From / To selections;
@@ -124,11 +134,16 @@
 //
 // Asset presentation:
 // - JourneyVehicle stores assetPublicId as the opaque Asset reference;
-// - the authenticated Journey read model also provides vehicle.asset;
-// - vehicle.asset is already resolved by the backend Asset capability;
-// - the vehicle editor displays vehicle.asset.url;
-// - vehicle photo replacement remains part of the Vehicle workflow;
-// - there is no duplicate standalone Assets section.
+// - the authenticated Journey read model may provide vehicle.asset as the
+//   authoritative resolved Asset presentation;
+// - JourneyEditor passes that authoritative Asset presentation to the vehicle
+//   editing surface;
+// - JourneyVehicleEditor owns the local selected Asset presentation after an
+//   upload/change;
+// - JourneyVehicleEditor resolves the newly selected Asset through the Asset
+//   delivery boundary rather than constructing an Asset URL here;
+// - JourneyEditor does not duplicate Asset state;
+// - there is no standalone Journey Assets section.
 //
 // -----------------------------------------------------------------------------
 
@@ -216,14 +231,6 @@ export interface JourneyEditorProps {
   readonly onChanged?: () => void | Promise<void>;
 
   /**
-   * Requests the owning workflow to open the vehicle Asset upload or
-   * replacement flow.
-   *
-   * Asset upload/replacement remains owned by the Asset capability.
-   */
-  readonly onChangeVehicleAsset?: () => void;
-
-  /**
    * Controls whether the publish action is rendered.
    *
    * The editor does not infer publish eligibility. The parent management
@@ -263,6 +270,13 @@ interface JourneyEditorContentProps
     title: string,
     description: string,
   ) => Promise<void>;
+
+  /**
+   * Completes publication acknowledgement.
+   *
+   * Publication has already succeeded when this callback is invoked.
+   */
+  readonly onCompletePublication: () => void;
 }
 
 // =============================================================================
@@ -646,27 +660,10 @@ export function JourneyEditor(
   // ---------------------------------------------------------------------------
 
   /**
-   * Publication success is intentionally different from component-change
-   * success.
-   *
-   * The publish API has already succeeded before this callback is invoked.
-   * The success acknowledgement must therefore not be blocked by the query
+   * Publication acknowledgement is intentionally independent from the query
    * refresh.
    *
-   * Order:
-   *
-   *   publish API succeeds
-   *        ↓
-   *   acknowledge publication
-   *        ↓
-   *   SuccessModal opens
-   *        ↓
-   *   refresh Journey projection
-   *
-   * The refresh still runs so the editing surface converges on the
-   * authoritative published projection. The modal remains owned by this
-   * stable outer component and therefore survives any resulting keyed
-   * remount.
+   * The publish API has already succeeded before this callback is invoked.
    */
   function completePublication(): void {
     setSuccessMessage({
@@ -676,12 +673,6 @@ export function JourneyEditor(
         "Your Journey has been published successfully and is now available for travellers to discover and book.",
     });
 
-    /**
-     * Refresh independently from the acknowledgement lifecycle.
-     *
-     * A refresh failure must not turn an already successful publication into
-     * a publication failure from the user's perspective.
-     */
     void props.onChanged?.();
   }
 
@@ -740,26 +731,13 @@ export function JourneyEditor(
 // Editing surface
 // =============================================================================
 
-interface JourneyEditorContentWithPublicationProps
-  extends JourneyEditorContentProps {
-  /**
-   * Completes publication acknowledgement after the publish operation
-   * succeeds.
-   *
-   * The outer editor owns the acknowledgement so it survives remounts of
-   * this keyed editing surface.
-   */
-  readonly onCompletePublication: () => void;
-}
-
 function JourneyEditorContent({
   journey,
-  onChangeVehicleAsset,
   showPublishAction = false,
   className,
   onCompleteChange,
   onCompletePublication,
-}: JourneyEditorContentWithPublicationProps) {
+}: JourneyEditorContentProps) {
   // ---------------------------------------------------------------------------
   // General editor state
   // ---------------------------------------------------------------------------
@@ -774,12 +752,20 @@ function JourneyEditorContent({
     useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
-  // Published lifecycle presentation
+  // Terminal presentation
   // ---------------------------------------------------------------------------
 
   const isPublished =
     journey.status ===
     "PUBLISHED";
+
+  const isCancelled =
+    journey.status ===
+    "CANCELLED";
+
+  const isReadOnly =
+    isPublished ||
+    isCancelled;
 
   // ---------------------------------------------------------------------------
   // Component mutation hooks
@@ -997,9 +983,18 @@ function JourneyEditorContent({
   }
 
   // ---------------------------------------------------------------------------
-  // Current vehicle Asset
+  // Authoritative vehicle Asset presentation
   // ---------------------------------------------------------------------------
 
+  /**
+   * This is the Asset currently represented by the authoritative Journey
+   * projection.
+   *
+   * JourneyEditor does not resolve, upload, or construct Asset URLs.
+   *
+   * JourneyVehicleEditor may temporarily resolve a newly uploaded Asset from
+   * its local assetPublicId before the Journey projection has refreshed.
+   */
   const selectedVehicleAsset =
     useMemo(
       (): JourneyVehicleAssetOption | null => {
@@ -1029,7 +1024,9 @@ function JourneyEditorContent({
         return {
           publicId,
           url,
-          label: "Vehicle photo",
+          label:
+            asset.alt?.trim() ||
+            "Vehicle photo",
         };
       },
       [journey.vehicle?.asset],
@@ -1222,14 +1219,6 @@ function JourneyEditorContent({
   // Publish success
   // ---------------------------------------------------------------------------
 
-  /**
-   * Publication acknowledgement is owned by the stable outer editor.
-   *
-   * JourneyPublishAction invokes this only after the publish API succeeds.
-   *
-   * The outer editor immediately opens SuccessModal and independently refreshes
-   * the Journey projection.
-   */
   function handlePublished(): void {
     onCompletePublication();
   }
@@ -1686,6 +1675,10 @@ function JourneyEditorContent({
         />
       )}
 
+      {/* ------------------------------------------------------------------- */}
+      {/* Published state                                                     */}
+      {/* ------------------------------------------------------------------- */}
+
       {isPublished && (
         <section
           aria-label="Published Journey"
@@ -1712,6 +1705,42 @@ function JourneyEditorContent({
               <p className="mt-1 text-sm leading-5 text-[var(--foreground-muted)]">
                 This Journey is live and can receive bookings. Its details
                 are now read-only.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Cancelled state                                                     */}
+      {/* ------------------------------------------------------------------- */}
+
+      {isCancelled && (
+        <section
+          aria-label="Cancelled Journey"
+          className={cn(
+            "rounded-[var(--radius-xl)]",
+            "border border-[var(--border)]",
+            "bg-[var(--surface)]",
+            "p-4",
+            "shadow-[var(--shadow-sm)]",
+            "sm:p-5",
+          )}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              aria-hidden="true"
+              className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--foreground-muted)]"
+            />
+
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-[var(--foreground)]">
+                Journey cancelled
+              </h2>
+
+              <p className="mt-1 text-sm leading-5 text-[var(--foreground-muted)]">
+                This Journey has been cancelled and is retained as a
+                historical record. Its details are read-only.
               </p>
             </div>
           </div>
@@ -1768,9 +1797,6 @@ function JourneyEditorContent({
         onVehicleSubmit={
           handleVehicleSubmit
         }
-        onChangeVehicleAsset={
-          onChangeVehicleAsset
-        }
         capacityInitialValue={
           capacityInitialValue
         }
@@ -1789,12 +1815,21 @@ function JourneyEditorContent({
         onPreferencesSubmit={
           handlePreferencesSubmit
         }
-        submitting={isSubmitting}
-        readOnly={isPublished}
+        submitting={
+          isSubmitting
+        }
+        readOnly={
+          isReadOnly
+        }
       />
 
+      {/* ------------------------------------------------------------------- */}
+      {/* Publish action                                                      */}
+      {/* ------------------------------------------------------------------- */}
+
       {showPublishAction &&
-        !isPublished && (
+        !isPublished &&
+        !isCancelled && (
           <section
             aria-label="Journey actions"
             className={cn(

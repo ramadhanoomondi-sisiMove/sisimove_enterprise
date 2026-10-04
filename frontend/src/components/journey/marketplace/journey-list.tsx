@@ -29,7 +29,15 @@
 // - no route construction;
 // - no Journey state reconstruction;
 // - no marketplace ownership;
+// - no price-range filtering;
 // - no responsive reconstruction of JourneyCard.
+//
+// Price filtering:
+// - JourneyList receives only the already-filtered PublicJourney projections;
+// - price-range filtering is owned by JourneyMarketplace and the public
+//   Journey discovery query;
+// - JourneyList must never perform client-side price filtering;
+// - the backend remains authoritative for marketplace discovery.
 //
 // Component hierarchy:
 //
@@ -42,7 +50,7 @@
 //   JourneyActions
 //
 // JourneyList is intentionally a collection/presentation component.
-// It does not know how Journeys were fetched or why they are ordered.
+// It does not know how Journeys were fetched, filtered, or why they are ordered.
 //
 // -----------------------------------------------------------------------------
 
@@ -63,7 +71,7 @@ export interface JourneyListProps {
    * Public Journey projections supplied by the marketplace query.
    *
    * The list renders the collection in the order supplied by its parent.
-   * It does not sort or otherwise transform the collection.
+   * It does not sort, filter, or otherwise transform the collection.
    */
   readonly journeys: readonly PublicJourney[];
 

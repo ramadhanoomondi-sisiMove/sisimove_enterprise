@@ -2,7 +2,7 @@
 // sisiMove — Journey Demand Seat Control
 // -----------------------------------------------------------------------------
 //
-// Controlled numeric control for editing requested Journey Demand seats.
+// Controlled seat quantity control for editing requested Journey Demand seats.
 //
 // Architecture:
 // - Presentation/input component only.
@@ -17,8 +17,6 @@
 // -----------------------------------------------------------------------------
 
 'use client';
-
-import type { ChangeEvent } from 'react';
 
 import { cn } from '@/foundation';
 
@@ -43,53 +41,102 @@ export function JourneyDemandSeatControl({
   label = 'Seats requested',
   className,
 }: JourneyDemandSeatControlProps) {
-  const handleChange = (
-    event: ChangeEvent<HTMLInputElement>,
-  ): void => {
-    const nextValue = Number(event.target.value);
+  const canDecrease = value > min;
+  const canIncrease = max === undefined || value < max;
 
-    if (!Number.isFinite(nextValue)) {
+  const handleDecrease = (): void => {
+    if (disabled || !canDecrease) {
       return;
     }
 
-    onChange?.(nextValue);
+    onChange?.(Math.max(min, value - 1));
+  };
+
+  const handleIncrease = (): void => {
+    if (disabled || !canIncrease) {
+      return;
+    }
+
+    onChange?.(
+      max === undefined
+        ? value + 1
+        : Math.min(max, value + 1),
+    );
   };
 
   return (
-    <label
-      htmlFor={id}
+    <div
       className={cn(
         'grid min-w-0 gap-1.5',
         className,
       )}
     >
-      <span className="text-sm font-medium text-foreground">
+      <label
+        htmlFor={id}
+        className="text-sm font-medium text-foreground"
+      >
         {label}
-      </span>
+      </label>
 
-      <input
-        id={id}
-        type="number"
-        inputMode="numeric"
-        min={min}
-        {...(max !== undefined ? { max } : {})}
-        step={1}
-        value={value}
-        onChange={handleChange}
-        disabled={disabled}
+      <div
         className={cn(
-          'min-h-10 w-full rounded-[var(--radius-md)]',
+          'flex min-h-10 w-full items-center overflow-hidden',
+          'rounded-[var(--radius-md)]',
           'border border-[var(--border)]',
           'bg-[var(--background)]',
-          'px-3 text-sm text-foreground',
-          'outline-none transition-colors',
-          'focus:border-[var(--brand)]',
-          'focus:ring-2 focus:ring-[var(--brand-soft)]',
-          'disabled:cursor-not-allowed',
-          'disabled:bg-[var(--background-muted)]',
         )}
-      />
-    </label>
+      >
+        <button
+          type="button"
+          aria-label="Decrease seats requested"
+          onClick={handleDecrease}
+          disabled={disabled || !canDecrease}
+          className={cn(
+            'flex h-10 w-10 shrink-0 items-center justify-center',
+            'text-lg font-medium text-foreground',
+            'transition-colors',
+            'hover:bg-[var(--background-muted)]',
+            'focus:outline-none',
+            'focus:ring-2 focus:ring-inset',
+            'focus:ring-[var(--brand-soft)]',
+            'disabled:cursor-not-allowed',
+            'disabled:opacity-40',
+          )}
+        >
+          −
+        </button>
+
+        <output
+          id={id}
+          aria-live="polite"
+          className={cn(
+            'flex min-w-0 flex-1 items-center justify-center',
+            'px-3 text-sm font-medium text-foreground',
+          )}
+        >
+          {value}
+        </output>
+
+        <button
+          type="button"
+          aria-label="Increase seats requested"
+          onClick={handleIncrease}
+          disabled={disabled || !canIncrease}
+          className={cn(
+            'flex h-10 w-10 shrink-0 items-center justify-center',
+            'text-lg font-medium text-foreground',
+            'transition-colors',
+            'hover:bg-[var(--background-muted)]',
+            'focus:outline-none',
+            'focus:ring-2 focus:ring-inset',
+            'focus:ring-[var(--brand-soft)]',
+            'disabled:cursor-not-allowed',
+            'disabled:opacity-40',
+          )}
+        >
+          +
+        </button>
+      </div>
+    </div>
   );
 }
-

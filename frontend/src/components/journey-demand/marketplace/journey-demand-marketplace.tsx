@@ -78,6 +78,35 @@
 // Loading belongs to the result area, not the input controls.
 //
 // -----------------------------------------------------------------------------
+//
+// PRICE FILTER
+// ------------
+//
+// Journey Demand price filtering is expressed in KES.
+//
+// The marketplace passes:
+//
+//     minPrice
+//     maxPrice
+//
+// directly to the Journey Demand discovery query.
+//
+// The backend remains authoritative for the actual filtering.
+//
+// JourneyDemandMarketplace does NOT filter the returned collection in memory.
+//
+// Price semantics:
+//
+//     minPrice <= demand.maximumPricePerSeat <= maxPrice
+//
+// Boundaries are inclusive.
+//
+// `null` means that boundary is not applied.
+//
+// -----------------------------------------------------------------------------
+//
+// Copyright © sisiMove
+// -----------------------------------------------------------------------------
 
 "use client";
 
@@ -139,6 +168,22 @@ export interface JourneyDemandMarketplaceProps {
    * Optional initial departure date filter.
    */
   readonly initialDate?: string;
+
+  /**
+   * Optional initial minimum acceptable Journey Demand price in KES.
+   *
+   * The value represents the lower boundary of the requester's acceptable
+   * maximum price per seat.
+   */
+  readonly initialMinPrice?: number | null;
+
+  /**
+   * Optional initial maximum acceptable Journey Demand price in KES.
+   *
+   * The value represents the upper boundary of the requester's acceptable
+   * maximum price per seat.
+   */
+  readonly initialMaxPrice?: number | null;
 
   /**
    * Optional additional classes for the marketplace surface.
@@ -230,6 +275,8 @@ const EMPTY_FILTER_VALUES: JourneyDemandMarketplaceFiltersValue = {
   from: "",
   to: "",
   date: "",
+  minPrice: null,
+  maxPrice: null,
 };
 
 // =============================================================================
@@ -240,6 +287,8 @@ export function JourneyDemandMarketplace({
   initialFrom = "",
   initialTo = "",
   initialDate = "",
+  initialMinPrice = null,
+  initialMaxPrice = null,
   className,
   emphasis = "compact",
   onCreateDemand,
@@ -275,6 +324,8 @@ export function JourneyDemandMarketplace({
         from: initialFrom,
         to: initialTo,
         date: initialDate,
+        minPrice: initialMinPrice,
+        maxPrice: initialMaxPrice,
       }),
     );
 
@@ -286,9 +337,17 @@ export function JourneyDemandMarketplace({
   //
   // - matching;
   // - filtering;
+  // - price-range filtering;
   // - returned Journey Demand projections.
   //
   // No client-side filtering is performed here.
+  //
+  // Price filtering uses the Journey Demand's
+  // `maximumPricePerSeat` value:
+  //
+  //     minPrice <= maximumPricePerSeat <= maxPrice
+  //
+  // Both boundaries are inclusive.
   //
 
   const {
@@ -305,6 +364,16 @@ export function JourneyDemandMarketplace({
 
     date:
       filters.date || undefined,
+
+    minPrice:
+      filters.minPrice !== null
+        ? filters.minPrice
+        : undefined,
+
+    maxPrice:
+      filters.maxPrice !== null
+        ? filters.maxPrice
+        : undefined,
   });
 
   // ===========================================================================
@@ -312,7 +381,7 @@ export function JourneyDemandMarketplace({
   // ===========================================================================
   //
   // Stable callback is important because JourneyDemandMarketplaceFilters uses
-  // this callback as the dependency of its debounce effect.
+  // this callback through its debounce lifecycle.
   //
   // Keeping this callback stable prevents the debounce timer from restarting
   // because the parent recreated the callback during every render.

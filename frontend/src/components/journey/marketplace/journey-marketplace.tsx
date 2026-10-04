@@ -103,6 +103,26 @@
 //
 // -----------------------------------------------------------------------------
 //
+// PRICE FILTER CONTRACT
+// --------------------
+//
+// Price filters are committed as part of the same marketplace query state:
+//
+//     minPrice
+//     maxPrice
+//
+// Price is a per-seat Journey marketplace price in KES.
+//
+// Both boundaries are inclusive:
+//
+//     minPrice <= Journey price <= maxPrice
+//
+// Either boundary may be supplied independently.
+//
+// The backend remains authoritative for applying the price range.
+//
+// -----------------------------------------------------------------------------
+//
 // REFETCH CONTRACT
 // ----------------
 //
@@ -179,6 +199,16 @@ export interface JourneyMarketplaceProps {
    * Optional initial departure date filter.
    */
   readonly initialDate?: string;
+
+  /**
+   * Optional initial minimum Journey price per seat.
+   */
+  readonly initialMinPrice?: number | null;
+
+  /**
+   * Optional initial maximum Journey price per seat.
+   */
+  readonly initialMaxPrice?: number | null;
 
   /**
    * Optional additional classes for the marketplace surface.
@@ -264,6 +294,8 @@ const EMPTY_FILTER_VALUES: JourneyMarketplaceFilterValues = {
   from: "",
   to: "",
   date: "",
+  minPrice: null,
+  maxPrice: null,
 };
 
 // =============================================================================
@@ -274,6 +306,8 @@ export function JourneyMarketplace({
   initialFrom = "",
   initialTo = "",
   initialDate = "",
+  initialMinPrice = null,
+  initialMaxPrice = null,
   className,
   emphasis = "compact",
   onCreateJourney,
@@ -297,6 +331,8 @@ export function JourneyMarketplace({
   //
   // JourneyMarketplaceFilters owns the temporary typing state.
   //
+  // Price boundaries are part of the same committed query state as route/date.
+  //
   // ===========================================================================
 
   const [filters, setFilters] =
@@ -304,6 +340,8 @@ export function JourneyMarketplace({
       from: initialFrom,
       to: initialTo,
       date: initialDate,
+      minPrice: initialMinPrice,
+      maxPrice: initialMaxPrice,
     }));
 
   // ===========================================================================
@@ -314,9 +352,12 @@ export function JourneyMarketplace({
   //
   // - matching;
   // - filtering;
+  // - price-range filtering;
   // - returned Journey projections.
   //
   // No client-side filtering is performed here.
+  //
+  // Price values are omitted when their local value is null.
   //
   // ===========================================================================
 
@@ -334,14 +375,26 @@ export function JourneyMarketplace({
 
     date:
       filters.date || undefined,
+
+    minPrice:
+      filters.minPrice !== null
+        ? filters.minPrice
+        : undefined,
+
+    maxPrice:
+      filters.maxPrice !== null
+        ? filters.maxPrice
+        : undefined,
   });
 
   // ===========================================================================
   // Filter Changes
   // ===========================================================================
   //
-  // Stable callback is important because JourneyMarketplaceFilters uses this
-  // callback as the dependency of its debounce effect.
+  // JourneyMarketplaceFilters debounces changes before invoking this callback.
+  //
+  // The callback is stable so the parent does not unnecessarily recreate the
+  // committed filter transition handler.
   //
   // ===========================================================================
 
@@ -370,11 +423,18 @@ export function JourneyMarketplace({
   // ===========================================================================
   // Filter State
   // ===========================================================================
+  //
+  // Price is an active marketplace filter whenever either price boundary
+  // exists.
+  //
+  // ===========================================================================
 
   const hasActiveFilters =
     filters.from.trim().length > 0 ||
     filters.to.trim().length > 0 ||
-    filters.date.length > 0;
+    filters.date.length > 0 ||
+    filters.minPrice !== null ||
+    filters.maxPrice !== null;
 
   // ===========================================================================
   // Result State

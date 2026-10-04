@@ -1,4 +1,7 @@
 // -----------------------------------------------------------------------------
+// Path: src/features/journey-demand/models/public-journey-demand.ts
+// -----------------------------------------------------------------------------
+//
 // sisiMove — Public Journey Demand
 // -----------------------------------------------------------------------------
 //
@@ -52,6 +55,23 @@
 //
 // The Demand is a marketplace opportunity. A provider independently decides
 // whether to create and publish supply that can satisfy it.
+//
+// -----------------------------------------------------------------------------
+//
+// Public price semantics:
+//
+// `pricing.maximumPricePerSeat` represents the highest per-seat amount the
+// requester is willing to accept for the Demand.
+//
+// Marketplace price filters operate against this value:
+//
+//     minPrice <= maximumPricePerSeat <= maxPrice
+//
+// Both boundaries are inclusive.
+//
+// The public Journey Demand projection exposes the pricing object itself.
+// The marketplace API/query layer is responsible for applying price filters;
+// this read model does not perform filtering.
 //
 // -----------------------------------------------------------------------------
 //
@@ -140,6 +160,10 @@ export interface PublicJourneyDemand {
 
   /**
    * Price requirements supplied by the requester.
+   *
+   * `maximumPricePerSeat` is the requester's upper acceptable per-seat price
+   * and is the authoritative value used by the public marketplace price
+   * filter.
    */
   readonly pricing: PublicJourneyDemandPricing;
 

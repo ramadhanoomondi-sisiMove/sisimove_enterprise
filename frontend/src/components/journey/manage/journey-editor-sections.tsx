@@ -3,6 +3,7 @@
 // -----------------------------------------------------------------------------
 //
 // Responsibilities:
+//
 // - compose the existing Journey component editors;
 // - provide each editor with its current Journey projection as initial state;
 // - own no Journey location state;
@@ -11,10 +12,10 @@
 // - provide a compact, mobile-first SisiMove presentation;
 // - expose one shared submitting/disabled state;
 // - pass the resolved vehicle Asset to the vehicle editor;
-// - allow the parent JourneyEditor to initiate vehicle-photo replacement;
 // - present published Journey components as read-only.
 //
 // Non-responsibilities:
+//
 // - no Journey API calls;
 // - no mutation handling;
 // - no Journey aggregate reconstruction;
@@ -26,6 +27,8 @@
 // - no corridor catalogue duplication;
 // - no Asset upload or URL resolution;
 // - no duplicate editor implementations.
+//
+// -----------------------------------------------------------------------------
 //
 // Location architecture:
 //
@@ -47,6 +50,8 @@
 //
 // JourneyEditorSections is therefore only a composition boundary.
 //
+// -----------------------------------------------------------------------------
+//
 // Physical-world location model:
 //
 //   Corridor
@@ -56,6 +61,8 @@
 // This component does not expose or present latitude/longitude as separate
 // Journey fields. Geographic details remain encapsulated by ResolvedLocation
 // and are handled by the owning application/domain boundary.
+//
+// -----------------------------------------------------------------------------
 //
 // Lifecycle presentation:
 //
@@ -70,12 +77,21 @@
 // The parent JourneyEditor determines the lifecycle state and passes
 // `readOnly` to this component.
 //
+// -----------------------------------------------------------------------------
+//
 // Vehicle photos remain part of the Vehicle presentation. There is no
 // standalone Journey Assets section.
+//
+// Asset interaction is owned by JourneyVehicleEditor. This composition
+// component only passes the currently resolved vehicle Asset into the editor.
+//
+// -----------------------------------------------------------------------------
 //
 // Location directionality is intentionally not handled here. The parent
 // JourneyEditor owns the controlled location state and the supported-corridor
 // resolver owns canonical/reverse direction resolution.
+//
+// -----------------------------------------------------------------------------
 //
 // Published Journeys are presented from the latest Journey projection supplied
 // by the parent. This component does not independently query or determine
@@ -246,6 +262,8 @@ export interface JourneyEditorSectionsProps {
    *
    * The parent JourneyEditor obtains this from the Asset presentation
    * boundary. This component does not resolve URLs or query Assets.
+   *
+   * Asset upload/replacement interaction is owned by JourneyVehicleEditor.
    */
   readonly vehicleSelectedAsset?: JourneyVehicleAssetOption | null;
 
@@ -255,12 +273,6 @@ export interface JourneyEditorSectionsProps {
   readonly onVehicleSubmit: (
     values: JourneyVehicleFieldValues,
   ) => Promise<void>;
-
-  /**
-   * Requests the parent JourneyEditor to open the vehicle Asset upload or
-   * replacement workflow.
-   */
-  readonly onChangeVehicleAsset?: () => void;
 
   // ---------------------------------------------------------------------------
   // Capacity
@@ -512,12 +524,23 @@ function ReadOnlyVehicle({
       <ReadOnlyNotice />
 
       {selectedAsset !== null && (
-        <div className="mb-4 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--background-brand)]">
+        <div
+          className={cn(
+            "mb-4",
+            "overflow-hidden",
+            "rounded-[var(--radius-lg)]",
+            "border border-[var(--border)]",
+            "bg-[var(--background-brand)]",
+          )}
+        >
           <div className="relative aspect-[16/9] w-full overflow-hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={selectedAsset.url}
-              alt="Vehicle photo"
+              alt={
+                selectedAsset.label ??
+                "Vehicle photo"
+              }
               className="h-full w-full object-cover"
             />
           </div>
@@ -662,7 +685,6 @@ export function JourneyEditorSections({
   vehicleInitialValue,
   vehicleSelectedAsset = null,
   onVehicleSubmit,
-  onChangeVehicleAsset,
   capacityInitialValue,
   onCapacitySubmit,
   pricingInitialValue,
@@ -760,7 +782,6 @@ export function JourneyEditorSections({
             initialValue={vehicleInitialValue}
             selectedAsset={vehicleSelectedAsset}
             onSubmit={onVehicleSubmit}
-            onChangeAsset={onChangeVehicleAsset}
             onCancel={onCancel}
             submitting={submitting}
             submitLabel="Save Vehicle"

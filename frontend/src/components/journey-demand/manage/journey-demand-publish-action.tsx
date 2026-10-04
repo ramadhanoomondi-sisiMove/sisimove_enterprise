@@ -2,51 +2,81 @@
 // sisiMove — Journey Demand Publish Action
 // -----------------------------------------------------------------------------
 //
-// Presentational publish action for an authenticated Journey Demand.
+// Self-contained publish action for an authenticated Journey Demand.
 //
 // Architecture:
-// - Owns no server state.
-// - Performs no API requests.
-// - Performs no authorization checks.
-// - Does not inspect Journey Demand lifecycle state.
-// - Does not derive whether publishing is allowed.
-// - Parent/container supplies the capability and callback.
-// - Mutation state is supplied by the parent.
+// - owns the publish mutation;
+// - owns mutation loading/error state;
+// - performs the publish API request through the mutation hook;
+// - does not perform authorization checks;
+// - does not inspect Journey Demand lifecycle state;
+// - does not derive whether publishing is allowed;
+// - parent/container supplies the publicId and request;
+// - parent/container remains responsible for capability/visibility decisions;
+// - parent/container may refresh the authoritative Journey Demand projection
+//   through onSuccess.
 //
-// The parent/container is responsible for:
-// - authorization;
-// - mutation execution;
-// - backend validation;
-// - success/error handling;
-// - refreshing the authoritative Journey Demand projection.
 // -----------------------------------------------------------------------------
 
 'use client';
 
 import { Button } from '@/components/ui';
 
+import type { PublishJourneyDemandRequest } from '@/features/journey-demand/api/journey-demands/publish-journey-demand.api';
+import { usePublishJourneyDemand } from '@/features/journey-demand/hooks';
+
+// =============================================================================
+// Props
+// =============================================================================
+
 export interface JourneyDemandPublishActionProps {
-  readonly onPublish?: () => void;
-  readonly isPublishing?: boolean;
+  readonly journeyDemandPublicId: string;
+  readonly request: PublishJourneyDemandRequest;
+  readonly onSuccess?: () => void | Promise<void>;
   readonly disabled?: boolean;
 }
 
+// =============================================================================
+// Component
+// =============================================================================
+
 export function JourneyDemandPublishAction({
-  onPublish,
-  isPublishing = false,
+  journeyDemandPublicId,
+  request,
+  onSuccess,
   disabled = false,
 }: JourneyDemandPublishActionProps) {
+  const { isLoading, error, publishJourneyDemand } =
+    usePublishJourneyDemand();
+
+  const isDisabled = disabled || isLoading;
+
+  const handlePublish = async (): Promise<void> => {
+    if (isDisabled) {
+      return;
+    }
+
+    try {
+      await publishJourneyDemand(journeyDemandPublicId, request);
+      await onSuccess?.();
+    } catch {
+      // The mutation hook owns and exposes the normalized error state.
+      // The action intentionally does not transform the mutation error.
+    }
+  };
+
   return (
     <Button
       type="button"
       variant="primary"
       size="md"
-      onClick={onPublish}
-      loading={isPublishing}
-      disabled={disabled || !onPublish}
+      onClick={handlePublish}
+      loading={isLoading}
+      disabled={isDisabled}
+      aria-disabled={isDisabled}
+      title={error?.message}
     >
       Publish demand
     </Button>
   );
 }
-

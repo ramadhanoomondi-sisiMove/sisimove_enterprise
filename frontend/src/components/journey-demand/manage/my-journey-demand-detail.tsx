@@ -1,3 +1,4 @@
+
 // -----------------------------------------------------------------------------
 // sisiMove — My Journey Demand Detail
 // -----------------------------------------------------------------------------
@@ -38,7 +39,6 @@ import {
   MyJourneyDemandSections,
   type MyJourneyDemandSection,
 } from './my-journey-demand-sections';
-import { MyJourneyDemandStatus } from './my-journey-demand-status';
 
 // =============================================================================
 // Props
@@ -97,23 +97,10 @@ export function MyJourneyDemandDetail({
   className,
 }: MyJourneyDemandDetailProps) {
   return (
-    <div
-      className={cn(
-        'min-w-0 space-y-4',
-        className,
-      )}
-    >
-      <MyJourneyDemandOverview
-        demand={demand}
-      />
+    <div className={cn('min-w-0 space-y-4', className)}>
+      <MyJourneyDemandOverview demand={demand} />
 
-      <MyJourneyDemandStatus
-        demand={demand}
-      />
-
-      <MyJourneyDemandSections
-        sections={sections}
-      />
+      <MyJourneyDemandSections sections={sections} />
 
       {management ? (
         <section
@@ -133,4 +120,3 @@ export function MyJourneyDemandDetail({
     </div>
   );
 }
-

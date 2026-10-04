@@ -1,5 +1,47 @@
 'use client';
 
+// -----------------------------------------------------------------------------
+// sisiMove — Journey Demand Management
+// -----------------------------------------------------------------------------
+//
+// Composition container for Journey Demand management actions.
+//
+// Architecture:
+// - owns no server state;
+// - owns no mutation hooks;
+// - performs no API requests;
+// - performs no authorization checks;
+// - does not derive lifecycle capabilities;
+// - does not manage confirmation state;
+// - composes JourneyDemandActions;
+// - passes action inputs through without interpreting them.
+//
+// JourneyDemandActions delegates each supported operation to its dedicated
+// action component:
+//
+//     JourneyDemandPublishAction
+//     JourneyDemandCancelAction
+//     JourneyDemandMatchAction
+//     JourneyDemandConvertAction
+//     JourneyDemandFulfillAction
+//
+// Individual action components own their respective:
+// - mutation hooks;
+// - loading state;
+// - error state;
+// - API invocation;
+// - mutation presentation;
+// - confirmation workflow where required.
+//
+// The owning parent/container remains responsible for:
+// - authorization;
+// - authoritative capability decisions;
+// - supplying the Journey Demand public ID;
+// - supplying command request metadata;
+// - supplying post-success projection refresh callbacks.
+//
+// -----------------------------------------------------------------------------
+
 import { cn } from '@/foundation';
 
 import {
@@ -7,46 +49,35 @@ import {
   type JourneyDemandActionsProps,
 } from './journey-demand-actions';
 
-/**
- * Props for the Journey Demand management action area.
- *
- * Management is intentionally a presentation/composition concern here.
- * The parent/container remains responsible for:
- * - loading the Journey Demand;
- * - determining available capabilities;
- * - invoking mutation hooks;
- * - handling authorization;
- * - handling mutation success/error state;
- * - refetching or updating the parent view.
- */
+// =============================================================================
+// Props
+// =============================================================================
+
 export interface JourneyDemandManagementProps
   extends JourneyDemandActionsProps {
   readonly title?: string;
   readonly description?: string;
+  readonly className?: string;
 }
 
-/**
- * Composes the Journey Demand management actions with an optional heading
- * and supporting description.
- *
- * This component does not infer actions from Journey Demand status. The
- * backend/application boundary or owning container supplies the explicit
- * capability props.
- */
+// =============================================================================
+// Component
+// =============================================================================
+
 export function JourneyDemandManagement({
   title = 'Manage demand',
   description,
   className,
   ...actionsProps
 }: JourneyDemandManagementProps) {
-  const hasAction =
+  const hasActions =
     actionsProps.canPublish ||
     actionsProps.canCancel ||
     actionsProps.canMatch ||
     actionsProps.canConvert ||
     actionsProps.canFulfill;
 
-  if (!hasAction) {
+  if (!hasActions) {
     return null;
   }
 
@@ -76,4 +107,3 @@ export function JourneyDemandManagement({
     </section>
   );
 }
-

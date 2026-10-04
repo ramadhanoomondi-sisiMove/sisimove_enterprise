@@ -15,20 +15,17 @@
 //
 //     "I'm travelling this route and I have seats available."
 //
-// This filter therefore helps members discover AVAILABLE JOURNEYS:
+// Primary discovery:
 //
-//     REAL JOURNEY SUPPLY
-//     Find available journeys by route and date.
+//     From | To | Date
+//
+// Secondary refinement:
+//
+//     Price range
 //
 // The complementary Journey Demand marketplace represents unmet demand:
 //
 //     "I want to travel this route, but I haven't found a suitable journey."
-//
-// Together:
-//
-//     JOURNEY                         JOURNEY DEMAND
-//     Supply                          Demand
-//     "I have seats."                 "I need a journey."
 //
 // -----------------------------------------------------------------------------
 //
@@ -41,22 +38,57 @@
 //     from
 //     to
 //     date
+//     minPrice
+//     maxPrice
+//
+// Example:
+//
+//     GET /journeys/public
+//         ?from=Nairobi
+//         &to=Mombasa
+//         &date=2026-10-10
+//         &minPrice=500
+//         &maxPrice=1500
+//
+// -----------------------------------------------------------------------------
+//
+// PRODUCT PRIORITY
+// ---------------
+//
+// Primary filters:
+//
+//     From
+//     To
+//     Date
+//
+// Secondary filter:
+//
+//     Price range
+//
+// Price is intentionally hidden behind the compact "Filters" control so it
+// does not make the main marketplace discovery surface unnecessarily large.
+//
+// -----------------------------------------------------------------------------
 //
 // Interaction model:
 //
-//     User types
-//          │
-//          ▼
+//     User types / changes filters
+//              │
+//              ▼
 //     Local draft state
-//          │
-//          ▼
+//              │
+//              ▼
 //     300ms debounce
-//          │
-//          ▼
+//              │
+//              ▼
 //     onChange(committed values)
-//          │
-//          ▼
+//              │
+//              ▼
 //     Marketplace query
+//
+// Clear bypasses the debounce and immediately commits the empty state.
+//
+// -----------------------------------------------------------------------------
 //
 // IMPORTANT
 // ---------
@@ -86,12 +118,43 @@
 // 4. not rewrite the supplied `values` from query results;
 // 5. treat onChange() as the committed marketplace filter state.
 //
+// The debounce itself does not require `onChange` to be stable.
+//
+// The latest callback is retained in a ref so parent callback identity changes
+// cannot interrupt an active typing debounce.
+//
+// -----------------------------------------------------------------------------
+//
+// PRICE CONTRACT
+// -------------
+//
+// Price is a per-seat Journey marketplace price.
+//
+// Currency:
+//
+//     KES
+//
+// Price filters:
+//
+//     minPrice
+//     maxPrice
+//
+// Empty price inputs are represented as:
+//
+//     null
+//
+// Invalid ranges are not committed:
+//
+//     minPrice > maxPrice
+//
+// The invalid draft remains visible so the user can correct it.
+//
 // -----------------------------------------------------------------------------
 //
 // RESPONSIVE CONTRACT
 // ------------------
 //
-// The primary controls always remain one proportional row:
+// The primary controls remain one proportional row:
 //
 //     From | To | Date | Clear
 //
@@ -109,28 +172,19 @@
 // Native input intrinsic sizing must not be allowed to force a column wider
 // than its proportional share.
 //
+// The secondary price control is compact and may use its own responsive
+// two-field layout when expanded.
+//
 // -----------------------------------------------------------------------------
 //
 // SEARCH CONTRACT
 // ---------------
 //
-// This component commits the text exactly as entered after trimming.
+// This component commits text exactly as entered after trimming.
 //
 // Partial-search behavior is determined by the backend implementation of:
 //
 //     GET /journeys/public
-//
-// For example:
-//
-//     "N"
-//     "Na"
-//     "Nai"
-//     "Nair"
-//     "Nairobi"
-//
-// will all be sent progressively after the debounce.
-//
-// The backend supports partial matching for public marketplace discovery.
 //
 // This component does not perform client-side filtering.
 //
@@ -147,14 +201,19 @@
 
 import {
   useEffect,
+  useRef,
   useState,
+  type ChangeEvent,
 } from "react";
 
 // -----------------------------------------------------------------------------
 // UI
 // -----------------------------------------------------------------------------
 
-import { Button, Input } from "@/components/ui";
+import {
+  Button,
+  Input,
+} from "@/components/ui";
 
 // -----------------------------------------------------------------------------
 // Foundation
@@ -170,6 +229,20 @@ export interface JourneyMarketplaceFilterValues {
   readonly from: string;
   readonly to: string;
   readonly date: string;
+
+  /**
+   * Minimum acceptable Journey price per seat.
+   *
+   * `null` means no lower price boundary.
+   */
+  readonly minPrice: number | null;
+
+  /**
+   * Maximum acceptable Journey price per seat.
+   *
+   * `null` means no upper price boundary.
+   */
+  readonly maxPrice: number | null;
 }
 
 export interface JourneyMarketplaceFiltersProps {
@@ -184,7 +257,7 @@ export interface JourneyMarketplaceFiltersProps {
   readonly values: JourneyMarketplaceFilterValues;
 
   /**
-   * Called after the user pauses typing.
+   * Called after the user pauses changing filters.
    *
    * The parent owns the marketplace query lifecycle.
    */
@@ -194,6 +267,8 @@ export interface JourneyMarketplaceFiltersProps {
 
   /**
    * Optional callback for additional filters.
+   *
+   * This remains available for future marketplace filters beyond price.
    */
   readonly onFiltersClick?: () => void;
 
@@ -223,6 +298,8 @@ const EMPTY_FILTER_VALUES: JourneyMarketplaceFilterValues = {
   from: "",
   to: "",
   date: "",
+  minPrice: null,
+  maxPrice: null,
 };
 
 const FILTER_DEBOUNCE_MS = 300;
@@ -292,6 +369,33 @@ function XIcon() {
   );
 }
 
+function ChevronIcon({
+  open,
+}: {
+  readonly open: boolean;
+}) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className={cn(
+        "size-[clamp(0.6rem,1vw,0.85rem)]",
+        "transition-transform",
+        open && "rotate-180",
+      )}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="m6 9 6 6 6-6"
+      />
+    </svg>
+  );
+}
+
 function LocationIcon({
   destination = false,
 }: {
@@ -353,18 +457,80 @@ function CalendarIcon() {
   );
 }
 
+function PriceIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="size-[clamp(0.6rem,1vw,0.85rem)]"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 3v18M16 7.5c-.8-1-2.1-1.5-4-1.5-2.2 0-4 1.1-4 2.8 0 4.4 8 1.8 8 6 0 1.7-1.6 2.7-4 2.7-1.9 0-3.4-.6-4.3-1.7"
+      />
+    </svg>
+  );
+}
+
 // =============================================================================
 // Helpers
 // =============================================================================
 
+function normalizePrice(
+  value: string,
+): number | null {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  const parsed = Number(trimmed);
+
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  if (parsed < 0) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function priceToInputValue(
+  value: number | null,
+): string {
+  return value === null
+    ? ""
+    : String(value);
+}
+
 function commitFilterValues(
   values: JourneyMarketplaceFilterValues,
-): JourneyMarketplaceFilterValues {
-  return {
+): JourneyMarketplaceFilterValues | null {
+  const committed: JourneyMarketplaceFilterValues = {
     from: values.from.trim(),
     to: values.to.trim(),
     date: values.date,
+    minPrice: values.minPrice,
+    maxPrice: values.maxPrice,
   };
+
+  if (
+    committed.minPrice !== null &&
+    committed.maxPrice !== null &&
+    committed.minPrice >
+      committed.maxPrice
+  ) {
+    return null;
+  }
+
+  return committed;
 }
 
 function hasFilterValues(
@@ -373,7 +539,18 @@ function hasFilterValues(
   return Boolean(
     values.from.trim() ||
       values.to.trim() ||
-      values.date,
+      values.date ||
+      values.minPrice !== null ||
+      values.maxPrice !== null,
+  );
+}
+
+function hasPriceFilterValues(
+  values: JourneyMarketplaceFilterValues,
+): boolean {
+  return (
+    values.minPrice !== null ||
+    values.maxPrice !== null
   );
 }
 
@@ -392,13 +569,6 @@ export function JourneyMarketplaceFilters({
   // ===========================================================================
   // Local Draft State
   // ===========================================================================
-  //
-  // This is the ONLY state controlling the input values.
-  //
-  // The parent query state never replaces the user's current draft while
-  // typing.
-  //
-  // ===========================================================================
 
   const [draftValues, setDraftValues] =
     useState<JourneyMarketplaceFilterValues>(
@@ -406,43 +576,124 @@ export function JourneyMarketplaceFilters({
     );
 
   // ===========================================================================
+  // Price Input State
+  // ===========================================================================
+  //
+  // Price inputs remain strings locally so intermediate typing is preserved.
+  //
+  // ===========================================================================
+
+  const [minPriceInput, setMinPriceInput] =
+    useState<string>(
+      priceToInputValue(
+        values.minPrice,
+      ),
+    );
+
+  const [maxPriceInput, setMaxPriceInput] =
+    useState<string>(
+      priceToInputValue(
+        values.maxPrice,
+      ),
+    );
+
+  // ===========================================================================
+  // Advanced Filter Visibility
+  // ===========================================================================
+
+  const [showFilters, setShowFilters] =
+    useState<boolean>(
+      hasPriceFilterValues(values),
+    );
+
+  // ===========================================================================
+  // Latest onChange Reference
+  // ===========================================================================
+  //
+  // The parent may recreate its onChange callback when its own marketplace
+  // state changes.
+  //
+  // The debounce must NOT restart merely because the callback identity changed.
+  //
+  // We therefore keep the latest callback in a ref while allowing the debounce
+  // itself to depend only on the local draft values.
+  //
+  // This gives us the desired interaction:
+  //
+  //     type
+  //       ↓
+  //     draft updates immediately
+  //       ↓
+  //     wait 300ms
+  //       ↓
+  //     commit latest draft
+  //
+  // The parent callback identity cannot interrupt this debounce.
+  //
+  // ===========================================================================
+
+  const onChangeRef = useRef(onChange);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  // ===========================================================================
   // Debounced Commit
   // ===========================================================================
   //
-  // Every keystroke updates only local state.
+  // Every local filter change schedules a marketplace query.
   //
-  // After 300ms without another change, the current draft is committed to the
-  // parent marketplace.
+  // The timer is intentionally dependent ONLY on draftValues.
+  //
+  // This means:
+  //
+  //     "N"
+  //     "Na"
+  //     "Nai"
+  //     "Nair"
+  //     "Nairo"
+  //     "Nairob"
+  //     "Nairobi"
+  //
+  // produces one committed query after the user pauses typing for 300ms.
+  //
+  // The parent callback identity cannot interrupt this debounce.
   //
   // ===========================================================================
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      onChange(
+      const committedValues =
         commitFilterValues(
           draftValues,
-        ),
-      );
+        );
+
+      if (committedValues !== null) {
+        onChangeRef.current(
+          committedValues,
+        );
+      }
     }, FILTER_DEBOUNCE_MS);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [
-    draftValues,
-    onChange,
-  ]);
+  }, [draftValues]);
 
   // ===========================================================================
-  // Input Change
+  // Primary Input Change
   // ===========================================================================
 
   const handleInputChange =
     (
-      field: keyof JourneyMarketplaceFilterValues,
+      field:
+        | "from"
+        | "to"
+        | "date",
     ) =>
     (
-      event: React.ChangeEvent<HTMLInputElement>,
+      event: ChangeEvent<HTMLInputElement>,
     ): void => {
       const fieldValue =
         event.target.value;
@@ -454,12 +705,63 @@ export function JourneyMarketplaceFilters({
     };
 
   // ===========================================================================
-  // Clear
+  // Minimum Price Change
   // ===========================================================================
-  //
-  // Clear bypasses the debounce so the marketplace returns to its default
-  // unfiltered state immediately.
-  //
+
+  const handleMinPriceChange = (
+    event: ChangeEvent<HTMLInputElement>,
+  ): void => {
+    const inputValue =
+      event.target.value;
+
+    setMinPriceInput(
+      inputValue,
+    );
+
+    setDraftValues((current) => ({
+      ...current,
+      minPrice:
+        normalizePrice(
+          inputValue,
+        ),
+    }));
+  };
+
+  // ===========================================================================
+  // Maximum Price Change
+  // ===========================================================================
+
+  const handleMaxPriceChange = (
+    event: ChangeEvent<HTMLInputElement>,
+  ): void => {
+    const inputValue =
+      event.target.value;
+
+    setMaxPriceInput(
+      inputValue,
+    );
+
+    setDraftValues((current) => ({
+      ...current,
+      maxPrice:
+        normalizePrice(
+          inputValue,
+        ),
+    }));
+  };
+
+  // ===========================================================================
+  // Price Range Validation
+  // ===========================================================================
+
+  const hasInvalidPriceRange =
+    draftValues.minPrice !== null &&
+    draftValues.maxPrice !== null &&
+    draftValues.minPrice >
+      draftValues.maxPrice;
+
+  // ===========================================================================
+  // Clear
   // ===========================================================================
 
   const handleClear = (): void => {
@@ -467,9 +769,27 @@ export function JourneyMarketplaceFilters({
       EMPTY_FILTER_VALUES,
     );
 
+    setMinPriceInput("");
+
+    setMaxPriceInput("");
+
+    setShowFilters(false);
+
     onChange(
       EMPTY_FILTER_VALUES,
     );
+  };
+
+  // ===========================================================================
+  // Filters Toggle
+  // ===========================================================================
+
+  const handleFiltersClick = (): void => {
+    setShowFilters(
+      (current) => !current,
+    );
+
+    onFiltersClick?.();
   };
 
   // ===========================================================================
@@ -480,6 +800,15 @@ export function JourneyMarketplaceFilters({
     hasFilterValues(
       draftValues,
     );
+
+  const hasDraftPriceFilters =
+    hasPriceFilterValues(
+      draftValues,
+    );
+
+  const filtersActive =
+    hasActiveFilters ||
+    hasDraftPriceFilters;
 
   // ===========================================================================
   // Render
@@ -569,7 +898,7 @@ export function JourneyMarketplaceFilters({
                 "text-[var(--foreground-muted)]",
               )}
             >
-              Discover journey supply by route and date
+              Discover journey supply by route, date, and price
             </p>
           </div>
         </div>
@@ -862,73 +1191,266 @@ export function JourneyMarketplaceFilters({
         {/* Secondary Controls                                                  */}
         {/* ------------------------------------------------------------------- */}
 
-        {onFiltersClick && (
+        <div
+          className={cn(
+            "mt-[clamp(0.3rem,0.7vw,0.55rem)]",
+            "flex",
+            "min-w-0",
+            "items-center",
+            "justify-between",
+            "gap-[clamp(0.3rem,0.8vw,0.7rem)]",
+          )}
+        >
           <div
             className={cn(
-              "mt-[clamp(0.35rem,0.9vw,0.7rem)]",
-              "flex",
               "min-w-0",
-              "items-center",
-              "justify-between",
-              "gap-[clamp(0.3rem,0.8vw,0.7rem)]",
+              "truncate",
+              "text-[clamp(0.34rem,0.58vw,0.52rem)]",
+              "leading-tight",
+              "text-[var(--foreground-muted)]",
             )}
           >
+            Refine your journey search
+          </div>
+
+          <Button
+            type="button"
+            variant={
+              filtersActive
+                ? "primary"
+                : "outline"
+            }
+            size="sm"
+            leadingIcon={<FilterIcon />}
+            onClick={handleFiltersClick}
+            disabled={isLoading}
+            aria-label="Open additional Journey filters"
+            aria-expanded={showFilters}
+            aria-pressed={showFilters}
+            className={cn(
+              "h-[clamp(1.45rem,2.5vw,2rem)]",
+              "w-auto",
+              "min-w-0",
+              "max-w-full",
+              "shrink-0",
+              "overflow-hidden",
+              "whitespace-nowrap",
+              "rounded-[clamp(0.4rem,0.8vw,0.65rem)]",
+              "px-[clamp(0.35rem,0.75vw,0.7rem)]",
+              "text-[clamp(0.42rem,0.68vw,0.64rem)]",
+              "font-semibold",
+            )}
+          >
+            <span className="min-w-0 truncate">
+              Filters
+            </span>
+
+            {filtersActive && (
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "ml-0.5",
+                  "size-[clamp(0.22rem,0.4vw,0.32rem)]",
+                  "shrink-0",
+                  "rounded-full",
+                  "bg-current",
+                )}
+              />
+            )}
+
+            <ChevronIcon
+              open={showFilters}
+            />
+          </Button>
+        </div>
+
+        {/* ------------------------------------------------------------------- */}
+        {/* Compact Secondary Price Filter                                      */}
+        {/* ------------------------------------------------------------------- */}
+
+        {showFilters && (
+          <div
+            className={cn(
+              "mt-[clamp(0.3rem,0.7vw,0.55rem)]",
+              "flex",
+              "w-full",
+              "min-w-0",
+              "items-center",
+              "gap-[clamp(0.25rem,0.6vw,0.5rem)]",
+              "rounded-[clamp(0.4rem,0.8vw,0.65rem)]",
+              "border",
+              "border-[var(--border-subtle)]",
+              "bg-[var(--background)]",
+              "px-[clamp(0.35rem,0.8vw,0.65rem)]",
+              "py-[clamp(0.3rem,0.6vw,0.5rem)]",
+            )}
+          >
+            {/* ----------------------------------------------------------------- */}
+            {/* Price Label                                                       */}
+            {/* ----------------------------------------------------------------- */}
+
             <div
               className={cn(
-                "min-w-0",
-                "truncate",
-                "text-[clamp(0.34rem,0.58vw,0.52rem)]",
-                "leading-tight",
+                "flex",
+                "shrink-0",
+                "items-center",
+                "gap-[clamp(0.15rem,0.35vw,0.3rem)]",
+                "text-[clamp(0.4rem,0.62vw,0.56rem)]",
+                "font-semibold",
                 "text-[var(--foreground-muted)]",
               )}
             >
-              Refine your journey search
+              <PriceIcon />
+
+              <span>
+                Price
+              </span>
             </div>
 
-            <Button
-              type="button"
-              variant={
-                hasActiveFilters
-                  ? "primary"
-                  : "outline"
-              }
-              size="sm"
-              leadingIcon={<FilterIcon />}
-              onClick={onFiltersClick}
-              disabled={isLoading}
-              aria-label="Open additional Journey filters"
-              aria-pressed={hasActiveFilters}
+            {/* ----------------------------------------------------------------- */}
+            {/* Minimum                                                           */}
+            {/* ----------------------------------------------------------------- */}
+
+            <div
               className={cn(
-                "h-[clamp(1.55rem,2.8vw,2.25rem)]",
-                "w-auto",
+                "flex",
                 "min-w-0",
-                "max-w-full",
-                "shrink-0",
-                "overflow-hidden",
-                "whitespace-nowrap",
-                "rounded-[clamp(0.4rem,0.8vw,0.65rem)]",
-                "px-[clamp(0.35rem,0.8vw,0.8rem)]",
-                "text-[clamp(0.42rem,0.68vw,0.64rem)]",
-                "font-semibold",
+                "flex-1",
+                "items-center",
+                "gap-[clamp(0.1rem,0.25vw,0.2rem)]",
               )}
             >
-              <span className="min-w-0 truncate">
-                Filters
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "shrink-0",
+                  "text-[clamp(0.36rem,0.55vw,0.5rem)]",
+                  "font-medium",
+                  "text-[var(--foreground-muted)]",
+                )}
+              >
+                KES
               </span>
 
-              {hasActiveFilters && (
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "ml-0.5",
-                    "size-[clamp(0.25rem,0.45vw,0.375rem)]",
-                    "shrink-0",
-                    "rounded-full",
-                    "bg-current",
-                  )}
-                />
+              <Input
+                id="journey-marketplace-min-price"
+                name="minPrice"
+                type="number"
+                inputMode="numeric"
+                min="0"
+                step="1"
+                value={minPriceInput}
+                onChange={handleMinPriceChange}
+                placeholder="Min"
+                aria-label="Minimum Journey price in Kenyan shillings"
+                className={cn(
+                  "block",
+                  "h-auto",
+                  "w-full",
+                  "min-w-0",
+                  "border-0",
+                  "bg-transparent",
+                  "shadow-none",
+                  "px-[clamp(0.1rem,0.25vw,0.2rem)]",
+                  "py-[clamp(0.12rem,0.3vw,0.25rem)]",
+                  "text-[clamp(0.44rem,0.7vw,0.68rem)]",
+                  "font-semibold",
+                  "focus-visible:ring-0",
+                )}
+              />
+            </div>
+
+            {/* ----------------------------------------------------------------- */}
+            {/* Range Separator                                                   */}
+            {/* ----------------------------------------------------------------- */}
+
+            <span
+              aria-hidden="true"
+              className={cn(
+                "shrink-0",
+                "text-[clamp(0.4rem,0.65vw,0.58rem)]",
+                "font-semibold",
+                "text-[var(--foreground-muted)]",
               )}
-            </Button>
+            >
+              —
+            </span>
+
+            {/* ----------------------------------------------------------------- */}
+            {/* Maximum                                                           */}
+            {/* ----------------------------------------------------------------- */}
+
+            <div
+              className={cn(
+                "flex",
+                "min-w-0",
+                "flex-1",
+                "items-center",
+                "gap-[clamp(0.1rem,0.25vw,0.2rem)]",
+              )}
+            >
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "shrink-0",
+                  "text-[clamp(0.36rem,0.55vw,0.5rem)]",
+                  "font-medium",
+                  "text-[var(--foreground-muted)]",
+                )}
+              >
+                KES
+              </span>
+
+              <Input
+                id="journey-marketplace-max-price"
+                name="maxPrice"
+                type="number"
+                inputMode="numeric"
+                min="0"
+                step="1"
+                value={maxPriceInput}
+                onChange={handleMaxPriceChange}
+                placeholder="Max"
+                aria-label="Maximum Journey price in Kenyan shillings"
+                aria-invalid={
+                  hasInvalidPriceRange
+                }
+                className={cn(
+                  "block",
+                  "h-auto",
+                  "w-full",
+                  "min-w-0",
+                  "border-0",
+                  "bg-transparent",
+                  "shadow-none",
+                  "px-[clamp(0.1rem,0.25vw,0.2rem)]",
+                  "py-[clamp(0.12rem,0.3vw,0.25rem)]",
+                  "text-[clamp(0.44rem,0.7vw,0.68rem)]",
+                  "font-semibold",
+                  "focus-visible:ring-0",
+                )}
+              />
+            </div>
+
+            {/* ----------------------------------------------------------------- */}
+            {/* Invalid Range                                                     */}
+            {/* ----------------------------------------------------------------- */}
+
+            {hasInvalidPriceRange && (
+              <span
+                role="alert"
+                className={cn(
+                  "hidden",
+                  "shrink-0",
+                  "text-[clamp(0.34rem,0.55vw,0.5rem)]",
+                  "font-medium",
+                  "text-[var(--destructive)]",
+                  "sm:inline",
+                )}
+              >
+                Invalid range
+              </span>
+            )}
           </div>
         )}
       </div>

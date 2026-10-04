@@ -97,20 +97,106 @@ import type { JourneyDemandParticipantStatusValueObject } from '../value-objects
  *   "return all Journey Demands currently eligible for public discovery."
  *
  * The filter values remain primitive because they represent query criteria,
- * not persisted domain state:
+ * not persisted domain state.
  *
- *   from   -> origin name/query
- *   to     -> destination name/query
- *   date   -> requested travel date
+ * Route filters:
+ *
+ *   from -> origin name/query
+ *   to   -> destination name/query
+ *
+ * Schedule filter:
+ *
+ *   date -> requested travel date
+ *
+ * Price filters:
+ *
+ *   minPrice -> minimum acceptable maximum price per passenger seat
+ *   maxPrice -> maximum acceptable maximum price per passenger seat
+ *
+ * Price boundaries are inclusive:
+ *
+ *   minPrice <= maximumPricePerSeat <= maxPrice
+ *
+ * Either boundary may be omitted independently.
+ *
+ * Journey Demand pricing is requester-side pricing. The relevant marketplace
+ * field is JourneyDemandPricing.maximumPricePerSeat, which represents the
+ * highest amount the requester is willing to pay for one passenger seat.
+ *
+ * Currency:
+ *
+ *   KES
  *
  * Pagination is also a query concern and therefore remains outside the
  * JourneyDemand aggregate.
  */
 export interface PublicJourneyDemandFilters {
+  // ===========================================================================
+  // Route
+  // ===========================================================================
+
+  /**
+   * Origin search value.
+   *
+   * Implementations may apply this as a case-insensitive partial match or
+   * equivalent persistence-supported route search.
+   */
   readonly from?: string;
+
+  /**
+   * Destination search value.
+   *
+   * Implementations may apply this as a case-insensitive partial match or
+   * equivalent persistence-supported route search.
+   */
   readonly to?: string;
+
+  // ===========================================================================
+  // Schedule
+  // ===========================================================================
+
+  /**
+   * Requested travel date.
+   *
+   * The repository is responsible for translating the query date into the
+   * persistence-layer schedule boundary appropriate for public discovery.
+   */
   readonly date?: string;
+
+  // ===========================================================================
+  // Price
+  // ===========================================================================
+
+  /**
+   * Minimum maximum-price-per-seat accepted by the marketplace filter.
+   *
+   * Inclusive:
+   *
+   *   maximumPricePerSeat >= minPrice
+   */
+  readonly minPrice?: number;
+
+  /**
+   * Maximum maximum-price-per-seat accepted by the marketplace filter.
+   *
+   * Inclusive:
+   *
+   *   maximumPricePerSeat <= maxPrice
+   */
+  readonly maxPrice?: number;
+
+  // ===========================================================================
+  // Pagination
+  // ===========================================================================
+
+  /**
+   * Maximum number of public Journey Demands to return.
+   */
   readonly limit?: number;
+
+  /**
+   * Number of public Journey Demands to skip before returning results.
+   */
   readonly offset?: number;
 }
 
@@ -254,6 +340,23 @@ export interface JourneyDemandRepository {
    * The implementation must enforce public visibility independently of the
    * supplied filters. Filters narrow an already-public collection; they must
    * never make a private/non-discoverable JourneyDemand public.
+   *
+   * Supported discovery filters:
+   *
+   * - origin
+   * - destination
+   * - requested travel date
+   * - minimum maximum-price-per-seat
+   * - maximum maximum-price-per-seat
+   * - pagination
+   *
+   * Price filtering is applied against:
+   *
+   *   JourneyDemandPricing.maximumPricePerSeat
+   *
+   * with inclusive boundaries:
+   *
+   *   minPrice <= maximumPricePerSeat <= maxPrice
    *
    * The returned objects are aggregates rather than root entities because the
    * public application query composes:

@@ -4,21 +4,24 @@
 //
 // Authenticated/editor presentation for a Journey Demand corridor.
 //
-// Architecture rules:
-// - Consumes the authenticated Journey Demand corridor model.
+// Architecture:
+// - Consumes the authenticated JourneyDemandCorridor model.
 // - Does not fetch data.
 // - Does not call the backend directly.
-// - Does not recreate the Journey Demand aggregate.
+// - Does not create the Journey Demand aggregate.
 // - Does not decide corridor business rules.
 // - Does not manufacture waypoint ordering.
-// - Delegates individual waypoint editing to 100.
+// - Delegates individual waypoint editing to JourneyDemandWaypointEditor.
 //
 // The parent/container owns:
 // - loading the current corridor;
 // - mutation hooks;
 // - authorization/capability decisions;
+// - validation orchestration;
 // - persistence;
-// - success/error handling.
+// - success/error handling;
+// - navigation;
+// - publication.
 //
 // This component owns:
 // - corridor editing presentation;
@@ -26,7 +29,27 @@
 // - waypoint editor composition;
 // - forwarding controlled values and callbacks.
 //
+// IMPORTANT WORKFLOW RULE:
+//
+// Journey Demand creation happens before this editor is reached.
+//
+//     Create Journey Demand
+//             ↓
+//     establish journeyDemandPublicId
+//             ↓
+//     Edit Journey Demand
+//             ↓
+//     configure corridor / schedule / capacity / pricing / etc.
+//             ↓
+//     Publish
+//
+// This component therefore never creates a Journey Demand aggregate.
+//
 // -----------------------------------------------------------------------------
+
+'use client';
+
+import type { ChangeEvent } from 'react';
 
 import type { JourneyDemandCorridor } from '@/features/journey-demand/models';
 import { cn } from '@/foundation';
@@ -52,6 +75,53 @@ export function JourneyDemandCorridorEditor({
 }: JourneyDemandCorridorEditorProps) {
   const isDisabled = disabled || isSaving;
 
+  const updateCorridor = (
+    changes: Partial<JourneyDemandCorridor>,
+  ): void => {
+    onChange?.({
+      ...corridor,
+      ...changes,
+    });
+  };
+
+  const handleOriginNameChange = (
+    event: ChangeEvent<HTMLInputElement>,
+  ): void => {
+    updateCorridor({
+      originName: event.target.value,
+    });
+  };
+
+  const handleDestinationNameChange = (
+    event: ChangeEvent<HTMLInputElement>,
+  ): void => {
+    updateCorridor({
+      destinationName: event.target.value,
+    });
+  };
+
+  const handleWaypointChange = (
+    updatedWaypoint: JourneyDemandCorridor['waypoints'][number],
+  ): void => {
+    updateCorridor({
+      waypoints: corridor.waypoints.map((currentWaypoint) =>
+        currentWaypoint.publicId === updatedWaypoint.publicId
+          ? updatedWaypoint
+          : currentWaypoint,
+      ),
+    });
+  };
+
+  const handleWaypointRemove = (
+    waypointPublicId: string,
+  ): void => {
+    updateCorridor({
+      waypoints: corridor.waypoints.filter(
+        (waypoint) => waypoint.publicId !== waypointPublicId,
+      ),
+    });
+  };
+
   return (
     <section
       className={cn(
@@ -61,6 +131,10 @@ export function JourneyDemandCorridorEditor({
       )}
       aria-labelledby="journey-demand-corridor-editor-heading"
     >
+      {/* ---------------------------------------------------------------------
+          Header
+      --------------------------------------------------------------------- */}
+
       <div className="min-w-0">
         <h2
           id="journey-demand-corridor-editor-heading"
@@ -70,52 +144,34 @@ export function JourneyDemandCorridorEditor({
         </h2>
 
         <p className="mt-1 text-sm text-foreground-muted">
-          Update where the journey demand starts, ends, and stops along
+          Update where the Journey Demand starts, ends, and stops along
           the way.
         </p>
       </div>
 
       {/* ---------------------------------------------------------------------
           Origin / destination
-          --------------------------------------------------------------------- */}
+      --------------------------------------------------------------------- */}
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+      <div className="mt-5 grid min-w-0 gap-4 sm:grid-cols-2">
         <LocationField
           label="From"
           value={corridor.originName}
           disabled={isDisabled}
-          onChange={(value) => {
-            if (!onChange) {
-              return;
-            }
-
-            onChange({
-              ...corridor,
-              originName: value,
-            });
-          }}
+          onChange={handleOriginNameChange}
         />
 
         <LocationField
           label="To"
           value={corridor.destinationName}
           disabled={isDisabled}
-          onChange={(value) => {
-            if (!onChange) {
-              return;
-            }
-
-            onChange({
-              ...corridor,
-              destinationName: value,
-            });
-          }}
+          onChange={handleDestinationNameChange}
         />
       </div>
 
       {/* ---------------------------------------------------------------------
           Waypoints
-          --------------------------------------------------------------------- */}
+      --------------------------------------------------------------------- */}
 
       {corridor.waypoints.length > 0 ? (
         <div className="mt-6 border-t border-[var(--border-subtle)] pt-5">
@@ -142,19 +198,9 @@ export function JourneyDemandCorridorEditor({
                 key={waypoint.publicId}
                 waypoint={waypoint}
                 disabled={isDisabled}
-                onChange={(updatedWaypoint) => {
-                  if (!onChange) {
-                    return;
-                  }
-
-                  onChange({
-                    ...corridor,
-                    waypoints: corridor.waypoints.map((currentWaypoint) =>
-                      currentWaypoint.publicId === updatedWaypoint.publicId
-                        ? updatedWaypoint
-                        : currentWaypoint,
-                    ),
-                  });
+                onChange={handleWaypointChange}
+                onRemove={() => {
+                  handleWaypointRemove(waypoint.publicId);
                 }}
               />
             ))}
@@ -179,9 +225,18 @@ export function JourneyDemandCorridorEditor({
             disabled={isDisabled}
             onClick={onSave}
             className={cn(
-              'inline-flex min-h-10 items-center justify-center rounded-[var(--radius-md)]',
-              'bg-[var(--brand)] px-4 text-sm font-medium text-[var(--brand-foreground)]',
-              'transition-colors hover:bg-[var(--brand-hover)]',
+              'inline-flex min-h-10 items-center justify-center',
+              'rounded-[var(--radius-md)]',
+              'bg-[var(--brand)]',
+              'px-4 text-sm font-medium',
+              'text-[var(--brand-foreground)]',
+              'transition-colors',
+              'hover:bg-[var(--brand-hover)]',
+              'focus-visible:outline-none',
+              'focus-visible:ring-2',
+              'focus-visible:ring-[var(--brand)]',
+              'focus-visible:ring-offset-2',
+              'disabled:pointer-events-none',
               'disabled:opacity-50',
             )}
           >
@@ -201,7 +256,9 @@ interface LocationFieldProps {
   readonly label: string;
   readonly value: string;
   readonly disabled: boolean;
-  readonly onChange: (value: string) => void;
+  readonly onChange: (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => void;
 }
 
 function LocationField({
@@ -220,16 +277,20 @@ function LocationField({
         type="text"
         value={value}
         disabled={disabled}
-        onChange={(event) => {
-          onChange(event.target.value);
-        }}
+        onChange={onChange}
         className={cn(
-          'mt-2 block w-full min-h-10 rounded-[var(--radius-md)]',
-          'border border-[var(--border)] bg-[var(--surface)]',
+          'mt-2 block min-h-10 w-full rounded-[var(--radius-md)]',
+          'border border-[var(--border)]',
+          'bg-[var(--surface)]',
           'px-3 text-sm text-foreground',
           'placeholder:text-foreground-subtle',
-          'focus:border-[var(--brand)] focus:outline-none',
-          'disabled:cursor-not-allowed disabled:bg-[var(--background-subtle)] disabled:text-foreground-muted',
+          'outline-none transition-colors',
+          'focus:border-[var(--brand)]',
+          'focus:outline-none',
+          'focus:ring-2 focus:ring-[var(--brand-soft)]',
+          'disabled:cursor-not-allowed',
+          'disabled:bg-[var(--background-subtle)]',
+          'disabled:text-foreground-muted',
         )}
       />
     </label>

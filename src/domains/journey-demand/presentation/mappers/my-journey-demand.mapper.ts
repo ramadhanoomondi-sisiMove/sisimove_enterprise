@@ -30,6 +30,11 @@
 // - does not fetch marketplace data;
 // - does not determine ownership.
 //
+// Lifecycle note:
+//
+// Journey Demand uses OPEN as its publicly discoverable/requestable state.
+// There is no separate PUBLISHED lifecycle state in this projection.
+//
 // -----------------------------------------------------------------------------
 
 import type { JourneyDemandAggregate } from '../../domain/aggregates/journey-demand.aggregate';
@@ -211,9 +216,13 @@ export interface MyJourneyDemandResponse {
   // Lifecycle
   // ---------------------------------------------------------------------------
 
+  /**
+   * Current Journey Demand lifecycle state.
+   *
+   * OPEN is the discoverable/requestable marketplace state.
+   */
   readonly status: string;
 
-  readonly publishedAt: string | undefined;
   readonly matchedAt: string | undefined;
   readonly convertedAt: string | undefined;
   readonly fulfilledAt: string | undefined;
@@ -250,7 +259,6 @@ export interface MyJourneyDemandResponse {
   readonly isFulfilled: boolean;
   readonly isCancelled: boolean;
   readonly isExpired: boolean;
-  readonly isPublished: boolean;
   readonly isTerminal: boolean;
   readonly isActive: boolean;
 
@@ -336,7 +344,6 @@ export class MyJourneyDemandMapper {
 
       status: MyJourneyDemandMapper.value(entity.status),
 
-      publishedAt: MyJourneyDemandMapper.optionalDate(entity.publishedAt),
       matchedAt: MyJourneyDemandMapper.optionalDate(entity.matchedAt),
       convertedAt: MyJourneyDemandMapper.optionalDate(entity.convertedAt),
       fulfilledAt: MyJourneyDemandMapper.optionalDate(entity.fulfilledAt),
@@ -393,7 +400,6 @@ export class MyJourneyDemandMapper {
       isFulfilled: entity.isFulfilled(),
       isCancelled: entity.isCancelled(),
       isExpired: entity.isExpired(),
-      isPublished: entity.isPublished(),
       isTerminal: entity.isTerminal(),
       isActive: entity.isActive(),
 
@@ -402,10 +408,9 @@ export class MyJourneyDemandMapper {
       hasSchedule: entity.hasSchedule(),
       hasCapacity: entity.hasCapacity(),
       hasPricing: entity.hasPricing(),
-      hasParticipants: entity.hasParticipants(),
+      hasParticipants: entity.participantCount() > 0,
 
       participantCount: entity.participantCount(),
-
       // -----------------------------------------------------------------------
       // Audit
       // -----------------------------------------------------------------------

@@ -4,8 +4,18 @@
 //
 // Frontend representation of JourneyDemandPricingResponse.
 //
-// Pricing interpretation and constraints are determined by the backend.
-// The frontend consumes the supplied values and convenience flags.
+// Pricing rules and validation are owned by the backend.
+// The frontend consumes the backend-provided maximum acceptable price.
+//
+// IMPORTANT:
+//
+// The current Journey Demand pricing contract supports only:
+//
+//     maximumPricePerSeat
+//
+// Preferred pricing is intentionally NOT represented here because the backend
+// does not accept it as part of the current Journey Demand pricing contract.
+//
 // -----------------------------------------------------------------------------
 
 /**
@@ -19,13 +29,10 @@ export interface JourneyDemandPricing {
 
   /**
    * Maximum acceptable price per seat.
+   *
+   * Undefined means that no maximum price was supplied.
    */
   readonly maximumPricePerSeat: number | undefined;
-
-  /**
-   * Preferred price per seat, when supplied.
-   */
-  readonly preferredPricePerSeat: number | undefined;
 
   /**
    * Currency supplied by the backend.
@@ -34,20 +41,36 @@ export interface JourneyDemandPricing {
 
   /**
    * Backend-provided pricing state.
+   *
+   * `hasMaximumPrice` is true when a maximum price has been supplied.
    */
   readonly hasMaximumPrice: boolean;
-  readonly hasPreferredPrice: boolean;
-  readonly hasPriceConstraint: boolean;
-  readonly hasMaximumPriceConstraint: boolean;
-  readonly hasPreferredPriceConstraint: boolean;
 
   /**
-   * Backend-provided pricing interpretation flags.
+   * Whether the Journey Demand currently has a price constraint.
+   *
+   * With the current backend contract, this is equivalent to the presence
+   * of a maximum price constraint.
+   */
+  readonly hasPriceConstraint: boolean;
+
+  /**
+   * Whether the Journey Demand has a maximum price constraint.
+   */
+  readonly hasMaximumPriceConstraint: boolean;
+
+  /**
+   * Whether the pricing is unconstrained.
    */
   readonly isUnconstrained: boolean;
-  readonly isPreferredPriceOnly: boolean;
+
+  /**
+   * Whether the pricing is maximum-price-only.
+   *
+   * With the current backend contract, this represents the supported
+   * constrained pricing mode.
+   */
   readonly isMaximumPriceOnly: boolean;
-  readonly hasPreferredAndMaximumPrice: boolean;
 
   /**
    * Backend timestamps.

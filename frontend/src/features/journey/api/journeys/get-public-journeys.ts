@@ -13,6 +13,8 @@
 //   from?=...
 //   to?=...
 //   date?=...
+//   minPrice?=...
+//   maxPrice?=...
 //
 // The endpoint returns the public Journey projection, including:
 //
@@ -54,6 +56,28 @@
 //
 // The backend public query is the source of truth for the public Journey
 // projection and marketplace filtering.
+//
+// -----------------------------------------------------------------------------
+//
+// PRICE FILTER CONTRACT
+// ---------------------
+//
+// Journey marketplace prices are expressed as per-seat prices in KES.
+//
+//   minPrice → minimum acceptable Journey price
+//   maxPrice → maximum acceptable Journey price
+//
+// Empty price boundaries are omitted from the HTTP query.
+//
+// Examples:
+//
+//   minPrice=500
+//   maxPrice=1500
+//   minPrice=500&maxPrice=1500
+//
+// Invalid ranges (`minPrice > maxPrice`) are prevented by the marketplace
+// filter component before this adapter is called.
+//
 // -----------------------------------------------------------------------------
 
 import {
@@ -63,9 +87,9 @@ import {
 
 import type { PublicJourney } from "../../models/public-journey";
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Query
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export interface GetPublicJourneysQuery {
   /**
@@ -104,19 +128,57 @@ export interface GetPublicJourneysQuery {
    * Passed to the backend `date` query parameter.
    */
   readonly date?: string;
+
+  /**
+   * Optional minimum acceptable Journey price in KES.
+   *
+   * Passed to the backend `minPrice` query parameter.
+   *
+   * `undefined` means no lower price boundary.
+   */
+  readonly minPrice?: number;
+
+  /**
+   * Optional maximum acceptable Journey price in KES.
+   *
+   * Passed to the backend `maxPrice` query parameter.
+   *
+   * `undefined` means no upper price boundary.
+   */
+  readonly maxPrice?: number;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Query Parameters
-// -----------------------------------------------------------------------------
+// =============================================================================
+//
+// The foundation HTTP client expects query parameters to be represented as:
+//
+//   Record<string, string | number | boolean | null | undefined>
+//
+// Keep this as a Record rather than a narrower object interface so the
+// generated query object is structurally compatible with `apiClient.get()`.
+//
+// =============================================================================
 
+type PublicJourneysQueryParameters = Record<
+  string,
+  string | number | boolean | null | undefined
+>;
+
+/**
+ * Builds the committed marketplace query parameters.
+ *
+ * Empty text/date values are omitted.
+ *
+ * Price boundaries are omitted when they are undefined.
+ *
+ * The adapter does not perform marketplace filtering itself. It only converts
+ * the committed query contract into HTTP query parameters.
+ */
 function buildQuery(
   query: GetPublicJourneysQuery,
-): {
-  readonly from?: string;
-  readonly to?: string;
-  readonly date?: string;
-} {
+): PublicJourneysQueryParameters {
   const from = query.from?.trim();
   const to = query.to?.trim();
   const date = query.date?.trim();
@@ -125,12 +187,18 @@ function buildQuery(
     ...(from ? { from } : {}),
     ...(to ? { to } : {}),
     ...(date ? { date } : {}),
+    ...(query.minPrice !== undefined
+      ? { minPrice: query.minPrice }
+      : {}),
+    ...(query.maxPrice !== undefined
+      ? { maxPrice: query.maxPrice }
+      : {}),
   };
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // API
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 /**
  * Fetch publicly discoverable Journeys.
@@ -143,9 +211,11 @@ function buildQuery(
  *
  * Search behavior is owned by the backend repository:
  *
- *   from → corridor.originName contains, case-insensitive
- *   to   → corridor.destinationName contains, case-insensitive
- *   date → departure calendar date
+ *   from     → corridor.originName contains, case-insensitive
+ *   to       → corridor.destinationName contains, case-insensitive
+ *   date     → departure calendar date
+ *   minPrice → Journey per-seat price >= minPrice
+ *   maxPrice → Journey per-seat price <= maxPrice
  *
  * The adapter only transports the committed marketplace filters.
  */

@@ -3,6 +3,14 @@
 // -----------------------------------------------------------------------------
 // Journey Demand — Update Pricing Command
 // -----------------------------------------------------------------------------
+//
+// Carries the primitive values required to update the pricing component of a
+// Journey Demand.
+//
+// The command intentionally contains primitives at the application boundary.
+// Conversion into domain value objects belongs to the command handler.
+//
+// -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
 // Foundation
@@ -10,9 +18,9 @@
 
 import { Command } from '../../../../foundation/kernel/application/command';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Command
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export class UpdateJourneyDemandPricingCommand extends Command {
   constructor(

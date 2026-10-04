@@ -2,24 +2,52 @@
 // sisiMove — My Journey Demands
 // -----------------------------------------------------------------------------
 //
-// Authenticated Journey Demand collection.
+// Authenticated Journey Demand collection coordinator.
 //
 // Responsibilities:
 // - retrieve the authenticated user's Journey Demands through the feature hook;
 // - render loading, error, empty, or populated states;
-// - navigate to the owner Journey Demand detail;
-// - navigate to Journey Demand creation.
+// - navigate to the owner Journey Demand management detail;
+// - navigate to Journey Demand creation;
+// - pass backend-provided MyJourneyDemand projections to presentation.
 //
 // This component does NOT:
 // - resolve ownership;
 // - perform authorization;
 // - call the API directly;
 // - recreate Journey Demand domain logic;
-// - transform MyJourneyDemand into PublicJourneyDemand.
+// - transform MyJourneyDemand into PublicJourneyDemand;
+// - sort or filter the collection;
+// - derive lifecycle/business state.
 //
 // The hook owns the request boundary.
-// Child components own their presentation.
+// This coordinator owns collection-level orchestration.
+// Child components own presentation.
 // Routing owns URL construction.
+//
+// Data flow:
+//
+//   useMyJourneyDemands()
+//          ↓
+//   MyJourneyDemand[]
+//          ↓
+//   MyJourneyDemands
+//          ↓
+//   MyJourneyDemandsList
+//          ↓
+//   MyJourneyDemandCard
+//
+// Owner navigation:
+//
+//   Manage Demand
+//          ↓
+//   /my-demands/[publicId]
+//
+// Creation navigation:
+//
+//   Create travel need
+//          ↓
+//   /my-demands/new
 // -----------------------------------------------------------------------------
 
 'use client';
@@ -32,8 +60,8 @@ import { useMyJourneyDemands } from '@/features/journey-demand/hooks';
 
 import { MyJourneyDemandEmptyState } from './my-journey-demand-empty-state';
 import { MyJourneyDemandErrorState } from './my-journey-demand-error-state';
-import { MyJourneyDemandsList } from './my-journey-demands-list';
 import { MyJourneyDemandLoading } from '../manage/my-journey-demand-loading';
+import { MyJourneyDemandsList } from './my-journey-demands-list';
 
 // -----------------------------------------------------------------------------
 // Props
@@ -59,7 +87,7 @@ export function MyJourneyDemands({
   /**
    * The hook exposes the collection as `demands`.
    *
-   * This intentionally follows the hook's own result contract rather than
+   * This intentionally follows the hook's result contract rather than
    * introducing a generic `data` alias at the component boundary.
    */
   const {
@@ -73,9 +101,13 @@ export function MyJourneyDemands({
   // Navigation
   // ---------------------------------------------------------------------------
 
-  const handleView = (demand: { readonly publicId: string }): void => {
+  const handleManage = (demand: {
+    readonly publicId: string;
+  }): void => {
     router.push(
-      AUTHENTICATED_ROUTES.MY_DEMAND(demand.publicId),
+      AUTHENTICATED_ROUTES.MY_DEMAND(
+        demand.publicId,
+      ),
     );
   };
 
@@ -101,7 +133,7 @@ export function MyJourneyDemands({
   // Error
   // ---------------------------------------------------------------------------
 
-  if (error) {
+  if (error !== null) {
     return (
       <div className={cn('min-w-0', className)}>
         <MyJourneyDemandErrorState
@@ -137,9 +169,8 @@ export function MyJourneyDemands({
     <div className={cn('min-w-0', className)}>
       <MyJourneyDemandsList
         demands={demands}
-        onView={handleView}
+        onManage={handleManage}
       />
     </div>
   );
 }
-

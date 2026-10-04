@@ -1,4 +1,7 @@
 // -----------------------------------------------------------------------------
+// Path: src/features/journey-demand/hooks/use-journey-demands.ts
+// -----------------------------------------------------------------------------
+//
 // sisiMove — Public Journey Demands Hook
 // -----------------------------------------------------------------------------
 //
@@ -13,6 +16,13 @@
 //
 // Search and filtering are refinements of that marketplace state, not a
 // prerequisite for discovery.
+//
+// Price filtering:
+//
+// - `minPrice` and `maxPrice` are optional per-seat KES marketplace filters;
+// - the backend applies them against `maximumPricePerSeat`;
+// - both boundaries are inclusive;
+// - this hook does not perform client-side filtering.
 //
 // The hook also exposes `refetch` so a parent component can explicitly retry
 // the current marketplace request after an error.
@@ -86,13 +96,18 @@ export function useJourneyDemands(
   // Extract primitive values so the effect does not re-run merely because a
   // caller creates a new query object with the same values.
   //
-  // Pagination values are included because changing either value represents a
-  // new marketplace collection request.
+  // Price values are included because changing either value represents a new
+  // marketplace collection request.
+  //
+  // Pagination values are also included because changing either value
+  // represents a new marketplace collection request.
   // ---------------------------------------------------------------------------
 
   const from = query?.from;
   const to = query?.to;
   const date = query?.date;
+  const minPrice = query?.minPrice;
+  const maxPrice = query?.maxPrice;
   const limit = query?.limit;
   const offset = query?.offset;
 
@@ -122,6 +137,8 @@ export function useJourneyDemands(
           ...(from !== undefined ? { from } : {}),
           ...(to !== undefined ? { to } : {}),
           ...(date !== undefined ? { date } : {}),
+          ...(minPrice !== undefined ? { minPrice } : {}),
+          ...(maxPrice !== undefined ? { maxPrice } : {}),
           ...(limit !== undefined ? { limit } : {}),
           ...(offset !== undefined ? { offset } : {}),
         });
@@ -181,7 +198,16 @@ export function useJourneyDemands(
     return () => {
       cancelled = true;
     };
-  }, [from, to, date, limit, offset, refetchVersion]);
+  }, [
+    from,
+    to,
+    date,
+    minPrice,
+    maxPrice,
+    limit,
+    offset,
+    refetchVersion,
+  ]);
 
   // ---------------------------------------------------------------------------
   // Public Hook State

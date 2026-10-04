@@ -1,47 +1,54 @@
 // -----------------------------------------------------------------------------
-// sisiMove — My Journey Demand Detail Page
+// app/(authenticated)/my-demands/[publicId]/page.tsx
 // -----------------------------------------------------------------------------
 //
-// Authenticated Journey Demand detail route.
-//
-// Responsibilities:
-// - receive the dynamic route parameter;
-// - pass the Journey Demand public ID to the feature route/container.
-//
-// This page deliberately does NOT:
-// - fetch the Journey Demand;
-// - call the Journey Demand API directly;
-// - determine ownership;
-// - perform authorization;
-// - compare requesterPublicId values;
-// - transform MyJourneyDemand;
-// - contain Journey Demand business logic.
-//
-// Data loading belongs to:
-//     MyJourneyDemandDetailRoute
+// sisiMove — Authenticated My Journey Demand Detail Route
 //
 // Route:
+//
 //     /my-demands/[publicId]
+//          ↓
+//     MyJourneyDemandDetailContainer
+//
+// Architecture:
+// - Extracts the dynamic URL parameter.
+// - Delegates the authenticated detail flow to the feature container.
+//
+// This route deliberately does not:
+// - fetch the Journey Demand;
+// - call mutation APIs;
+// - determine lifecycle capabilities;
+// - perform ownership checks;
+// - transform the Journey Demand read model;
+// - compose detail presentation.
+//
+// The feature container owns loading, error handling, owner-boundary
+// presentation, and management composition.
 //
 // -----------------------------------------------------------------------------
 
-import { MyJourneyDemandDetailRoute } from '@/components/journey-demand/detail/journey-demand-detail-route';
+import { MyJourneyDemandDetailContainer } from '@/features/journey-demand/containers';
 
-interface MyJourneyDemandPageProps {
+// =============================================================================
+// Route Props
+// =============================================================================
+
+interface MyJourneyDemandDetailPageProps {
   readonly params: Promise<{
     publicId: string;
   }>;
 }
 
-export default async function MyJourneyDemandPage({
+// =============================================================================
+// Page
+// =============================================================================
+
+export default async function MyJourneyDemandDetailPage({
   params,
-}: MyJourneyDemandPageProps) {
+}: MyJourneyDemandDetailPageProps) {
   const { publicId } = await params;
 
   return (
-    <MyJourneyDemandDetailRoute
-      journeyDemandPublicId={publicId}
-    />
+    <MyJourneyDemandDetailContainer publicId={publicId} />
   );
 }
-

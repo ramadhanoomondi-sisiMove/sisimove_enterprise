@@ -3,13 +3,30 @@
 // -----------------------------------------------------------------------------
 // sisiMove — Fulfill Journey Demand Mutation Hook
 // -----------------------------------------------------------------------------
+//
+// Owns client-side mutation state for fulfilling a Journey Demand.
+//
+// Architecture:
+// - delegates the HTTP operation to the API module;
+// - owns loading state;
+// - owns normalized mutation error state;
+// - does not perform authorization checks;
+// - does not inspect Journey Demand lifecycle state;
+// - does not determine whether fulfillment is allowed;
+// - does not update or recreate Journey Demand state locally.
+//
+// -----------------------------------------------------------------------------
 
 import { useCallback, useState } from 'react';
 
-import { fulfillJourneyDemand } from '../../api/journey-demands/fulfill-journey-demand.api';
+import {
+  fulfillJourneyDemand,
+  type FulfillJourneyDemandRequest,
+} from '../../api/journey-demands/fulfill-journey-demand.api';
 
-type FulfillJourneyDemandRequest =
-  Parameters<typeof fulfillJourneyDemand>[1];
+// =============================================================================
+// Result
+// =============================================================================
 
 export interface UseFulfillJourneyDemandResult {
   readonly isLoading: boolean;
@@ -20,6 +37,10 @@ export interface UseFulfillJourneyDemandResult {
     request: FulfillJourneyDemandRequest,
   ) => Promise<void>;
 }
+
+// =============================================================================
+// Hook
+// =============================================================================
 
 export function useFulfillJourneyDemand(): UseFulfillJourneyDemandResult {
   const [isLoading, setIsLoading] = useState(false);

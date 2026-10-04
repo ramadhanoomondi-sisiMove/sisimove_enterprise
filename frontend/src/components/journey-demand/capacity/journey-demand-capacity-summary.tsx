@@ -66,10 +66,7 @@ export function JourneyDemandCapacitySummary({
 
       <dl
         className={cn(
-          'mt-4 grid min-w-0 gap-3',
-          isCompact
-            ? 'grid-cols-1 sm:grid-cols-2'
-            : 'grid-cols-1 sm:grid-cols-2',
+          'mt-4 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2',
         )}
       >
         <CapacityValue
@@ -134,4 +131,3 @@ function CapacityValue({
     </div>
   );
 }
-

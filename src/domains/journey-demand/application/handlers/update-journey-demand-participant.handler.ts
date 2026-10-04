@@ -3,6 +3,30 @@
 // -----------------------------------------------------------------------------
 // Journey Demand — Update Participant Handler
 // -----------------------------------------------------------------------------
+//
+// Responsibilities
+// ----------------
+// 1. Load the Journey Demand aggregate.
+// 2. Locate the existing participant inside the aggregate.
+// 3. Convert the requested seat count into JourneyDemandSeats.
+// 4. Let the participant entity enforce participant-level lifecycle rules.
+// 5. Let the aggregate record the participant update.
+// 6. Persist the complete aggregate.
+//
+// Architectural boundary
+// ----------------------
+// - This handler does NOT create participants.
+// - Participant creation belongs to the Add Participant command.
+// - The participant entity owns its own mutable-state rules.
+// - The aggregate owns participant coordination and domain event recording.
+// - The repository persists the complete aggregate.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS Dependency Injection
+// -----------------------------------------------------------------------------
+
+import { Inject } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
@@ -15,6 +39,12 @@ import type { CommandHandler } from '../../../../foundation/kernel/application/c
 // -----------------------------------------------------------------------------
 
 import type { UpdateJourneyDemandParticipantCommand } from '../commands/update-journey-demand-participant.command';
+
+// -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_DEMAND_TOKENS } from '../journey-demand.tokens';
 
 // -----------------------------------------------------------------------------
 // Domain Exceptions
@@ -43,11 +73,18 @@ import {
 // -----------------------------------------------------------------------------
 
 export class UpdateJourneyDemandParticipantHandler implements CommandHandler<UpdateJourneyDemandParticipantCommand> {
-  constructor(private readonly repository: JourneyDemandRepository) {}
+  // ===========================================================================
+  // Constructor
+  // ===========================================================================
 
-  // ---------------------------------------------------------------------------
+  constructor(
+    @Inject(JOURNEY_DEMAND_TOKENS.REPOSITORY)
+    private readonly repository: JourneyDemandRepository,
+  ) {}
+
+  // ===========================================================================
   // Execute
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   async execute(command: UpdateJourneyDemandParticipantCommand): Promise<void> {
     // -------------------------------------------------------------------------
@@ -79,23 +116,47 @@ export class UpdateJourneyDemandParticipantHandler implements CommandHandler<Upd
     );
 
     // -------------------------------------------------------------------------
-    // Locate Participant Inside Aggregate
+    // Locate Existing Participant
+    // -------------------------------------------------------------------------
+    //
+    // Update is intentionally different from participant creation.
+    //
+    // If the participant does not exist, this command is invalid. We do not
+    // create one here because creation requires immutable member identity and
+    // belongs to the dedicated Add Participant command.
     // -------------------------------------------------------------------------
 
     const participant = aggregate.getParticipantByPublicId(participantPublicId);
 
     if (participant === undefined) {
-      return;
+      throw new Error(
+        `Journey Demand participant "${command.participantPublicId}" was not found.`,
+      );
     }
 
     // -------------------------------------------------------------------------
-    // Update Seats
+    // Convert Seats Primitive to Domain Value Object
     // -------------------------------------------------------------------------
 
-    participant.setSeats(new JourneyDemandSeats(command.seats));
+    const seats = new JourneyDemandSeats(command.seats);
+
+    // -------------------------------------------------------------------------
+    // Update Participant
+    // -------------------------------------------------------------------------
+    //
+    // JourneyDemandParticipantEntity.setSeats(...) owns participant-level
+    // lifecycle validation, including preventing inactive participants from
+    // changing their seats.
+    // -------------------------------------------------------------------------
+
+    participant.setSeats(seats);
 
     // -------------------------------------------------------------------------
     // Record Participant Update
+    // -------------------------------------------------------------------------
+    //
+    // The aggregate coordinates the participant change and records the
+    // corresponding domain event/version information.
     // -------------------------------------------------------------------------
 
     aggregate.recordParticipantUpdated(
@@ -105,7 +166,7 @@ export class UpdateJourneyDemandParticipantHandler implements CommandHandler<Upd
     );
 
     // -------------------------------------------------------------------------
-    // Persist Aggregate
+    // Persist Complete Aggregate
     // -------------------------------------------------------------------------
 
     await this.repository.save(aggregate);

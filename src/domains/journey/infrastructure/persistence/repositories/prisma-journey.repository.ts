@@ -37,7 +37,10 @@ import type { JourneyAssetEntity } from '../../../domain/entities/journey-asset.
 // Repository
 // -----------------------------------------------------------------------------
 
-import type { JourneyRepository } from '../../../domain/repositories/journey.repository';
+import type {
+  JourneyRepository,
+  PublicJourneyDiscoveryFilters,
+} from '../../../domain/repositories/journey.repository';
 
 // -----------------------------------------------------------------------------
 // Value Objects
@@ -76,9 +79,9 @@ import {
   type JourneyWithComponents,
 } from '../mappers/journey-prisma.mapper';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Repository
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 @Injectable()
 export class PrismaJourneyRepository implements JourneyRepository {
@@ -129,6 +132,29 @@ export class PrismaJourneyRepository implements JourneyRepository {
   private toPrismaJourneyAssetType(value: string): $Enums.JourneyAssetType {
     return value as $Enums.JourneyAssetType;
   }
+
+  // ===========================================================================
+  // Public Marketplace Statuses
+  // ===========================================================================
+  //
+  // Public discovery is intentionally broader than PUBLISHED.
+  //
+  // A Journey remains marketplace-visible while it is in any of these states,
+  // provided its scheduled departure time has not elapsed.
+  //
+  // EXPIRED is NOT required for removing a Journey from public discovery.
+  // A Journey may remain persisted as PUBLISHED after departure and still be
+  // hidden by the repository's departureAt > now predicate.
+  //
+  // ===========================================================================
+
+  private readonly publicMarketplaceStatuses: $Enums.JourneyStatus[] = [
+    this.toPrismaJourneyStatus('PUBLISHED'),
+    this.toPrismaJourneyStatus('FULL'),
+    this.toPrismaJourneyStatus('BOARDING'),
+    this.toPrismaJourneyStatus('IN_PROGRESS'),
+    this.toPrismaJourneyStatus('COMPLETION_PENDING'),
+  ];
 
   // ===========================================================================
   // Include Graph
@@ -200,7 +226,6 @@ export class PrismaJourneyRepository implements JourneyRepository {
           createdAt: persistence.journey.createdAt,
           updatedAt: persistence.journey.updatedAt,
 
-          // Vehicle FK is populated after JourneyVehicle exists.
           vehicleId: null,
         },
 
@@ -221,6 +246,10 @@ export class PrismaJourneyRepository implements JourneyRepository {
           updatedAt: persistence.journey.updatedAt,
         },
       });
+
+      // -----------------------------------------------------------------------
+      // Corridor
+      // -----------------------------------------------------------------------
 
       if (persistence.corridor !== undefined) {
         const corridor = persistence.corridor;
@@ -373,10 +402,6 @@ export class PrismaJourneyRepository implements JourneyRepository {
           },
         });
 
-        // ---------------------------------------------------------------------
-        // Only after the vehicle exists can the Journey FK be populated.
-        // ---------------------------------------------------------------------
-
         await tx.journey.update({
           where: {
             id: journeyId,
@@ -429,16 +454,6 @@ export class PrismaJourneyRepository implements JourneyRepository {
 
       // -----------------------------------------------------------------------
       // Pricing
-      //
-      // JourneyPricing is a Journey-owned 1:1 component.
-      //
-      // CREATE:
-      //   No pricing row exists for this Journey.
-      //
-      // UPDATE:
-      //   Pricing already exists for this Journey.
-      //
-      // journeyId is therefore the persistence identity for this component.
       // -----------------------------------------------------------------------
 
       if (persistence.pricing !== undefined) {
@@ -532,9 +547,6 @@ export class PrismaJourneyRepository implements JourneyRepository {
 
       // -----------------------------------------------------------------------
       // Assets
-      //
-      // Assets are a 1:N collection, so the aggregate snapshot replaces the
-      // persisted collection.
       // -----------------------------------------------------------------------
 
       await tx.journeyAsset.deleteMany({
@@ -677,14 +689,39 @@ export class PrismaJourneyRepository implements JourneyRepository {
     return record === null ? null : JourneyPrismaMapper.toDomain(record);
   }
 
+  /**
+   * Find only a currently publicly discoverable Journey.
+   *
+   * Public visibility requires:
+   *
+   *   1. marketplace-visible lifecycle status;
+   *   2. schedule.departureAt > now.
+   *
+   * The lifecycle status does not need to be EXPIRED for the Journey to
+   * disappear from public discovery.
+   */
   public async findPublicJourneyByPublicId(
     publicId: JourneyPublicId,
   ): Promise<JourneyEntity | null> {
+    const now = new Date();
+
     const record = await this.prisma.journey.findFirst({
       where: {
         publicId: publicId.value,
-        status: this.toPrismaJourneyStatus('PUBLISHED'),
+
+        status: {
+          in: this.publicMarketplaceStatuses,
+        },
+
+        schedule: {
+          is: {
+            departureAt: {
+              gt: now,
+            },
+          },
+        },
       },
+
       include: this.include,
     });
 
@@ -1406,11 +1443,45 @@ export class PrismaJourneyRepository implements JourneyRepository {
   // Public Journey Discovery
   // ===========================================================================
 
-  public async findPublicJourneys(filters: {
-    readonly from?: string;
-    readonly to?: string;
-    readonly date?: string;
-  }): Promise<JourneyEntity[]> {
+  /**
+   * Find Journeys currently eligible for public marketplace discovery.
+   *
+   * Public visibility requires BOTH:
+   *
+   *   1. marketplace-visible lifecycle status;
+   *   2. schedule.departureAt > now.
+   *
+   * Optional discovery filters:
+   *
+   *   - from
+   *   - to
+   *   - date
+   *   - minPrice
+   *   - maxPrice
+   *
+   * Price semantics:
+   *
+   *   JourneyPricing.amount is the offered passenger seat price.
+   *
+   *   minPrice:
+   *     amount >= minPrice
+   *
+   *   maxPrice:
+   *     amount <= maxPrice
+   *
+   * When both are supplied:
+   *
+   *     minPrice <= amount <= maxPrice
+   *
+   * Currency is persisted with the JourneyPricing record and is not changed
+   * by discovery filtering. The marketplace contract currently uses KES.
+   *
+   * A Journey does NOT need to be transitioned to EXPIRED in order to become
+   * hidden from public discovery.
+   */
+  public async findPublicJourneys(
+    filters: PublicJourneyDiscoveryFilters,
+  ): Promise<JourneyEntity[]> {
     const corridorFilter: Prisma.JourneyCorridorWhereInput = {};
 
     // -------------------------------------------------------------------------
@@ -1440,11 +1511,23 @@ export class PrismaJourneyRepository implements JourneyRepository {
     }
 
     // -------------------------------------------------------------------------
-    // Base public visibility filter
+    // Public visibility boundary
     // -------------------------------------------------------------------------
 
+    const now = new Date();
+
     const where: Prisma.JourneyWhereInput = {
-      status: this.toPrismaJourneyStatus('PUBLISHED'),
+      status: {
+        in: this.publicMarketplaceStatuses,
+      },
+
+      schedule: {
+        is: {
+          departureAt: {
+            gt: now,
+          },
+        },
+      },
     };
 
     // -------------------------------------------------------------------------
@@ -1474,12 +1557,46 @@ export class PrismaJourneyRepository implements JourneyRepository {
         where.schedule = {
           is: {
             departureAt: {
+              gt: now,
               gte: departureFrom,
               lt: departureTo,
             },
           },
         };
       }
+    }
+
+    // -------------------------------------------------------------------------
+    // Optional price-range filter
+    // -------------------------------------------------------------------------
+    //
+    // Pricing is a one-to-one Journey component, so the filter is expressed
+    // through the related JourneyPricing record.
+    //
+    // Inclusive boundaries:
+    //
+    //   minPrice -> amount >= minPrice
+    //   maxPrice -> amount <= maxPrice
+    //
+    // The repository does not invent a default price range.
+    // Omitted boundaries remain unrestricted.
+    //
+    // -------------------------------------------------------------------------
+
+    const minPrice = filters.minPrice;
+    const maxPrice = filters.maxPrice;
+
+    if (minPrice !== undefined || maxPrice !== undefined) {
+      const amountFilter = {
+        ...(minPrice !== undefined ? { gte: minPrice } : {}),
+        ...(maxPrice !== undefined ? { lte: maxPrice } : {}),
+      };
+
+      where.pricing = {
+        is: {
+          amount: amountFilter,
+        },
+      };
     }
 
     // -------------------------------------------------------------------------
@@ -1501,12 +1618,28 @@ export class PrismaJourneyRepository implements JourneyRepository {
     return records.map((record) => JourneyPrismaMapper.toDomain(record));
   }
 
+  /**
+   * Find PUBLISHED Journeys matching a route and departure-date window.
+   *
+   * Because this method can participate in public discovery, it also enforces
+   * departureAt > now.
+   *
+   * The Journey therefore has to satisfy all of:
+   *
+   *   - status = PUBLISHED;
+   *   - matching origin;
+   *   - matching destination;
+   *   - departureAt within the requested window;
+   *   - departureAt > now.
+   */
   public async findPublishedJourneysByRouteAndDate(
     origin: string,
     destination: string,
     departureFrom: Date,
     departureTo: Date,
   ): Promise<JourneyEntity[]> {
+    const now = new Date();
+
     const records = await this.prisma.journey.findMany({
       where: {
         status: this.toPrismaJourneyStatus('PUBLISHED'),
@@ -1528,6 +1661,7 @@ export class PrismaJourneyRepository implements JourneyRepository {
         schedule: {
           is: {
             departureAt: {
+              gt: now,
               gte: departureFrom,
               lt: departureTo,
             },
@@ -1571,10 +1705,6 @@ export class PrismaJourneyRepository implements JourneyRepository {
   //   - assets
   //
   // Rehydration must restore the complete aggregate graph.
-  //
-  // The explicit null/undefined checks below are intentional. `JourneyWithComponents`
-  // represents optional Prisma relations as potentially undefined, while Prisma
-  // represents missing optional one-to-one relations as null.
   //
   // ===========================================================================
 

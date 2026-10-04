@@ -13,7 +13,7 @@
 // - vehicle details are owned by the Journey context;
 // - assetPublicId is an opaque reference to the Asset bounded context;
 // - assetPublicId is NOT an image URL;
-// - asset is the resolved browser-facing Asset reference;
+// - asset is the resolved browser-facing PublicAsset representation;
 // - optional vehicle fields remain nullable;
 // - the frontend does not create or manage the underlying Asset through this
 //   model.
@@ -25,6 +25,15 @@
  *
  * This is supplied by the authenticated Journey read model after the
  * Journey application boundary resolves the Asset reference.
+ *
+ * The shape intentionally follows the browser-facing PublicAsset contract
+ * required for rendering:
+ *
+ *     publicId
+ *     url
+ *     alt
+ *
+ * It does not expose the authenticated Asset-management model.
  */
 export interface JourneyVehicleAsset {
   /**
@@ -36,6 +45,11 @@ export interface JourneyVehicleAsset {
    * Browser-facing Asset URL.
    */
   readonly url: string;
+
+  /**
+   * Optional accessible alternative text supplied by the Asset boundary.
+   */
+  readonly alt: string | null;
 }
 
 /**

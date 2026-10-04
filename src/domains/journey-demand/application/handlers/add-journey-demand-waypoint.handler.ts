@@ -1,6 +1,32 @@
 // -----------------------------------------------------------------------------
 // Journey Demand — Add Waypoint Handler
 // -----------------------------------------------------------------------------
+//
+// Application responsibility:
+//
+//     1. Load the Journey Demand aggregate.
+//     2. Convert primitive command values into domain value objects.
+//     3. Create the waypoint child entity.
+//     4. Attach the waypoint to the aggregate.
+//     5. Record the waypoint-added domain event.
+//     6. Persist the complete aggregate.
+//
+// Architectural rule:
+//
+// JourneyDemandWaypointEntity is a child entity of JourneyDemandAggregate.
+// It is therefore created by the application handler, attached through the
+// aggregate, and persisted through the aggregate repository.
+//
+// The handler does NOT implement corridor invariants itself. Those rules
+// belong to JourneyDemandAggregate.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS Dependency Injection
+// -----------------------------------------------------------------------------
+
+import { Inject } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
@@ -13,6 +39,12 @@ import type { CommandHandler } from '../../../../foundation/kernel/application/c
 // -----------------------------------------------------------------------------
 
 import type { AddJourneyDemandWaypointCommand } from '../commands/add-journey-demand-waypoint.command';
+
+// -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_DEMAND_TOKENS } from '../journey-demand.tokens';
 
 // -----------------------------------------------------------------------------
 // Domain Exceptions
@@ -48,37 +80,44 @@ import { JourneyDemandLocation } from '../../domain/value-objects/journey-demand
 
 import { JourneyDemandCoordinate } from '../../domain/value-objects/journey-demand-coordinate.vo';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Handler
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export class AddJourneyDemandWaypointHandler implements CommandHandler<AddJourneyDemandWaypointCommand> {
-  constructor(private readonly repository: JourneyDemandRepository) {}
+  // ===========================================================================
+  // Constructor
+  // ===========================================================================
+
+  constructor(
+    @Inject(JOURNEY_DEMAND_TOKENS.REPOSITORY)
+    private readonly repository: JourneyDemandRepository,
+  ) {}
 
   // ===========================================================================
   // Execute
   // ===========================================================================
 
   async execute(command: AddJourneyDemandWaypointCommand): Promise<void> {
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Journey Demand Identity
-    // -------------------------------------------------------------------------
+    // =========================================================================
     //
-    // The command carries the external/public identifier as a string.
-    // Convert it into the domain-specific public ID value object before
-    // interacting with the repository.
+    // Commands carry primitive values at the application boundary.
+    // Convert the Journey Demand public identifier into its domain value
+    // object before loading the aggregate.
     //
 
     const journeyDemandPublicId = new JourneyDemandPublicId(
       command.journeyDemandPublicId,
     );
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Load Aggregate
-    // -------------------------------------------------------------------------
+    // =========================================================================
     //
-    // The Journey Demand aggregate is the consistency boundary for waypoint
-    // operations.
+    // The Journey Demand aggregate is the consistency boundary for all
+    // corridor and waypoint operations.
     //
 
     const aggregate = await this.repository.findByPublicId(
@@ -89,14 +128,13 @@ export class AddJourneyDemandWaypointHandler implements CommandHandler<AddJourne
       throw new JourneyDemandNotFoundException(command.journeyDemandPublicId);
     }
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Waypoint Type
-    // -------------------------------------------------------------------------
+    // =========================================================================
     //
-    // JourneyDemandWaypointTypeValueObject is the authoritative source for
-    // waypoint semantics.
+    // The waypoint type is the authoritative source of waypoint semantics.
     //
-    // It determines whether the waypoint represents:
+    // It determines whether this waypoint is:
     //
     // - ORIGIN
     // - DESTINATION
@@ -104,41 +142,38 @@ export class AddJourneyDemandWaypointHandler implements CommandHandler<AddJourne
     // - DROPOFF
     // - WAYPOINT
     //
-    // Pickup/dropoff requirements are therefore NOT supplied independently
-    // by the command.
+    // Pickup/dropoff requirements are therefore derived from the type and are
+    // not supplied independently by the application command.
     //
 
     const type = new JourneyDemandWaypointTypeValueObject(command.type);
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Waypoint Sequence
-    // -------------------------------------------------------------------------
+    // =========================================================================
     //
-    // The value object owns sequence validation and semantics.
+    // Sequence validation remains inside the domain value object.
     //
 
     const sequence = new JourneyDemandSequence(command.sequence);
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Waypoint Name
-    // -------------------------------------------------------------------------
+    // =========================================================================
     //
-    // JourneyDemandLocation owns validation and normalization of the
-    // human-readable waypoint location.
+    // The domain location value object owns validation/normalization of the
+    // human-readable waypoint name.
     //
 
     const name = new JourneyDemandLocation(command.name);
 
-    // -------------------------------------------------------------------------
-    // Geographic Coordinate
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // Geographic Coordinates
+    // =========================================================================
     //
     // Latitude and longitude form one atomic geographic value object.
     //
-    // JourneyDemandCoordinate validates:
-    //
-    //   -90  <= latitude  <= 90
-    //   -180 <= longitude <= 180
+    // JourneyDemandCoordinate is responsible for validating geographic bounds.
     //
 
     const coordinates = new JourneyDemandCoordinate(
@@ -146,40 +181,26 @@ export class AddJourneyDemandWaypointHandler implements CommandHandler<AddJourne
       command.longitude,
     );
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Waypoint Identity
-    // -------------------------------------------------------------------------
+    // =========================================================================
     //
-    // JourneyDemandWaypointPublicId extends PublicEntityId and generates
-    // its identifier when constructed without a value.
+    // The waypoint receives its own public identity.
     //
-    // Do NOT use:
-    //
-    //   JourneyDemandWaypointPublicId.create()
-    //
-    // because this public ID value object does not define a static create()
-    // method.
+    // Constructing the value object without an explicit value allows the
+    // JourneyDemandWaypointPublicId implementation to generate the identifier.
     //
 
     const waypointPublicId = new JourneyDemandWaypointPublicId();
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Create Waypoint Entity
-    // -------------------------------------------------------------------------
+    // =========================================================================
     //
-    // Pickup/dropoff requirements are intentionally NOT passed here.
+    // The child entity receives domain value objects rather than primitives.
     //
-    // The JourneyDemandWaypointEntity derives those semantics from:
-    //
-    //   waypoint.type.requiresPickup
-    //   waypoint.type.requiresDropoff
-    //
-    // This prevents contradictory states such as:
-    //
-    //   type = DESTINATION
-    //   pickupRequired = true
-    //
-    // The waypoint type remains the single source of truth.
+    // Notice that pickup/dropoff requirements are deliberately absent.
+    // JourneyDemandWaypointEntity derives those requirements from its type.
     //
 
     const waypoint = JourneyDemandWaypointEntity.create({
@@ -190,35 +211,35 @@ export class AddJourneyDemandWaypointHandler implements CommandHandler<AddJourne
       coordinates,
     });
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Add Waypoint to Aggregate
-    // -------------------------------------------------------------------------
+    // =========================================================================
     //
-    // The aggregate owns the Journey Demand consistency boundary.
+    // The aggregate owns all corridor consistency rules.
     //
-    // Aggregate-level rules belong here rather than in the application
-    // handler, including:
+    // This is intentionally NOT implemented in this handler.
     //
-    // - Journey Demand lifecycle eligibility
-    // - corridor existence
-    // - corridor eligibility
-    // - sequence uniqueness
-    // - waypoint ordering
-    // - origin/destination rules
-    // - waypoint placement
-    // - aggregate-level pickup/dropoff constraints
+    // The aggregate may enforce rules such as:
+    //
+    // - the Journey Demand is eligible for modification
+    // - the corridor exists
+    // - the corridor permits waypoint changes
+    // - sequence values are valid/unique
+    // - origin/destination constraints are maintained
+    // - waypoint placement is valid
+    // - corridor invariants remain intact
     //
 
     aggregate.addWaypoint(waypoint);
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Record Domain Event
-    // -------------------------------------------------------------------------
+    // =========================================================================
     //
-    // The mutation has succeeded, so record the corresponding domain event.
+    // Record the event only after the aggregate successfully accepts the
+    // waypoint.
     //
-    // Correlation and causation identifiers are propagated from the command
-    // for distributed tracing and event lineage.
+    // Correlation and causation identifiers preserve command/event lineage.
     //
 
     aggregate.recordWaypointAdded(
@@ -227,12 +248,13 @@ export class AddJourneyDemandWaypointHandler implements CommandHandler<AddJourne
       command.causationId,
     );
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Persist Aggregate
-    // -------------------------------------------------------------------------
+    // =========================================================================
     //
-    // Persist the complete aggregate after the domain operation and event
-    // recording have completed successfully.
+    // Persist the complete Journey Demand aggregate.
+    //
+    // There is intentionally no waypoint repository call here.
     //
 
     await this.repository.save(aggregate);

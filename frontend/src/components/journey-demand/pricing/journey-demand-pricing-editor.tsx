@@ -13,8 +13,16 @@
 // - Parent/container owns mutation, persistence, success/error handling,
 //   authorization, and authoritative data refresh.
 //
+// Pricing contract:
+//
+// - maximumPricePerSeat is the editable pricing value.
+// - currency is supplied by the backend pricing model.
+// - No preferred-price field is assumed.
+// - Backend-provided pricing metadata is preserved when the object changes.
+//
 // The complete JourneyDemandPricing object is preserved when fields change,
-// allowing backend-provided convenience flags and metadata to remain intact.
+// allowing backend-provided metadata and convenience flags to remain intact.
+//
 // -----------------------------------------------------------------------------
 
 'use client';
@@ -25,6 +33,10 @@ import { cn } from '@/foundation';
 
 import { JourneyDemandPriceFields } from './journey-demand-price-fields';
 
+// -----------------------------------------------------------------------------
+// Props
+// -----------------------------------------------------------------------------
+
 export interface JourneyDemandPricingEditorProps {
   readonly pricing: JourneyDemandPricing;
   readonly onChange?: (pricing: JourneyDemandPricing) => void;
@@ -33,6 +45,10 @@ export interface JourneyDemandPricingEditorProps {
   readonly disabled?: boolean;
   readonly className?: string;
 }
+
+// -----------------------------------------------------------------------------
+// Component
+// -----------------------------------------------------------------------------
 
 export function JourneyDemandPricingEditor({
   pricing,
@@ -46,9 +62,17 @@ export function JourneyDemandPricingEditor({
 
   return (
     <section
-      className={cn('surface', 'p-4 sm:p-5', className)}
+      className={cn(
+        'surface',
+        'p-4 sm:p-5',
+        className,
+      )}
       aria-labelledby="journey-demand-pricing-editor-heading"
     >
+      {/* ---------------------------------------------------------------------
+          Header
+      --------------------------------------------------------------------- */}
+
       <div className="min-w-0">
         <h2
           id="journey-demand-pricing-editor-heading"
@@ -58,9 +82,13 @@ export function JourneyDemandPricingEditor({
         </h2>
 
         <p className="mt-1 text-sm text-foreground-muted">
-          Set the price conditions for this travel need.
+          Set the maximum price you are willing to pay per seat.
         </p>
       </div>
+
+      {/* ---------------------------------------------------------------------
+          Price fields
+      --------------------------------------------------------------------- */}
 
       <div className="mt-5">
         <JourneyDemandPriceFields
@@ -70,6 +98,10 @@ export function JourneyDemandPricingEditor({
         />
       </div>
 
+      {/* ---------------------------------------------------------------------
+          Save
+      --------------------------------------------------------------------- */}
+
       {onSave ? (
         <div className="mt-5 flex justify-end">
           <Button
@@ -78,7 +110,7 @@ export function JourneyDemandPricingEditor({
             size="md"
             onClick={onSave}
             loading={isSaving}
-            disabled={disabled}
+            disabled={controlsDisabled}
           >
             Save pricing
           </Button>
@@ -87,4 +119,3 @@ export function JourneyDemandPricingEditor({
     </section>
   );
 }
-

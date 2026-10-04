@@ -2,12 +2,12 @@
 // sisiMove — Journey Demand Price Fields
 // -----------------------------------------------------------------------------
 //
-// Controlled pricing fields for authenticated Journey Demand editing.
+// Controlled pricing field for authenticated Journey Demand editing.
 //
 // Backend write contract
 // -----------------------------------------------------------------------------
 //
-// The current backend pricing mutation accepts:
+// The Journey Demand pricing mutation accepts:
 //
 //   maxFare
 //   currency
@@ -15,17 +15,12 @@
 // Therefore:
 //
 // - maximumPricePerSeat is editable;
-// - preferredPricePerSeat is display-only;
-// - currency is display-only;
-// - backend-derived pricing flags remain untouched.
+// - currency is displayed but not edited here;
+// - no preferred-price field is assumed;
+// - no pricing flags are manufactured or modified.
 //
-// This distinction is intentional.
-//
-// The read model can contain preferredPricePerSeat even though the current
-// command model does not expose a mutation for changing it.
-//
-// The frontend must not manufacture a preferred-price mutation merely because
-// the read model contains the field.
+// The frontend consumes the pricing model actually exposed by the feature.
+// It must not reference fields that are not present in that model.
 //
 // -----------------------------------------------------------------------------
 //
@@ -36,15 +31,25 @@
 //
 // - consumes JourneyDemandPricing;
 // - emits controlled pricing changes;
+// - does not fetch data;
 // - does not call an API;
 // - does not construct mutation requests;
-// - does not calculate pricing flags;
+// - does not calculate pricing semantics;
 // - does not authorize the user.
 //
-// The parent editor owns persistence through the appropriate mutation hook.
+// The parent editor owns:
+//
+// - validation;
+// - mutation request construction;
+// - persistence;
+// - backend error handling;
+// - authorization/capability decisions.
+//
 // -----------------------------------------------------------------------------
 
 'use client';
+
+import type { ChangeEvent } from 'react';
 
 import type { JourneyDemandPricing } from '@/features/journey-demand/models';
 import { cn } from '@/foundation';
@@ -70,66 +75,58 @@ export function JourneyDemandPriceFields({
   disabled = false,
   className,
 }: JourneyDemandPriceFieldsProps) {
+  const handleMaximumPriceChange = (
+    value: number | undefined,
+  ): void => {
+    onChange?.({
+      ...pricing,
+      maximumPricePerSeat: value,
+    });
+  };
+
   return (
-    <div
+    <section
       className={cn(
-        'grid min-w-0 gap-4',
-        'grid-cols-1 sm:grid-cols-2',
+        'min-w-0',
         className,
       )}
+      aria-labelledby="journey-demand-price-fields-heading"
     >
-      {/* ---------------------------------------------------------------------
-          Preferred price
+      <div className="min-w-0">
+        <h3
+          id="journey-demand-price-fields-heading"
+          className="text-sm font-semibold text-foreground"
+        >
+          Pricing
+        </h3>
 
-          This value exists in the read model but is not currently writable
-          through UpdateJourneyDemandPricingDto.
+        <p className="mt-1 text-xs text-foreground-muted">
+          Set the maximum amount you are willing to pay per seat.
+        </p>
+      </div>
 
-          It is therefore displayed as read-only rather than pretending that
-          the edit screen can persist a change.
-      --------------------------------------------------------------------- */}
+      <div className="mt-4 grid min-w-0 gap-4">
+        {/* -------------------------------------------------------------------
+            Maximum acceptable price
 
-      <PriceDisplayField
-        label="Preferred price per seat"
-        value={pricing.preferredPricePerSeat}
-        currency={pricing.currency}
-      />
+            This maps to the backend pricing command field `maxFare`.
+        ------------------------------------------------------------------- */}
 
-      {/* ---------------------------------------------------------------------
-          Maximum price
+        <MaximumPriceField
+          id="journey-demand-maximum-price"
+          value={pricing.maximumPricePerSeat}
+          currency={pricing.currency}
+          disabled={disabled}
+          onChange={handleMaximumPriceChange}
+        />
 
-          This maps directly to the backend's `maxFare` mutation field.
-      --------------------------------------------------------------------- */}
+        {/* -------------------------------------------------------------------
+            Currency
 
-      <PriceField
-        id="journey-demand-maximum-price"
-        label="Maximum price per seat"
-        value={pricing.maximumPricePerSeat}
-        currency={pricing.currency}
-        disabled={disabled}
-        onChange={(value) => {
-          if (value === undefined) {
-            return;
-          }
+            Currency comes from the existing pricing model and is intentionally
+            displayed rather than edited by this presentation component.
+        ------------------------------------------------------------------- */}
 
-          onChange?.({
-            ...pricing,
-            maximumPricePerSeat: value,
-          });
-        }}
-      />
-
-      {/* ---------------------------------------------------------------------
-          Currency
-
-          Currency is currently accepted by the backend pricing mutation but
-          is not presented as a user-editable field here.
-
-          The current Journey Demand model already supplies the currency.
-          Introducing a currency selector would create an additional UX and
-          validation decision that is not required by the current design.
-      --------------------------------------------------------------------- */}
-
-      <div className="sm:col-span-2">
         <div
           className={cn(
             'rounded-[var(--radius-md)]',
@@ -147,41 +144,45 @@ export function JourneyDemandPriceFields({
           </p>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 
 // -----------------------------------------------------------------------------
-// Editable Price Field
+// Maximum Price Field
 // -----------------------------------------------------------------------------
 
-interface PriceFieldProps {
+interface MaximumPriceFieldProps {
   readonly id: string;
-  readonly label: string;
   readonly value: number | undefined;
   readonly currency: string;
   readonly disabled: boolean;
   readonly onChange: (value: number | undefined) => void;
 }
 
-function PriceField({
+function MaximumPriceField({
   id,
-  label,
   value,
   currency,
   disabled,
   onChange,
-}: PriceFieldProps) {
+}: MaximumPriceFieldProps) {
+  const handleChange = (
+    event: ChangeEvent<HTMLInputElement>,
+  ): void => {
+    onChange(parseOptionalPrice(event.target.value));
+  };
+
   return (
     <div className="min-w-0">
       <label
         htmlFor={id}
         className="block text-sm font-medium text-foreground"
       >
-        {label}
+        Maximum price per seat
       </label>
 
-      <div className="relative mt-1.5">
+      <div className="mt-1.5">
         <input
           id={id}
           type="number"
@@ -190,11 +191,10 @@ function PriceField({
           inputMode="decimal"
           value={value ?? ''}
           disabled={disabled}
-          onChange={(event) => {
-            onChange(parseOptionalPrice(event.target.value));
-          }}
+          onChange={handleChange}
+          placeholder="e.g. 1500"
           className={cn(
-            'block w-full rounded-[var(--radius-md)]',
+            'block w-full min-h-10 rounded-[var(--radius-md)]',
             'border border-[var(--border)]',
             'bg-[var(--background)]',
             'px-3 py-2.5',
@@ -213,51 +213,6 @@ function PriceField({
 
       <p className="mt-1.5 text-xs text-foreground-muted">
         Maximum amount accepted per seat ({currency}).
-      </p>
-    </div>
-  );
-}
-
-// -----------------------------------------------------------------------------
-// Read-only Price Field
-// -----------------------------------------------------------------------------
-
-interface PriceDisplayFieldProps {
-  readonly label: string;
-  readonly value: number | undefined;
-  readonly currency: string;
-}
-
-function PriceDisplayField({
-  label,
-  value,
-  currency,
-}: PriceDisplayFieldProps) {
-  return (
-    <div className="min-w-0">
-      <span className="block text-sm font-medium text-foreground">
-        {label}
-      </span>
-
-      <div
-        className={cn(
-          'mt-1.5',
-          'rounded-[var(--radius-md)]',
-          'border border-[var(--border)]',
-          'bg-[var(--background-muted)]',
-          'px-3 py-2.5',
-        )}
-      >
-        <span className="text-sm text-foreground">
-          {value === undefined
-            ? 'Not specified'
-            : formatPrice(value, currency)}
-        </span>
-      </div>
-
-      <p className="mt-1.5 text-xs text-foreground-muted">
-        This value is currently managed by the Journey Demand backend
-        contract and cannot be edited here.
       </p>
     </div>
   );
@@ -284,20 +239,3 @@ function parseOptionalPrice(
 
   return parsed;
 }
-
-// -----------------------------------------------------------------------------
-// Formatting
-// -----------------------------------------------------------------------------
-
-function formatPrice(
-  value: number,
-  currency: string,
-): string {
-  return new Intl.NumberFormat('en-KE', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-}
-

@@ -2,40 +2,33 @@
 // sisiMove — My Journey Demand Overview
 // -----------------------------------------------------------------------------
 //
-// Authenticated owner's Journey Demand overview.
+// Authenticated owner's complete Journey Demand overview.
 //
-// Architecture rules:
-// - Presentation only.
-// - Receives an already-loaded MyJourneyDemand.
-// - Does not fetch the demand.
-// - Does not determine ownership.
-// - Does not perform authorization.
-// - Does not call mutations.
-// - Does not infer lifecycle transitions.
-// - Does not derive backend business state.
-// - Does not convert MyJourneyDemand into PublicJourneyDemand.
+// Architecture:
+// - presentation only;
+// - receives an already-loaded MyJourneyDemand;
+// - does not fetch;
+// - does not authorize;
+// - does not mutate;
+// - does not determine lifecycle transitions;
+// - does not convert the owner model into PublicJourneyDemand;
+// - consumes backend-provided convenience flags;
+// - gracefully supports incomplete DRAFT demands.
 //
-// IMPORTANT:
-//
-// MyJourneyDemand is a dedicated authenticated-owner read model.
-//
-// It is intentionally NOT treated as PublicJourneyDemand because:
-//
-// - corridor may be undefined;
-// - schedule may be undefined;
-// - capacity may be undefined;
-// - pricing may be undefined;
-// - owner status may include DRAFT.
-//
-// Public-only presentation components must therefore not be passed owner
-// model components through casts or non-null assertions.
+// Owner-specific management actions are intentionally not rendered here.
+// They belong to the management/container composition below the detail
+// content.
 //
 // -----------------------------------------------------------------------------
 
 'use client';
 
+import type { ReactNode } from 'react';
+
 import type { MyJourneyDemand } from '@/features/journey-demand/models';
 import { cn } from '@/foundation';
+
+import { MyJourneyDemandStatus } from './my-journey-demand-status';
 
 // =============================================================================
 // Props
@@ -50,11 +43,6 @@ export interface MyJourneyDemandOverviewProps {
 // Component
 // =============================================================================
 
-/**
- * Presents the core overview of an authenticated owner's Journey Demand.
- *
- * The backend-provided MyJourneyDemand projection is consumed directly.
- */
 export function MyJourneyDemandOverview({
   demand,
   className,
@@ -67,173 +55,380 @@ export function MyJourneyDemandOverview({
   } = demand;
 
   return (
-    <section
-      className={cn(
-        'surface min-w-0 p-4 sm:p-5',
-        className,
-      )}
-      aria-labelledby="my-journey-demand-overview-heading"
-    >
-      <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
-            Travel need
-          </p>
+    <div className={cn('min-w-0 space-y-4', className)}>
+      {/* ================================================================== */}
+      {/* Travel need                                                        */}
+      {/* ================================================================== */}
 
-          <h2
-            id="my-journey-demand-overview-heading"
-            className="mt-1 text-base font-semibold text-foreground sm:text-lg"
-          >
-            {corridor ? (
-              <>
-                {corridor.originName}
+      <section
+        className="surface min-w-0 p-4 sm:p-5"
+        aria-labelledby="my-journey-demand-travel-need-heading"
+      >
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+              Travel need
+            </p>
 
-                <span
-                  className="px-2 text-foreground-subtle"
-                  aria-hidden="true"
-                >
-                  →
-                </span>
+            <h2
+              id="my-journey-demand-travel-need-heading"
+              className="mt-1 text-lg font-semibold text-foreground sm:text-xl"
+            >
+              {corridor
+                ? `${corridor.originName} → ${corridor.destinationName}`
+                : 'Journey Demand'}
+            </h2>
+          </div>
 
-                {corridor.destinationName}
-              </>
-            ) : (
-              'Journey Demand'
-            )}
-          </h2>
+          <MyJourneyDemandStatus demand={demand} />
         </div>
 
-        <MyJourneyDemandStatus
-          status={demand.status}
+        <div className="mt-5 min-w-0 space-y-4">
+          {corridor ? (
+            <DetailRow
+              label="Journey requested"
+              value={
+                <RouteValue
+                  origin={corridor.originName}
+                  destination={corridor.destinationName}
+                />
+              }
+            />
+          ) : null}
+
+          {schedule ? (
+            <DetailRow
+              label="Departure window"
+              value={<DepartureWindowValue schedule={schedule} />}
+            />
+          ) : null}
+
+          {capacity ? (
+            <DetailRow
+              label="Seats requested"
+              value={
+                <CapacityPrimaryValue
+                  requestedSeats={capacity.requestedSeats}
+                />
+              }
+            />
+          ) : null}
+        </div>
+      </section>
+
+      {/* ================================================================== */}
+      {/* Travel window                                                      */}
+      {/* ================================================================== */}
+
+      {schedule ? (
+        <TravelWindowSection schedule={schedule} />
+      ) : null}
+
+      {/* ================================================================== */}
+      {/* Capacity / matching                                                */}
+      {/* ================================================================== */}
+
+      {capacity ? (
+        <DemandMatchingSection capacity={capacity} />
+      ) : null}
+
+      {/* ================================================================== */}
+      {/* Pricing                                                            */}
+      {/* ================================================================== */}
+
+      {pricing ? (
+        <PricingRequirementsSection pricing={pricing} />
+      ) : null}
+
+      {/* ================================================================== */}
+      {/* Lifecycle                                                          */}
+      {/* ================================================================== */}
+
+      <DemandLifecycleSection demand={demand} />
+    </div>
+  );
+}
+
+// =============================================================================
+// Travel Need
+// =============================================================================
+
+interface RouteValueProps {
+  readonly origin: string;
+  readonly destination: string;
+}
+
+function RouteValue({
+  origin,
+  destination,
+}: RouteValueProps) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-foreground">
+      <span className="min-w-0 truncate">
+        {origin}
+      </span>
+
+      <span
+        className="shrink-0 text-foreground-subtle"
+        aria-hidden="true"
+      >
+        →
+      </span>
+
+      <span className="min-w-0 truncate">
+        {destination}
+      </span>
+    </div>
+  );
+}
+
+interface DepartureWindowValueProps {
+  readonly schedule: NonNullable<MyJourneyDemand['schedule']>;
+}
+
+function DepartureWindowValue({
+  schedule,
+}: DepartureWindowValueProps) {
+  const {
+    scheduleWindow,
+    timezone,
+    isExactDepartureTime,
+  } = schedule;
+
+  if (isExactDepartureTime) {
+    return (
+      <span className="text-sm font-medium text-foreground">
+        {formatDateTime(
+          scheduleWindow.earliestDeparture,
+          timezone,
+        )}
+      </span>
+    );
+  }
+
+  return (
+    <span className="text-sm font-medium text-foreground">
+      {formatDateTime(
+        scheduleWindow.earliestDeparture,
+        timezone,
+      )}
+      {' – '}
+      {formatDateTime(
+        scheduleWindow.latestDeparture,
+        timezone,
+      )}
+    </span>
+  );
+}
+
+interface CapacityPrimaryValueProps {
+  readonly requestedSeats: number;
+}
+
+function CapacityPrimaryValue({
+  requestedSeats,
+}: CapacityPrimaryValueProps) {
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="text-base font-semibold text-foreground">
+        {requestedSeats}
+      </span>
+
+      <span className="text-sm text-foreground-muted">
+        {requestedSeats === 1 ? 'seat' : 'seats'}
+      </span>
+    </div>
+  );
+}
+
+// =============================================================================
+// Travel Window
+// =============================================================================
+
+interface TravelWindowSectionProps {
+  readonly schedule: NonNullable<MyJourneyDemand['schedule']>;
+}
+
+function TravelWindowSection({
+  schedule,
+}: TravelWindowSectionProps) {
+  const {
+    scheduleWindow,
+    arrivalWindow,
+    timezone,
+    hasTargetArrival,
+    hasMaximumArrival,
+  } = schedule;
+
+  return (
+    <section
+      className="surface min-w-0 p-4 sm:p-5"
+      aria-labelledby="my-journey-demand-travel-window-heading"
+    >
+      <p className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+        Travel window
+      </p>
+
+      <h2
+        id="my-journey-demand-travel-window-heading"
+        className="mt-1 text-base font-semibold text-foreground sm:text-lg"
+      >
+        When you want to travel
+      </h2>
+
+      <p className="mt-1 text-sm leading-6 text-foreground-muted">
+        Your requested departure window and any arrival constraints.
+      </p>
+
+      <div className="mt-5 grid min-w-0 gap-4">
+        <DetailCard
+          label="Departure window"
+          value={formatDateRange(
+            scheduleWindow.earliestDeparture,
+            scheduleWindow.latestDeparture,
+            timezone,
+          )}
+          description={
+            !isSameCalendarDate(
+              scheduleWindow.earliestDeparture,
+              scheduleWindow.latestDeparture,
+              timezone,
+            )
+              ? 'The requested departure window spans more than one calendar date.'
+              : undefined
+          }
         />
-      </div>
 
-      <div className="mt-5 min-w-0 space-y-4">
-        {corridor ? (
-          <OverviewSection title="Route">
-            <div className="text-sm text-foreground">
-              <span>{corridor.originName}</span>
-
-              <span
-                className="px-2 text-foreground-subtle"
-                aria-hidden="true"
-              >
-                →
-              </span>
-
-              <span>{corridor.destinationName}</span>
-            </div>
-          </OverviewSection>
+        {hasTargetArrival && arrivalWindow.targetArrival ? (
+          <DetailCard
+            label="Arrival preference"
+            value={formatDateTime(
+              arrivalWindow.targetArrival,
+              timezone,
+            )}
+            description="Your target arrival time."
+          />
         ) : null}
 
-        {schedule ? (
-          <OverviewSection title="Travel schedule">
-            <JourneyDemandScheduleValue
-              schedule={schedule}
-            />
-          </OverviewSection>
-        ) : null}
-
-        {capacity ? (
-          <OverviewSection title="Capacity">
-            <JourneyDemandCapacityValue
-              capacity={capacity}
-            />
-          </OverviewSection>
-        ) : null}
-
-        {pricing ? (
-          <OverviewSection title="Pricing">
-            <JourneyDemandPricingValue
-              pricing={pricing}
-            />
-          </OverviewSection>
+        {hasMaximumArrival && arrivalWindow.maximumArrival ? (
+          <DetailCard
+            label="Latest acceptable arrival"
+            value={formatDateTime(
+              arrivalWindow.maximumArrival,
+              timezone,
+            )}
+            description="The latest arrival time specified for this travel need."
+          />
         ) : null}
       </div>
+
+      <p className="mt-4 text-xs text-foreground-muted">
+        Times are shown in the requested travel timezone:{' '}
+        <span className="font-medium text-foreground">
+          {timezone}
+        </span>
+        .
+      </p>
     </section>
   );
 }
 
 // =============================================================================
-// Status
+// Demand Matching
 // =============================================================================
 
-interface MyJourneyDemandStatusProps {
-  readonly status: MyJourneyDemand['status'];
-}
-
-/**
- * Presents the backend-provided owner status.
- *
- * This deliberately does not use JourneyDemandStatusBadge because that shared
- * component currently accepts PublicJourneyDemandStatus, while
- * MyJourneyDemand.status is JourneyDemandStatus and may include DRAFT.
- */
-function MyJourneyDemandStatus({
-  status,
-}: MyJourneyDemandStatusProps) {
-  return (
-    <span
-      className={cn(
-        'inline-flex shrink-0 items-center rounded-full',
-        'border border-border bg-background',
-        'px-2.5 py-1',
-        'text-xs font-medium text-foreground',
-      )}
-    >
-      {formatStatus(status)}
-    </span>
-  );
-}
-
-// =============================================================================
-// Schedule
-// =============================================================================
-
-interface JourneyDemandScheduleValueProps {
-  readonly schedule: NonNullable<MyJourneyDemand['schedule']>;
-}
-
-/**
- * Renders the existing JourneyDemandSchedule model without assuming that its
- * properties are the public schedule projection.
- *
- * Object.entries is intentionally avoided here because the presentation
- * should remain explicit once the actual JourneyDemandSchedule contract is
- * established.
- *
- * Replace the fields below with the exact JourneyDemandSchedule properties
- * already defined in the model.
- */
-function JourneyDemandScheduleValue({
-  schedule,
-}: JourneyDemandScheduleValueProps) {
-  return (
-    <pre className="overflow-x-auto whitespace-pre-wrap break-words text-xs text-foreground-muted">
-      {JSON.stringify(schedule, null, 2)}
-    </pre>
-  );
-}
-
-// =============================================================================
-// Capacity
-// =============================================================================
-
-interface JourneyDemandCapacityValueProps {
+interface DemandMatchingSectionProps {
   readonly capacity: NonNullable<MyJourneyDemand['capacity']>;
 }
 
-/**
- * Presents the backend capacity projection without deriving values such as
- * remaining seats.
- */
-function JourneyDemandCapacityValue({
+function DemandMatchingSection({
   capacity,
-}: JourneyDemandCapacityValueProps) {
+}: DemandMatchingSectionProps) {
   return (
-    <pre className="overflow-x-auto whitespace-pre-wrap break-words text-xs text-foreground-muted">
-      {JSON.stringify(capacity, null, 2)}
-    </pre>
+    <section
+      className="surface min-w-0 p-4 sm:p-5"
+      aria-labelledby="my-journey-demand-matching-heading"
+    >
+      <p className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+        Travel demand
+      </p>
+
+      <h2
+        id="my-journey-demand-matching-heading"
+        className="mt-1 text-base font-semibold text-foreground sm:text-lg"
+      >
+        Your requested capacity
+      </h2>
+
+      <p className="mt-1 text-sm leading-6 text-foreground-muted">
+        This Demand shows how many seats you are looking for and how
+        many have already been matched.
+      </p>
+
+      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <MatchingMetric
+          label="Seats requested"
+          value={capacity.requestedSeats}
+          suffix={capacity.requestedSeats === 1 ? 'seat' : 'seats'}
+          description="Your requirement for this Demand."
+        />
+
+        <MatchingMetric
+          label="Matched seats"
+          value={capacity.matchedSeats}
+          suffix={capacity.matchedSeats === 1 ? 'seat' : 'seats'}
+          description="Seats currently connected to Journey supply."
+        />
+
+        <MatchingMetric
+          label="Remaining"
+          value={capacity.remainingSeats}
+          suffix={capacity.remainingSeats === 1 ? 'seat' : 'seats'}
+          description="Seats still available to be matched."
+        />
+      </div>
+
+      <p className="mt-4 text-xs leading-5 text-foreground-muted">
+        Matching information is provided by the Journey Demand
+        projection.
+      </p>
+    </section>
+  );
+}
+
+interface MatchingMetricProps {
+  readonly label: string;
+  readonly value: number;
+  readonly suffix: string;
+  readonly description: string;
+}
+
+function MatchingMetric({
+  label,
+  value,
+  suffix,
+  description,
+}: MatchingMetricProps) {
+  return (
+    <div className="min-w-0 rounded-lg border border-border bg-background p-3">
+      <p className="text-xs font-medium text-foreground-muted">
+        {label}
+      </p>
+
+      <div className="mt-1 flex items-baseline gap-2">
+        <span className="text-lg font-semibold text-foreground">
+          {value}
+        </span>
+
+        <span className="text-sm text-foreground-muted">
+          {suffix}
+        </span>
+      </div>
+
+      <p className="mt-1 text-xs leading-5 text-foreground-muted">
+        {description}
+      </p>
+    </div>
   );
 }
 
@@ -241,46 +436,215 @@ function JourneyDemandCapacityValue({
 // Pricing
 // =============================================================================
 
-interface JourneyDemandPricingValueProps {
+interface PricingRequirementsSectionProps {
   readonly pricing: NonNullable<MyJourneyDemand['pricing']>;
 }
 
-/**
- * Presents the backend pricing projection without reconstructing pricing
- * semantics.
- */
-function JourneyDemandPricingValue({
+function PricingRequirementsSection({
   pricing,
-}: JourneyDemandPricingValueProps) {
+}: PricingRequirementsSectionProps) {
   return (
-    <pre className="overflow-x-auto whitespace-pre-wrap break-words text-xs text-foreground-muted">
-      {JSON.stringify(pricing, null, 2)}
-    </pre>
+    <section
+      className="surface min-w-0 p-4 sm:p-5"
+      aria-labelledby="my-journey-demand-pricing-heading"
+    >
+      <p className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+        Price requirements
+      </p>
+
+      <h2
+        id="my-journey-demand-pricing-heading"
+        className="mt-1 text-base font-semibold text-foreground sm:text-lg"
+      >
+        What you are prepared to pay
+      </h2>
+
+      <p className="mt-1 text-sm leading-6 text-foreground-muted">
+        These are Demand requirements, not a confirmed Journey fare.
+      </p>
+
+      <div className="mt-5 grid min-w-0 gap-3 sm:grid-cols-2">
+        {pricing.hasPreferredPrice &&
+        pricing.preferredPricePerSeat !== undefined ? (
+          <PriceCard
+            label="Preferred price / seat"
+            amount={pricing.preferredPricePerSeat}
+            currency={pricing.currency}
+            description="Your preferred amount for one seat."
+          />
+        ) : null}
+
+        {pricing.hasMaximumPrice &&
+        pricing.maximumPricePerSeat !== undefined ? (
+          <PriceCard
+            label="Maximum price / seat"
+            amount={pricing.maximumPricePerSeat}
+            currency={pricing.currency}
+            description="The highest amount you specified for one seat."
+          />
+        ) : null}
+      </div>
+
+      {pricing.isUnconstrained ? (
+        <p className="mt-4 text-sm text-foreground-muted">
+          No price constraint has been specified for this Demand.
+        </p>
+      ) : null}
+
+      <p className="mt-4 text-xs leading-5 text-foreground-muted">
+        {pricing.currency} is the currency provided by the Demand
+        projection. A final Journey fare, if a Journey is matched,
+        is determined separately from this travel request.
+      </p>
+    </section>
+  );
+}
+
+interface PriceCardProps {
+  readonly label: string;
+  readonly amount: number;
+  readonly currency: string;
+  readonly description: string;
+}
+
+function PriceCard({
+  label,
+  amount,
+  currency,
+  description,
+}: PriceCardProps) {
+  return (
+    <div className="min-w-0 rounded-lg border border-border bg-background p-4">
+      <p className="text-xs font-medium text-foreground-muted">
+        {label}
+      </p>
+
+      <p className="mt-1 text-lg font-semibold text-foreground">
+        {formatMoney(amount, currency)}
+      </p>
+
+      <p className="mt-1 text-xs leading-5 text-foreground-muted">
+        {description}
+      </p>
+    </div>
   );
 }
 
 // =============================================================================
-// Shared local presentation
+// Lifecycle
 // =============================================================================
 
-interface OverviewSectionProps {
-  readonly title: string;
-  readonly children: React.ReactNode;
+interface DemandLifecycleSectionProps {
+  readonly demand: MyJourneyDemand;
 }
 
-function OverviewSection({
-  title,
-  children,
-}: OverviewSectionProps) {
+function DemandLifecycleSection({
+  demand,
+}: DemandLifecycleSectionProps) {
   return (
-    <div className="min-w-0 rounded-lg border border-border bg-background p-3">
-      <h3 className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
-        {title}
-      </h3>
+    <section
+      className="surface min-w-0 p-4 sm:p-5"
+      aria-labelledby="my-journey-demand-lifecycle-heading"
+    >
+      <p className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+        Demand lifecycle
+      </p>
 
-      <div className="mt-1">
-        {children}
+      <h2
+        id="my-journey-demand-lifecycle-heading"
+        className="mt-1 text-base font-semibold text-foreground sm:text-lg"
+      >
+        Where this travel request stands
+      </h2>
+
+      <p className="mt-1 text-sm leading-6 text-foreground-muted">
+        This is the current lifecycle state of your travel need.
+      </p>
+
+      <div className="mt-5 rounded-lg border border-border bg-background p-4">
+        <div className="flex min-w-0 items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-foreground-muted">
+              Current status
+            </p>
+
+            <p className="mt-1 text-sm font-semibold text-foreground">
+              {formatStatus(demand.status)}
+            </p>
+          </div>
+
+          <MyJourneyDemandStatus demand={demand} />
+        </div>
+
+        {demand.hasMatchedJourney &&
+        demand.matchedJourneyPublicId ? (
+          <div className="mt-4 border-t border-border pt-4">
+            <p className="text-xs font-medium text-foreground-muted">
+              Matched Journey
+            </p>
+
+            <p className="mt-1 break-all text-sm font-medium text-foreground">
+              {demand.matchedJourneyPublicId}
+            </p>
+          </div>
+        ) : null}
       </div>
+    </section>
+  );
+}
+
+// =============================================================================
+// Generic Detail Presentation
+// =============================================================================
+
+interface DetailRowProps {
+  readonly label: string;
+  readonly value: ReactNode;
+}
+
+function DetailRow({
+  label,
+  value,
+}: DetailRowProps) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+        {label}
+      </p>
+
+      <div className="mt-1 min-w-0">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+interface DetailCardProps {
+  readonly label: string;
+  readonly value: string;
+  readonly description?: string;
+}
+
+function DetailCard({
+  label,
+  value,
+  description,
+}: DetailCardProps) {
+  return (
+    <div className="min-w-0 rounded-lg border border-border bg-background p-4">
+      <p className="text-xs font-medium text-foreground-muted">
+        {label}
+      </p>
+
+      <p className="mt-1 text-sm font-semibold text-foreground">
+        {value}
+      </p>
+
+      {description ? (
+        <p className="mt-1 text-xs leading-5 text-foreground-muted">
+          {description}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -297,3 +661,65 @@ function formatStatus(
     .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
+function formatDateTime(
+  value: Date,
+  timezone: string,
+): string {
+  return new Intl.DateTimeFormat('en-KE', {
+    timeZone: timezone,
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(value);
+}
+
+function formatDateRange(
+  earliest: Date,
+  latest: Date,
+  timezone: string,
+): string {
+  const formatter = new Intl.DateTimeFormat('en-KE', {
+    timeZone: timezone,
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+
+  return `${formatter.format(earliest)} – ${formatter.format(latest)}`;
+}
+
+function isSameCalendarDate(
+  first: Date,
+  second: Date,
+  timezone: string,
+): boolean {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+
+  return formatter.format(first) === formatter.format(second);
+}
+
+function formatMoney(
+  amount: number,
+  currency: string,
+): string {
+  try {
+    return new Intl.NumberFormat('en-KE', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${currency} ${amount.toLocaleString('en-KE')}`;
+  }
+}
