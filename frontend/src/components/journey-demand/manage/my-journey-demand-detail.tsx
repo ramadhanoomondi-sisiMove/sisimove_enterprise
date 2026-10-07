@@ -1,29 +1,49 @@
-
 // -----------------------------------------------------------------------------
+// Path: src/features/journey-demand/components/manage/my-journey-demand-detail.tsx
+// -----------------------------------------------------------------------------
+//
 // sisiMove — My Journey Demand Detail
+//
+// Authenticated owner's read-only Journey Demand detail composition.
+//
+// Architecture:
+// - Consumes MyJourneyDemand only.
+// - Receives an already-loaded owner projection.
+// - Does not fetch.
+// - Does not determine ownership.
+// - Does not authorize.
+// - Does not mutate.
+// - Does not infer lifecycle transitions.
+// - Does not compose editing sections.
+// - Does not reconstruct backend domain objects.
+//
+// IMPORTANT
+// ---------
+// Editing is now owned by JourneyDemandEditor.
+//
+// The composition is:
+//
+//     JourneyDemandManagementPanel
+//          ↓
+//     JourneyDemandManagement
+//          ├── JourneyDemandEditor
+//          │      └── JourneyDemandEditorSections
+//          │
+//          └── JourneyDemandActions
+//
+// Therefore this component must remain a read-only owner-detail surface.
+// It must not retain the old MyJourneyDemandSections abstraction.
+//
 // -----------------------------------------------------------------------------
 //
-// Authenticated owner's Journey Demand detail composition.
-//
-// Architecture rules:
-// - Presentation/composition only.
-// - Receives an already-loaded MyJourneyDemand.
-// - Does not fetch the Journey Demand.
-// - Does not determine ownership.
-// - Does not perform authorization.
-// - Does not call mutations.
-// - Does not infer lifecycle transitions.
-// - Does not construct backend domain objects.
-// - Delegates presentation to dedicated owner-detail components.
-//
-// The authenticated owner detail intentionally consumes:
+// Read model boundary:
 //
 //     MyJourneyDemand
+//             ↓
+//     MyJourneyDemandDetail
 //
-// It must not consume PublicJourneyDemand or cast between the two read
-// models.
-//
-// Data loading and management behaviour remain with the owning route/container.
+// This component must never consume PublicJourneyDemand and must never cast
+// between the two read models.
 //
 // -----------------------------------------------------------------------------
 
@@ -35,21 +55,19 @@ import type { MyJourneyDemand } from '@/features/journey-demand/models';
 import { cn } from '@/foundation';
 
 import { MyJourneyDemandOverview } from './my-journey-demand-overview';
-import {
-  MyJourneyDemandSections,
-  type MyJourneyDemandSection,
-} from './my-journey-demand-sections';
 
 // =============================================================================
 // Props
 // =============================================================================
 
 /**
- * Props for the authenticated owner's Journey Demand detail.
+ * Props for the authenticated owner's read-only Journey Demand detail.
  *
- * The parent/route container supplies the already-loaded authenticated
- * Journey Demand projection and any additional owner-specific sections or
- * management UI.
+ * The parent/container supplies the already-loaded authenticated owner's
+ * projection.
+ *
+ * Management UI remains external because editing and lifecycle actions have
+ * their own ownership boundaries.
  */
 export interface MyJourneyDemandDetailProps {
   /**
@@ -58,14 +76,10 @@ export interface MyJourneyDemandDetailProps {
   readonly demand: MyJourneyDemand;
 
   /**
-   * Additional owner-specific detail sections.
-   */
-  readonly sections?: readonly MyJourneyDemandSection[];
-
-  /**
    * Optional management UI supplied by the owning container.
    *
-   * This component does not determine which management actions are available.
+   * This is deliberately a ReactNode rather than a lifecycle-specific API.
+   * This component does not decide which management controls should exist.
    */
   readonly management?: ReactNode;
 
@@ -77,31 +91,45 @@ export interface MyJourneyDemandDetailProps {
 // =============================================================================
 
 /**
- * Composes the authenticated owner's Journey Demand detail view.
+ * Composes the authenticated owner's Journey Demand detail.
  *
- * This component deliberately does not:
+ * This component is intentionally small.
+ *
+ * It presents:
+ *
+ *     MyJourneyDemandOverview
+ *             +
+ *     optional externally supplied management UI
+ *
+ * It does NOT:
  *
  * - fetch the Journey Demand;
  * - determine ownership;
  * - perform authorization;
  * - call mutations;
- * - infer lifecycle transitions;
- * - construct backend domain objects.
+ * - infer lifecycle capabilities;
+ * - compose editing sections;
+ * - construct backend commands;
+ * - reconstruct backend domain objects;
+ * - convert a public Journey Demand into an owner Journey Demand.
  *
- * Data access and management behaviour remain with the owning container.
+ * Editing section composition belongs to JourneyDemandEditor.
  */
 export function MyJourneyDemandDetail({
   demand,
-  sections = [],
   management,
   className,
 }: MyJourneyDemandDetailProps) {
   return (
     <div className={cn('min-w-0 space-y-4', className)}>
+      {/* ------------------------------------------------------------------- */}
+      {/* Read-only owner projection                                         */}
+      {/* ------------------------------------------------------------------- */}
       <MyJourneyDemandOverview demand={demand} />
 
-      <MyJourneyDemandSections sections={sections} />
-
+      {/* ------------------------------------------------------------------- */}
+      {/* External management surface                                         */}
+      {/* ------------------------------------------------------------------- */}
       {management ? (
         <section
           className="min-w-0"

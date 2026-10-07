@@ -6,6 +6,11 @@
 //
 // This component consumes the generic JourneyDemand application model.
 //
+// UX PRINCIPLE:
+// - The current lifecycle status is always visible.
+// - The status is descriptive, not an authorization mechanism.
+// - No lifecycle action is hidden or inferred from the status here.
+//
 // Architecture:
 // - Presentation only.
 // - Receives an already-loaded JourneyDemand.
@@ -14,12 +19,18 @@
 // - Does not mutate the demand.
 // - Does not determine editing permissions.
 // - Does not infer lifecycle capabilities.
+// - Does not hide lifecycle actions.
 // - Does not own navigation.
 // - Does not recreate backend lifecycle rules.
 // - Does not convert JourneyDemand into PublicJourneyDemand.
 //
-// The owning editor/container remains responsible for authorization,
-// mutation, navigation, and form behaviour.
+// The owning editor/container remains responsible for:
+// - authorization;
+// - mutation orchestration;
+// - navigation;
+// - form behaviour.
+//
+// Lifecycle command validity remains the responsibility of the backend.
 //
 // -----------------------------------------------------------------------------
 
@@ -56,10 +67,12 @@ export interface JourneyDemandEditorHeaderProps {
 // =============================================================================
 
 /**
- * Presents the heading and current application lifecycle status for the
- * Journey Demand editor.
+ * Presents the editor heading and the current application lifecycle status.
  *
- * The status is displayed exactly as supplied by the application read model.
+ * The status is always displayed and is taken directly from the application
+ * read model.
+ *
+ * No action availability is inferred from the status.
  */
 export function JourneyDemandEditorHeader({
   demand,
@@ -104,14 +117,23 @@ interface JourneyDemandEditorStatusProps {
 /**
  * Presents the complete application-level Journey Demand status.
  *
- * This status type belongs to JourneyDemand and is intentionally not replaced
- * with the narrower public Journey Demand status contract.
+ * This status belongs to JourneyDemand and is intentionally displayed without
+ * narrowing, filtering, or interpreting its lifecycle meaning.
  *
- * No lifecycle rules or capabilities are inferred from the value.
+ * The value is descriptive UI state only.
+ *
+ * It does not:
+ * - authorize a command;
+// * - enable or disable a lifecycle action;
+// * - hide a lifecycle action;
+// * - determine whether editing is permitted;
+// * - implement a lifecycle transition.
  */
 function JourneyDemandEditorStatus({
   status,
 }: JourneyDemandEditorStatusProps) {
+  const formattedStatus = formatJourneyDemandStatus(status);
+
   return (
     <span
       className={cn(
@@ -120,9 +142,9 @@ function JourneyDemandEditorStatus({
         'px-2.5 py-1',
         'text-xs font-medium text-foreground',
       )}
-      aria-label={`Journey Demand status: ${formatJourneyDemandStatus(status)}`}
+      aria-label={`Journey Demand status: ${formattedStatus}`}
     >
-      {formatJourneyDemandStatus(status)}
+      {formattedStatus}
     </span>
   );
 }
@@ -134,7 +156,10 @@ function JourneyDemandEditorStatus({
 /**
  * Converts the backend enum representation into readable UI text.
  *
- * Display formatting only. The underlying lifecycle value is unchanged.
+ * Display formatting only.
+ *
+ * The underlying lifecycle value is unchanged and is never interpreted as a
+ * capability or permission.
  */
 function formatJourneyDemandStatus(
   status: JourneyDemand['status'],
@@ -144,3 +169,4 @@ function formatJourneyDemandStatus(
     .toLowerCase()
     .replace(/\b\w/g, (character) => character.toUpperCase());
 }
+

@@ -2,8 +2,7 @@
 // sisiMove — Landing Page
 // -----------------------------------------------------------------------------
 //
-// The landing page is the public composition of the two primary marketplace
-// surfaces.
+// The landing page is the public composition of the Journey marketplace.
 //
 // The public route layout owns:
 // - SiteHeader;
@@ -12,11 +11,9 @@
 //
 // LandingPage therefore owns only:
 // - JourneyMarketplace;
-// - JourneyDemandMarketplace;
-// - public Journey presentation actions;
-// - public Journey Demand presentation actions.
+// - public Journey presentation actions.
 //
-// Each marketplace remains an independent feature boundary and owns its own:
+// JourneyMarketplace remains an independent feature boundary and owns its own:
 // - query;
 // - filter state;
 // - loading state;
@@ -25,6 +22,24 @@
 // - result presentation.
 //
 // There is deliberately no combined marketplace abstraction.
+//
+// There is also deliberately no Journey Demand marketplace.
+//
+// sisiMove is currently focused on the supply lifecycle:
+//
+//     Journey Provider
+//           ↓
+//     Publish Journey
+//           ↓
+//     Public Marketplace
+//           ↓
+//     Traveller discovers
+//           ↓
+//     Traveller books
+//           ↓
+//     Travel
+//           ↓
+//     Complete
 //
 // Width responsibility:
 //
@@ -49,22 +64,26 @@
 //         ↓
 //     /login
 //
-// Public Journey Demand action flow:
+// The public landing page does not create a JourneyBooking. Booking remains
+// an authenticated application capability.
 //
-//     View
-//         ↓
-//     /demands/[publicId]
+// -----------------------------------------------------------------------------
 //
-//     Share
-//         ↓
-//     public Journey Demand URL
+// Architectural boundary:
 //
-//     Join
-//         ↓
-//     /login
+// LandingPage is a composition component.
 //
-// The public landing page does not create a JourneyBooking or join a Journey
-// Demand. Those remain authenticated application capabilities.
+// It does NOT:
+// - fetch Journeys;
+// - manage marketplace filters;
+// - manage marketplace loading/error/empty state;
+// - create bookings;
+// - perform Journey mutations;
+// - recreate Journey domain logic;
+// - contain Journey Demand logic.
+//
+// Those responsibilities belong to the appropriate feature/component
+// boundaries.
 //
 // -----------------------------------------------------------------------------
 
@@ -74,7 +93,6 @@ import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 import { JourneyMarketplace } from "@/components/journey/marketplace";
-import { JourneyDemandMarketplace } from "@/components/journey-demand/marketplace";
 import { AUTHENTICATION_ROUTES } from "@/foundation/routing/authentication-routes";
 import { PUBLIC_ROUTES } from "@/foundation/routing/public-routes";
 
@@ -88,6 +106,12 @@ export function LandingPage() {
   // ---------------------------------------------------------------------------
   // View Journey
   // ---------------------------------------------------------------------------
+  //
+  // The public marketplace owns the Journey presentation.
+  //
+  // LandingPage only owns the public navigation destination.
+  //
+  // ---------------------------------------------------------------------------
 
   const handleViewJourney = useCallback(
     (journeyPublicId: string): void => {
@@ -100,6 +124,18 @@ export function LandingPage() {
 
   // ---------------------------------------------------------------------------
   // Share Journey
+  // ---------------------------------------------------------------------------
+  //
+  // Sharing remains a presentation-level public capability.
+  //
+  // The landing page constructs the canonical public Journey URL and delegates
+  // the actual sharing mechanism to the browser:
+  //
+  // 1. native Web Share API when available;
+  // 2. clipboard fallback otherwise.
+  //
+  // No backend mutation is involved.
+  //
   // ---------------------------------------------------------------------------
 
   const handleShareJourney = useCallback(
@@ -127,9 +163,12 @@ export function LandingPage() {
   //
   // Booking is an authenticated capability.
   //
-  // The current authentication routing contract does not yet carry a
-  // return destination, so the Journey public ID is intentionally not
-  // required here.
+  // The current authentication routing contract does not yet carry a return
+  // destination, so the Journey public ID is intentionally not required here.
+  //
+  // The authenticated booking workflow can resolve the Journey again after
+  // login rather than making the public landing page responsible for booking
+  // state.
   //
   // ---------------------------------------------------------------------------
 
@@ -138,59 +177,24 @@ export function LandingPage() {
   }, [router]);
 
   // ---------------------------------------------------------------------------
-  // View Journey Demand
-  // ---------------------------------------------------------------------------
-
-  const handleViewJourneyDemand = useCallback(
-    (demandPublicId: string): void => {
-      router.push(
-        PUBLIC_ROUTES.demand(demandPublicId),
-      );
-    },
-    [router],
-  );
-
-  // ---------------------------------------------------------------------------
-  // Share Journey Demand
-  // ---------------------------------------------------------------------------
-
-  const handleShareJourneyDemand = useCallback(
-    async (demandPublicId: string): Promise<void> => {
-      const demandUrl =
-        `${window.location.origin}${PUBLIC_ROUTES.demand(demandPublicId)}`;
-
-      if (navigator.share) {
-        await navigator.share({
-          title: "SisiMove Journey Demand",
-          url: demandUrl,
-        });
-
-        return;
-      }
-
-      await navigator.clipboard.writeText(demandUrl);
-    },
-    [],
-  );
-
-  // ---------------------------------------------------------------------------
-  // Join Journey Demand
-  // ---------------------------------------------------------------------------
-  //
-  // Joining a public demand is an authenticated capability.
-  //
-  // The current authentication routing contract does not yet carry a
-  // return destination, so the demand public ID is intentionally not
-  // required here.
-  //
-  // ---------------------------------------------------------------------------
-
-  const handleJoinJourneyDemand = useCallback((): void => {
-    router.push(AUTHENTICATION_ROUTES.LOGIN);
-  }, [router]);
-
-  // ---------------------------------------------------------------------------
   // Render
+  // ---------------------------------------------------------------------------
+  //
+  // There is intentionally only one marketplace on the landing page:
+  //
+  //     JourneyMarketplace
+  //
+  // Journey Demand has been removed from the product flow, so there is no:
+  //
+  //     JourneyDemandMarketplace
+  //     onViewDemand
+  //     onShareDemand
+  //     onJoinDemand
+  //     demand routing
+  //
+  // This keeps the public landing page aligned with the supply-first product
+  // direction.
+  //
   // ---------------------------------------------------------------------------
 
   return (
@@ -199,12 +203,6 @@ export function LandingPage() {
         onView={handleViewJourney}
         onShare={handleShareJourney}
         onBook={handleBookJourney}
-      />
-
-      <JourneyDemandMarketplace
-        onView={handleViewJourneyDemand}
-        onShare={handleShareJourneyDemand}
-        onJoin={handleJoinJourneyDemand}
       />
     </div>
   );

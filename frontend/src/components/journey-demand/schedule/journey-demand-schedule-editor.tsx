@@ -5,29 +5,38 @@
 // Controlled editor for the complete authenticated Journey Demand schedule.
 //
 // Architecture:
-// - Consumes JourneyDemandSchedule.
-// - Composes JourneyDemandScheduleFields (103).
-// - Does not fetch data.
-// - Does not call mutation hooks.
-// - Does not persist data directly.
-// - Does not own authorization/capability decisions.
-// - Emits the edited schedule through onChange.
-// - May expose an explicit save boundary to its parent.
+// - consumes JourneyDemandSchedule;
+// - composes JourneyDemandScheduleFields;
+// - owns no server state;
+// - performs no API requests;
+// - does not call mutation hooks;
+// - does not persist data directly;
+// - does not own authorization or lifecycle capability decisions;
+// - emits the complete edited schedule through onChange;
+// - may expose an independent save boundary to the parent.
 //
 // The parent/container owns:
-// - loading the schedule;
-// - authorization;
-// - capability checks;
-// - persistence;
-// - mutation hooks;
-// - success/error handling;
-// - refreshing the authoritative backend response.
 //
-// This component owns schedule-editor composition only.
+//     schedule draft
+//          ↓
+//     validation orchestration
+//          ↓
+//     updateJourneyDemandSchedule(...)
+//          ↓
+//     refetch()
+//          ↓
+//     success/error feedback
 //
-// Backend-provided convenience flags are deliberately preserved while the
-// editable date fields change. They are not reconstructed in the frontend.
+// Saving the schedule is independent from corridor, capacity, and pricing.
+// There is intentionally no save-all operation here.
 //
+// Backend-provided convenience flags and metadata are preserved because this
+// component passes the complete schedule object to the lower-level fields
+// component. The frontend does not reconstruct backend-derived flags.
+//
+// This editor is suitable for the authenticated Edit / Review surface.
+// "Edit" and "Review" remain the same workflow; this component simply exposes
+// the schedule fields and an optional independent save action.
 // -----------------------------------------------------------------------------
 
 'use client';
@@ -37,14 +46,45 @@ import { cn } from '@/foundation';
 
 import { JourneyDemandScheduleFields } from './journey-demand-schedule-fields';
 
+// =============================================================================
+// Props
+// =============================================================================
+
 export interface JourneyDemandScheduleEditorProps {
+  /**
+   * Controlled Journey Demand schedule.
+   */
   readonly schedule: JourneyDemandSchedule;
+
+  /**
+   * Emits the complete updated schedule.
+   *
+   * Persistence remains owned by the parent/container.
+   */
   readonly onChange?: (schedule: JourneyDemandSchedule) => void;
-  readonly onSave?: () => void;
+
+  /**
+   * Optional independent save action.
+   */
+  readonly onSave?: () => void | Promise<void>;
+
+  /**
+   * Indicates that this section is currently being persisted.
+   */
   readonly isSaving?: boolean;
+
+  /**
+   * External disabled state supplied by the parent.
+   */
   readonly disabled?: boolean;
+
   readonly className?: string;
 }
+
+
+// =============================================================================
+// Component
+// =============================================================================
 
 export function JourneyDemandScheduleEditor({
   schedule,
@@ -54,37 +94,47 @@ export function JourneyDemandScheduleEditor({
   disabled = false,
   className,
 }: JourneyDemandScheduleEditorProps) {
+  /**
+   * While saving, the schedule fields are disabled.
+   *
+   * This prevents the local draft from changing while the parent is
+   * persisting the current schedule and avoids duplicate submissions.
+   */
   const isDisabled = disabled || isSaving;
 
   return (
     <section
       className={cn(
-        'surface min-w-0',
-        'p-4 sm:p-5',
+        'surface',
+        'min-w-0',
+        'p-4',
+        'sm:p-5',
         className,
       )}
       aria-labelledby="journey-demand-schedule-editor-heading"
     >
-      {/* ---------------------------------------------------------------------
-          Editor heading
-      --------------------------------------------------------------------- */}
+      {/* ------------------------------------------------------------------- */}
+      {/* Editor heading                                                      */}
+      {/* ------------------------------------------------------------------- */}
+
       <div className="min-w-0">
         <h2
           id="journey-demand-schedule-editor-heading"
-          className="text-base font-semibold text-foreground"
+          className="text-base font-semibold text-[var(--foreground)]"
         >
           Travel time
         </h2>
 
-        <p className="mt-1 text-sm text-foreground-muted">
+        <p className="mt-1 text-sm leading-5 text-[var(--foreground-muted)]">
           Set when you can depart and any arrival requirements.
         </p>
       </div>
 
-      {/* ---------------------------------------------------------------------
-          Schedule fields
-      --------------------------------------------------------------------- */}
-      <div className="mt-5">
+      {/* ------------------------------------------------------------------- */}
+      {/* Schedule fields                                                     */}
+      {/* ------------------------------------------------------------------- */}
+
+      <div className="mt-5 min-w-0">
         <JourneyDemandScheduleFields
           schedule={schedule}
           onChange={onChange}
@@ -92,29 +142,55 @@ export function JourneyDemandScheduleEditor({
         />
       </div>
 
-      {/* ---------------------------------------------------------------------
-          Save boundary
-          ---------------------------------------------------------------------
+      {/* ------------------------------------------------------------------- */}
+      {/* Independent save boundary                                           */}
+      {/* ------------------------------------------------------------------- */}
+      {/*
+       * The save button belongs to this section because each Journey Demand
+       * section is independently persisted.
+       *
+       * The button itself does not know how persistence works. The parent
+       * supplies onSave and remains responsible for:
+       *
+       * - preparing the backend request;
+       * - generating correlation identifiers;
+       * - calling the mutation hook;
+       * - refetching the authoritative response;
+       * - showing success/error feedback.
+       */}
 
-          Persistence remains outside this component. The parent decides
-          whether a save action should be rendered by supplying onSave.
-      --------------------------------------------------------------------- */}
       {onSave ? (
         <div
           className={cn(
-            'mt-5 flex flex-col-reverse gap-3',
-            'sm:flex-row sm:items-center sm:justify-end',
+            'mt-5',
+            'flex',
+            'flex-col-reverse',
+            'gap-3',
+            'border-t',
+            'border-[var(--border)]',
+            'pt-4',
+            'sm:flex-row',
+            'sm:items-center',
+            'sm:justify-end',
           )}
         >
           <button
             type="button"
-            onClick={onSave}
+            onClick={() => {
+              void onSave();
+            }}
             disabled={isDisabled}
             className={cn(
-              'inline-flex min-h-10 items-center justify-center',
+              'inline-flex',
+              'min-h-10',
+              'items-center',
+              'justify-center',
               'rounded-[var(--radius-md)]',
               'bg-[var(--brand)]',
-              'px-4 text-sm font-semibold',
+              'px-4',
+              'py-2',
+              'text-sm',
+              'font-semibold',
               'text-[var(--brand-foreground)]',
               'transition-colors',
               'hover:bg-[var(--brand-hover)]',
@@ -133,4 +209,3 @@ export function JourneyDemandScheduleEditor({
     </section>
   );
 }
-

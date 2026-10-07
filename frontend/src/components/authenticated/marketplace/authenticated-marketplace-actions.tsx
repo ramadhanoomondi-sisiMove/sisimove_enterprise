@@ -1,64 +1,20 @@
+'use client';
+
 // -----------------------------------------------------------------------------
 // sisiMove — Authenticated Marketplace Actions
 // -----------------------------------------------------------------------------
 //
-// Authenticated participation entry point for the SisiMove marketplace.
+// Responsive authenticated supply entry point for the SisiMove marketplace.
 //
-// The authenticated Home presents two connected marketplace surfaces:
-//
-//     JOURNEYS
-//     Available travel supply.
-//
-//     TRAVEL DEMAND
-//     Expressed travel need.
-//
-// This component sits immediately above those surfaces and provides the
-// authenticated member with the corresponding participation paths.
-//
-// Product relationship:
-//
-//     Publish a journey
-//             │
-//             ▼
-//     Journey marketplace
-//
-//     Express travel demand
-//             │
-//             ▼
-//     Travel demand marketplace
-//
-// The component is intentionally compact. The marketplace components below
-// remain responsible for explaining and presenting the actual marketplace.
-//
-// This component is presentation-only.
-//
-// Responsibilities:
-// - present authenticated marketplace participation actions;
-// - provide the supplied navigation destinations;
-// - visually connect supply and demand participation.
-//
-// Non-responsibilities:
-// - no marketplace search;
-// - no marketplace data fetching;
-// - no matching;
-// - no booking;
-// - no notification delivery;
-// - no authorization;
-// - no Journey creation;
-// - no Journey Demand creation;
-// - no route construction;
-// - no authentication-state management.
-//
+// Presentation-only.
+// No business logic, authorization, fetching, route construction, or mutation.
 // -----------------------------------------------------------------------------
 
-
 import Link from "next/link";
-import type { ReactNode } from "react";
 
 import {
   ArrowRight,
   CarFront,
-  UsersRound,
 } from "lucide-react";
 
 import { cn } from "@/foundation";
@@ -70,13 +26,10 @@ import { cn } from "@/foundation";
 export interface AuthenticatedMarketplaceActionsProps {
   /**
    * Destination for the authenticated Journey creation flow.
+   *
+   * The route is supplied by the composition boundary.
    */
   readonly publishJourneyHref: string;
-
-  /**
-   * Destination for the authenticated Journey Demand creation flow.
-   */
-  readonly createDemandHref: string;
 
   /**
    * Optional additional classes supplied by the composition boundary.
@@ -90,72 +43,74 @@ export interface AuthenticatedMarketplaceActionsProps {
 
 interface MarketplaceActionProps {
   readonly href: string;
-  readonly children: ReactNode;
-  readonly variant: "primary" | "secondary";
 }
 
 function MarketplaceAction({
   href,
-  children,
-  variant,
 }: MarketplaceActionProps) {
   return (
     <Link
       href={href}
       className={cn(
+        // Layout
         "group",
         "inline-flex",
-        "min-h-10",
+        "min-w-0",
+        "max-w-full",
         "items-center",
         "justify-center",
-        "gap-2",
-        "rounded-[var(--radius-md)]",
-        "px-3.5",
-        "py-2",
-        "text-sm",
+        "gap-[clamp(0.35rem,0.7vw,0.5rem)]",
+
+        // Sizing
+        "min-h-[clamp(2.25rem,5vw,2.5rem)]",
+        "rounded-[clamp(0.45rem,0.8vw,0.65rem)]",
+        "px-[clamp(0.7rem,1.5vw,0.9rem)]",
+        "py-[clamp(0.45rem,0.8vw,0.55rem)]",
+
+        // Typography
+        "text-[clamp(0.72rem,1.2vw,0.875rem)]",
         "font-semibold",
+        "leading-tight",
+        "text-[var(--brand)]",
+
+        // Visual
+        "border",
+        "border-[var(--brand)]",
+        "bg-[var(--surface)]",
+        "shadow-[var(--shadow-sm)]",
+
+        // Interaction
         "transition-all",
         "duration-150",
         "ease-out",
+        "hover:bg-[var(--brand-soft)]",
+        "hover:shadow-[var(--shadow-md)]",
         "focus-visible:outline-none",
         "focus-visible:ring-2",
         "focus-visible:ring-[var(--brand)]",
         "focus-visible:ring-offset-2",
         "focus-visible:ring-offset-[var(--background-brand)]",
-
-        // -------------------------------------------------------------------
-        // Publish a Journey
-        //
-        // Brand-led without becoming a large blue block.
-        // -------------------------------------------------------------------
-
-        variant === "primary" && [
-          "border",
-          "border-[var(--brand)]",
-          "bg-[var(--surface)]",
-          "text-[var(--brand)]",
-          "shadow-[var(--shadow-sm)]",
-          "hover:bg-[var(--brand-soft)]",
-          "hover:shadow-[var(--shadow-md)]",
-        ].join(" "),
-
-        // -------------------------------------------------------------------
-        // Express Travel Demand
-        // -------------------------------------------------------------------
-
-        variant === "secondary" && [
-          "border",
-          "border-[var(--border-strong)]",
-          "bg-[var(--background-subtle)]",
-          "text-[var(--foreground)]",
-          "shadow-[var(--shadow-sm)]",
-          "hover:border-[var(--brand)]",
-          "hover:bg-[var(--brand-soft)]",
-          "hover:text-[var(--brand)]",
-        ].join(" "),
       )}
     >
-      {children}
+      <CarFront
+        aria-hidden="true"
+        className="size-[clamp(0.85rem,1.4vw,1rem)] shrink-0"
+      />
+
+      <span className="min-w-0 truncate">
+        Publish a journey
+      </span>
+
+      <ArrowRight
+        aria-hidden="true"
+        className={cn(
+          "size-[clamp(0.85rem,1.4vw,1rem)]",
+          "shrink-0",
+          "transition-transform",
+          "duration-150",
+          "group-hover:translate-x-0.5",
+        )}
+      />
     </Link>
   );
 }
@@ -166,7 +121,6 @@ function MarketplaceAction({
 
 export function AuthenticatedMarketplaceActions({
   publishJourneyHref,
-  createDemandHref,
   className,
 }: AuthenticatedMarketplaceActionsProps) {
   return (
@@ -174,6 +128,8 @@ export function AuthenticatedMarketplaceActions({
       aria-labelledby="authenticated-marketplace-actions-heading"
       className={cn(
         "w-full",
+        "min-w-0",
+        "overflow-x-hidden",
         "border-b",
         "border-[var(--border-subtle)]",
         "bg-[var(--background-brand)]",
@@ -184,19 +140,20 @@ export function AuthenticatedMarketplaceActions({
         className={cn(
           "mx-auto",
           "w-full",
+          "min-w-0",
           "max-w-7xl",
-          "px-4",
-          "py-4",
-          "sm:px-6",
-          "sm:py-5",
-          "lg:px-8",
+          "px-[clamp(0.75rem,3vw,2rem)]",
+          "py-[clamp(0.75rem,2vw,1.25rem)]",
         )}
       >
         <div
           className={cn(
             "relative",
+            "w-full",
+            "min-w-0",
+            "max-w-full",
             "overflow-hidden",
-            "rounded-[var(--radius-xl)]",
+            "rounded-[clamp(0.65rem,1.5vw,1rem)]",
             "border",
             "border-[var(--border)]",
             "bg-[var(--surface)]",
@@ -213,7 +170,7 @@ export function AuthenticatedMarketplaceActions({
               "absolute",
               "inset-y-0",
               "left-0",
-              "w-1",
+              "w-[clamp(0.18rem,0.35vw,0.25rem)]",
               "bg-[var(--brand)]",
             )}
           />
@@ -221,151 +178,105 @@ export function AuthenticatedMarketplaceActions({
           <div
             className={cn(
               "flex",
+              "min-w-0",
               "flex-col",
-              "gap-4",
-              "px-5",
-              "py-4",
-              "pl-6",
-              "sm:px-6",
-              "sm:py-5",
-              "sm:pl-7",
+
+              // Fluid spacing
+              "gap-[clamp(0.7rem,2vw,1rem)]",
+              "px-[clamp(0.8rem,2.5vw,1.5rem)]",
+              "py-[clamp(0.75rem,2vw,1.25rem)]",
+              "pl-[clamp(1rem,3vw,1.75rem)]",
+
+              // Desktop arrangement
               "lg:flex-row",
               "lg:items-center",
               "lg:justify-between",
-              "lg:gap-8",
+              "lg:gap-[clamp(1rem,3vw,2rem)]",
             )}
           >
             {/* ---------------------------------------------------------------
                 Marketplace participation message
                 --------------------------------------------------------------- */}
 
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <h2
                 id="authenticated-marketplace-actions-heading"
                 className={cn(
-                  "text-base",
+                  "min-w-0",
+                  "text-[clamp(0.9rem,1.8vw,1.125rem)]",
                   "font-bold",
+                  "leading-tight",
                   "tracking-tight",
                   "text-[var(--foreground)]",
-                  "sm:text-lg",
                 )}
               >
-                Be part of the journey marketplace.
+                Have available seats?
               </h2>
 
               <p
                 className={cn(
-                  "mt-1",
+                  "mt-[clamp(0.2rem,0.5vw,0.35rem)]",
                   "max-w-2xl",
-                  "text-sm",
-                  "leading-5",
+                  "text-[clamp(0.65rem,1.1vw,0.875rem)]",
+                  "leading-relaxed",
                   "text-[var(--foreground-secondary)]",
                 )}
               >
-                Have available seats? Publish your journey. Can&apos;t find a
-                suitable journey? Express where you want to travel.
+                Publish your journey and let travellers discover your
+                available seats.
               </p>
 
               {/* -------------------------------------------------------------
-                  Supply / demand relationship
+                  Supply context
                   ------------------------------------------------------------- */}
 
               <div
                 className={cn(
-                  "mt-2.5",
+                  "mt-[clamp(0.4rem,0.8vw,0.65rem)]",
                   "flex",
-                  "flex-wrap",
+                  "min-w-0",
                   "items-center",
-                  "gap-x-3",
-                  "gap-y-1",
-                  "text-xs",
+                  "text-[clamp(0.58rem,0.9vw,0.75rem)]",
                   "font-medium",
+                  "leading-tight",
                   "text-[var(--foreground-muted)]",
                 )}
               >
-                <span className="inline-flex items-center gap-1.5">
+                <span
+                  className={cn(
+                    "inline-flex",
+                    "min-w-0",
+                    "max-w-full",
+                    "items-center",
+                    "gap-[clamp(0.3rem,0.6vw,0.4rem)]",
+                  )}
+                >
                   <CarFront
                     aria-hidden="true"
-                    className="h-3.5 w-3.5 text-[var(--brand)]"
+                    className="size-[clamp(0.75rem,1.2vw,0.875rem)] shrink-0 text-[var(--brand)]"
                   />
 
-                  <span>
-                    Available journeys
-                  </span>
-                </span>
-
-                <span
-                  aria-hidden="true"
-                  className="text-[var(--border-strong)]"
-                >
-                  ↔
-                </span>
-
-                <span className="inline-flex items-center gap-1.5">
-                  <UsersRound
-                    aria-hidden="true"
-                    className="h-3.5 w-3.5 text-[var(--brand)]"
-                  />
-
-                  <span>
-                    Travel demand
+                  <span className="min-w-0 truncate">
+                    Publish available seats
                   </span>
                 </span>
               </div>
             </div>
 
             {/* ---------------------------------------------------------------
-                Participation actions
+                Publish Journey action
                 --------------------------------------------------------------- */}
 
             <div
               className={cn(
                 "flex",
+                "min-w-0",
+                "max-w-full",
                 "shrink-0",
-                "flex-col",
-                "gap-2",
-                "sm:flex-row",
-                "sm:items-center",
+                "lg:items-center",
               )}
             >
-              <MarketplaceAction
-                href={publishJourneyHref}
-                variant="primary"
-              >
-                <CarFront
-                  aria-hidden="true"
-                  className="h-4 w-4"
-                />
-
-                <span>
-                  Publish a journey
-                </span>
-              </MarketplaceAction>
-
-              <MarketplaceAction
-                href={createDemandHref}
-                variant="secondary"
-              >
-                <UsersRound
-                  aria-hidden="true"
-                  className="h-4 w-4"
-                />
-
-                <span>
-                  Express travel demand
-                </span>
-
-                <ArrowRight
-                  aria-hidden="true"
-                  className={cn(
-                    "h-4",
-                    "w-4",
-                    "transition-transform",
-                    "duration-150",
-                    "group-hover:translate-x-0.5",
-                  )}
-                />
-              </MarketplaceAction>
+              <MarketplaceAction href={publishJourneyHref} />
             </div>
           </div>
         </div>

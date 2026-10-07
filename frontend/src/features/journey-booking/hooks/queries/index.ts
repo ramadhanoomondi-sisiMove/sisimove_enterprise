@@ -18,6 +18,11 @@ export {
 } from './use-journey-booking';
 
 export {
+  useJourneyBookingDetail,
+  type UseJourneyBookingDetailOptions,
+} from './use-journey-booking-detail';
+
+export {
   useMyJourneyBookings,
 } from './use-my-journey-bookings';
 

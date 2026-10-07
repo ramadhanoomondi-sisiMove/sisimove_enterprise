@@ -1,3 +1,5 @@
+'use client';
+
 // -----------------------------------------------------------------------------
 // sisiMove — Login Submit
 // -----------------------------------------------------------------------------
@@ -19,9 +21,12 @@
 //
 // Those responsibilities belong to the login feature/form boundary.
 //
+// Responsive behaviour:
+// - Shrinks safely horizontally.
+// - Prevents text/icon overflow.
+// - Uses fluid sizing across viewport widths.
+// - Preserves accessible focus and loading states.
 // -----------------------------------------------------------------------------
-
-'use client';
 
 // -----------------------------------------------------------------------------
 // Props
@@ -66,23 +71,80 @@ export function LoginSubmit({
       type="submit"
       disabled={isDisabled}
       aria-busy={isLoading}
-      className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+      className={[
+        // Layout
+        'inline-flex',
+        'w-full',
+        'min-w-0',
+        'max-w-full',
+        'shrink',
+        'items-center',
+        'justify-center',
+        'gap-[clamp(0.4rem,1vw,0.55rem)]',
+
+        // Sizing
+        'min-h-[clamp(2.5rem,6vw,3rem)]',
+        'rounded-[clamp(0.5rem,1vw,0.625rem)]',
+        'px-[clamp(0.75rem,2vw,1rem)]',
+        'py-[clamp(0.55rem,1.5vw,0.75rem)]',
+
+        // Typography
+        'text-[clamp(0.75rem,1.4vw,0.875rem)]',
+        'font-semibold',
+        'leading-tight',
+
+        // Prevent overflow
+        'overflow-hidden',
+        'whitespace-nowrap',
+
+        // Visual
+        'bg-[var(--brand)]',
+        'text-[var(--brand-foreground)]',
+        'shadow-[var(--shadow-sm)]',
+
+        // Interaction
+        'transition-all',
+        'duration-150',
+        'ease-out',
+        'hover:bg-[var(--brand)]/90',
+        'hover:shadow-[var(--shadow-md)]',
+        'focus-visible:outline-none',
+        'focus-visible:ring-2',
+        'focus-visible:ring-[var(--brand)]',
+        'focus-visible:ring-offset-2',
+        'focus-visible:ring-offset-[var(--surface)]',
+
+        // Disabled
+        'disabled:cursor-not-allowed',
+        'disabled:opacity-60',
+      ].join(' ')}
     >
       {isLoading ? (
         <>
           <span
             aria-hidden="true"
-            className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
+            className={[
+              'size-[clamp(0.8rem,1.5vw,1rem)]',
+              'shrink-0',
+              'animate-spin',
+              'rounded-full',
+              'border-2',
+              'border-white/40',
+              'border-t-white',
+            ].join(' ')}
           />
 
-          <span>{loadingLabel}</span>
+          <span className="min-w-0 truncate">
+            {loadingLabel}
+          </span>
         </>
       ) : (
-        <span>{label}</span>
+        <span className="min-w-0 truncate">
+          {label}
+        </span>
       )}
     </button>
   );
 }
 
 export default LoginSubmit;
-

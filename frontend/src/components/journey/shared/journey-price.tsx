@@ -82,40 +82,54 @@ export function JourneyPrice({
         "min-w-0",
         "max-w-full",
         "items-center",
-        "gap-[clamp(0.3rem,0.55vw,0.45rem)]",
+        "gap-[clamp(0.2rem,0.55vw,0.45rem)]",
         "whitespace-nowrap",
+        "overflow-hidden",
         className,
       )}
       aria-label={`Journey price ${formattedPrice}`}
     >
+      {/* ---------------------------------------------------------------------
+          Price icon
+          --------------------------------------------------------------------- */}
+
       <span
         aria-hidden="true"
         className={cn(
           "flex",
-          "size-[clamp(1.35rem,2.2vw,1.75rem)]",
           "shrink-0",
           "items-center",
           "justify-center",
           "rounded-full",
           "bg-[var(--brand-soft)]",
           "text-[var(--brand)]",
+
+          // Uniform scaling:
+          "size-[clamp(1rem,2.2vw,1.75rem)]",
         )}
       >
         <Banknote
           aria-hidden="true"
-          className="size-[clamp(0.7rem,1vw,0.9rem)]"
+          className="size-[clamp(0.55rem,1vw,0.9rem)]"
         />
       </span>
+
+      {/* ---------------------------------------------------------------------
+          Price value
+          --------------------------------------------------------------------- */}
 
       <span
         className={cn(
           "min-w-0",
+          "max-w-full",
           "truncate",
-          "text-[clamp(0.72rem,1.25vw,1rem)]",
           "font-extrabold",
           "leading-none",
           "tracking-tight",
           "text-[var(--foreground)]",
+
+          // Uniform scaling:
+          "text-[clamp(0.58rem,1.25vw,1rem)]",
         )}
       >
         {formattedPrice}

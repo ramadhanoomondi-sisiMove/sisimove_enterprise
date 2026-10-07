@@ -6,6 +6,8 @@
 // Foundation
 // -----------------------------------------------------------------------------
 
+import { Inject, Injectable } from '@nestjs/common';
+
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 
 // -----------------------------------------------------------------------------
@@ -25,6 +27,12 @@ import type { JourneyBookingAggregate } from '../../domain/aggregates/journey-bo
 // -----------------------------------------------------------------------------
 
 import type { JourneyBookingRepository } from '../../domain/repositories/journey-booking.repository';
+
+// -----------------------------------------------------------------------------
+// Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_BOOKING_TOKENS } from '../journey-booking.tokens';
 
 // -----------------------------------------------------------------------------
 // Exceptions
@@ -53,7 +61,17 @@ import { JourneyBookingNotFoundException } from '../../domain/exceptions';
  * Actual payment-provider refund execution remains outside this bounded
  * context. This command records the successful domain transition after the
  * external payment operation has succeeded.
+ *
+ * Dependency injection:
+ *
+ * The repository is resolved through the Journey Booking application token
+ * rather than by relying on the repository's concrete implementation.
+ *
+ * This keeps the handler independent from Prisma or any other persistence
+ * implementation and allows the module composition root to decide which
+ * repository implementation is used.
  */
+@Injectable()
 export class RefundJourneyBookingPaymentHandler implements CommandHandler<
   RefundJourneyBookingPaymentCommand,
   JourneyBookingAggregate
@@ -62,7 +80,10 @@ export class RefundJourneyBookingPaymentHandler implements CommandHandler<
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly repository: JourneyBookingRepository) {}
+  constructor(
+    @Inject(JOURNEY_BOOKING_TOKENS.REPOSITORY)
+    private readonly repository: JourneyBookingRepository,
+  ) {}
 
   // ===========================================================================
   // Execute
@@ -80,7 +101,9 @@ export class RefundJourneyBookingPaymentHandler implements CommandHandler<
     );
 
     if (aggregate === null) {
-      throw new JourneyBookingNotFoundException();
+      throw new JourneyBookingNotFoundException(
+        command.journeyBookingPublicId.value,
+      );
     }
 
     // -------------------------------------------------------------------------

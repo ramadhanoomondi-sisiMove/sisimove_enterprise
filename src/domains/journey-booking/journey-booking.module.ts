@@ -60,6 +60,7 @@ import {
   FindJourneyBookingsByPassengerHandler,
   FindJourneyBookingsByStatusHandler,
   GetJourneyBookingByPublicIdHandler,
+  GetJourneyBookingDetailQueryHandler,
   GetJourneyBookingHandler,
   GetMyJourneyBookingsHandler,
 } from './application/query-handlers';
@@ -184,6 +185,15 @@ import {
     {
       provide: JOURNEY_BOOKING_TOKENS.QUERY_HANDLERS.GET_MY,
       useClass: GetMyJourneyBookingsHandler,
+    },
+
+    // =========================================================================
+    // Journey Booking Detail Query Handler
+    // =========================================================================
+
+    {
+      provide: JOURNEY_BOOKING_TOKENS.QUERY_HANDLERS.GET_DETAIL,
+      useClass: GetJourneyBookingDetailQueryHandler,
     },
 
     // =========================================================================

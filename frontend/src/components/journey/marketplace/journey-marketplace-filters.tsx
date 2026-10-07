@@ -1,202 +1,20 @@
+"use client";
+
 // -----------------------------------------------------------------------------
 // Path: src/features/journey/components/journey-marketplace-filters.tsx
 // -----------------------------------------------------------------------------
 //
 // sisiMove — Journey Marketplace Filters
 //
-// Public marketplace discovery filters.
+// Responsive marketplace discovery filters.
+//
+// Responsive behavior:
+// - primary controls remain proportional;
+// - every column can shrink below intrinsic input width;
+// - typography, padding, gaps, icons and radii scale with clamp();
+// - long values cannot force the component wider;
+// - price controls remain compact when expanded.
 //
-// PRODUCT MEANING
-// ---------------
-//
-// Journey is the SUPPLY side of the SisiMove marketplace.
-//
-// A published Journey represents:
-//
-//     "I'm travelling this route and I have seats available."
-//
-// Primary discovery:
-//
-//     From | To | Date
-//
-// Secondary refinement:
-//
-//     Price range
-//
-// The complementary Journey Demand marketplace represents unmet demand:
-//
-//     "I want to travel this route, but I haven't found a suitable journey."
-//
-// -----------------------------------------------------------------------------
-//
-// Backend contract:
-//
-//     GET /journeys/public
-//
-// Optional query parameters:
-//
-//     from
-//     to
-//     date
-//     minPrice
-//     maxPrice
-//
-// Example:
-//
-//     GET /journeys/public
-//         ?from=Nairobi
-//         &to=Mombasa
-//         &date=2026-10-10
-//         &minPrice=500
-//         &maxPrice=1500
-//
-// -----------------------------------------------------------------------------
-//
-// PRODUCT PRIORITY
-// ---------------
-//
-// Primary filters:
-//
-//     From
-//     To
-//     Date
-//
-// Secondary filter:
-//
-//     Price range
-//
-// Price is intentionally hidden behind the compact "Filters" control so it
-// does not make the main marketplace discovery surface unnecessarily large.
-//
-// -----------------------------------------------------------------------------
-//
-// Interaction model:
-//
-//     User types / changes filters
-//              │
-//              ▼
-//     Local draft state
-//              │
-//              ▼
-//     300ms debounce
-//              │
-//              ▼
-//     onChange(committed values)
-//              │
-//              ▼
-//     Marketplace query
-//
-// Clear bypasses the debounce and immediately commits the empty state.
-//
-// -----------------------------------------------------------------------------
-//
-// IMPORTANT
-// ---------
-//
-// The input controls are locally owned.
-//
-// The parent must NOT feed its changing query state back into the input
-// controls while the user is typing.
-//
-// This prevents:
-//
-// - cursor jumping;
-// - input replacement;
-// - characters disappearing;
-// - inability to continue typing.
-//
-// -----------------------------------------------------------------------------
-//
-// IMPORTANT PARENT CONTRACT
-// -------------------------
-//
-// The parent should:
-//
-// 1. render this component without a changing `key`;
-// 2. keep `onChange` stable with useCallback when possible;
-// 3. not conditionally unmount this component during loading;
-// 4. not rewrite the supplied `values` from query results;
-// 5. treat onChange() as the committed marketplace filter state.
-//
-// The debounce itself does not require `onChange` to be stable.
-//
-// The latest callback is retained in a ref so parent callback identity changes
-// cannot interrupt an active typing debounce.
-//
-// -----------------------------------------------------------------------------
-//
-// PRICE CONTRACT
-// -------------
-//
-// Price is a per-seat Journey marketplace price.
-//
-// Currency:
-//
-//     KES
-//
-// Price filters:
-//
-//     minPrice
-//     maxPrice
-//
-// Empty price inputs are represented as:
-//
-//     null
-//
-// Invalid ranges are not committed:
-//
-//     minPrice > maxPrice
-//
-// The invalid draft remains visible so the user can correct it.
-//
-// -----------------------------------------------------------------------------
-//
-// RESPONSIVE CONTRACT
-// ------------------
-//
-// The primary controls remain one proportional row:
-//
-//     From | To | Date | Clear
-//
-// All four columns use equal fractional space.
-//
-// Controls use:
-//
-// - min-w-0;
-// - max-w-full;
-// - overflow-hidden;
-// - scalable typography;
-// - scalable padding;
-// - scalable icon dimensions.
-//
-// Native input intrinsic sizing must not be allowed to force a column wider
-// than its proportional share.
-//
-// The secondary price control is compact and may use its own responsive
-// two-field layout when expanded.
-//
-// -----------------------------------------------------------------------------
-//
-// SEARCH CONTRACT
-// ---------------
-//
-// This component commits text exactly as entered after trimming.
-//
-// Partial-search behavior is determined by the backend implementation of:
-//
-//     GET /journeys/public
-//
-// This component does not perform client-side filtering.
-//
-// -----------------------------------------------------------------------------
-//
-// Copyright © sisiMove
-// -----------------------------------------------------------------------------
-
-"use client";
-
-// -----------------------------------------------------------------------------
-// React
 // -----------------------------------------------------------------------------
 
 import {
@@ -206,18 +24,10 @@ import {
   type ChangeEvent,
 } from "react";
 
-// -----------------------------------------------------------------------------
-// UI
-// -----------------------------------------------------------------------------
-
 import {
   Button,
   Input,
 } from "@/components/ui";
-
-// -----------------------------------------------------------------------------
-// Foundation
-// -----------------------------------------------------------------------------
 
 import { cn } from "@/foundation/utils/cn";
 
@@ -229,64 +39,23 @@ export interface JourneyMarketplaceFilterValues {
   readonly from: string;
   readonly to: string;
   readonly date: string;
-
-  /**
-   * Minimum acceptable Journey price per seat.
-   *
-   * `null` means no lower price boundary.
-   */
   readonly minPrice: number | null;
-
-  /**
-   * Maximum acceptable Journey price per seat.
-   *
-   * `null` means no upper price boundary.
-   */
   readonly maxPrice: number | null;
 }
 
 export interface JourneyMarketplaceFiltersProps {
-  /**
-   * Currently committed marketplace filter values.
-   *
-   * These values are used as the initial local draft.
-   *
-   * They must not be used to control the inputs after the component
-   * has mounted.
-   */
   readonly values: JourneyMarketplaceFilterValues;
 
-  /**
-   * Called after the user pauses changing filters.
-   *
-   * The parent owns the marketplace query lifecycle.
-   */
   readonly onChange: (
     values: JourneyMarketplaceFilterValues,
   ) => void;
 
-  /**
-   * Optional callback for additional filters.
-   *
-   * This remains available for future marketplace filters beyond price.
-   */
   readonly onFiltersClick?: () => void;
 
-  /**
-   * Indicates that additional filters are active.
-   */
   readonly hasActiveFilters?: boolean;
 
-  /**
-   * Indicates that marketplace results are loading.
-   *
-   * Primary text/date inputs remain enabled while loading.
-   */
   readonly isLoading?: boolean;
 
-  /**
-   * Optional additional classes.
-   */
   readonly className?: string;
 }
 
@@ -316,7 +85,7 @@ function SearchRouteIcon() {
       fill="none"
       stroke="currentColor"
       strokeWidth="1.8"
-      className="size-[clamp(0.75rem,1.35vw,1.1rem)]"
+      className="size-[clamp(0.55rem,1.35vw,1.1rem)]"
     >
       <circle
         cx="11"
@@ -339,7 +108,7 @@ function FilterIcon() {
       fill="none"
       stroke="currentColor"
       strokeWidth="1.8"
-      className="size-[clamp(0.7rem,1.15vw,1rem)]"
+      className="size-[clamp(0.5rem,1.15vw,1rem)]"
     >
       <path
         strokeLinecap="round"
@@ -358,7 +127,7 @@ function XIcon() {
       fill="none"
       stroke="currentColor"
       strokeWidth="1.8"
-      className="size-[clamp(0.65rem,1vw,0.9rem)]"
+      className="size-[clamp(0.45rem,1vw,0.9rem)]"
     >
       <path
         strokeLinecap="round"
@@ -382,7 +151,8 @@ function ChevronIcon({
       stroke="currentColor"
       strokeWidth="1.8"
       className={cn(
-        "size-[clamp(0.6rem,1vw,0.85rem)]",
+        "size-[clamp(0.42rem,1vw,0.85rem)]",
+        "shrink-0",
         "transition-transform",
         open && "rotate-180",
       )}
@@ -408,10 +178,9 @@ function LocationIcon({
       fill="none"
       stroke="currentColor"
       strokeWidth="1.8"
-      className="size-[clamp(0.6rem,1vw,0.85rem)]"
+      className="size-[clamp(0.42rem,1vw,0.85rem)] shrink-0"
     >
       <path d="M12 21s7-6.1 7-12a7 7 0 1 0-14 0c0 5.9 7 12 7 12Z" />
-
       <path d="m9.5 9.5 2 2 3-3" />
     </svg>
   ) : (
@@ -421,7 +190,7 @@ function LocationIcon({
       fill="none"
       stroke="currentColor"
       strokeWidth="1.8"
-      className="size-[clamp(0.6rem,1vw,0.85rem)]"
+      className="size-[clamp(0.42rem,1vw,0.85rem)] shrink-0"
     >
       <circle
         cx="12"
@@ -442,7 +211,7 @@ function CalendarIcon() {
       fill="none"
       stroke="currentColor"
       strokeWidth="1.8"
-      className="size-[clamp(0.6rem,1vw,0.85rem)]"
+      className="size-[clamp(0.42rem,1vw,0.85rem)] shrink-0"
     >
       <rect
         x="3.5"
@@ -465,7 +234,7 @@ function PriceIcon() {
       fill="none"
       stroke="currentColor"
       strokeWidth="1.8"
-      className="size-[clamp(0.6rem,1vw,0.85rem)]"
+      className="size-[clamp(0.42rem,1vw,0.85rem)] shrink-0"
     >
       <path
         strokeLinecap="round"
@@ -524,8 +293,7 @@ function commitFilterValues(
   if (
     committed.minPrice !== null &&
     committed.maxPrice !== null &&
-    committed.minPrice >
-      committed.maxPrice
+    committed.minPrice > committed.maxPrice
   ) {
     return null;
   }
@@ -566,71 +334,25 @@ export function JourneyMarketplaceFilters({
   isLoading = false,
   className,
 }: JourneyMarketplaceFiltersProps) {
-  // ===========================================================================
-  // Local Draft State
-  // ===========================================================================
-
   const [draftValues, setDraftValues] =
     useState<JourneyMarketplaceFilterValues>(
       values,
     );
 
-  // ===========================================================================
-  // Price Input State
-  // ===========================================================================
-  //
-  // Price inputs remain strings locally so intermediate typing is preserved.
-  //
-  // ===========================================================================
-
   const [minPriceInput, setMinPriceInput] =
     useState<string>(
-      priceToInputValue(
-        values.minPrice,
-      ),
+      priceToInputValue(values.minPrice),
     );
 
   const [maxPriceInput, setMaxPriceInput] =
     useState<string>(
-      priceToInputValue(
-        values.maxPrice,
-      ),
+      priceToInputValue(values.maxPrice),
     );
-
-  // ===========================================================================
-  // Advanced Filter Visibility
-  // ===========================================================================
 
   const [showFilters, setShowFilters] =
     useState<boolean>(
       hasPriceFilterValues(values),
     );
-
-  // ===========================================================================
-  // Latest onChange Reference
-  // ===========================================================================
-  //
-  // The parent may recreate its onChange callback when its own marketplace
-  // state changes.
-  //
-  // The debounce must NOT restart merely because the callback identity changed.
-  //
-  // We therefore keep the latest callback in a ref while allowing the debounce
-  // itself to depend only on the local draft values.
-  //
-  // This gives us the desired interaction:
-  //
-  //     type
-  //       ↓
-  //     draft updates immediately
-  //       ↓
-  //     wait 300ms
-  //       ↓
-  //     commit latest draft
-  //
-  // The parent callback identity cannot interrupt this debounce.
-  //
-  // ===========================================================================
 
   const onChangeRef = useRef(onChange);
 
@@ -638,36 +360,14 @@ export function JourneyMarketplaceFilters({
     onChangeRef.current = onChange;
   }, [onChange]);
 
-  // ===========================================================================
-  // Debounced Commit
-  // ===========================================================================
-  //
-  // Every local filter change schedules a marketplace query.
-  //
-  // The timer is intentionally dependent ONLY on draftValues.
-  //
-  // This means:
-  //
-  //     "N"
-  //     "Na"
-  //     "Nai"
-  //     "Nair"
-  //     "Nairo"
-  //     "Nairob"
-  //     "Nairobi"
-  //
-  // produces one committed query after the user pauses typing for 300ms.
-  //
-  // The parent callback identity cannot interrupt this debounce.
-  //
-  // ===========================================================================
+  // ---------------------------------------------------------------------------
+  // Debounced marketplace commit
+  // ---------------------------------------------------------------------------
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const committedValues =
-        commitFilterValues(
-          draftValues,
-        );
+        commitFilterValues(draftValues);
 
       if (committedValues !== null) {
         onChangeRef.current(
@@ -681,9 +381,9 @@ export function JourneyMarketplaceFilters({
     };
   }, [draftValues]);
 
-  // ===========================================================================
-  // Primary Input Change
-  // ===========================================================================
+  // ---------------------------------------------------------------------------
+  // Primary inputs
+  // ---------------------------------------------------------------------------
 
   const handleInputChange =
     (
@@ -704,9 +404,9 @@ export function JourneyMarketplaceFilters({
       }));
     };
 
-  // ===========================================================================
-  // Minimum Price Change
-  // ===========================================================================
+  // ---------------------------------------------------------------------------
+  // Price inputs
+  // ---------------------------------------------------------------------------
 
   const handleMinPriceChange = (
     event: ChangeEvent<HTMLInputElement>,
@@ -714,22 +414,14 @@ export function JourneyMarketplaceFilters({
     const inputValue =
       event.target.value;
 
-    setMinPriceInput(
-      inputValue,
-    );
+    setMinPriceInput(inputValue);
 
     setDraftValues((current) => ({
       ...current,
       minPrice:
-        normalizePrice(
-          inputValue,
-        ),
+        normalizePrice(inputValue),
     }));
   };
-
-  // ===========================================================================
-  // Maximum Price Change
-  // ===========================================================================
 
   const handleMaxPriceChange = (
     event: ChangeEvent<HTMLInputElement>,
@@ -737,22 +429,18 @@ export function JourneyMarketplaceFilters({
     const inputValue =
       event.target.value;
 
-    setMaxPriceInput(
-      inputValue,
-    );
+    setMaxPriceInput(inputValue);
 
     setDraftValues((current) => ({
       ...current,
       maxPrice:
-        normalizePrice(
-          inputValue,
-        ),
+        normalizePrice(inputValue),
     }));
   };
 
-  // ===========================================================================
-  // Price Range Validation
-  // ===========================================================================
+  // ---------------------------------------------------------------------------
+  // Price validation
+  // ---------------------------------------------------------------------------
 
   const hasInvalidPriceRange =
     draftValues.minPrice !== null &&
@@ -760,9 +448,9 @@ export function JourneyMarketplaceFilters({
     draftValues.minPrice >
       draftValues.maxPrice;
 
-  // ===========================================================================
+  // ---------------------------------------------------------------------------
   // Clear
-  // ===========================================================================
+  // ---------------------------------------------------------------------------
 
   const handleClear = (): void => {
     setDraftValues(
@@ -770,9 +458,7 @@ export function JourneyMarketplaceFilters({
     );
 
     setMinPriceInput("");
-
     setMaxPriceInput("");
-
     setShowFilters(false);
 
     onChange(
@@ -780,9 +466,9 @@ export function JourneyMarketplaceFilters({
     );
   };
 
-  // ===========================================================================
-  // Filters Toggle
-  // ===========================================================================
+  // ---------------------------------------------------------------------------
+  // Filters toggle
+  // ---------------------------------------------------------------------------
 
   const handleFiltersClick = (): void => {
     setShowFilters(
@@ -792,14 +478,12 @@ export function JourneyMarketplaceFilters({
     onFiltersClick?.();
   };
 
-  // ===========================================================================
-  // Active Draft State
-  // ===========================================================================
+  // ---------------------------------------------------------------------------
+  // Active state
+  // ---------------------------------------------------------------------------
 
   const hasDraftFilters =
-    hasFilterValues(
-      draftValues,
-    );
+    hasFilterValues(draftValues);
 
   const hasDraftPriceFilters =
     hasPriceFilterValues(
@@ -822,52 +506,56 @@ export function JourneyMarketplaceFilters({
         "relative",
         "w-full",
         "min-w-0",
+        "max-w-full",
         "overflow-hidden",
-        "rounded-[clamp(0.7rem,1.5vw,1.15rem)]",
+        "rounded-[clamp(0.42rem,1.5vw,1.15rem)]",
         "border",
         "border-[var(--border)]",
-        "border-l-4",
+        "border-l-[clamp(0.12rem,0.3vw,0.25rem)]",
         "border-l-[var(--brand)]",
         "bg-[var(--surface)]",
         "shadow-[var(--shadow-md)]",
         className,
       )}
     >
-      {/* --------------------------------------------------------------------- */}
-      {/* Visual Header                                                         */}
-      {/* --------------------------------------------------------------------- */}
+      {/* ---------------------------------------------------------------------
+          Header
+          --------------------------------------------------------------------- */}
 
       <div
         className={cn(
           "flex",
           "w-full",
           "min-w-0",
+          "max-w-full",
           "items-center",
           "justify-between",
-          "gap-[clamp(0.35rem,1vw,0.8rem)]",
+          "gap-[clamp(0.18rem,1vw,0.8rem)]",
+          "overflow-hidden",
           "border-b",
           "border-[var(--border-subtle)]",
           "bg-[var(--background-brand)]",
-          "px-[clamp(0.6rem,1.6vw,1.25rem)]",
-          "py-[clamp(0.45rem,1vw,0.8rem)]",
+          "px-[clamp(0.35rem,1.6vw,1.25rem)]",
+          "py-[clamp(0.28rem,1vw,0.8rem)]",
         )}
       >
         <div
           className={cn(
             "flex",
             "min-w-0",
+            "max-w-full",
             "items-center",
-            "gap-[clamp(0.3rem,0.7vw,0.55rem)]",
+            "gap-[clamp(0.18rem,0.7vw,0.55rem)]",
           )}
         >
           <span
             className={cn(
               "flex",
-              "size-[clamp(1.35rem,2.8vw,2.1rem)]",
+              "size-[clamp(0.9rem,2.8vw,2.1rem)]",
               "shrink-0",
               "items-center",
               "justify-center",
-              "rounded-[clamp(0.35rem,0.7vw,0.6rem)]",
+              "rounded-[clamp(0.25rem,0.7vw,0.6rem)]",
               "bg-[var(--brand)]",
               "text-[var(--brand-foreground)]",
               "shadow-[var(--shadow-sm)]",
@@ -876,11 +564,11 @@ export function JourneyMarketplaceFilters({
             <SearchRouteIcon />
           </span>
 
-          <div className="min-w-0">
+          <div className="min-w-0 max-w-full">
             <p
               className={cn(
                 "truncate",
-                "text-[clamp(0.58rem,1vw,0.82rem)]",
+                "text-[clamp(0.42rem,1vw,0.82rem)]",
                 "font-bold",
                 "leading-tight",
                 "text-[var(--foreground)]",
@@ -891,9 +579,9 @@ export function JourneyMarketplaceFilters({
 
             <p
               className={cn(
-                "mt-[clamp(0.08rem,0.2vw,0.16rem)]",
+                "mt-[clamp(0.04rem,0.2vw,0.16rem)]",
                 "truncate",
-                "text-[clamp(0.4rem,0.65vw,0.55rem)]",
+                "text-[clamp(0.3rem,0.65vw,0.55rem)]",
                 "leading-tight",
                 "text-[var(--foreground-muted)]",
               )}
@@ -909,9 +597,9 @@ export function JourneyMarketplaceFilters({
               "shrink-0",
               "rounded-full",
               "bg-[var(--brand-soft)]",
-              "px-[clamp(0.3rem,0.7vw,0.55rem)]",
-              "py-[clamp(0.14rem,0.3vw,0.24rem)]",
-              "text-[clamp(0.36rem,0.58vw,0.5rem)]",
+              "px-[clamp(0.18rem,0.7vw,0.55rem)]",
+              "py-[clamp(0.08rem,0.3vw,0.24rem)]",
+              "text-[clamp(0.26rem,0.58vw,0.5rem)]",
               "font-semibold",
               "uppercase",
               "tracking-wide",
@@ -923,15 +611,16 @@ export function JourneyMarketplaceFilters({
         )}
       </div>
 
-      {/* --------------------------------------------------------------------- */}
-      {/* Primary Discovery Controls                                            */}
-      {/* --------------------------------------------------------------------- */}
+      {/* ---------------------------------------------------------------------
+          Primary discovery controls
+          --------------------------------------------------------------------- */}
 
       <div
         className={cn(
           "w-full",
           "min-w-0",
-          "p-[clamp(0.4rem,1.1vw,0.9rem)]",
+          "max-w-full",
+          "p-[clamp(0.22rem,1.1vw,0.9rem)]",
         )}
       >
         <div
@@ -939,37 +628,38 @@ export function JourneyMarketplaceFilters({
             "grid",
             "w-full",
             "min-w-0",
+            "max-w-full",
             "grid-cols-[repeat(4,minmax(0,1fr))]",
             "items-stretch",
-            "gap-[clamp(0.2rem,0.65vw,0.65rem)]",
+            "gap-[clamp(0.1rem,0.65vw,0.65rem)]",
           )}
         >
-          {/* ----------------------------------------------------------------- */}
-          {/* From                                                              */}
-          {/* ----------------------------------------------------------------- */}
+          {/* -----------------------------------------------------------------
+              From
+              ----------------------------------------------------------------- */}
 
           <div
             className={cn(
               "min-w-0",
               "max-w-full",
               "overflow-hidden",
-              "rounded-[clamp(0.45rem,1vw,0.8rem)]",
+              "rounded-[clamp(0.3rem,1vw,0.8rem)]",
               "border",
               "border-[var(--border)]",
               "bg-[var(--background)]",
-              "p-[clamp(0.18rem,0.5vw,0.45rem)]",
+              "p-[clamp(0.1rem,0.5vw,0.45rem)]",
               "shadow-[var(--shadow-sm)]",
             )}
           >
             <div
               className={cn(
-                "mb-[clamp(0.08rem,0.25vw,0.2rem)]",
+                "mb-[clamp(0.03rem,0.25vw,0.2rem)]",
                 "flex",
                 "min-w-0",
                 "items-center",
-                "gap-[clamp(0.15rem,0.4vw,0.35rem)]",
-                "px-[clamp(0.14rem,0.4vw,0.35rem)]",
-                "text-[clamp(0.34rem,0.58vw,0.5rem)]",
+                "gap-[clamp(0.08rem,0.4vw,0.35rem)]",
+                "px-[clamp(0.08rem,0.4vw,0.35rem)]",
+                "text-[clamp(0.24rem,0.58vw,0.5rem)]",
                 "font-semibold",
                 "uppercase",
                 "tracking-[0.08em]",
@@ -1002,9 +692,9 @@ export function JourneyMarketplaceFilters({
                   "border-0",
                   "bg-transparent",
                   "shadow-none",
-                  "px-[clamp(0.14rem,0.35vw,0.3rem)]",
-                  "py-[clamp(0.18rem,0.4vw,0.35rem)]",
-                  "text-[clamp(0.52rem,0.9vw,0.88rem)]",
+                  "px-[clamp(0.08rem,0.35vw,0.3rem)]",
+                  "py-[clamp(0.1rem,0.4vw,0.35rem)]",
+                  "text-[clamp(0.38rem,0.9vw,0.88rem)]",
                   "font-semibold",
                   "leading-tight",
                   "focus-visible:ring-0",
@@ -1013,32 +703,32 @@ export function JourneyMarketplaceFilters({
             </div>
           </div>
 
-          {/* ----------------------------------------------------------------- */}
-          {/* To                                                                */}
-          {/* ----------------------------------------------------------------- */}
+          {/* -----------------------------------------------------------------
+              To
+              ----------------------------------------------------------------- */}
 
           <div
             className={cn(
               "min-w-0",
               "max-w-full",
               "overflow-hidden",
-              "rounded-[clamp(0.45rem,1vw,0.8rem)]",
+              "rounded-[clamp(0.3rem,1vw,0.8rem)]",
               "border",
               "border-[var(--border)]",
               "bg-[var(--background)]",
-              "p-[clamp(0.18rem,0.5vw,0.45rem)]",
+              "p-[clamp(0.1rem,0.5vw,0.45rem)]",
               "shadow-[var(--shadow-sm)]",
             )}
           >
             <div
               className={cn(
-                "mb-[clamp(0.08rem,0.25vw,0.2rem)]",
+                "mb-[clamp(0.03rem,0.25vw,0.2rem)]",
                 "flex",
                 "min-w-0",
                 "items-center",
-                "gap-[clamp(0.15rem,0.4vw,0.35rem)]",
-                "px-[clamp(0.14rem,0.4vw,0.35rem)]",
-                "text-[clamp(0.34rem,0.58vw,0.5rem)]",
+                "gap-[clamp(0.08rem,0.4vw,0.35rem)]",
+                "px-[clamp(0.08rem,0.4vw,0.35rem)]",
+                "text-[clamp(0.24rem,0.58vw,0.5rem)]",
                 "font-semibold",
                 "uppercase",
                 "tracking-[0.08em]",
@@ -1071,9 +761,9 @@ export function JourneyMarketplaceFilters({
                   "border-0",
                   "bg-transparent",
                   "shadow-none",
-                  "px-[clamp(0.14rem,0.35vw,0.3rem)]",
-                  "py-[clamp(0.18rem,0.4vw,0.35rem)]",
-                  "text-[clamp(0.52rem,0.9vw,0.88rem)]",
+                  "px-[clamp(0.08rem,0.35vw,0.3rem)]",
+                  "py-[clamp(0.1rem,0.4vw,0.35rem)]",
+                  "text-[clamp(0.38rem,0.9vw,0.88rem)]",
                   "font-semibold",
                   "leading-tight",
                   "focus-visible:ring-0",
@@ -1082,32 +772,32 @@ export function JourneyMarketplaceFilters({
             </div>
           </div>
 
-          {/* ----------------------------------------------------------------- */}
-          {/* Date                                                              */}
-          {/* ----------------------------------------------------------------- */}
+          {/* -----------------------------------------------------------------
+              Date
+              ----------------------------------------------------------------- */}
 
           <div
             className={cn(
               "min-w-0",
               "max-w-full",
               "overflow-hidden",
-              "rounded-[clamp(0.45rem,1vw,0.8rem)]",
+              "rounded-[clamp(0.3rem,1vw,0.8rem)]",
               "border",
               "border-[var(--border)]",
               "bg-[var(--background)]",
-              "p-[clamp(0.18rem,0.5vw,0.45rem)]",
+              "p-[clamp(0.1rem,0.5vw,0.45rem)]",
               "shadow-[var(--shadow-sm)]",
             )}
           >
             <div
               className={cn(
-                "mb-[clamp(0.08rem,0.25vw,0.2rem)]",
+                "mb-[clamp(0.03rem,0.25vw,0.2rem)]",
                 "flex",
                 "min-w-0",
                 "items-center",
-                "gap-[clamp(0.15rem,0.4vw,0.35rem)]",
-                "px-[clamp(0.14rem,0.4vw,0.35rem)]",
-                "text-[clamp(0.34rem,0.58vw,0.5rem)]",
+                "gap-[clamp(0.08rem,0.4vw,0.35rem)]",
+                "px-[clamp(0.08rem,0.4vw,0.35rem)]",
+                "text-[clamp(0.24rem,0.58vw,0.5rem)]",
                 "font-semibold",
                 "uppercase",
                 "tracking-[0.08em]",
@@ -1138,9 +828,9 @@ export function JourneyMarketplaceFilters({
                   "border-0",
                   "bg-transparent",
                   "shadow-none",
-                  "px-[clamp(0.1rem,0.25vw,0.25rem)]",
-                  "py-[clamp(0.18rem,0.4vw,0.35rem)]",
-                  "text-[clamp(0.48rem,0.82vw,0.8rem)]",
+                  "px-[clamp(0.06rem,0.25vw,0.25rem)]",
+                  "py-[clamp(0.1rem,0.4vw,0.35rem)]",
+                  "text-[clamp(0.34rem,0.82vw,0.8rem)]",
                   "font-semibold",
                   "leading-tight",
                   "focus-visible:ring-0",
@@ -1149,9 +839,9 @@ export function JourneyMarketplaceFilters({
             </div>
           </div>
 
-          {/* ----------------------------------------------------------------- */}
-          {/* Clear                                                             */}
-          {/* ----------------------------------------------------------------- */}
+          {/* -----------------------------------------------------------------
+              Clear
+              ----------------------------------------------------------------- */}
 
           <div
             className={cn(
@@ -1174,9 +864,9 @@ export function JourneyMarketplaceFilters({
                 "min-w-0",
                 "max-w-full",
                 "overflow-hidden",
-                "rounded-[clamp(0.45rem,1vw,0.75rem)]",
-                "px-[clamp(0.25rem,0.7vw,0.85rem)]",
-                "text-[clamp(0.44rem,0.76vw,0.7rem)]",
+                "rounded-[clamp(0.3rem,1vw,0.75rem)]",
+                "px-[clamp(0.12rem,0.7vw,0.85rem)]",
+                "text-[clamp(0.32rem,0.76vw,0.7rem)]",
                 "font-semibold",
               )}
             >
@@ -1187,25 +877,27 @@ export function JourneyMarketplaceFilters({
           </div>
         </div>
 
-        {/* ------------------------------------------------------------------- */}
-        {/* Secondary Controls                                                  */}
-        {/* ------------------------------------------------------------------- */}
+        {/* -------------------------------------------------------------------
+            Secondary controls
+            ------------------------------------------------------------------- */}
 
         <div
           className={cn(
-            "mt-[clamp(0.3rem,0.7vw,0.55rem)]",
+            "mt-[clamp(0.16rem,0.7vw,0.55rem)]",
             "flex",
             "min-w-0",
+            "max-w-full",
             "items-center",
             "justify-between",
-            "gap-[clamp(0.3rem,0.8vw,0.7rem)]",
+            "gap-[clamp(0.16rem,0.8vw,0.7rem)]",
+            "overflow-hidden",
           )}
         >
           <div
             className={cn(
               "min-w-0",
               "truncate",
-              "text-[clamp(0.34rem,0.58vw,0.52rem)]",
+              "text-[clamp(0.26rem,0.58vw,0.52rem)]",
               "leading-tight",
               "text-[var(--foreground-muted)]",
             )}
@@ -1228,16 +920,16 @@ export function JourneyMarketplaceFilters({
             aria-expanded={showFilters}
             aria-pressed={showFilters}
             className={cn(
-              "h-[clamp(1.45rem,2.5vw,2rem)]",
+              "h-[clamp(1.05rem,2.5vw,2rem)]",
               "w-auto",
               "min-w-0",
               "max-w-full",
               "shrink-0",
               "overflow-hidden",
               "whitespace-nowrap",
-              "rounded-[clamp(0.4rem,0.8vw,0.65rem)]",
-              "px-[clamp(0.35rem,0.75vw,0.7rem)]",
-              "text-[clamp(0.42rem,0.68vw,0.64rem)]",
+              "rounded-[clamp(0.28rem,0.8vw,0.65rem)]",
+              "px-[clamp(0.18rem,0.75vw,0.7rem)]",
+              "text-[clamp(0.3rem,0.68vw,0.64rem)]",
               "font-semibold",
             )}
           >
@@ -1250,7 +942,7 @@ export function JourneyMarketplaceFilters({
                 aria-hidden="true"
                 className={cn(
                   "ml-0.5",
-                  "size-[clamp(0.22rem,0.4vw,0.32rem)]",
+                  "size-[clamp(0.14rem,0.4vw,0.32rem)]",
                   "shrink-0",
                   "rounded-full",
                   "bg-current",
@@ -1264,52 +956,51 @@ export function JourneyMarketplaceFilters({
           </Button>
         </div>
 
-        {/* ------------------------------------------------------------------- */}
-        {/* Compact Secondary Price Filter                                      */}
-        {/* ------------------------------------------------------------------- */}
+        {/* -------------------------------------------------------------------
+            Price filters
+            ------------------------------------------------------------------- */}
 
         {showFilters && (
           <div
             className={cn(
-              "mt-[clamp(0.3rem,0.7vw,0.55rem)]",
+              "mt-[clamp(0.16rem,0.7vw,0.55rem)]",
               "flex",
               "w-full",
               "min-w-0",
+              "max-w-full",
               "items-center",
-              "gap-[clamp(0.25rem,0.6vw,0.5rem)]",
-              "rounded-[clamp(0.4rem,0.8vw,0.65rem)]",
+              "gap-[clamp(0.12rem,0.6vw,0.5rem)]",
+              "overflow-hidden",
+              "rounded-[clamp(0.28rem,0.8vw,0.65rem)]",
               "border",
               "border-[var(--border-subtle)]",
               "bg-[var(--background)]",
-              "px-[clamp(0.35rem,0.8vw,0.65rem)]",
-              "py-[clamp(0.3rem,0.6vw,0.5rem)]",
+              "px-[clamp(0.18rem,0.8vw,0.65rem)]",
+              "py-[clamp(0.16rem,0.6vw,0.5rem)]",
             )}
           >
-            {/* ----------------------------------------------------------------- */}
-            {/* Price Label                                                       */}
-            {/* ----------------------------------------------------------------- */}
+            {/* Price label */}
 
             <div
               className={cn(
                 "flex",
+                "min-w-0",
                 "shrink-0",
                 "items-center",
-                "gap-[clamp(0.15rem,0.35vw,0.3rem)]",
-                "text-[clamp(0.4rem,0.62vw,0.56rem)]",
+                "gap-[clamp(0.08rem,0.35vw,0.3rem)]",
+                "text-[clamp(0.28rem,0.62vw,0.56rem)]",
                 "font-semibold",
                 "text-[var(--foreground-muted)]",
               )}
             >
               <PriceIcon />
 
-              <span>
+              <span className="truncate">
                 Price
               </span>
             </div>
 
-            {/* ----------------------------------------------------------------- */}
-            {/* Minimum                                                           */}
-            {/* ----------------------------------------------------------------- */}
+            {/* Minimum */}
 
             <div
               className={cn(
@@ -1317,14 +1008,15 @@ export function JourneyMarketplaceFilters({
                 "min-w-0",
                 "flex-1",
                 "items-center",
-                "gap-[clamp(0.1rem,0.25vw,0.2rem)]",
+                "gap-[clamp(0.06rem,0.25vw,0.2rem)]",
+                "overflow-hidden",
               )}
             >
               <span
                 aria-hidden="true"
                 className={cn(
                   "shrink-0",
-                  "text-[clamp(0.36rem,0.55vw,0.5rem)]",
+                  "text-[clamp(0.26rem,0.55vw,0.5rem)]",
                   "font-medium",
                   "text-[var(--foreground-muted)]",
                 )}
@@ -1348,27 +1040,27 @@ export function JourneyMarketplaceFilters({
                   "h-auto",
                   "w-full",
                   "min-w-0",
+                  "max-w-full",
+                  "overflow-hidden",
                   "border-0",
                   "bg-transparent",
                   "shadow-none",
-                  "px-[clamp(0.1rem,0.25vw,0.2rem)]",
-                  "py-[clamp(0.12rem,0.3vw,0.25rem)]",
-                  "text-[clamp(0.44rem,0.7vw,0.68rem)]",
+                  "px-[clamp(0.05rem,0.25vw,0.2rem)]",
+                  "py-[clamp(0.08rem,0.3vw,0.25rem)]",
+                  "text-[clamp(0.3rem,0.7vw,0.68rem)]",
                   "font-semibold",
                   "focus-visible:ring-0",
                 )}
               />
             </div>
 
-            {/* ----------------------------------------------------------------- */}
-            {/* Range Separator                                                   */}
-            {/* ----------------------------------------------------------------- */}
+            {/* Separator */}
 
             <span
               aria-hidden="true"
               className={cn(
                 "shrink-0",
-                "text-[clamp(0.4rem,0.65vw,0.58rem)]",
+                "text-[clamp(0.28rem,0.65vw,0.58rem)]",
                 "font-semibold",
                 "text-[var(--foreground-muted)]",
               )}
@@ -1376,9 +1068,7 @@ export function JourneyMarketplaceFilters({
               —
             </span>
 
-            {/* ----------------------------------------------------------------- */}
-            {/* Maximum                                                           */}
-            {/* ----------------------------------------------------------------- */}
+            {/* Maximum */}
 
             <div
               className={cn(
@@ -1386,14 +1076,15 @@ export function JourneyMarketplaceFilters({
                 "min-w-0",
                 "flex-1",
                 "items-center",
-                "gap-[clamp(0.1rem,0.25vw,0.2rem)]",
+                "gap-[clamp(0.06rem,0.25vw,0.2rem)]",
+                "overflow-hidden",
               )}
             >
               <span
                 aria-hidden="true"
                 className={cn(
                   "shrink-0",
-                  "text-[clamp(0.36rem,0.55vw,0.5rem)]",
+                  "text-[clamp(0.26rem,0.55vw,0.5rem)]",
                   "font-medium",
                   "text-[var(--foreground-muted)]",
                 )}
@@ -1420,21 +1111,19 @@ export function JourneyMarketplaceFilters({
                   "h-auto",
                   "w-full",
                   "min-w-0",
+                  "max-w-full",
+                  "overflow-hidden",
                   "border-0",
                   "bg-transparent",
                   "shadow-none",
-                  "px-[clamp(0.1rem,0.25vw,0.2rem)]",
-                  "py-[clamp(0.12rem,0.3vw,0.25rem)]",
-                  "text-[clamp(0.44rem,0.7vw,0.68rem)]",
+                  "px-[clamp(0.05rem,0.25vw,0.2rem)]",
+                  "py-[clamp(0.08rem,0.3vw,0.25rem)]",
+                  "text-[clamp(0.3rem,0.7vw,0.68rem)]",
                   "font-semibold",
                   "focus-visible:ring-0",
                 )}
               />
             </div>
-
-            {/* ----------------------------------------------------------------- */}
-            {/* Invalid Range                                                     */}
-            {/* ----------------------------------------------------------------- */}
 
             {hasInvalidPriceRange && (
               <span
@@ -1442,7 +1131,7 @@ export function JourneyMarketplaceFilters({
                 className={cn(
                   "hidden",
                   "shrink-0",
-                  "text-[clamp(0.34rem,0.55vw,0.5rem)]",
+                  "text-[clamp(0.24rem,0.55vw,0.5rem)]",
                   "font-medium",
                   "text-[var(--destructive)]",
                   "sm:inline",
@@ -1457,9 +1146,5 @@ export function JourneyMarketplaceFilters({
     </section>
   );
 }
-
-// =============================================================================
-// Default Export
-// =============================================================================
 
 export default JourneyMarketplaceFilters;

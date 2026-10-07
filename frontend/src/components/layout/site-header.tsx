@@ -8,8 +8,8 @@
 // - Render the sisiMove brand.
 // - Compose desktop and mobile navigation.
 // - Provide public authentication entry points.
-// - Provide the public "Share travel plan" entry point.
-// - Route protected public actions to the authentication boundary.
+// - Provide the public "Publish a journey" entry point.
+// - Route protected journey-publishing actions to the authentication boundary.
 // - Remain independent of authentication implementation details.
 //
 // Architectural boundary:
@@ -24,7 +24,7 @@
 //
 // Public action rule:
 //
-//     Share travel plan → /login
+//     Publish a journey → /login
 //
 // The public header does not attempt to determine whether the visitor can
 // create or publish a journey. The login route is the entry boundary for
@@ -45,7 +45,7 @@
 // - SignIn owns the presentation of the sign-in action.
 // - JoinSisiMove owns the presentation of the registration action.
 // - SiteHeader composes those actions.
-// - "Share travel plan" is a public-shell navigation action and therefore
+// - "Publish a journey" is a public-shell navigation action and therefore
 //   remains a plain Link to the authentication boundary.
 //
 // Authentication state, session handling, authorization, verification,
@@ -53,13 +53,15 @@
 //
 // -----------------------------------------------------------------------------
 
-
 'use client';
 
 import Link from 'next/link';
 
 import { cn } from '@/foundation';
-import { AUTHENTICATION_ROUTES, PUBLIC_ROUTES } from '@/foundation/routing';
+import {
+  AUTHENTICATION_ROUTES,
+  PUBLIC_ROUTES,
+} from '@/foundation/routing';
 
 import { Container } from '../ui';
 
@@ -70,7 +72,6 @@ import {
 
 import { DesktopNavigation } from './desktop-navigation';
 import { MobileNavigation } from './mobile-navigation';
-
 
 // =============================================================================
 // Site Header
@@ -150,10 +151,10 @@ export function SiteHeader() {
           )}
         >
           {/* ---------------------------------------------------------------
-              Share Travel Plan
+              Publish a Journey
 
               Public visitors may see this action, but creating/publishing
-              travel plans is protected.
+              journeys is protected.
 
               The header therefore sends the visitor directly to the login
               boundary. Authentication and verification are handled after
@@ -185,7 +186,7 @@ export function SiteHeader() {
               'focus-visible:ring-offset-[var(--surface)]',
             )}
           >
-            Share travel plan
+            Publish a journey
           </Link>
 
           <SignIn compact />
@@ -214,3 +215,4 @@ export function SiteHeader() {
 }
 
 export default SiteHeader;
+

@@ -34,11 +34,21 @@ import {
  *
  * The presentation/application mapping layer is responsible for converting:
  *
- * - journeyPublicId    → JourneyBookingJourneyPublicId
- * - passengerPublicId  → JourneyBookingPassengerPublicId
- * - seats              → JourneyBookingSeats
+ * - journeyPublicId → JourneyBookingJourneyPublicId
+ * - seats           → JourneyBookingSeats
  *
- * before constructing CreateJourneyBookingCommand.
+ * The passenger identity is intentionally NOT accepted from the request
+ * body.
+ *
+ * The authenticated passenger is derived from the JWT:
+ *
+ *     request.user.publicId
+ *
+ * This prevents a client from creating a booking on behalf of another
+ * passenger by submitting an arbitrary passengerPublicId.
+ *
+ * Correlation and causation identifiers are optional transport metadata.
+ * They are not required to create a booking.
  */
 export class CreateJourneyBookingDto {
   // ===========================================================================
@@ -64,33 +74,11 @@ export class CreateJourneyBookingDto {
   journeyPublicId!: string;
 
   // ===========================================================================
-  // Passenger
-  // ===========================================================================
-
-  /**
-   * Public identifier of the passenger creating the booking.
-   *
-   * This is a cross-domain public identifier and is converted to
-   * JourneyBookingPassengerPublicId before entering the application layer.
-   */
-  @ApiProperty({
-    description:
-      'Public identifier of the passenger making the Journey Booking.',
-    example: 'IDN-01J8XYZ456',
-    minLength: 1,
-    maxLength: 100,
-  })
-  @IsString()
-  @MinLength(1)
-  @MaxLength(100)
-  passengerPublicId!: string;
-
-  // ===========================================================================
   // Seats
   // ===========================================================================
 
   /**
-   * Number of seats requested by the passenger.
+   * Number of seats requested by the authenticated passenger.
    *
    * The transport boundary restricts the value to a positive integer.
    * JourneyBookingSeats provides the corresponding domain invariant.
@@ -112,20 +100,33 @@ export class CreateJourneyBookingDto {
   // ===========================================================================
 
   /**
-   * Correlation identifier used to trace the request through the application
-   * and domain workflow.
+   * Optional correlation identifier used to trace this request through the
+   * application workflow.
+   *
+   * The client may provide one when it already has a correlation context.
+   * It is intentionally not required for a normal booking request.
+   *
+   * Example:
+   *
+   *     {
+   *       "journeyPublicId": "JNY-01J8XYZ123",
+   *       "seats": 1
+   *     }
+   *
+   * is a valid request.
    */
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      'Identifier used to correlate this request with the originating workflow or distributed trace.',
+      'Optional identifier used to correlate this request with an originating workflow or distributed trace.',
     example: 'corr-01J8XYZ789',
     minLength: 1,
     maxLength: 200,
   })
+  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(200)
-  correlationId!: string;
+  correlationId?: string;
 
   // ===========================================================================
   // Causation
@@ -133,10 +134,12 @@ export class CreateJourneyBookingDto {
 
   /**
    * Optional identifier of the command or event that caused this request.
+   *
+   * Most direct REST booking requests will not have a causation identifier.
    */
   @ApiPropertyOptional({
     description:
-      'Identifier of the command or event that caused this request, when applicable.',
+      'Optional identifier of the command or event that caused this request, when applicable.',
     example: 'cmd-01J8XYZABC',
     minLength: 1,
     maxLength: 200,

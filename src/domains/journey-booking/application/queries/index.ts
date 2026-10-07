@@ -13,6 +13,12 @@ export { GetJourneyBookingByPublicIdQuery } from './get-journey-booking-by-publi
 export { GetMyJourneyBookingsQuery } from './get-my-journey-bookings.query';
 
 // -----------------------------------------------------------------------------
+// Detail
+// -----------------------------------------------------------------------------
+
+export { GetJourneyBookingDetailQuery } from './get-journey-booking-detail.query';
+
+// -----------------------------------------------------------------------------
 // Discovery
 // -----------------------------------------------------------------------------
 

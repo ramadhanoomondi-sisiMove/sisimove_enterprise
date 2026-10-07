@@ -20,14 +20,14 @@
 // -----------------------------------------------------------------------------
 
 import type {
-  JourneyBooking,
   JourneyBookingCancellationReason,
+  JourneyBookingDetail,
 } from '@/features/journey-booking/models';
 import { ConfirmJourneyBookingAction } from './confirm-journey-booking-action';
 import { CancelJourneyBookingAction } from './cancel-journey-booking-action';
 
 export interface JourneyBookingActionsProps {
-  booking: JourneyBooking;
+  booking: JourneyBookingDetail;
 
   /**
    * Called when the user requests booking confirmation.

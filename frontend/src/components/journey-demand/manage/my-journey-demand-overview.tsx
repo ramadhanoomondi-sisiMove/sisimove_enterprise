@@ -1,23 +1,49 @@
 // -----------------------------------------------------------------------------
-// sisiMove — My Journey Demand Overview
+// Path: src/features/journey-demand/components/manage/my-journey-demand-overview.tsx
 // -----------------------------------------------------------------------------
+//
+// sisiMove — My Journey Demand Overview
 //
 // Authenticated owner's complete Journey Demand overview.
 //
-// Architecture:
-// - presentation only;
-// - receives an already-loaded MyJourneyDemand;
-// - does not fetch;
-// - does not authorize;
-// - does not mutate;
-// - does not determine lifecycle transitions;
-// - does not convert the owner model into PublicJourneyDemand;
-// - consumes backend-provided convenience flags;
-// - gracefully supports incomplete DRAFT demands.
+// Architecture
+// ------------
 //
-// Owner-specific management actions are intentionally not rendered here.
-// They belong to the management/container composition below the detail
-// content.
+// This component is presentation-only.
+//
+// It receives an already-loaded MyJourneyDemand projection and presents the
+// information currently known about the owner's Demand.
+//
+// It does NOT:
+//
+// - fetch;
+// - mutate;
+// - authorize;
+// - determine lifecycle transitions;
+// - determine whether an action is available;
+// - convert the owner projection into a public projection;
+// - resolve locations;
+// - construct API requests;
+// - own editing state;
+// - own save state;
+// - navigate.
+//
+// The backend projection remains authoritative. In particular, convenience
+// flags supplied by the backend are consumed directly rather than recreated
+// from status or other fields in this component.
+//
+// Incomplete DRAFT demands are supported intentionally. A section is rendered
+// only when the corresponding projection component exists.
+//
+// Owner management actions are intentionally outside this component.
+//
+//     JourneyDemandManagement
+//              │
+//              ├── lifecycle actions
+//              │
+//              └── JourneyDemandEditor
+//                       │
+//                       └── MyJourneyDemandOverview
 //
 // -----------------------------------------------------------------------------
 
@@ -369,21 +395,33 @@ function DemandMatchingSection({
         <MatchingMetric
           label="Seats requested"
           value={capacity.requestedSeats}
-          suffix={capacity.requestedSeats === 1 ? 'seat' : 'seats'}
+          suffix={
+            capacity.requestedSeats === 1
+              ? 'seat'
+              : 'seats'
+          }
           description="Your requirement for this Demand."
         />
 
         <MatchingMetric
           label="Matched seats"
           value={capacity.matchedSeats}
-          suffix={capacity.matchedSeats === 1 ? 'seat' : 'seats'}
+          suffix={
+            capacity.matchedSeats === 1
+              ? 'seat'
+              : 'seats'
+          }
           description="Seats currently connected to Journey supply."
         />
 
         <MatchingMetric
           label="Remaining"
           value={capacity.remainingSeats}
-          suffix={capacity.remainingSeats === 1 ? 'seat' : 'seats'}
+          suffix={
+            capacity.remainingSeats === 1
+              ? 'seat'
+              : 'seats'
+          }
           description="Seats still available to be matched."
         />
       </div>
@@ -460,34 +498,26 @@ function PricingRequirementsSection({
       </h2>
 
       <p className="mt-1 text-sm leading-6 text-foreground-muted">
-        These are Demand requirements, not a confirmed Journey fare.
+        This is the maximum amount you are prepared to pay per seat.
+        It is a Demand requirement, not a confirmed Journey fare.
       </p>
 
-      <div className="mt-5 grid min-w-0 gap-3 sm:grid-cols-2">
-        {pricing.hasPreferredPrice &&
-        pricing.preferredPricePerSeat !== undefined ? (
-          <PriceCard
-            label="Preferred price / seat"
-            amount={pricing.preferredPricePerSeat}
-            currency={pricing.currency}
-            description="Your preferred amount for one seat."
-          />
-        ) : null}
-
-        {pricing.hasMaximumPrice &&
-        pricing.maximumPricePerSeat !== undefined ? (
+      {pricing.hasMaximumPrice &&
+      pricing.maximumPricePerSeat !== undefined ? (
+        <div className="mt-5 grid min-w-0 gap-3 sm:grid-cols-2">
           <PriceCard
             label="Maximum price / seat"
             amount={pricing.maximumPricePerSeat}
             currency={pricing.currency}
             description="The highest amount you specified for one seat."
           />
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {pricing.isUnconstrained ? (
         <p className="mt-4 text-sm text-foreground-muted">
-          No price constraint has been specified for this Demand.
+          No maximum price constraint has been specified for this
+          Demand.
         </p>
       ) : null}
 

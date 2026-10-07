@@ -27,12 +27,12 @@
 
 import type { ReactNode } from 'react';
 
-import type { JourneyBooking } from '@/features/journey-booking/models';
+import type { JourneyBookingDetail } from '@/features/journey-booking/models';
 import { JourneyBookingStatusBadge } from '../booking-status';
 import { Card } from '@/components/ui';
 
 export interface JourneyBookingCardProps {
-  booking: JourneyBooking;
+  booking: JourneyBookingDetail;
 
   /**
    * Optional consumer-controlled content rendered as the card footer.
@@ -140,7 +140,7 @@ export function JourneyBookingCard({
 // -----------------------------------------------------------------------------
 
 interface BookingRouteProps {
-  snapshot: NonNullable<JourneyBooking['snapshot']>;
+  snapshot: NonNullable<JourneyBookingDetail['snapshot']>;
 }
 
 function BookingRoute({ snapshot }: BookingRouteProps) {
@@ -268,7 +268,7 @@ function formatMoney(
 }
 
 function formatPaymentStatus(
-  status: NonNullable<JourneyBooking['payment']>['status'],
+  status: NonNullable<JourneyBookingDetail['payment']>['status'],
 ): string {
   switch (status) {
     case 'PENDING':
@@ -288,5 +288,8 @@ function formatPaymentStatus(
 
     case 'REFUNDED':
       return 'Refunded';
+
+    default:
+      return status;
   }
 }

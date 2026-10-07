@@ -2,47 +2,78 @@
 // sisiMove — Journey Demand Corridor Summary
 // -----------------------------------------------------------------------------
 //
-// Read-only presentation of a Journey Demand's public corridor.
+// Read-only presentation of a Journey Demand corridor.
 //
-// Architecture:
-// - Consumes the public Journey Demand route projection.
-// - Does not fetch data.
-// - Does not mutate data.
-// - Does not calculate distance, duration, ETA, or route geometry.
-// - Does not reconstruct backend corridor/domain objects.
-// - Origin and destination are rendered here.
-// - Waypoint presentation is delegated to JourneyDemandWaypoints (098).
+// Responsibilities:
+// - Render the supplied corridor projection.
+// - Present origin and destination.
+// - Delegate waypoint collection presentation to JourneyDemandWaypoints.
 //
-// The corridor feature is intentionally split:
+// This component does NOT:
+// - fetch data;
+// - mutate data;
+// - calculate distance, duration, ETA, or route geometry;
+// - reconstruct backend domain objects;
+// - modify waypoint ordering;
+// - edit corridor data;
+// - own corridor persistence.
 //
-//   096 — corridor summary/composition
-//   097 — individual waypoint presentation
-//   098 — waypoint collection
-//   099 — corridor editor
-//   100 — waypoint editor
+// The backend-projected JourneyDemandCorridor is consumed directly.
 //
-// Public detail boundary:
-// - 096/097/098 consume public Journey Demand projections.
-// - Editor components 099/100 consume the authenticated Journey Demand models.
+// Presentation hierarchy:
 //
-// This distinction prevents public presentation components from requiring
-// internal fields such as createdAt, updatedAt, or backend persistence IDs.
+//     JourneyDemandCorridor
+//            ↓
+//     JourneyDemandCorridorSummary
+//            ↓
+//     JourneyDemandWaypoints
+//            ↓
+//     JourneyDemandWaypointItem
+//
+// Editable corridor workflows are separate and use
+// JourneyDemandCorridorEditor.
 //
 // -----------------------------------------------------------------------------
 
-import type { PublicJourneyDemandRoute } from '@/features/journey-demand/models';
+import type { JourneyDemandCorridor } from '@/features/journey-demand/models';
 import { cn } from '@/foundation';
 
 import { JourneyDemandWaypoints } from './journey-demand-waypoints';
 
+// -----------------------------------------------------------------------------
+// Types
+// -----------------------------------------------------------------------------
+
+export type JourneyDemandCorridorSummaryEmphasis =
+  | 'compact'
+  | 'default';
+
 export interface JourneyDemandCorridorSummaryProps {
-  readonly route: PublicJourneyDemandRoute;
-  readonly emphasis?: 'compact' | 'default';
+  /**
+   * Backend-projected Journey Demand corridor.
+   *
+   * The summary consumes this representation directly and does not reconstruct
+   * another route model for presentation.
+   */
+  readonly corridor: JourneyDemandCorridor;
+
+  /**
+   * Presentation density.
+   */
+  readonly emphasis?: JourneyDemandCorridorSummaryEmphasis;
+
+  /**
+   * Optional additional class names.
+   */
   readonly className?: string;
 }
 
+// -----------------------------------------------------------------------------
+// Component
+// -----------------------------------------------------------------------------
+
 export function JourneyDemandCorridorSummary({
-  route,
+  corridor,
   emphasis = 'default',
   className,
 }: JourneyDemandCorridorSummaryProps) {
@@ -57,6 +88,10 @@ export function JourneyDemandCorridorSummary({
       )}
       aria-labelledby="journey-demand-corridor-summary-heading"
     >
+      {/* -----------------------------------------------------------------------
+          Route
+      ----------------------------------------------------------------------- */}
+
       <div className="min-w-0">
         <h2
           id="journey-demand-corridor-summary-heading"
@@ -78,13 +113,18 @@ export function JourneyDemandCorridorSummary({
         >
           <Location
             label="From"
-            name={route.origin.name}
+            name={corridor.originName}
             emphasis={emphasis}
           />
 
+          {/* -------------------------------------------------------------------
+              Route direction marker
+          ------------------------------------------------------------------- */}
+
           <div
             className={cn(
-              'hidden items-center justify-center text-foreground-subtle',
+              'hidden items-center justify-center',
+              'text-foreground-subtle',
               !isCompact && 'sm:flex',
             )}
             aria-hidden="true"
@@ -94,16 +134,24 @@ export function JourneyDemandCorridorSummary({
 
           <Location
             label="To"
-            name={route.destination.name}
+            name={corridor.destinationName}
             emphasis={emphasis}
           />
         </div>
       </div>
 
-      {route.waypoints.length > 0 ? (
+      {/* -----------------------------------------------------------------------
+          Waypoints
+          
+          The supplied waypoint collection is already backend ordered.
+          JourneyDemandWaypoints preserves that order and delegates individual
+          rendering to JourneyDemandWaypointItem.
+      ----------------------------------------------------------------------- */}
+
+      {corridor.waypoints.length > 0 ? (
         <div className="mt-5 border-t border-[var(--border-subtle)] pt-4">
           <JourneyDemandWaypoints
-            waypoints={route.waypoints}
+            waypoints={corridor.waypoints}
             emphasis={emphasis}
           />
         </div>
@@ -119,7 +167,7 @@ export function JourneyDemandCorridorSummary({
 interface LocationProps {
   readonly label: string;
   readonly name: string;
-  readonly emphasis: 'compact' | 'default';
+  readonly emphasis: JourneyDemandCorridorSummaryEmphasis;
 }
 
 function Location({
@@ -127,12 +175,14 @@ function Location({
   name,
   emphasis,
 }: LocationProps) {
+  const isCompact = emphasis === 'compact';
+
   return (
     <div className="min-w-0">
       <p
         className={cn(
           'text-foreground-muted',
-          emphasis === 'compact' ? 'text-xs' : 'text-sm',
+          isCompact ? 'text-xs' : 'text-sm',
         )}
       >
         {label}
@@ -141,7 +191,7 @@ function Location({
       <p
         className={cn(
           'mt-1 truncate font-semibold text-foreground',
-          emphasis === 'compact' ? 'text-sm' : 'text-base',
+          isCompact ? 'text-sm' : 'text-base',
         )}
       >
         {name}
@@ -149,4 +199,3 @@ function Location({
     </div>
   );
 }
-

@@ -8,9 +8,9 @@
 //
 // Responsibilities:
 // - Present backend-provided Journey Demand pricing.
-// - Respect backend-provided pricing interpretation flags.
+// - Respect the backend-provided pricing interpretation.
 // - Format monetary values using the shared currency formatter.
-// - Clearly distinguish preferred and maximum prices when both are supplied.
+// - Clearly distinguish an unconstrained demand from a maximum-price demand.
 //
 // This component does NOT:
 // - perform queries;
@@ -21,14 +21,21 @@
 // - determine whether a price is acceptable;
 // - recreate backend pricing constraints.
 //
+// Current pricing model:
+// - isUnconstrained === true
+//      → the traveller has not supplied a maximum price constraint.
+//
+// - hasMaximumPrice === true
+//      → maximumPricePerSeat is the traveller's maximum price per seat.
+//
+// The component deliberately does not recreate the former preferred-price
+// model. The backend JourneyDemandPricing model is the source of truth.
+//
 // Marketplace presentation:
 // - Price is a primary commercial signal.
-// - Compact enough for the marketplace card.
-// - Preferred price is visually dominant.
-// - Secondary pricing interpretation remains readable.
+// - Compact enough for marketplace cards.
+// - Maximum price is visually dominant.
 // - Does not introduce a nested surface or card.
-//
-// The JourneyDemandPricing model remains the source of truth.
 // -----------------------------------------------------------------------------
 
 import type { JourneyDemandPricing } from '@/features/journey-demand/models';
@@ -71,12 +78,9 @@ export function JourneyDemandPrice({
 }: JourneyDemandPriceProps) {
   const {
     maximumPricePerSeat,
-    preferredPricePerSeat,
     currency,
     isUnconstrained,
-    isPreferredPriceOnly,
-    isMaximumPriceOnly,
-    hasPreferredAndMaximumPrice,
+    hasMaximumPrice,
   } = pricing;
 
   const isCompact = emphasis === 'compact';
@@ -101,6 +105,11 @@ export function JourneyDemandPrice({
   // ---------------------------------------------------------------------------
   // Unconstrained
   // ---------------------------------------------------------------------------
+  //
+  // The backend explicitly says that this demand has no maximum-price
+  // constraint. We present that state directly rather than inferring it from
+  // the absence of a numeric value.
+  // ---------------------------------------------------------------------------
 
   if (isUnconstrained) {
     return (
@@ -112,42 +121,26 @@ export function JourneyDemandPrice({
             isCompact ? 'text-sm' : 'text-base',
           )}
         >
-          No price preference
-        </p>
-      </div>
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Preferred price only
-  // ---------------------------------------------------------------------------
-
-  if (
-    isPreferredPriceOnly &&
-    preferredPricePerSeat !== undefined
-  ) {
-    return (
-      <div className={containerClassName}>
-        <p className={valueClassName}>
-          {formatCurrency(
-            preferredPricePerSeat,
-            currency,
-          )}
+          No price limit
         </p>
 
         <p className={labelClassName}>
-          Preferred / seat
+          Price preference
         </p>
       </div>
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Maximum price only
+  // Maximum price
+  // ---------------------------------------------------------------------------
+  //
+  // hasMaximumPrice is supplied by the backend and therefore remains the
+  // authoritative interpretation flag.
   // ---------------------------------------------------------------------------
 
   if (
-    isMaximumPriceOnly &&
+    hasMaximumPrice &&
     maximumPricePerSeat !== undefined
   ) {
     return (
@@ -167,66 +160,17 @@ export function JourneyDemandPrice({
   }
 
   // ---------------------------------------------------------------------------
-  // Preferred + maximum
-  // ---------------------------------------------------------------------------
-
-  if (
-    hasPreferredAndMaximumPrice &&
-    preferredPricePerSeat !== undefined &&
-    maximumPricePerSeat !== undefined
-  ) {
-    return (
-      <div className={containerClassName}>
-        <p
-          className={cn(
-            valueClassName,
-            'whitespace-nowrap',
-          )}
-        >
-          {formatCurrency(
-            preferredPricePerSeat,
-            currency,
-          )}
-          <span className="px-1 font-normal text-[var(--foreground-muted)]">
-            –
-          </span>
-          {formatCurrency(
-            maximumPricePerSeat,
-            currency,
-          )}
-        </p>
-
-        <p className={labelClassName}>
-          Preferred – maximum / seat
-        </p>
-      </div>
-    );
-  }
-
-  // ---------------------------------------------------------------------------
   // Defensive presentation fallback
   // ---------------------------------------------------------------------------
   //
-  // The backend-provided interpretation flags should normally make one of the
-  // branches above applicable.
+  // A well-formed backend response should normally be handled by one of the
+  // explicit branches above.
   //
-  // This fallback deliberately does not infer a new pricing state. It only
-  // presents whichever explicitly supplied value is available.
-  //
+  // This fallback does not invent another pricing interpretation. If the
+  // backend supplied a numeric maximum price but the interpretation flag is
+  // unexpectedly inconsistent, we can still present the supplied value
+  // without changing the domain model.
   // ---------------------------------------------------------------------------
-
-  if (preferredPricePerSeat !== undefined) {
-    return (
-      <div className={containerClassName}>
-        <p className={valueClassName}>
-          {formatCurrency(
-            preferredPricePerSeat,
-            currency,
-          )}
-        </p>
-      </div>
-    );
-  }
 
   if (maximumPricePerSeat !== undefined) {
     return (
@@ -237,9 +181,17 @@ export function JourneyDemandPrice({
             currency,
           )}
         </p>
+
+        <p className={labelClassName}>
+          Maximum / seat
+        </p>
       </div>
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // No presentable price
+  // ---------------------------------------------------------------------------
 
   return (
     <div className={containerClassName}>

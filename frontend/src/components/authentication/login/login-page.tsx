@@ -1,3 +1,5 @@
+'use client';
+
 // -----------------------------------------------------------------------------
 // sisiMove — Login Page
 // -----------------------------------------------------------------------------
@@ -9,7 +11,8 @@
 // - Present the sisiMove introduction/brand context.
 // - Provide navigation to registration.
 // - Render the LoginForm.
-// - Navigate the user to the authenticated marketplace after successful login.
+// - Return the user to the route that initiated authentication when supplied.
+// - Fall back to the authenticated marketplace after successful login.
 //
 // Non-responsibilities:
 // - No form state.
@@ -17,10 +20,6 @@
 // - No API calls.
 // - No token/session management.
 // - No authentication state management.
-//
-// The LoginForm and authentication feature own the actual authentication
-// workflow. This component owns the page-level transition that occurs after
-// authentication succeeds.
 //
 // Navigation boundary:
 //
@@ -33,95 +32,222 @@
 //          ▼
 //     LoginPage
 //          │
+//          ├── returnTo supplied
+//          │       │
+//          │       ▼
+//          │   returnTo route
+//          │
+//          └── no returnTo
+//                  │
+//                  ▼
+//          AUTHENTICATED_ROUTES.HOME
+//
+// Public Journey booking flow:
+//
+//     /journeys/[publicId]
+//          │
 //          ▼
-//     AUTHENTICATED_ROUTES.HOME
+//     Book Journey
+//          │
+//          ▼
+//     /login?returnTo=/journeys/[publicId]
+//          │
+//          ▼
+//     Successful login
+//          │
+//          ▼
+//     /journeys/[publicId]
 //
 // -----------------------------------------------------------------------------
 
-'use client';
-
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 import {
   AUTHENTICATED_ROUTES,
   AUTHENTICATION_ROUTES,
 } from '@/foundation/routing';
 
-import type { AuthenticateLoginResponse } from '@/features/authentication/login';
-
 import { LoginForm } from './login-form';
+
+// =============================================================================
+// Props
+// =============================================================================
 
 export interface LoginPageProps {
   readonly forgotPasswordHref?: string;
 }
 
+// =============================================================================
+// Component
+// =============================================================================
+
 export function LoginPage({
   forgotPasswordHref,
 }: LoginPageProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // ---------------------------------------------------------------------------
   // Successful Authentication
   // ---------------------------------------------------------------------------
   //
-  // Authentication has already completed successfully inside LoginForm.
-  // The authentication feature owns session establishment.
+  // If authentication was initiated from a protected continuation such as
+  // booking a public Journey, return to that exact route.
   //
-  // The page now performs the application-level transition into the
-  // authenticated marketplace.
-  //
-  // `replace` is intentional: after signing in, the user should not be able
-  // to press Back and return to the login page as part of the authenticated
-  // navigation history.
+  // Otherwise, use the normal authenticated marketplace destination.
   //
   // ---------------------------------------------------------------------------
 
-  const handleLoginSuccess = (
-    _response: AuthenticateLoginResponse,
-  ) => {
+  const handleLoginSuccess = () => {
+    const returnTo = searchParams.get('returnTo');
+
+    if (returnTo && returnTo.startsWith('/')) {
+      router.replace(returnTo);
+      return;
+    }
+
     router.replace(AUTHENTICATED_ROUTES.HOME);
   };
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] bg-white">
-      <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-7xl lg:grid-cols-[0.9fr_1.1fr]">
+    <main
+      className={[
+        'min-h-[calc(100vh-4rem)]',
+        'min-w-0',
+        'overflow-x-hidden',
+        'bg-[var(--surface)]',
+        'text-[var(--foreground)]',
+      ].join(' ')}
+    >
+      <div
+        className={[
+          'mx-auto',
+          'grid',
+          'min-h-[calc(100vh-4rem)]',
+          'w-full',
+          'min-w-0',
+          'max-w-7xl',
+          'lg:grid-cols-[0.9fr_1.1fr]',
+        ].join(' ')}
+      >
         {/* -----------------------------------------------------------------
             Brand / context panel
             ----------------------------------------------------------------- */}
 
-        <section className="flex flex-col justify-center px-6 py-12 sm:px-10 lg:px-16 lg:py-16">
-          <div className="max-w-lg">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">
+        <section
+          className={[
+            'flex',
+            'min-w-0',
+            'flex-col',
+            'justify-center',
+            'px-[clamp(1rem,4vw,4rem)]',
+            'py-[clamp(2rem,6vw,4rem)]',
+            'lg:py-[clamp(3rem,6vw,4.5rem)]',
+          ].join(' ')}
+        >
+          <div className="min-w-0 max-w-lg">
+            <p
+              className={[
+                'text-[clamp(0.58rem,0.9vw,0.75rem)]',
+                'font-semibold',
+                'uppercase',
+                'tracking-[0.18em]',
+                'text-[var(--brand)]',
+              ].join(' ')}
+            >
               WELCOME BACK
             </p>
 
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
+            <h2
+              className={[
+                'mt-[clamp(0.65rem,1.5vw,0.9rem)]',
+                'min-w-0',
+                'text-[clamp(1.75rem,4vw,2.5rem)]',
+                'font-semibold',
+                'leading-[1.1]',
+                'tracking-tight',
+                'text-[var(--foreground)]',
+              ].join(' ')}
+            >
               Continue your journey with{' '}
-              <span className="text-slate-950">sisi</span>
-              <span className="text-blue-600">Move</span>.
+              <span className="text-[var(--foreground)]">sisi</span>
+              <span className="text-[var(--brand)]">Move</span>.
             </h2>
 
-            <p className="mt-4 max-w-md text-base leading-7 text-slate-600">
+            <p
+              className={[
+                'mt-[clamp(0.75rem,1.8vw,1rem)]',
+                'max-w-md',
+                'text-[clamp(0.75rem,1.4vw,1rem)]',
+                'leading-relaxed',
+                'text-[var(--foreground-secondary)]',
+              ].join(' ')}
+            >
               Sign in to explore journeys, find people travelling
               your way, and continue from where you left off.
             </p>
 
-            <div className="mt-8 space-y-3 text-sm text-slate-600">
+            {/* -------------------------------------------------------------
+                Product context
+                ------------------------------------------------------------- */}
+
+            <div
+              className={[
+                'mt-[clamp(1.5rem,3vw,2rem)]',
+                'min-w-0',
+                'space-y-[clamp(0.45rem,0.9vw,0.75rem)]',
+                'text-[clamp(0.7rem,1.15vw,0.875rem)]',
+                'leading-relaxed',
+                'text-[var(--foreground-secondary)]',
+              ].join(' ')}
+            >
               <p>Discover journeys going your way.</p>
-              <p>Find travel demand for the routes you need.</p>
-              <p>Share a journey when you have a seat.</p>
+
+              <p>Book a journey when you find the right one.</p>
+
+              <p>Share a journey when you have available seats.</p>
             </div>
 
-            <div className="mt-10 border-t border-slate-200 pt-6">
-              <p className="text-sm text-slate-600">
+            {/* -------------------------------------------------------------
+                Registration
+                ------------------------------------------------------------- */}
+
+            <div
+              className={[
+                'mt-[clamp(2rem,5vw,2.5rem)]',
+                'border-t',
+                'border-[var(--border)]',
+                'pt-[clamp(1rem,2vw,1.5rem)]',
+              ].join(' ')}
+            >
+              <p
+                className={[
+                  'text-[clamp(0.7rem,1.15vw,0.875rem)]',
+                  'leading-relaxed',
+                  'text-[var(--foreground-secondary)]',
+                ].join(' ')}
+              >
                 Don&apos;t have an account?{' '}
                 <Link
                   href={AUTHENTICATION_ROUTES.REGISTER}
-                  className="font-semibold transition-colors hover:text-blue-700"
+                  className={[
+                    'font-semibold',
+                    'outline-none',
+                    'transition-colors',
+                    'duration-150',
+                    'hover:text-[var(--brand)]',
+                    'focus-visible:rounded-sm',
+                    'focus-visible:ring-2',
+                    'focus-visible:ring-[var(--brand)]',
+                    'focus-visible:ring-offset-2',
+                    'focus-visible:ring-offset-[var(--surface)]',
+                  ].join(' ')}
                 >
-                  <span className="text-slate-950">Join sisi</span>
-                  <span className="text-blue-600">Move</span>
+                  <span className="text-[var(--foreground)]">
+                    Join sisi
+                  </span>
+                  <span className="text-[var(--brand)]">Move</span>
                 </Link>
               </p>
             </div>
@@ -132,8 +258,21 @@ export function LoginPage({
             Authentication panel
             ----------------------------------------------------------------- */}
 
-        <section className="flex items-center border-t border-slate-200 px-6 py-12 sm:px-10 lg:border-l lg:border-t-0 lg:px-16 lg:py-16">
-          <div className="w-full max-w-xl">
+        <section
+          className={[
+            'flex',
+            'min-w-0',
+            'items-center',
+            'border-t',
+            'border-[var(--border)]',
+            'px-[clamp(1rem,4vw,4rem)]',
+            'py-[clamp(2rem,6vw,4rem)]',
+            'lg:border-l',
+            'lg:border-t-0',
+            'lg:py-[clamp(3rem,6vw,4.5rem)]',
+          ].join(' ')}
+        >
+          <div className="w-full min-w-0 max-w-xl">
             <LoginForm
               forgotPasswordHref={forgotPasswordHref}
               onSuccess={handleLoginSuccess}

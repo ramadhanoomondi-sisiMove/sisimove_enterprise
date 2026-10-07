@@ -1,6 +1,34 @@
 // -----------------------------------------------------------------------------
 // Journey Booking — Create Command Handler
 // -----------------------------------------------------------------------------
+//
+// Path:
+// src/domains/journey-booking/application/handlers/create-journey-booking.handler.ts
+//
+// Dependency injection:
+//     JOURNEY_BOOKING_TOKENS.REPOSITORY
+//
+// Application responsibilities:
+//
+// 1. Generate the Journey Booking public identity.
+// 2. Ensure the generated identity does not already exist.
+// 3. Create the Journey Booking entity in PENDING state.
+// 4. Create the Journey Booking aggregate.
+// 5. Persist the aggregate.
+// 6. Return the created aggregate.
+//
+// JourneyBookingAggregate.create() records the JourneyBookingCreatedEvent.
+//
+// Snapshot, pricing, payment, and cancellation components are intentionally
+// not created by this command. They belong to their respective application
+// and domain workflows.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
@@ -42,6 +70,12 @@ import {
 } from '../../domain/value-objects';
 
 // -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_BOOKING_TOKENS } from '../journey-booking.tokens';
+
+// -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
@@ -55,25 +89,28 @@ import {
  * - Passenger reference
  * - Requested seats
  *
- * The handler is therefore responsible for orchestration rather than
+ * The handler therefore orchestrates the creation workflow rather than
  * reconstructing or re-validating those value objects.
  *
- * Workflow:
+ * The workflow is:
  *
- * 1. Generate the Journey Booking public identity.
- * 2. Ensure the generated identity does not already exist.
- * 3. Create the Journey Booking entity in PENDING state.
- * 4. Create the Journey Booking aggregate.
- * 5. Persist the aggregate.
- * 6. Return the created aggregate.
+ *     CreateJourneyBookingCommand
+ *                ↓
+ *     Generate Public ID
+ *                ↓
+ *     Check Uniqueness
+ *                ↓
+ *     Create Entity
+ *                ↓
+ *     Create Aggregate
+ *                ↓
+ *     Persist Aggregate
  *
- * JourneyBookingAggregate.create() is responsible for recording the
- * JourneyBookingCreatedEvent.
+ * The repository is resolved through:
  *
- * Snapshot, pricing, payment, and cancellation components are intentionally
- * not created by this command. They belong to their respective application
- * and domain workflows.
+ *     JOURNEY_BOOKING_TOKENS.REPOSITORY
  */
+@Injectable()
 export class CreateJourneyBookingHandler implements CommandHandler<
   CreateJourneyBookingCommand,
   JourneyBookingAggregate
@@ -82,7 +119,10 @@ export class CreateJourneyBookingHandler implements CommandHandler<
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly repository: JourneyBookingRepository) {}
+  constructor(
+    @Inject(JOURNEY_BOOKING_TOKENS.REPOSITORY)
+    private readonly repository: JourneyBookingRepository,
+  ) {}
 
   // ===========================================================================
   // Execute
@@ -94,12 +134,19 @@ export class CreateJourneyBookingHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     // Journey Booking Public Identity
     // -------------------------------------------------------------------------
+    //
+    // The public identity is generated inside the application workflow.
+    // Clients do not provide the booking public ID.
+    //
 
     const journeyBookingPublicId = new JourneyBookingPublicId();
 
     // -------------------------------------------------------------------------
     // Uniqueness
     // -------------------------------------------------------------------------
+    //
+    // Protect the public identity boundary before creating the entity.
+    //
 
     const alreadyExists = await this.repository.existsByPublicId(
       journeyBookingPublicId,
@@ -114,6 +161,12 @@ export class CreateJourneyBookingHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     // Journey Booking Entity
     // -------------------------------------------------------------------------
+    //
+    // The booking starts in PENDING state.
+    //
+    // Domain value objects supplied by the command are passed directly into
+    // the entity factory.
+    //
 
     const journeyBooking = JourneyBookingEntity.create({
       publicId: journeyBookingPublicId,
@@ -130,11 +183,11 @@ export class CreateJourneyBookingHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     // Journey Booking Aggregate
     // -------------------------------------------------------------------------
+    //
+    // JourneyBookingAggregate.create() establishes the aggregate and records
+    // the JourneyBookingCreatedEvent internally.
+    //
 
-    /**
-     * JourneyBookingAggregate.create() records the
-     * JourneyBookingCreatedEvent internally.
-     */
     const aggregate = JourneyBookingAggregate.create(
       journeyBooking,
       command.correlationId,
@@ -144,6 +197,10 @@ export class CreateJourneyBookingHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     // Persistence
     // -------------------------------------------------------------------------
+    //
+    // Persist the aggregate only after the complete domain object has been
+    // successfully created.
+    //
 
     await this.repository.save(aggregate);
 

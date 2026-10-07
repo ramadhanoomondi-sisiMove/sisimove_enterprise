@@ -4,13 +4,21 @@
 //
 // Action composition for an authenticated Journey Demand.
 //
+// UX PRINCIPLE:
+// - Never hide a Journey Demand lifecycle action because of frontend-derived
+//   lifecycle capability checks.
+// - The complete lifecycle action set remains visible to the user.
+// - The current Journey Demand status communicates where the demand currently
+//   is in its lifecycle.
+// - The backend remains authoritative over whether a command is valid.
+//
 // Architecture:
 // - owns no API requests;
 // - does not call mutation hooks;
 // - does not own mutation state;
 // - does not perform authorization checks;
 // - does not derive lifecycle transitions;
-// - does not decide whether a backend transition is allowed;
+// - does not determine whether a backend transition is allowed;
 // - composes the individual mutation action components.
 //
 // Individual action components own:
@@ -20,13 +28,24 @@
 // - their mutation presentation.
 //
 // The parent/container remains responsible for:
-// - authoritative capability decisions;
 // - supplying the Journey Demand public ID;
 // - supplying command request metadata;
 // - refreshing the authoritative Journey Demand projection after success.
 //
-// A request is required only when its corresponding action is enabled.
-// Disabled actions do not require fabricated command metadata.
+// Request availability:
+// - publishRequest is required to execute Publish;
+// - cancelRequest is required to execute Cancel;
+// - matchRequest is required to execute Match;
+// - convertRequest is required to execute Convert;
+// - fulfillRequest is required to execute Fulfill.
+//
+// A request is optional only when the command cannot currently be constructed
+// because required command input is unavailable.
+//
+// Importantly, request availability is NOT a lifecycle capability check.
+//
+// Lifecycle visibility is not controlled by status, can* flags, or frontend
+// authorization logic.
 //
 // -----------------------------------------------------------------------------
 
@@ -55,64 +74,54 @@ export interface JourneyDemandActionsProps {
   readonly journeyDemandPublicId: string;
 
   /**
-   * Whether publishing is currently available to the parent/container.
-   *
-   * This component does not derive the capability.
-   */
-  readonly canPublish?: boolean;
-
-  /**
-   * Whether cancellation is currently available to the parent/container.
-   */
-  readonly canCancel?: boolean;
-
-  /**
-   * Whether matching is currently available to the parent/container.
-   */
-  readonly canMatch?: boolean;
-
-  /**
-   * Whether conversion is currently available to the parent/container.
-   */
-  readonly canConvert?: boolean;
-
-  /**
-   * Whether fulfilment is currently available to the parent/container.
-   */
-  readonly canFulfill?: boolean;
-
-  /**
    * Backend command metadata for publishing.
    *
-   * Required only when publishing is enabled.
+   * Publishing is always represented by the management UI.
+   *
+   * When this request is unavailable, the Publish action cannot execute and
+   * therefore is not rendered.
    */
   readonly publishRequest?: PublishJourneyDemandRequest;
 
   /**
    * Backend command metadata for cancellation.
    *
-   * Required only when cancellation is enabled.
+   * Cancellation is always represented by the management UI.
+   *
+   * When this request is unavailable, the Cancel action cannot execute and
+   * therefore is not rendered.
    */
   readonly cancelRequest?: CancelJourneyDemandRequest;
 
   /**
    * Backend command metadata for matching.
    *
-   * Required only when matching is enabled.
+   * Matching requires an explicit Journey candidate.
+   *
+   * When no candidate has been supplied, there is no valid Match command to
+   * execute. This is a missing command input, not a lifecycle capability
+   * decision.
    */
   readonly matchRequest?: MatchJourneyDemandRequest;
 
   /**
    * Backend command metadata for conversion.
    *
-   * Required only when conversion is enabled.
+   * Conversion requires the Journey already associated with the demand.
+   *
+   * When no matched Journey exists, there is no valid Convert command to
+   * construct. This is a missing command input, not a lifecycle capability
+   * decision.
    */
   readonly convertRequest?: ConvertJourneyDemandRequest;
 
   /**
    * Backend command metadata for fulfilment.
    *
-   * Required only when fulfilment is enabled.
+   * Fulfilment is always represented by the management UI.
+   *
+   * When this request is unavailable, the Fulfill action cannot execute and
+   * therefore is not rendered.
    */
   readonly fulfillRequest?: FulfillJourneyDemandRequest;
 
@@ -145,6 +154,8 @@ export interface JourneyDemandActionsProps {
    * Disables all composed actions.
    *
    * This is a presentation-level constraint supplied by the parent.
+   *
+   * It does not determine lifecycle availability.
    */
   readonly disabled?: boolean;
 }
@@ -155,11 +166,6 @@ export interface JourneyDemandActionsProps {
 
 export function JourneyDemandActions({
   journeyDemandPublicId,
-  canPublish = false,
-  canCancel = false,
-  canMatch = false,
-  canConvert = false,
-  canFulfill = false,
   publishRequest,
   cancelRequest,
   matchRequest,
@@ -172,20 +178,12 @@ export function JourneyDemandActions({
   onFulfillSuccess,
   disabled = false,
 }: JourneyDemandActionsProps) {
-  const hasActions =
-    canPublish ||
-    canCancel ||
-    canMatch ||
-    canConvert ||
-    canFulfill;
-
-  if (!hasActions) {
-    return null;
-  }
-
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2">
-      {canPublish && publishRequest ? (
+      {/* --------------------------------------------------------------------- */}
+      {/* Publish                                                               */}
+      {/* --------------------------------------------------------------------- */}
+      {publishRequest ? (
         <JourneyDemandPublishAction
           journeyDemandPublicId={journeyDemandPublicId}
           request={publishRequest}
@@ -194,7 +192,10 @@ export function JourneyDemandActions({
         />
       ) : null}
 
-      {canMatch && matchRequest ? (
+      {/* --------------------------------------------------------------------- */}
+      {/* Match                                                                */}
+      {/* --------------------------------------------------------------------- */}
+      {matchRequest ? (
         <JourneyDemandMatchAction
           journeyDemandPublicId={journeyDemandPublicId}
           request={matchRequest}
@@ -203,7 +204,10 @@ export function JourneyDemandActions({
         />
       ) : null}
 
-      {canConvert && convertRequest ? (
+      {/* --------------------------------------------------------------------- */}
+      {/* Convert                                                              */}
+      {/* --------------------------------------------------------------------- */}
+      {convertRequest ? (
         <JourneyDemandConvertAction
           journeyDemandPublicId={journeyDemandPublicId}
           request={convertRequest}
@@ -212,7 +216,10 @@ export function JourneyDemandActions({
         />
       ) : null}
 
-      {canFulfill && fulfillRequest ? (
+      {/* --------------------------------------------------------------------- */}
+      {/* Fulfill                                                              */}
+      {/* --------------------------------------------------------------------- */}
+      {fulfillRequest ? (
         <JourneyDemandFulfillAction
           journeyDemandPublicId={journeyDemandPublicId}
           request={fulfillRequest}
@@ -221,7 +228,10 @@ export function JourneyDemandActions({
         />
       ) : null}
 
-      {canCancel && cancelRequest ? (
+      {/* --------------------------------------------------------------------- */}
+      {/* Cancel                                                               */}
+      {/* --------------------------------------------------------------------- */}
+      {cancelRequest ? (
         <JourneyDemandCancelAction
           journeyDemandPublicId={journeyDemandPublicId}
           request={cancelRequest}
@@ -232,3 +242,4 @@ export function JourneyDemandActions({
     </div>
   );
 }
+

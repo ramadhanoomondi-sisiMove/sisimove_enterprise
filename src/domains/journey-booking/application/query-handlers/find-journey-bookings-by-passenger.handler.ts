@@ -6,6 +6,8 @@
 // Foundation
 // -----------------------------------------------------------------------------
 
+import { Inject, Injectable } from '@nestjs/common';
+
 import type { QueryHandler } from '../../../../foundation/kernel/application/query-handler';
 
 // -----------------------------------------------------------------------------
@@ -27,6 +29,12 @@ import type { JourneyBookingEntity } from '../../domain/entities/journey-booking
 import type { JourneyBookingRepository } from '../../domain/repositories/journey-booking.repository';
 
 // -----------------------------------------------------------------------------
+// Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_BOOKING_TOKENS } from '../journey-booking.tokens';
+
+// -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
@@ -37,7 +45,14 @@ import type { JourneyBookingRepository } from '../../domain/repositories/journey
  * Consequently, the repository returns JourneyBookingEntity instances.
  *
  * An empty result is valid and returns an empty array.
+ *
+ * Dependency injection:
+ *
+ * The repository is resolved through the Journey Booking repository token.
+ * The handler therefore depends on the repository contract rather than on a
+ * concrete persistence implementation.
  */
+@Injectable()
 export class FindJourneyBookingsByPassengerHandler implements QueryHandler<
   FindJourneyBookingsByPassengerQuery,
   JourneyBookingEntity[]
@@ -46,7 +61,10 @@ export class FindJourneyBookingsByPassengerHandler implements QueryHandler<
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly repository: JourneyBookingRepository) {}
+  constructor(
+    @Inject(JOURNEY_BOOKING_TOKENS.REPOSITORY)
+    private readonly repository: JourneyBookingRepository,
+  ) {}
 
   // ===========================================================================
   // Execute

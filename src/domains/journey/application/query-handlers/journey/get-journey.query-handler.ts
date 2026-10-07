@@ -37,14 +37,14 @@ import { JOURNEY_TOKENS } from '../../journey.tokens';
 @Injectable()
 export class GetJourneyQueryHandler implements QueryHandler<
   GetJourneyQuery,
-  JourneyAggregate | null
+  JourneyAggregate
 > {
   constructor(
     @Inject(JOURNEY_TOKENS.REPOSITORY)
     private readonly repository: JourneyRepository,
   ) {}
 
-  async execute(query: GetJourneyQuery): Promise<JourneyAggregate | null> {
+  async execute(query: GetJourneyQuery): Promise<JourneyAggregate> {
     // -------------------------------------------------------------------------
     // Resolve Journey Aggregate
     // -------------------------------------------------------------------------

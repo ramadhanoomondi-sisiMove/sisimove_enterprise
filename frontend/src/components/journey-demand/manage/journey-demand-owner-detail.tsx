@@ -1,24 +1,32 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Demand Owner Detail
+// Path: src/features/journey-demand/components/manage/journey-demand-owner-detail.tsx
 // -----------------------------------------------------------------------------
 //
-// Authenticated owner-facing Journey Demand detail composition.
+// sisiMove — Journey Demand Owner Detail
+//
+// Authenticated owner-facing Journey Demand detail boundary.
 //
 // Architecture:
 // - Consumes MyJourneyDemand only.
-// - Receives an already-authorized owner read model.
-// - Delegates detail presentation to MyJourneyDemandDetail.
-// - Receives management UI from the parent/container.
-// - Does not own mutation state or mutation execution.
+// - Receives an already-loaded owner projection.
+// - Delegates read-only presentation to MyJourneyDemandDetail.
+// - Accepts externally supplied management UI.
+// - Does not fetch.
+// - Does not mutate.
+// - Does not authorize.
+// - Does not determine lifecycle capabilities.
+// - Does not construct backend domain objects.
 //
-// Responsibilities deliberately excluded:
-// - data fetching;
-// - ownership checks;
-// - authorization decisions;
-// - lifecycle decisions;
-// - mutation calls;
-// - public-model conversion;
-// - backend aggregate reconstruction.
+// Current ownership chain:
+//
+//     JourneyDemandManagementPanel
+//          ↓
+//     JourneyDemandManagement
+//          ↓
+//     JourneyDemandEditor
+//
+// This component is therefore a presentation boundary, not a management
+// workflow.
 //
 // -----------------------------------------------------------------------------
 
@@ -39,14 +47,14 @@ export interface JourneyDemandOwnerDetailProps {
   /**
    * Authenticated-owner Journey Demand read contract.
    *
-   * Ownership and authorization are established by the parent route/container.
+   * Ownership and authorization are established outside this component.
    */
   readonly demand: MyJourneyDemand;
 
   /**
-   * Optional management UI supplied by the owning container.
+   * Optional management UI supplied by the parent/container.
    *
-   * This component does not determine which actions are available.
+   * The component does not decide which management controls are available.
    */
   readonly actions?: ReactNode;
 
@@ -60,9 +68,18 @@ export interface JourneyDemandOwnerDetailProps {
 /**
  * Presents the authenticated owner's Journey Demand detail.
  *
- * Management remains external to this component's responsibility. The parent
- * decides what management UI to provide; MyJourneyDemandDetail composes it
- * with the owner detail presentation.
+ * The component intentionally delegates all actual presentation to
+ * MyJourneyDemandDetail.
+ *
+ * It does not:
+ *
+ * - load data;
+ * - check ownership;
+ * - check permissions;
+ * - call mutations;
+ * - derive lifecycle capabilities;
+ * - create editing sections;
+ * - convert read models.
  */
 export function JourneyDemandOwnerDetail({
   demand,

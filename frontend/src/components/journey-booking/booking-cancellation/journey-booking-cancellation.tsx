@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Booking Cancellation
+// sisiMove — Journey Booking Detail Cancellation
 // -----------------------------------------------------------------------------
 //
 // Presentation of the historical cancellation information associated with a
@@ -24,15 +24,23 @@
 // rules and state transitions.
 // -----------------------------------------------------------------------------
 
-import type { JourneyBookingCancellation } from '@/features/journey-booking/models';
+import type { JourneyBookingDetailCancellation } from '@/features/journey-booking/models';
+
+// -----------------------------------------------------------------------------
+// Types
+// -----------------------------------------------------------------------------
 
 export interface JourneyBookingCancellationProps {
-  cancellation: JourneyBookingCancellation;
+  cancellation: JourneyBookingDetailCancellation;
   className?: string;
 }
 
+// -----------------------------------------------------------------------------
+// Cancellation Reasons
+// -----------------------------------------------------------------------------
+
 const CANCELLATION_REASON_LABELS: Record<
-  JourneyBookingCancellation['reason'],
+  JourneyBookingDetailCancellation['reason'],
   string
 > = {
   PASSENGER_REQUEST: 'Passenger request',
@@ -42,6 +50,10 @@ const CANCELLATION_REASON_LABELS: Record<
   SYSTEM: 'System',
   OTHER: 'Other',
 };
+
+// -----------------------------------------------------------------------------
+// Component
+// -----------------------------------------------------------------------------
 
 export function JourneyBookingCancellation({
   cancellation,
@@ -59,6 +71,10 @@ export function JourneyBookingCancellation({
         .filter(Boolean)
         .join(' ')}
     >
+      {/* -------------------------------------------------------------------
+          Section heading
+          ------------------------------------------------------------------- */}
+
       <div>
         <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
           Cancellation
@@ -72,11 +88,17 @@ export function JourneyBookingCancellation({
         </h2>
       </div>
 
+      {/* -------------------------------------------------------------------
+          Cancellation details
+          ------------------------------------------------------------------- */}
+
       <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)]">
         <div className="divide-y divide-[var(--border-subtle)]">
           <CancellationRow
             label="Reason"
-            value={CANCELLATION_REASON_LABELS[cancellation.reason]}
+            value={
+              CANCELLATION_REASON_LABELS[cancellation.reason]
+            }
             emphasized
           />
 
@@ -115,6 +137,10 @@ export function JourneyBookingCancellation({
   );
 }
 
+// -----------------------------------------------------------------------------
+// Cancellation Row
+// -----------------------------------------------------------------------------
+
 interface CancellationRowProps {
   label: string;
   value: string;
@@ -139,7 +165,9 @@ function CancellationRow({
           'min-w-0',
           'max-w-[65%]',
           'truncate',
-          emphasized ? 'text-sm font-semibold' : 'text-sm font-medium',
+          emphasized
+            ? 'text-sm font-semibold'
+            : 'text-sm font-medium',
           'text-[var(--foreground)]',
           mono ? 'font-mono text-xs' : '',
         ]
@@ -152,6 +180,10 @@ function CancellationRow({
     </div>
   );
 }
+
+// -----------------------------------------------------------------------------
+// Formatting
+// -----------------------------------------------------------------------------
 
 function formatDateTime(value: string): string {
   const date = new Date(value);

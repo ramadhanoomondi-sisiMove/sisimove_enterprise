@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Booking Snapshot
+// sisiMove — Journey Booking Detail Snapshot
 // -----------------------------------------------------------------------------
 //
 // Presentation of the immutable Journey information captured when the booking
@@ -27,7 +27,7 @@
 //
 // -----------------------------------------------------------------------------
 
-import type { JourneyBookingSnapshot } from '@/features/journey-booking/models';
+import type { JourneyBookingDetailSnapshot } from '@/features/journey-booking/models';
 
 // -----------------------------------------------------------------------------
 // Types
@@ -37,7 +37,7 @@ export interface JourneyBookingSnapshotProps {
   /**
    * Immutable journey information captured at booking time.
    */
-  snapshot: JourneyBookingSnapshot;
+  snapshot: JourneyBookingDetailSnapshot;
 
   /**
    * Optional additional CSS classes.
@@ -134,7 +134,11 @@ export function JourneyBookingSnapshot({
           Historical vehicle
           ------------------------------------------------------------------- */}
 
-      {snapshot.vehicle && (
+      {(snapshot.vehicleMake ||
+        snapshot.vehicleModel ||
+        snapshot.vehicleYear !== null ||
+        snapshot.vehicleColor ||
+        snapshot.vehicleRegistration) && (
         <div className="border-t border-[var(--border-subtle)] pt-5">
           <div className="mb-3">
             <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
@@ -143,38 +147,38 @@ export function JourneyBookingSnapshot({
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {snapshot.vehicle.make && (
+            {snapshot.vehicleMake && (
               <SnapshotValue
                 label="Make"
-                value={snapshot.vehicle.make}
+                value={snapshot.vehicleMake}
               />
             )}
 
-            {snapshot.vehicle.model && (
+            {snapshot.vehicleModel && (
               <SnapshotValue
                 label="Model"
-                value={snapshot.vehicle.model}
+                value={snapshot.vehicleModel}
               />
             )}
 
-            {snapshot.vehicle.year !== undefined && (
+            {snapshot.vehicleYear !== null && (
               <SnapshotValue
                 label="Year"
-                value={String(snapshot.vehicle.year)}
+                value={String(snapshot.vehicleYear)}
               />
             )}
 
-            {snapshot.vehicle.color && (
+            {snapshot.vehicleColor && (
               <SnapshotValue
                 label="Color"
-                value={snapshot.vehicle.color}
+                value={snapshot.vehicleColor}
               />
             )}
 
-            {snapshot.vehicle.registration && (
+            {snapshot.vehicleRegistration && (
               <SnapshotValue
                 label="Registration"
-                value={snapshot.vehicle.registration}
+                value={snapshot.vehicleRegistration}
                 mono
               />
             )}
@@ -193,8 +197,8 @@ interface SnapshotLocationProps {
   label: string;
   name: string;
   coordinates: {
-    latitude: number;
-    longitude: number;
+    readonly latitude: number;
+    readonly longitude: number;
   };
 }
 

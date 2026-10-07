@@ -1,3 +1,5 @@
+// frontend/src/features/journey-booking/api/discovery/index.ts
+
 // -----------------------------------------------------------------------------
 // Journey Booking — Discovery API Barrel
 // -----------------------------------------------------------------------------
@@ -7,6 +9,7 @@
 // Discovery APIs answer questions about existing bookings:
 //
 // - Get one booking by its public identifier.
+// - Get detailed information for one booking.
 // - Find bookings associated with a Journey.
 // - Find bookings associated with a passenger.
 // - Find bookings by lifecycle status.
@@ -26,6 +29,11 @@ export {
   getJourneyBooking,
   type GetJourneyBookingResponse,
 } from './get-journey-booking.api';
+
+export {
+  getJourneyBookingDetail,
+  type GetJourneyBookingDetailResponse,
+} from './get-journey-booking-detail.api';
 
 export {
   findJourneyBookingsByJourney,

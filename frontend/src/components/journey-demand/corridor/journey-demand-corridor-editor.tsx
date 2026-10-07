@@ -1,298 +1,450 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Demand Corridor Editor
+// Path: src/features/journey-demand/components/corridor/journey-demand-corridor-editor.tsx
 // -----------------------------------------------------------------------------
 //
-// Authenticated/editor presentation for a Journey Demand corridor.
+// sisiMove — Journey Demand Corridor Editor
 //
-// Architecture:
-// - Consumes the authenticated JourneyDemandCorridor model.
-// - Does not fetch data.
-// - Does not call the backend directly.
-// - Does not create the Journey Demand aggregate.
-// - Does not decide corridor business rules.
-// - Does not manufacture waypoint ordering.
-// - Delegates individual waypoint editing to JourneyDemandWaypointEditor.
+// This component is a PRESENTATION-ONLY corridor editor.
 //
-// The parent/container owns:
-// - loading the current corridor;
-// - mutation hooks;
-// - authorization/capability decisions;
-// - validation orchestration;
-// - persistence;
-// - success/error handling;
-// - navigation;
-// - publication.
+// Responsibility
+// --------------
 //
-// This component owns:
-// - corridor editing presentation;
-// - origin/destination field composition;
-// - waypoint editor composition;
-// - forwarding controlled values and callbacks.
+// The parent JourneyDemandEditor owns:
 //
-// IMPORTANT WORKFLOW RULE:
+// - the current origin;
+// - the current destination;
+// - origin search/query state;
+// - destination search/query state;
+// - supported-location suggestions;
+// - supported-corridor resolution;
+// - corridor persistence;
+// - mutation pending state;
+// - mutation errors;
+// - projection refresh.
 //
-// Journey Demand creation happens before this editor is reached.
+// This component only renders the controlled editing surface and reports
+// user intent back to the parent.
 //
-//     Create Journey Demand
-//             ↓
-//     establish journeyDemandPublicId
-//             ↓
-//     Edit Journey Demand
-//             ↓
-//     configure corridor / schedule / capacity / pricing / etc.
-//             ↓
-//     Publish
+// Workflow:
 //
-// This component therefore never creates a Journey Demand aggregate.
+//     JourneyDemandEditor
+//          │
+//          ├── origin / destination state
+//          ├── location suggestions
+//          ├── resolveSupportedCorridor()
+//          ├── updateJourneyDemandCorridor()
+//          └── refetch()
+//                 │
+//                 ▼
+//     JourneyDemandCorridorEditor
+//          │
+//          ├── LocationSelector
+//          ├── onOriginQueryChange()
+//          ├── onDestinationQueryChange()
+//          ├── onOriginSelect()
+//          ├── onDestinationSelect()
+//          └── onSubmit()
+//
+// The editor deliberately does NOT:
+//
+// - import the supported-corridor catalogue;
+// - resolve corridors;
+// - determine whether a route is valid;
+// - call an API;
+// - own mutation hooks;
+// - create request DTOs;
+// - decide lifecycle capability;
+// - create waypoint IDs;
+// - reorder or renumber waypoints;
+// - persist waypoint changes;
+// - reconstruct the Journey Demand aggregate.
+//
+// Mutation state
+// --------------
+//
+// The parent workflow owns mutation state.
+//
+// The parent therefore supplies:
+//
+//     disabled={isSubmitting}
+//
+// The corridor editor does not maintain a second `submitting` or `isSaving`
+// contract. This keeps the presentation contract aligned with the workflow
+// owner and prevents two different sources of truth for the same interaction
+// state.
+//
+// Waypoints
+// ---------
+//
+// Waypoint editing is intentionally not implemented by this component.
+//
+// JourneyDemandWaypointEditor remains a separate controlled presentation
+// editor for an individual waypoint. Collection ownership and waypoint
+// persistence belong to the owning JourneyDemandEditor workflow.
 //
 // -----------------------------------------------------------------------------
 
 'use client';
 
-import type { ChangeEvent } from 'react';
-
-import type { JourneyDemandCorridor } from '@/features/journey-demand/models';
+import type { ResolvedLocation } from '@/foundation/location';
 import { cn } from '@/foundation';
 
-import { JourneyDemandWaypointEditor } from './journey-demand-waypoint-editor';
+import { LocationSelector } from '@/foundation/location';
+
+// =============================================================================
+// Form values
+// =============================================================================
+
+/**
+ * The complete corridor value emitted when the user submits the editor.
+ *
+ * The parent owns the translation from these resolved presentation values
+ * into the backend update request.
+ */
+export interface JourneyDemandCorridorFormValues {
+  readonly origin: ResolvedLocation;
+  readonly destination: ResolvedLocation;
+}
+
+// =============================================================================
+// Props
+// =============================================================================
 
 export interface JourneyDemandCorridorEditorProps {
-  readonly corridor: JourneyDemandCorridor;
-  readonly onChange?: (corridor: JourneyDemandCorridor) => void;
-  readonly onSave?: () => void;
-  readonly isSaving?: boolean;
+  /**
+   * Currently selected origin.
+   *
+   * The parent owns this value.
+   */
+  readonly origin: ResolvedLocation | null;
+
+  /**
+   * Currently selected destination.
+   *
+   * The parent owns this value.
+   */
+  readonly destination: ResolvedLocation | null;
+
+  /**
+   * Current origin search text.
+   */
+  readonly originQuery: string;
+
+  /**
+   * Current destination search text.
+   */
+  readonly destinationQuery: string;
+
+  /**
+   * Locations currently available for origin selection.
+   *
+   * These are supplied by the parent workflow and therefore already represent
+   * the authoritative location catalogue.
+   */
+  readonly originSuggestions: readonly ResolvedLocation[];
+
+  /**
+   * Locations currently available for destination selection.
+   *
+   * The parent derives these from the selected origin and the supported
+   * corridor resolver.
+   */
+  readonly destinationSuggestions: readonly ResolvedLocation[];
+
+  /**
+   * Optional origin validation error.
+   */
+  readonly originError?: string | null;
+
+  /**
+   * Optional destination validation error.
+   */
+  readonly destinationError?: string | null;
+
+  /**
+   * Optional parent-owned persistence/mutation error.
+   */
+  readonly error?: string | null;
+
+  /**
+   * Prevents editing and submission.
+   *
+   * The parent workflow owns this state. In practice the parent passes its
+   * workflow-level `isSubmitting` value here.
+   */
   readonly disabled?: boolean;
+
+  /**
+   * Label for the persistence action.
+   */
+  readonly submitLabel?: string;
+
+  /**
+   * Called when the user submits the selected corridor.
+   *
+   * The parent remains responsible for resolving the corridor and translating
+   * it into the backend update request.
+   */
+  readonly onSubmit: (
+    values: JourneyDemandCorridorFormValues,
+  ) => void | Promise<void>;
+
+  /**
+   * Optional cancellation callback supplied by the parent.
+   */
+  readonly onCancel?: () => void;
+
+  /**
+   * Called whenever origin search text changes.
+   */
+  readonly onOriginQueryChange: (
+    query: string,
+  ) => void;
+
+  /**
+   * Called whenever destination search text changes.
+   */
+  readonly onDestinationQueryChange: (
+    query: string,
+  ) => void;
+
+  /**
+   * Called when the user selects an origin.
+   */
+  readonly onOriginSelect: (
+    location: ResolvedLocation,
+  ) => void;
+
+  /**
+   * Called when the user selects a destination.
+   */
+  readonly onDestinationSelect: (
+    location: ResolvedLocation,
+  ) => void;
+
   readonly className?: string;
 }
 
+// =============================================================================
+// Component
+// =============================================================================
+
 export function JourneyDemandCorridorEditor({
-  corridor,
-  onChange,
-  onSave,
-  isSaving = false,
+  origin,
+  destination,
+  originQuery,
+  destinationQuery,
+  originSuggestions,
+  destinationSuggestions,
+  originError = null,
+  destinationError = null,
+  error = null,
   disabled = false,
+  submitLabel = 'Save route',
+  onSubmit,
+  onCancel,
+  onOriginQueryChange,
+  onDestinationQueryChange,
+  onOriginSelect,
+  onDestinationSelect,
   className,
 }: JourneyDemandCorridorEditorProps) {
-  const isDisabled = disabled || isSaving;
+  // ---------------------------------------------------------------------------
+  // Derived interaction state
+  // ---------------------------------------------------------------------------
+  //
+  // This is deliberately presentation state only.
+  //
+  // The component does not determine whether the selected locations form a
+  // valid corridor. The parent has already supplied the authoritative
+  // destination suggestions.
+  // ---------------------------------------------------------------------------
 
-  const updateCorridor = (
-    changes: Partial<JourneyDemandCorridor>,
-  ): void => {
-    onChange?.({
-      ...corridor,
-      ...changes,
+  const canSubmit =
+    !disabled &&
+    origin !== null &&
+    destination !== null;
+
+  // ---------------------------------------------------------------------------
+  // Submit
+  // ---------------------------------------------------------------------------
+
+  const handleSubmit = (): void => {
+    if (
+      origin === null ||
+      destination === null
+    ) {
+      return;
+    }
+
+    void onSubmit({
+      origin,
+      destination,
     });
   };
 
-  const handleOriginNameChange = (
-    event: ChangeEvent<HTMLInputElement>,
-  ): void => {
-    updateCorridor({
-      originName: event.target.value,
-    });
-  };
-
-  const handleDestinationNameChange = (
-    event: ChangeEvent<HTMLInputElement>,
-  ): void => {
-    updateCorridor({
-      destinationName: event.target.value,
-    });
-  };
-
-  const handleWaypointChange = (
-    updatedWaypoint: JourneyDemandCorridor['waypoints'][number],
-  ): void => {
-    updateCorridor({
-      waypoints: corridor.waypoints.map((currentWaypoint) =>
-        currentWaypoint.publicId === updatedWaypoint.publicId
-          ? updatedWaypoint
-          : currentWaypoint,
-      ),
-    });
-  };
-
-  const handleWaypointRemove = (
-    waypointPublicId: string,
-  ): void => {
-    updateCorridor({
-      waypoints: corridor.waypoints.filter(
-        (waypoint) => waypoint.publicId !== waypointPublicId,
-      ),
-    });
-  };
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
     <section
       className={cn(
-        'surface',
-        'p-4 sm:p-5',
+        'min-w-0',
+        'rounded-[var(--radius-lg)]',
+        'border',
+        'border-[var(--border)]',
+        'bg-[var(--surface)]',
+        'p-4',
+        'sm:p-5',
         className,
       )}
       aria-labelledby="journey-demand-corridor-editor-heading"
     >
-      {/* ---------------------------------------------------------------------
-          Header
-      --------------------------------------------------------------------- */}
+      {/* ------------------------------------------------------------------- */}
+      {/* Header                                                              */}
+      {/* ------------------------------------------------------------------- */}
 
-      <div className="min-w-0">
+      <div className="mb-5 min-w-0">
         <h2
           id="journey-demand-corridor-editor-heading"
-          className="text-base font-semibold text-foreground"
+          className="text-base font-semibold text-[var(--foreground)]"
         >
-          Travel route
+          Journey route
         </h2>
 
-        <p className="mt-1 text-sm text-foreground-muted">
-          Update where the Journey Demand starts, ends, and stops along
-          the way.
+        <p className="mt-1 text-sm leading-5 text-[var(--foreground-muted)]">
+          Choose where you want to travel from and where you want to go.
         </p>
       </div>
 
-      {/* ---------------------------------------------------------------------
-          Origin / destination
-      --------------------------------------------------------------------- */}
+      {/* ------------------------------------------------------------------- */}
+      {/* Location selectors                                                  */}
+      {/* ------------------------------------------------------------------- */}
 
-      <div className="mt-5 grid min-w-0 gap-4 sm:grid-cols-2">
-        <LocationField
-          label="From"
-          value={corridor.originName}
-          disabled={isDisabled}
-          onChange={handleOriginNameChange}
-        />
+      <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+        <div className="min-w-0">
+          <LocationSelector
+            label="From"
+            value={origin}
+            query={originQuery}
+            suggestions={originSuggestions}
+            error={originError}
+            disabled={disabled}
+            onQueryChange={
+              onOriginQueryChange
+            }
+            onSelect={onOriginSelect}
+          />
+        </div>
 
-        <LocationField
-          label="To"
-          value={corridor.destinationName}
-          disabled={isDisabled}
-          onChange={handleDestinationNameChange}
-        />
+        <div className="min-w-0">
+          <LocationSelector
+            label="To"
+            value={destination}
+            query={destinationQuery}
+            suggestions={destinationSuggestions}
+            error={destinationError}
+            disabled={
+              disabled ||
+              origin === null
+            }
+            onQueryChange={
+              onDestinationQueryChange
+            }
+            onSelect={
+              onDestinationSelect
+            }
+          />
+        </div>
       </div>
 
-      {/* ---------------------------------------------------------------------
-          Waypoints
-      --------------------------------------------------------------------- */}
+      {/* ------------------------------------------------------------------- */}
+      {/* Route preview                                                       */}
+      {/* ------------------------------------------------------------------- */}
 
-      {corridor.waypoints.length > 0 ? (
-        <div className="mt-6 border-t border-[var(--border-subtle)] pt-5">
-          <div className="flex min-w-0 items-center justify-between gap-3">
-            <div className="min-w-0">
-              <h3 className="text-sm font-semibold text-foreground">
-                Waypoints
-              </h3>
+      {origin !== null &&
+      destination !== null ? (
+        <div className="mt-4 rounded-[var(--radius-md)] bg-[var(--background-brand)] p-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
+            Selected route
+          </p>
 
-              <p className="mt-1 text-xs text-foreground-muted">
-                Stops included along this corridor.
-              </p>
-            </div>
-
-            <span className="shrink-0 text-xs text-foreground-muted">
-              {corridor.waypoints.length}{' '}
-              {corridor.waypoints.length === 1 ? 'stop' : 'stops'}
-            </span>
-          </div>
-
-          <ol className="mt-4 space-y-3">
-            {corridor.waypoints.map((waypoint) => (
-              <JourneyDemandWaypointEditor
-                key={waypoint.publicId}
-                waypoint={waypoint}
-                disabled={isDisabled}
-                onChange={handleWaypointChange}
-                onRemove={() => {
-                  handleWaypointRemove(waypoint.publicId);
-                }}
-              />
-            ))}
-          </ol>
-        </div>
-      ) : (
-        <div className="mt-6 border-t border-[var(--border-subtle)] pt-5">
-          <p className="text-sm text-foreground-muted">
-            No waypoints have been added to this corridor.
+          <p className="mt-1 text-sm font-medium text-[var(--foreground)]">
+            {origin.name} → {destination.name}
           </p>
         </div>
-      )}
+      ) : null}
 
-      {/* ---------------------------------------------------------------------
-          Save
-          --------------------------------------------------------------------- */}
+      {/* ------------------------------------------------------------------- */}
+      {/* Mutation error                                                      */}
+      {/* ------------------------------------------------------------------- */}
 
-      {onSave ? (
-        <div className="mt-6 flex justify-end border-t border-[var(--border-subtle)] pt-5">
+      {error ? (
+        <p
+          className="mt-4 text-sm text-[var(--danger)]"
+          role="alert"
+        >
+          {error}
+        </p>
+      ) : null}
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Actions                                                             */}
+      {/* ------------------------------------------------------------------- */}
+
+      <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-[var(--border)] pt-4">
+        {onCancel ? (
           <button
             type="button"
-            disabled={isDisabled}
-            onClick={onSave}
+            disabled={disabled}
+            onClick={onCancel}
             className={cn(
-              'inline-flex min-h-10 items-center justify-center',
+              'inline-flex min-h-10',
+              'items-center justify-center',
               'rounded-[var(--radius-md)]',
-              'bg-[var(--brand)]',
-              'px-4 text-sm font-medium',
-              'text-[var(--brand-foreground)]',
+              'border border-[var(--border)]',
+              'bg-[var(--surface)]',
+              'px-4 py-2',
+              'text-sm font-medium',
+              'text-[var(--foreground)]',
               'transition-colors',
-              'hover:bg-[var(--brand-hover)]',
-              'focus-visible:outline-none',
-              'focus-visible:ring-2',
-              'focus-visible:ring-[var(--brand)]',
-              'focus-visible:ring-offset-2',
-              'disabled:pointer-events-none',
+              'hover:bg-[var(--background)]',
+              'focus-visible:outline-2',
+              'focus-visible:outline-[var(--brand)]',
+              'focus-visible:outline-offset-2',
+              'disabled:cursor-not-allowed',
               'disabled:opacity-50',
             )}
           >
-            {isSaving ? 'Saving…' : 'Save route'}
+            Cancel
           </button>
-        </div>
-      ) : null}
+        ) : null}
+
+        <button
+          type="button"
+          disabled={!canSubmit}
+          onClick={handleSubmit}
+          className={cn(
+            'inline-flex min-h-10',
+            'items-center justify-center',
+            'rounded-[var(--radius-md)]',
+            'bg-[var(--brand)]',
+            'px-4 py-2',
+            'text-sm font-medium',
+            'text-[var(--brand-foreground)]',
+            'transition-opacity',
+            'hover:opacity-90',
+            'focus-visible:outline-2',
+            'focus-visible:outline-[var(--brand)]',
+            'focus-visible:outline-offset-2',
+            'disabled:cursor-not-allowed',
+            'disabled:opacity-50',
+          )}
+        >
+          {submitLabel}
+        </button>
+      </div>
     </section>
-  );
-}
-
-// -----------------------------------------------------------------------------
-// Location field
-// -----------------------------------------------------------------------------
-
-interface LocationFieldProps {
-  readonly label: string;
-  readonly value: string;
-  readonly disabled: boolean;
-  readonly onChange: (
-    event: ChangeEvent<HTMLInputElement>,
-  ) => void;
-}
-
-function LocationField({
-  label,
-  value,
-  disabled,
-  onChange,
-}: LocationFieldProps) {
-  return (
-    <label className="block min-w-0">
-      <span className="text-sm font-medium text-foreground">
-        {label}
-      </span>
-
-      <input
-        type="text"
-        value={value}
-        disabled={disabled}
-        onChange={onChange}
-        className={cn(
-          'mt-2 block min-h-10 w-full rounded-[var(--radius-md)]',
-          'border border-[var(--border)]',
-          'bg-[var(--surface)]',
-          'px-3 text-sm text-foreground',
-          'placeholder:text-foreground-subtle',
-          'outline-none transition-colors',
-          'focus:border-[var(--brand)]',
-          'focus:outline-none',
-          'focus:ring-2 focus:ring-[var(--brand-soft)]',
-          'disabled:cursor-not-allowed',
-          'disabled:bg-[var(--background-subtle)]',
-          'disabled:text-foreground-muted',
-        )}
-      />
-    </label>
   );
 }

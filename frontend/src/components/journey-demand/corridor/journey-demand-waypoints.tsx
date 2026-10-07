@@ -2,23 +2,35 @@
 // sisiMove — Journey Demand Waypoints
 // -----------------------------------------------------------------------------
 //
-// Read-only presentation of Journey Demand waypoints.
+// Read-only presentation of a Journey Demand waypoint collection.
 //
-// Architecture:
-// - Consumes the authenticated Journey Demand waypoint model.
-// - Does not fetch data.
-// - Does not mutate data.
-// - Does not create, remove, or reorder waypoints.
-// - Does not calculate route distance, duration, or geometry.
-// - Delegates individual waypoint presentation to JourneyDemandWaypointItem.
+// Responsibilities:
+// - Render the supplied waypoint collection.
+// - Preserve the collection order supplied by the backend.
+// - Delegate individual waypoint rendering to JourneyDemandWaypointItem.
+//
+// This component does NOT:
+// - fetch data;
+// - mutate data;
+// - create, remove, or reorder waypoints;
+// - calculate route distance, duration, or geometry;
+// - reconstruct waypoint sequence.
 //
 // The backend owns waypoint ordering through `sequence`.
-// This component therefore preserves the supplied collection order and does
-// not sort or reconstruct the collection.
 //
-// Authenticated/editor components consume `JourneyDemandWaypoint`, which
-// contains the complete waypoint representation required by the Journey
-// Demand management workflow.
+// This component is intentionally read-only. Editable waypoint workflows use
+// JourneyDemandWaypointEditor and are owned by the appropriate editor
+// component, such as JourneyDemandCorridorEditor.
+//
+// -----------------------------------------------------------------------------
+//
+// Data flow:
+//
+//     JourneyDemand
+//          ↓
+//     JourneyDemandWaypoints
+//          ↓
+//     JourneyDemandWaypointItem
 //
 // -----------------------------------------------------------------------------
 
@@ -28,21 +40,26 @@ import { cn } from '@/foundation';
 import { JourneyDemandWaypointItem } from './journey-demand-waypoint-item';
 
 // -----------------------------------------------------------------------------
-// Props
+// Types
 // -----------------------------------------------------------------------------
+
+export type JourneyDemandWaypointEmphasis = 'compact' | 'default';
 
 export interface JourneyDemandWaypointsProps {
   /**
    * Ordered Journey Demand waypoint collection.
    *
-   * Ordering supplied by the backend is preserved.
+   * The supplied order is authoritative and is preserved exactly as received.
    */
   readonly waypoints: readonly JourneyDemandWaypoint[];
 
   /**
    * Presentation density.
+   *
+   * `default` is the normal detail presentation.
+   * `compact` is intended for denser authenticated or summary surfaces.
    */
-  readonly emphasis?: 'compact' | 'default';
+  readonly emphasis?: JourneyDemandWaypointEmphasis;
 
   /**
    * Optional additional class names.
@@ -59,35 +76,30 @@ export function JourneyDemandWaypoints({
   emphasis = 'default',
   className,
 }: JourneyDemandWaypointsProps) {
-  const isCompact = emphasis === 'compact';
-
   // ---------------------------------------------------------------------------
-  // Empty state
+  // Empty collection
+  //
+  // There is nothing for this read-only presentation component to render.
+  // The parent decides whether an empty collection needs an explanatory message.
   // ---------------------------------------------------------------------------
 
   if (waypoints.length === 0) {
     return null;
   }
 
-  // ---------------------------------------------------------------------------
-  // Presentation
-  // ---------------------------------------------------------------------------
+  const isCompact = emphasis === 'compact';
 
   return (
     <section
-      className={cn(
-        'min-w-0',
-        className,
-      )}
-      aria-labelledby="journey-demand-waypoints-heading"
+      className={cn('min-w-0', className)}
+      aria-label="Journey Demand waypoints"
     >
-      {/* ---------------------------------------------------------------------
-          Collection heading
-      --------------------------------------------------------------------- */}
+      {/* -----------------------------------------------------------------------
+          Collection header
+      ----------------------------------------------------------------------- */}
 
       <div className="flex min-w-0 items-center justify-between gap-3">
         <h3
-          id="journey-demand-waypoints-heading"
           className={cn(
             'font-medium text-foreground',
             isCompact ? 'text-xs' : 'text-sm',
@@ -102,20 +114,20 @@ export function JourneyDemandWaypoints({
             isCompact ? 'text-[11px]' : 'text-xs',
           )}
         >
-          {waypoints.length}{' '}
-          {waypoints.length === 1 ? 'stop' : 'stops'}
+          {waypoints.length} {waypoints.length === 1 ? 'stop' : 'stops'}
         </span>
       </div>
 
-      {/* ---------------------------------------------------------------------
+      {/* -----------------------------------------------------------------------
           Waypoint collection
           
           IMPORTANT:
-          The backend-provided order is preserved.
-
-          Do not sort by sequence here. The collection is already represented
-          in its authoritative order by the backend response.
-      --------------------------------------------------------------------- */}
+          Do not sort this collection here.
+          
+          The backend owns waypoint ordering and provides the collection in
+          authoritative order. The individual item receives its own backend
+          sequence for display.
+      ----------------------------------------------------------------------- */}
 
       <ol
         className={cn(

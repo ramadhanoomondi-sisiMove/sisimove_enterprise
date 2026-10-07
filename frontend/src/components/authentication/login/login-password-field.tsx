@@ -1,3 +1,5 @@
+'use client';
+
 // -----------------------------------------------------------------------------
 // sisiMove — Login Password Field
 // -----------------------------------------------------------------------------
@@ -35,9 +37,9 @@
 import type { ChangeEvent } from 'react';
 import { useState } from 'react';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export interface LoginPasswordFieldProps {
   readonly value: string;
@@ -48,9 +50,9 @@ export interface LoginPasswordFieldProps {
   readonly disabled?: boolean;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Eye Icon
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 function EyeIcon() {
   return (
@@ -62,7 +64,7 @@ function EyeIcon() {
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
-      className="h-5 w-5"
+      className="size-[clamp(1rem,1.5vw,1.25rem)] shrink-0"
     >
       <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
       <circle cx="12" cy="12" r="2.5" />
@@ -70,9 +72,9 @@ function EyeIcon() {
   );
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Eye Off Icon
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 function EyeOffIcon() {
   return (
@@ -84,7 +86,7 @@ function EyeOffIcon() {
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
-      className="h-5 w-5"
+      className="size-[clamp(1rem,1.5vw,1.25rem)] shrink-0"
     >
       <path d="M3 3l18 18" />
       <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
@@ -94,9 +96,9 @@ function EyeOffIcon() {
   );
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Component
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function LoginPasswordField({
   value,
@@ -113,15 +115,28 @@ export function LoginPasswordField({
   };
 
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 w-full space-y-[clamp(0.4rem,0.8vw,0.55rem)]">
+      {/* ------------------------------------------------------------------- */}
+      {/* Label                                                               */}
+      {/* ------------------------------------------------------------------- */}
+
       <label
         htmlFor="login-password"
-        className="block text-sm font-medium text-slate-900"
+        className={[
+          'block min-w-0',
+          'text-[clamp(0.7rem,1.15vw,0.875rem)]',
+          'font-medium leading-tight',
+          'text-[var(--foreground)]',
+        ].join(' ')}
       >
         Password
       </label>
 
-      <div className="relative">
+      {/* ------------------------------------------------------------------- */}
+      {/* Password input                                                      */}
+      {/* ------------------------------------------------------------------- */}
+
+      <div className="relative min-w-0 w-full">
         <input
           id="login-password"
           name="password"
@@ -134,16 +149,41 @@ export function LoginPasswordField({
           aria-describedby={error ? errorId : undefined}
           placeholder="Your password"
           className={[
-            'block w-full rounded-lg border bg-white px-4 py-3 pr-12 text-sm text-slate-950',
-            'outline-none transition',
-            'placeholder:text-slate-400',
-            'focus:ring-2 focus:ring-blue-500 focus:ring-offset-0',
-            'disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500',
+            'block min-w-0 w-full',
+            'rounded-[clamp(0.45rem,0.8vw,0.65rem)]',
+            'border',
+            'bg-[var(--surface)]',
+            'px-[clamp(0.7rem,1.5vw,1rem)]',
+            'py-[clamp(0.6rem,1.2vw,0.8rem)]',
+            'pr-[clamp(2.5rem,5vw,3rem)]',
+            'text-[clamp(0.7rem,1.15vw,0.875rem)]',
+            'leading-tight',
+            'text-[var(--foreground)]',
+            'outline-none',
+            'transition',
+            'placeholder:text-[var(--foreground-muted)]',
+            'focus:ring-2',
+            'focus:ring-offset-0',
+            'disabled:cursor-not-allowed',
+            'disabled:bg-[var(--background-subtle)]',
+            'disabled:text-[var(--foreground-muted)]',
             error
-              ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-              : 'border-slate-300 focus:border-blue-500',
+              ? [
+                  'border-[var(--danger)]',
+                  'focus:border-[var(--danger)]',
+                  'focus:ring-[var(--danger)]',
+                ].join(' ')
+              : [
+                  'border-[var(--border)]',
+                  'focus:border-[var(--brand)]',
+                  'focus:ring-[var(--brand)]',
+                ].join(' '),
           ].join(' ')}
         />
+
+        {/* ----------------------------------------------------------------- */}
+        {/* Password visibility control                                       */}
+        {/* ----------------------------------------------------------------- */}
 
         <button
           type="button"
@@ -156,26 +196,37 @@ export function LoginPasswordField({
           }
           aria-pressed={showPassword}
           className={[
-            'absolute inset-y-0 right-0 flex items-center px-3',
-            'text-slate-400 transition-colors',
-            'hover:text-slate-700',
-            'focus:outline-none focus:text-blue-600',
-            'disabled:cursor-not-allowed disabled:text-slate-300',
+            'absolute inset-y-0 right-0',
+            'flex shrink-0 items-center justify-center',
+            'px-[clamp(0.65rem,1.5vw,0.9rem)]',
+            'text-[var(--foreground-muted)]',
+            'transition-colors duration-150 ease-out',
+            'hover:text-[var(--foreground)]',
+            'focus:outline-none',
+            'focus:text-[var(--brand)]',
+            'disabled:cursor-not-allowed',
+            'disabled:text-[var(--foreground-subtle)]',
           ].join(' ')}
         >
-          {showPassword ? (
-            <EyeOffIcon />
-          ) : (
-            <EyeIcon />
-          )}
+          {showPassword ? <EyeOffIcon /> : <EyeIcon />}
         </button>
       </div>
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Validation error                                                    */}
+      {/* ------------------------------------------------------------------- */}
 
       {error ? (
         <p
           id={errorId}
           role="alert"
-          className="text-sm text-red-600"
+          className={[
+            'min-w-0',
+            'break-words',
+            'text-[clamp(0.65rem,1vw,0.8rem)]',
+            'leading-relaxed',
+            'text-[var(--danger)]',
+          ].join(' ')}
         >
           {error}
         </p>

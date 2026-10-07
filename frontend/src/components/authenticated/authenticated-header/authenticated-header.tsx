@@ -1,47 +1,25 @@
 'use client';
 
 // -----------------------------------------------------------------------------
+// Path: src/components/navigation/authenticated-header.tsx
+// -----------------------------------------------------------------------------
 // sisiMove — Authenticated Header
 // -----------------------------------------------------------------------------
 //
-// Composition boundary for the authenticated application shell.
+// Responsive authenticated header.
 //
-// Responsibilities:
-// - render the authenticated SisiMove logo;
-// - render primary authenticated navigation;
-// - render the notification control;
-// - render the authenticated account menu;
-// - pass already-resolved traveller presentation data to child components.
+// The header scales uniformly across viewport sizes:
+// - header height scales down;
+// - horizontal padding scales down;
+// - logo/navigation spacing scales down;
+// - utility spacing scales down;
+// - navigation remains shrinkable;
+// - no fixed-width element is allowed to force overflow;
+// - existing component responsibilities and behavior are unchanged.
 //
-// Non-responsibilities:
-// - fetching Identity;
-// - fetching Traveller Profile;
-// - fetching Assets;
-// - fetching Notifications;
-// - determining notification unread state;
-// - performing notification mutations;
-// - implementing authentication;
-// - implementing logout;
-// - deciding authorization;
-// - resolving marketplace/domain state.
-//
-// Notification architecture:
-// - `AuthenticatedNotifications` is the authenticated-shell adapter;
-// - the notification feature owns notification fetching and unread state;
-// - this header only composes the adapter;
-// - notification state must not be duplicated here.
-//
-// Account architecture:
-// - `AuthenticatedAccountMenu` owns account-menu interaction and logout;
-// - this header supplies only already-resolved traveller presentation data.
-//
-// Import boundary:
-// - sibling authenticated-header components are imported directly;
-// - the local barrel is reserved for consumers of the authenticated-header
-//   component family and is not used internally.
-//
-// The header intentionally remains a thin composition component.
 // -----------------------------------------------------------------------------
+
+import type { VerificationLevel } from '@/features/verification/models/verification';
 
 import { AuthenticatedAccountMenu } from './authenticated-account-menu';
 import { AuthenticatedLogo } from './authenticated-logo';
@@ -64,6 +42,13 @@ export interface AuthenticatedHeaderProps {
    * The header does not resolve or fetch the asset itself.
    */
   readonly travellerAvatarUrl?: string | null;
+
+  /**
+   * Already-resolved verification level for the authenticated Identity.
+   *
+   * The header does not fetch Verification or determine authorization.
+   */
+  readonly verificationLevel: VerificationLevel;
 }
 
 // -----------------------------------------------------------------------------
@@ -73,43 +58,83 @@ export interface AuthenticatedHeaderProps {
 export function AuthenticatedHeader({
   travellerHandle,
   travellerAvatarUrl,
+  verificationLevel,
 }: AuthenticatedHeaderProps) {
   return (
-    <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur">
-      <div className="mx-auto flex min-h-14 w-full max-w-7xl items-center px-4 sm:min-h-16 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-40 w-full border-b border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur">
+      <div
+        className="
+          mx-auto
+          flex
+          min-h-[clamp(2.75rem,7vw,4rem)]
+          w-full
+          max-w-7xl
+          min-w-0
+          items-center
+          gap-[clamp(0.25rem,1vw,0.75rem)]
+          px-[clamp(0.5rem,2.5vw,2rem)]
+        "
+      >
         {/* ----------------------------------------------------------------- */}
         {/* Primary authenticated navigation                                 */}
         {/* ----------------------------------------------------------------- */}
-        <div className="flex min-w-0 flex-1 items-center">
-          <AuthenticatedLogo />
 
-          <div className="ml-6 min-w-0">
-            <AuthenticatedNavigation />
+        <div
+          className="
+            flex
+            min-w-0
+            flex-1
+            items-center
+            gap-[clamp(0.35rem,1.5vw,1.5rem)]
+            overflow-hidden
+          "
+        >
+          <div className="min-w-0 shrink">
+            <AuthenticatedLogo />
+          </div>
+
+          <div
+            className="
+              min-w-0
+              flex-1
+              overflow-hidden
+            "
+          >
+            <AuthenticatedNavigation
+              verificationLevel={verificationLevel}
+            />
           </div>
         </div>
 
         {/* ----------------------------------------------------------------- */}
         {/* Authenticated utilities                                           */}
         {/* ----------------------------------------------------------------- */}
-        <div className="flex shrink-0 items-center gap-1">
+
+        <div
+          className="
+            flex
+            min-w-0
+            shrink
+            items-center
+            gap-[clamp(0.15rem,0.6vw,0.5rem)]
+          "
+        >
           {/*
            * Notification behavior belongs to the notification feature.
-           *
-           * The header does not receive an unread count and does not know
-           * whether notifications are SENT, READ, PENDING, or terminal.
            */}
-          <AuthenticatedNotifications />
+          <div className="min-w-0 shrink">
+            <AuthenticatedNotifications />
+          </div>
 
           {/*
            * Account behavior belongs to the authenticated account menu.
-           *
-           * The header only forwards presentation data already resolved by
-           * the authenticated shell.
            */}
-          <AuthenticatedAccountMenu
-            travellerHandle={travellerHandle}
-            avatarSrc={travellerAvatarUrl}
-          />
+          <div className="min-w-0 shrink">
+            <AuthenticatedAccountMenu
+              travellerHandle={travellerHandle}
+              avatarSrc={travellerAvatarUrl}
+            />
+          </div>
         </div>
       </div>
     </header>

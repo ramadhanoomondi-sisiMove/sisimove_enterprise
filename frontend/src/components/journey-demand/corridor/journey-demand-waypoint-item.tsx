@@ -2,37 +2,60 @@
 // sisiMove — Journey Demand Waypoint Item
 // -----------------------------------------------------------------------------
 //
-// Read-only presentation of a single authenticated Journey Demand waypoint.
+// Read-only presentation of one Journey Demand waypoint.
 //
-// Architecture:
-// - Consumes the authenticated Journey Demand waypoint model.
-// - Does not fetch data.
-// - Does not mutate data.
-// - Does not reconstruct backend value objects.
-// - Does not calculate route distance, duration, or ordering.
-// - Uses the backend-provided sequence for display.
-// - Does not infer additional business meaning from pickup/drop-off flags.
+// Responsibilities:
+// - Render the supplied waypoint.
+// - Display the backend-provided sequence.
+// - Display the waypoint name and type.
+// - Display the supplied coordinates.
+// - Display the explicit pickup/drop-off requirements.
 //
-// The parent waypoint collection owns iteration and list composition.
-// This component owns the presentation of one waypoint.
+// This component does NOT:
+// - fetch data;
+// - mutate data;
+// - reconstruct backend value objects;
+// - calculate distance, duration, or route geometry;
+// - calculate or modify sequence;
+// - infer business meaning from waypoint data.
 //
-// The authenticated JourneyDemandWaypoint model provides coordinates through:
+// The parent collection owns iteration:
 //
-//     waypoint.coordinates.latitude
-//     waypoint.coordinates.longitude
+//     JourneyDemandWaypoints
+//          ↓
+//     JourneyDemandWaypointItem
 //
-// This component does not flatten or transform that representation.
+// Editable waypoint workflows use JourneyDemandWaypointEditor instead.
 //
 // -----------------------------------------------------------------------------
 
 import type { JourneyDemandWaypoint } from '@/features/journey-demand/models';
 import { cn } from '@/foundation';
 
+// -----------------------------------------------------------------------------
+// Types
+// -----------------------------------------------------------------------------
+
 export interface JourneyDemandWaypointItemProps {
+  /**
+   * Complete backend-projected waypoint.
+   */
   readonly waypoint: JourneyDemandWaypoint;
+
+  /**
+   * Presentation density.
+   */
   readonly emphasis?: 'compact' | 'default';
+
+  /**
+   * Optional additional class names.
+   */
   readonly className?: string;
 }
+
+// -----------------------------------------------------------------------------
+// Component
+// -----------------------------------------------------------------------------
 
 export function JourneyDemandWaypointItem({
   waypoint,
@@ -48,29 +71,40 @@ export function JourneyDemandWaypointItem({
         className,
       )}
     >
-      {/* ---------------------------------------------------------------------
-          Sequence marker
+      {/* -----------------------------------------------------------------------
+          Sequence
 
-          The sequence is supplied by the backend and is therefore displayed
-          directly rather than reconstructed from the array position.
-      --------------------------------------------------------------------- */}
+          Sequence is authoritative backend data.
+
+          Do not derive this value from the array index. The backend owns
+          waypoint ordering and the waypoint model already contains its
+          authoritative sequence.
+      ----------------------------------------------------------------------- */}
+
       <span
         className={cn(
-          'flex shrink-0 items-center justify-center rounded-[var(--radius-full)]',
-          'bg-[var(--background-muted)] font-semibold text-foreground-secondary',
+          'flex shrink-0 items-center justify-center',
+          'rounded-[var(--radius-full)]',
+          'bg-[var(--background-muted)]',
+          'font-semibold text-foreground-secondary',
           isCompact
             ? 'size-5 text-[10px]'
             : 'size-6 text-xs',
         )}
-        aria-hidden="true"
+        aria-label={`Waypoint ${waypoint.sequence}`}
       >
         {waypoint.sequence}
       </span>
 
-      {/* ---------------------------------------------------------------------
-          Waypoint information
-      --------------------------------------------------------------------- */}
+      {/* -----------------------------------------------------------------------
+          Waypoint content
+      ----------------------------------------------------------------------- */}
+
       <div className="min-w-0 flex-1">
+        {/* ---------------------------------------------------------------------
+            Identity
+        --------------------------------------------------------------------- */}
+
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <p
             className={cn(
@@ -91,21 +125,22 @@ export function JourneyDemandWaypointItem({
           </span>
         </div>
 
-        {/* -------------------------------------------------------------------
+        {/* ---------------------------------------------------------------------
             Coordinates
 
-            Coordinates belong to the authenticated waypoint model and are
-            represented as a nested value:
+            Coordinates are already represented by the frontend model as:
 
                 waypoint.coordinates.latitude
                 waypoint.coordinates.longitude
 
-            They are displayed directly without deriving additional route
-            information.
-        ------------------------------------------------------------------- */}
+            No transformation or derived geographic information is performed
+            here.
+        --------------------------------------------------------------------- */}
+
         <p
           className={cn(
-            'mt-1 text-foreground-muted',
+            'mt-1',
+            'text-foreground-muted',
             isCompact ? 'text-[11px]' : 'text-xs',
           )}
         >
@@ -113,12 +148,15 @@ export function JourneyDemandWaypointItem({
           {waypoint.coordinates.longitude}
         </p>
 
-        {/* -------------------------------------------------------------------
-            Explicit operational requirements
+        {/* ---------------------------------------------------------------------
+            Operational requirements
 
-            These values come directly from the backend waypoint model.
-            No business state is inferred when either flag is false.
-        ------------------------------------------------------------------- */}
+            These flags are rendered exactly as supplied by the backend.
+
+            A false value means nothing is rendered for that requirement.
+            No additional business state is inferred.
+        --------------------------------------------------------------------- */}
+
         {waypoint.pickupRequired || waypoint.dropoffRequired ? (
           <div
             className={cn(
@@ -142,7 +180,7 @@ export function JourneyDemandWaypointItem({
 }
 
 // -----------------------------------------------------------------------------
-// Presentation labels
+// Presentation helpers
 // -----------------------------------------------------------------------------
 
 function formatWaypointType(

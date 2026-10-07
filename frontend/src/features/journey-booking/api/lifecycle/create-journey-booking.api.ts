@@ -9,7 +9,20 @@
 //   POST /api/v1/journey-bookings
 //
 // Backend authorization:
-//   journey-booking:create
+//   booking:create
+//
+// The authenticated backend controller derives passengerPublicId from the
+// authenticated JWT identity. Therefore passengerPublicId MUST NOT be sent
+// by the frontend.
+//
+// HTTP request body:
+//
+//   {
+//     journeyPublicId,
+//     seats,
+//     correlationId?,
+//     causationId?
+//   }
 //
 // Backend command construction:
 //
@@ -17,22 +30,14 @@
 //     JourneyBookingJourneyPublicId,
 //     JourneyBookingPassengerPublicId,
 //     JourneyBookingSeats,
-//     correlationId?,
+//     correlationId,
 //     causationId?,
 //   )
 //
-// The frontend sends the HTTP DTO expected by the current backend contract.
-// The backend JourneyBooking aggregate remains authoritative for validating
-// the Journey, passenger, seat quantity, pricing, snapshot, payment
-// requirements, and booking lifecycle.
-//
-// IMPORTANT:
-//
-// The current backend controller accepts passengerPublicId from the request
-// body. The authenticated API client supplies authentication credentials, but
-// this adapter does not silently replace the backend contract with a
-// client-derived identity. The backend should independently enforce that the
-// supplied passenger belongs to the authenticated request where appropriate.
+// The frontend sends only the HTTP DTO accepted by the backend controller.
+// The backend remains authoritative for passenger identity, Journey
+// validation, seat quantity, pricing, snapshot, payment requirements, and
+// booking lifecycle.
 //
 // Architectural responsibilities:
 //
@@ -65,22 +70,15 @@ import type { JourneyBooking } from '../../models/journey-booking';
 /**
  * Request payload accepted by the Journey Booking create endpoint.
  *
- * The shape intentionally mirrors the current HTTP DTO rather than the
- * backend command/value-object implementation.
+ * Passenger identity is intentionally NOT included.
+ *
+ * The backend derives passengerPublicId from the authenticated JWT identity.
  */
 export interface CreateJourneyBookingRequest {
   /**
    * Public identifier of the Journey being booked.
    */
   journeyPublicId: string;
-
-  /**
-   * Public identifier of the passenger making the booking.
-   *
-   * The current backend HTTP contract accepts this value explicitly.
-   * Authorization and ownership validation remain backend responsibilities.
-   */
-  passengerPublicId: string;
 
   /**
    * Number of seats requested.
@@ -117,6 +115,9 @@ export type CreateJourneyBookingResponse = JourneyBooking;
 /**
  * Create a Journey Booking.
  *
+ * Passenger identity is supplied by the authenticated backend boundary.
+ * The frontend must never provide passengerPublicId.
+ *
  * Creation does not imply confirmation or successful payment. The backend
  * aggregate determines the resulting booking state and associated booking
  * components.
@@ -128,7 +129,7 @@ export type CreateJourneyBookingResponse = JourneyBooking;
  *   The Journey Booking returned by the backend.
  *
  * @throws
- *   TypeError when required identifiers are empty or the seat quantity is
+ *   TypeError when the Journey identifier is empty or the seat quantity is
  *   invalid at the HTTP input boundary.
  *
  * @throws
@@ -141,17 +142,10 @@ export async function createJourneyBooking(
   request: CreateJourneyBookingRequest,
 ): Promise<CreateJourneyBookingResponse> {
   const journeyPublicId = request.journeyPublicId.trim();
-  const passengerPublicId = request.passengerPublicId.trim();
 
   if (!journeyPublicId) {
     throw new TypeError(
       'A Journey public identifier is required.',
-    );
-  }
-
-  if (!passengerPublicId) {
-    throw new TypeError(
-      'A passenger public identifier is required.',
     );
   }
 
@@ -168,7 +162,6 @@ export async function createJourneyBooking(
     '/journey-bookings',
     {
       journeyPublicId,
-      passengerPublicId,
       seats: request.seats,
       correlationId: request.correlationId,
       causationId: request.causationId,

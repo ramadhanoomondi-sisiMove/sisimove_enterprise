@@ -25,6 +25,21 @@ export type {
 } from './journey-booking-cancellation-reason';
 
 export type {
+  JourneyBookingDetail,
+  JourneyBookingDetailCancellation,
+  JourneyBookingDetailJourney,
+  JourneyBookingDetailPayment,
+  JourneyBookingDetailPricing,
+  JourneyBookingDetailProvider,
+  JourneyBookingDetailProviderTraveller,
+  JourneyBookingDetailProviderTrust,
+  JourneyBookingDetailProviderTrustBadge,
+  JourneyBookingDetailProviderTrustBadgeAsset,
+  JourneyBookingDetailResponse,
+  JourneyBookingDetailSnapshot,
+} from './journey-booking-detail';
+
+export type {
   JourneyBookingPayment,
 } from './journey-booking-payment';
 

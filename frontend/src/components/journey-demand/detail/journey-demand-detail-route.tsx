@@ -1,6 +1,8 @@
 // -----------------------------------------------------------------------------
-// sisiMove — My Journey Demand Detail Route
+// Path: src/components/journey-demand/detail/journey-demand-detail-route.tsx
 // -----------------------------------------------------------------------------
+//
+// sisiMove — My Journey Demand Detail Route
 //
 // Authenticated Journey Demand detail route/container.
 //
@@ -34,32 +36,71 @@
 // PRESENTATION
 // -----------------------------------------------------------------------------
 //
-// The owner detail page uses the same Journey Demand visual language as the
-// public marketplace, while allowing authenticated owner-management UI to be
-// composed separately.
+// MyJourneyDemandDetail is deliberately a read-only owner-detail composition.
+//
+// Editing is NOT composed here.
+//
+// Editing belongs to:
+//
+//     JourneyDemandManagement
+//          ↓
+//     JourneyDemandEditor
+//          ↓
+//     JourneyDemandEditorSections
+//
+// Lifecycle management is also supplied externally:
+//
+//     JourneyDemandManagement
+//          ↓
+//     JourneyDemandActions
+//
+// Therefore this route/container does not:
+// - build editor sections;
+// - build lifecycle actions;
+// - infer capabilities;
+// - decide which actions are available;
+// - recreate editing state;
+// - translate the owner projection into another read model.
+//
+// -----------------------------------------------------------------------------
+// OWNERSHIP BOUNDARY
+// -----------------------------------------------------------------------------
+//
+// This component owns the QUERY boundary only.
+//
+//     query boundary
+//          ↓
+//     MyJourneyDemand
+//          ↓
+//     MyJourneyDemandDetail
+//
+// It does not own the editing workflow.
+//
+// This is important because the owner detail and the editor have different
+// responsibilities:
 //
 //     MyJourneyDemandDetail
-//          ├── Demand overview
-//          ├── Route
-//          ├── Schedule
-//          ├── Capacity
-//          ├── Pricing
-//          ├── Management
-//          └── Owner-specific sections
+//         = read-only projection composition
+//
+//     JourneyDemandEditor
+//         = authenticated editing workflow
+//
+//     JourneyDemandManagement
+//         = editing + lifecycle coordination
 //
 // -----------------------------------------------------------------------------
 
-"use client";
+'use client';
 
-import type { ReactNode } from "react";
+import type { ReactNode } from 'react';
 
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, RefreshCw } from 'lucide-react';
 
-import { cn } from "@/foundation";
+import { cn } from '@/foundation';
 
-import { useMyJourneyDemand } from "@/features/journey-demand/hooks/queries/use-my-journey-demand";
+import { useMyJourneyDemand } from '@/features/journey-demand/hooks/queries/use-my-journey-demand';
 
-import { MyJourneyDemandDetail } from "../manage";
+import { MyJourneyDemandDetail } from '../manage';
 
 // =============================================================================
 // Props
@@ -68,22 +109,21 @@ import { MyJourneyDemandDetail } from "../manage";
 export interface MyJourneyDemandDetailRouteProps {
   /**
    * Public identifier supplied by the authenticated dynamic route.
+   *
+   * The route/container passes this identifier directly to the authenticated
+   * owner query hook.
    */
   readonly journeyDemandPublicId: string;
 
   /**
-   * Optional owner-management UI supplied by the route/container.
+   * Optional owner-management UI supplied by the parent.
    *
    * The route does not determine which management actions are available.
+   *
+   * This allows the query boundary to remain independent from lifecycle
+   * capability decisions.
    */
   readonly management?: ReactNode;
-
-  /**
-   * Additional owner-specific detail sections.
-   */
-  readonly sections?: Parameters<
-    typeof MyJourneyDemandDetail
-  >[0]["sections"];
 
   readonly className?: string;
 }
@@ -94,11 +134,30 @@ export interface MyJourneyDemandDetailRouteProps {
 
 /**
  * Authenticated Journey Demand detail route/container.
+ *
+ * This component is intentionally a query boundary.
+ *
+ * It:
+ *
+ * 1. receives the route identifier;
+ * 2. asks the authenticated owner query for the Journey Demand;
+ * 3. handles loading;
+ * 4. handles API/query errors;
+ * 5. renders the owner detail once the projection exists.
+ *
+ * It does not:
+ *
+ * - authorize the owner;
+ * - compare requester identifiers;
+ * - determine lifecycle capabilities;
+ * - compose editing sections;
+ * - perform mutations;
+ * - construct domain objects;
+ * - call the public Journey Demand API.
  */
 export function MyJourneyDemandDetailRoute({
   journeyDemandPublicId,
   management,
-  sections = [],
   className,
 }: MyJourneyDemandDetailRouteProps) {
   const {
@@ -106,13 +165,14 @@ export function MyJourneyDemandDetailRoute({
     isLoading,
     error,
     refetch,
-  } = useMyJourneyDemand(
-    journeyDemandPublicId,
-  );
+  } = useMyJourneyDemand(journeyDemandPublicId);
 
   // ---------------------------------------------------------------------------
   // Loading
   // ---------------------------------------------------------------------------
+  //
+  // Loading is handled before attempting to render the owner projection.
+  //
 
   if (isLoading) {
     return (
@@ -125,6 +185,9 @@ export function MyJourneyDemandDetailRoute({
   // ---------------------------------------------------------------------------
   // Backend/API error
   // ---------------------------------------------------------------------------
+  //
+  // An API error remains an error. It is not converted into an empty state.
+  //
 
   if (error) {
     return (
@@ -139,6 +202,10 @@ export function MyJourneyDemandDetailRoute({
   // ---------------------------------------------------------------------------
   // Defensive unavailable state
   // ---------------------------------------------------------------------------
+  //
+  // The authenticated query should normally return either a projection or an
+  // error. This branch protects the UI from an unexpected empty result.
+  //
 
   if (!demand) {
     return (
@@ -151,11 +218,17 @@ export function MyJourneyDemandDetailRoute({
   // ---------------------------------------------------------------------------
   // Owner Journey Demand detail
   // ---------------------------------------------------------------------------
+  //
+  // MyJourneyDemandDetail receives only the already-loaded owner projection.
+  //
+  // Notice that there is intentionally NO `sections` prop here.
+  //
+  // Editor section composition belongs exclusively to JourneyDemandEditor.
+  //
 
   return (
     <MyJourneyDemandDetail
       demand={demand}
-      sections={sections}
       management={management}
       className={className}
     />
@@ -181,9 +254,9 @@ function MyJourneyDemandDetailLoading({
   return (
     <main
       className={cn(
-        "w-full",
-        "min-w-0",
-        "bg-[var(--background-brand)]",
+        'w-full',
+        'min-w-0',
+        'bg-[var(--background-brand)]',
         className,
       )}
       aria-busy="true"
@@ -191,23 +264,23 @@ function MyJourneyDemandDetailLoading({
     >
       <div
         className={cn(
-          "page-container",
-          "py-6",
-          "sm:py-8",
-          "lg:py-10",
+          'page-container',
+          'py-6',
+          'sm:py-8',
+          'lg:py-10',
         )}
       >
         <section
           className={cn(
-            "mx-auto",
-            "w-full",
-            "max-w-5xl",
-            "overflow-hidden",
-            "rounded-[var(--radius-xl)]",
-            "border",
-            "border-[var(--border)]",
-            "bg-[var(--surface)]",
-            "shadow-[var(--shadow-md)]",
+            'mx-auto',
+            'w-full',
+            'max-w-5xl',
+            'overflow-hidden',
+            'rounded-[var(--radius-xl)]',
+            'border',
+            'border-[var(--border)]',
+            'bg-[var(--surface)]',
+            'shadow-[var(--shadow-md)]',
           )}
         >
           <h1
@@ -219,45 +292,45 @@ function MyJourneyDemandDetailLoading({
 
           <div
             className={cn(
-              "space-y-6",
-              "p-5",
-              "sm:p-7",
-              "lg:p-9",
+              'space-y-6',
+              'p-5',
+              'sm:p-7',
+              'lg:p-9',
             )}
           >
             {/* Demand header skeleton */}
             <div
               className={cn(
-                "space-y-3",
-                "animate-pulse",
+                'space-y-3',
+                'animate-pulse',
               )}
             >
               <div
                 className={cn(
-                  "h-3",
-                  "w-32",
-                  "rounded-full",
-                  "bg-[var(--background-muted)]",
+                  'h-3',
+                  'w-32',
+                  'rounded-full',
+                  'bg-[var(--background-muted)]',
                 )}
               />
 
               <div
                 className={cn(
-                  "h-8",
-                  "w-72",
-                  "max-w-full",
-                  "rounded-lg",
-                  "bg-[var(--background-muted)]",
+                  'h-8',
+                  'w-72',
+                  'max-w-full',
+                  'rounded-lg',
+                  'bg-[var(--background-muted)]',
                 )}
               />
 
               <div
                 className={cn(
-                  "h-4",
-                  "w-full",
-                  "max-w-2xl",
-                  "rounded",
-                  "bg-[var(--background-muted)]",
+                  'h-4',
+                  'w-full',
+                  'max-w-2xl',
+                  'rounded',
+                  'bg-[var(--background-muted)]',
                 )}
               />
             </div>
@@ -265,26 +338,26 @@ function MyJourneyDemandDetailLoading({
             {/* Route skeleton */}
             <div
               className={cn(
-                "grid",
-                "animate-pulse",
-                "grid-cols-1",
-                "gap-3",
-                "sm:grid-cols-2",
+                'grid',
+                'animate-pulse',
+                'grid-cols-1',
+                'gap-3',
+                'sm:grid-cols-2',
               )}
             >
               <div
                 className={cn(
-                  "h-24",
-                  "rounded-[var(--radius-lg)]",
-                  "bg-[var(--background-subtle)]",
+                  'h-24',
+                  'rounded-[var(--radius-lg)]',
+                  'bg-[var(--background-subtle)]',
                 )}
               />
 
               <div
                 className={cn(
-                  "h-24",
-                  "rounded-[var(--radius-lg)]",
-                  "bg-[var(--background-subtle)]",
+                  'h-24',
+                  'rounded-[var(--radius-lg)]',
+                  'bg-[var(--background-subtle)]',
                 )}
               />
             </div>
@@ -292,34 +365,34 @@ function MyJourneyDemandDetailLoading({
             {/* Detail skeleton */}
             <div
               className={cn(
-                "space-y-3",
-                "animate-pulse",
+                'space-y-3',
+                'animate-pulse',
               )}
             >
               <div
                 className={cn(
-                  "h-4",
-                  "w-40",
-                  "rounded",
-                  "bg-[var(--background-muted)]",
+                  'h-4',
+                  'w-40',
+                  'rounded',
+                  'bg-[var(--background-muted)]',
                 )}
               />
 
               <div
                 className={cn(
-                  "h-20",
-                  "w-full",
-                  "rounded-[var(--radius-lg)]",
-                  "bg-[var(--background-subtle)]",
+                  'h-20',
+                  'w-full',
+                  'rounded-[var(--radius-lg)]',
+                  'bg-[var(--background-subtle)]',
                 )}
               />
 
               <div
                 className={cn(
-                  "h-20",
-                  "w-full",
-                  "rounded-[var(--radius-lg)]",
-                  "bg-[var(--background-subtle)]",
+                  'h-20',
+                  'w-full',
+                  'rounded-[var(--radius-lg)]',
+                  'bg-[var(--background-subtle)]',
                 )}
               />
             </div>
@@ -354,62 +427,62 @@ function MyJourneyDemandDetailError({
   return (
     <main
       className={cn(
-        "w-full",
-        "min-w-0",
-        "bg-[var(--background-brand)]",
+        'w-full',
+        'min-w-0',
+        'bg-[var(--background-brand)]',
         className,
       )}
       aria-labelledby="my-journey-demand-error-heading"
     >
       <div
         className={cn(
-          "page-container",
-          "py-6",
-          "sm:py-8",
-          "lg:py-10",
+          'page-container',
+          'py-6',
+          'sm:py-8',
+          'lg:py-10',
         )}
       >
         <section
           className={cn(
-            "mx-auto",
-            "w-full",
-            "max-w-2xl",
-            "overflow-hidden",
-            "rounded-[var(--radius-xl)]",
-            "border",
-            "border-[var(--border)]",
-            "bg-[var(--surface)]",
-            "shadow-[var(--shadow-md)]",
+            'mx-auto',
+            'w-full',
+            'max-w-2xl',
+            'overflow-hidden',
+            'rounded-[var(--radius-xl)]',
+            'border',
+            'border-[var(--border)]',
+            'bg-[var(--surface)]',
+            'shadow-[var(--shadow-md)]',
           )}
         >
           <div
             className={cn(
-              "border-l-4",
-              "border-l-[var(--danger)]",
-              "bg-[var(--danger-soft)]",
-              "px-5",
-              "py-5",
-              "sm:px-6",
+              'border-l-4',
+              'border-l-[var(--danger)]',
+              'bg-[var(--danger-soft)]',
+              'px-5',
+              'py-5',
+              'sm:px-6',
             )}
           >
             <div
               className={cn(
-                "flex",
-                "items-start",
-                "gap-3",
+                'flex',
+                'items-start',
+                'gap-3',
               )}
             >
               <div
                 aria-hidden="true"
                 className={cn(
-                  "flex",
-                  "size-9",
-                  "shrink-0",
-                  "items-center",
-                  "justify-center",
-                  "rounded-full",
-                  "bg-[var(--surface)]",
-                  "text-[var(--danger)]",
+                  'flex',
+                  'size-9',
+                  'shrink-0',
+                  'items-center',
+                  'justify-center',
+                  'rounded-full',
+                  'bg-[var(--surface)]',
+                  'text-[var(--danger)]',
                 )}
               >
                 <AlertCircle className="size-4" />
@@ -419,10 +492,10 @@ function MyJourneyDemandDetailError({
                 <h1
                   id="my-journey-demand-error-heading"
                   className={cn(
-                    "text-base",
-                    "font-bold",
-                    "tracking-tight",
-                    "text-[var(--foreground)]",
+                    'text-base',
+                    'font-bold',
+                    'tracking-tight',
+                    'text-[var(--foreground)]',
                   )}
                 >
                   Unable to load Journey Demand
@@ -430,10 +503,10 @@ function MyJourneyDemandDetailError({
 
                 <p
                   className={cn(
-                    "mt-1",
-                    "text-sm",
-                    "leading-6",
-                    "text-[var(--foreground-muted)]",
+                    'mt-1',
+                    'text-sm',
+                    'leading-6',
+                    'text-[var(--foreground-muted)]',
                   )}
                 >
                   {error.message}
@@ -445,33 +518,34 @@ function MyJourneyDemandDetailError({
                     void onRetry();
                   }}
                   className={cn(
-                    "mt-4",
-                    "inline-flex",
-                    "h-9",
-                    "items-center",
-                    "justify-center",
-                    "gap-2",
-                    "rounded-[var(--radius-md)]",
-                    "border",
-                    "border-[var(--border-strong)]",
-                    "bg-[var(--surface)]",
-                    "px-3.5",
-                    "text-sm",
-                    "font-semibold",
-                    "text-[var(--foreground)]",
-                    "shadow-[var(--shadow-sm)]",
-                    "transition-colors",
-                    "hover:bg-[var(--background-subtle)]",
-                    "focus-visible:outline-none",
-                    "focus-visible:ring-2",
-                    "focus-visible:ring-[var(--brand)]",
-                    "focus-visible:ring-offset-2",
+                    'mt-4',
+                    'inline-flex',
+                    'h-9',
+                    'items-center',
+                    'justify-center',
+                    'gap-2',
+                    'rounded-[var(--radius-md)]',
+                    'border',
+                    'border-[var(--border-strong)]',
+                    'bg-[var(--surface)]',
+                    'px-3.5',
+                    'text-sm',
+                    'font-semibold',
+                    'text-[var(--foreground)]',
+                    'shadow-[var(--shadow-sm)]',
+                    'transition-colors',
+                    'hover:bg-[var(--background-subtle)]',
+                    'focus-visible:outline-none',
+                    'focus-visible:ring-2',
+                    'focus-visible:ring-[var(--brand)]',
+                    'focus-visible:ring-offset-2',
                   )}
                 >
                   <RefreshCw
                     aria-hidden="true"
                     className="size-3.5"
                   />
+
                   Try again
                 </button>
               </div>
@@ -503,63 +577,63 @@ function MyJourneyDemandDetailUnavailable({
   return (
     <main
       className={cn(
-        "w-full",
-        "min-w-0",
-        "bg-[var(--background-brand)]",
+        'w-full',
+        'min-w-0',
+        'bg-[var(--background-brand)]',
         className,
       )}
       aria-labelledby="my-journey-demand-unavailable-heading"
     >
       <div
         className={cn(
-          "page-container",
-          "py-6",
-          "sm:py-8",
-          "lg:py-10",
+          'page-container',
+          'py-6',
+          'sm:py-8',
+          'lg:py-10',
         )}
       >
         <section
           className={cn(
-            "mx-auto",
-            "w-full",
-            "max-w-2xl",
-            "overflow-hidden",
-            "rounded-[var(--radius-xl)]",
-            "border",
-            "border-[var(--border)]",
-            "bg-[var(--surface)]",
-            "shadow-[var(--shadow-md)]",
+            'mx-auto',
+            'w-full',
+            'max-w-2xl',
+            'overflow-hidden',
+            'rounded-[var(--radius-xl)]',
+            'border',
+            'border-[var(--border)]',
+            'bg-[var(--surface)]',
+            'shadow-[var(--shadow-md)]',
           )}
         >
           <div
             className={cn(
-              "border-l-4",
-              "border-l-[var(--brand)]",
-              "bg-[var(--background-brand)]",
-              "px-5",
-              "py-6",
-              "sm:px-7",
-              "sm:py-8",
+              'border-l-4',
+              'border-l-[var(--brand)]',
+              'bg-[var(--background-brand)]',
+              'px-5',
+              'py-6',
+              'sm:px-7',
+              'sm:py-8',
             )}
           >
             <div
               className={cn(
-                "flex",
-                "items-start",
-                "gap-3",
+                'flex',
+                'items-start',
+                'gap-3',
               )}
             >
               <div
                 aria-hidden="true"
                 className={cn(
-                  "flex",
-                  "size-9",
-                  "shrink-0",
-                  "items-center",
-                  "justify-center",
-                  "rounded-full",
-                  "bg-[var(--brand-soft)]",
-                  "text-[var(--brand)]",
+                  'flex',
+                  'size-9',
+                  'shrink-0',
+                  'items-center',
+                  'justify-center',
+                  'rounded-full',
+                  'bg-[var(--brand-soft)]',
+                  'text-[var(--brand)]',
                 )}
               >
                 <AlertCircle className="size-4" />
@@ -569,10 +643,10 @@ function MyJourneyDemandDetailUnavailable({
                 <h1
                   id="my-journey-demand-unavailable-heading"
                   className={cn(
-                    "text-base",
-                    "font-bold",
-                    "tracking-tight",
-                    "text-[var(--foreground)]",
+                    'text-base',
+                    'font-bold',
+                    'tracking-tight',
+                    'text-[var(--foreground)]',
                   )}
                 >
                   Journey Demand unavailable
@@ -580,10 +654,10 @@ function MyJourneyDemandDetailUnavailable({
 
                 <p
                   className={cn(
-                    "mt-1",
-                    "text-sm",
-                    "leading-6",
-                    "text-[var(--foreground-muted)]",
+                    'mt-1',
+                    'text-sm',
+                    'leading-6',
+                    'text-[var(--foreground-muted)]',
                   )}
                 >
                   This Journey Demand could not be loaded.

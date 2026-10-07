@@ -13,7 +13,7 @@
 // - One horizontal composition at every viewport size.
 // - Route/corridor remains the primary visual anchor.
 // - Requested seats remain the immediate demand signal.
-// - Price preference remains the commercial anchor.
+// - Maximum price remains the commercial anchor.
 // - Lifecycle status remains visible without dominating the card.
 // - Schedule remains visible without dominating the card.
 // - Footer remains compact and horizontal.
@@ -24,6 +24,13 @@
 // - MyJourneyDemand exposes `capacity`, not public `demand`.
 // - MyJourneyDemand does not expose a public requester projection.
 // - No public Journey Demand read model is reconstructed here.
+//
+// Pricing:
+// - The current Journey Demand pricing model exposes a maximum price per seat.
+// - The old preferred-price concept is intentionally not used here.
+// - `maximumPricePerSeat` is the commercial ceiling the traveller is willing
+//   to pay for a seat.
+// - When no maximum is configured, the demand is presented as flexible.
 //
 // Runtime safety:
 // - HTTP date values are normalized defensively at the presentation boundary.
@@ -40,7 +47,7 @@
 //
 // -----------------------------------------------------------------------------
 
-"use client";
+'use client';
 
 import {
   ArrowRight,
@@ -49,12 +56,12 @@ import {
   MapPin,
   Settings2,
   UsersRound,
-} from "lucide-react";
+} from 'lucide-react';
 
-import { Card } from "@/components/ui";
-import { cn } from "@/foundation/utils/cn";
+import { Card } from '@/components/ui';
+import { cn } from '@/foundation/utils/cn';
 
-import type { MyJourneyDemand } from "@/features/journey-demand/models";
+import type { MyJourneyDemand } from '@/features/journey-demand/models';
 
 // -----------------------------------------------------------------------------
 // Props
@@ -64,7 +71,7 @@ export interface MyJourneyDemandCardProps {
   readonly demand: MyJourneyDemand;
   readonly onManage?: (demand: MyJourneyDemand) => void;
   readonly className?: string;
-  readonly emphasis?: "compact" | "default";
+  readonly emphasis?: 'compact' | 'default';
 }
 
 // -----------------------------------------------------------------------------
@@ -120,17 +127,17 @@ function formatDate(
   const date = toValidDate(value);
 
   if (date === undefined) {
-    return "Date not set";
+    return 'Date not set';
   }
 
   try {
-    return new Intl.DateTimeFormat("en-KE", {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
+    return new Intl.DateTimeFormat('en-KE', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
     }).format(date);
   } catch {
-    return "Date not set";
+    return 'Date not set';
   }
 }
 
@@ -141,25 +148,25 @@ function formatTime(
   const date = toValidDate(value);
 
   if (date === undefined) {
-    return "Time not set";
+    return 'Time not set';
   }
 
   try {
-    return new Intl.DateTimeFormat("en-KE", {
-      hour: "numeric",
-      minute: "2-digit",
+    return new Intl.DateTimeFormat('en-KE', {
+      hour: 'numeric',
+      minute: '2-digit',
       hour12: true,
       timeZone: timezone,
     }).format(date);
   } catch {
     try {
-      return new Intl.DateTimeFormat("en-KE", {
-        hour: "numeric",
-        minute: "2-digit",
+      return new Intl.DateTimeFormat('en-KE', {
+        hour: 'numeric',
+        minute: '2-digit',
         hour12: true,
       }).format(date);
     } catch {
-      return "Time not set";
+      return 'Time not set';
     }
   }
 }
@@ -169,29 +176,29 @@ function formatTime(
 // -----------------------------------------------------------------------------
 
 function formatStatus(
-  status: MyJourneyDemand["status"],
+  status: MyJourneyDemand['status'],
 ): string {
   switch (status) {
-    case "DRAFT":
-      return "Draft";
+    case 'DRAFT':
+      return 'Draft';
 
-    case "OPEN":
-      return "Open";
+    case 'OPEN':
+      return 'Open';
 
-    case "MATCHED":
-      return "Matched";
+    case 'MATCHED':
+      return 'Matched';
 
-    case "CONVERTED":
-      return "Converted";
+    case 'CONVERTED':
+      return 'Converted';
 
-    case "FULFILLED":
-      return "Fulfilled";
+    case 'FULFILLED':
+      return 'Fulfilled';
 
-    case "CANCELLED":
-      return "Cancelled";
+    case 'CANCELLED':
+      return 'Cancelled';
 
-    case "EXPIRED":
-      return "Expired";
+    case 'EXPIRED':
+      return 'Expired';
 
     default:
       return status;
@@ -201,22 +208,36 @@ function formatStatus(
 // -----------------------------------------------------------------------------
 // Pricing helpers
 // -----------------------------------------------------------------------------
+//
+// Current pricing contract:
+//
+//     maximumPricePerSeat
+//     hasMaximumPrice
+//     currency
+//
+// There is intentionally no preferred-price branch.
+//
+// `hasMaximumPrice` is treated as the authoritative indication that the
+// Journey Demand has a maximum commercial constraint. The numeric value is
+// still checked defensively before formatting.
+// -----------------------------------------------------------------------------
 
 function formatPrice(
-  pricing: MyJourneyDemand["pricing"],
+  pricing: MyJourneyDemand['pricing'],
 ): string {
   if (
     pricing === undefined ||
     pricing.isUnconstrained
   ) {
-    return "Flexible";
+    return 'Flexible';
   }
 
   if (
-    pricing.preferredPricePerSeat !== undefined
+    pricing.hasMaximumPrice &&
+    pricing.maximumPricePerSeat !== undefined
   ) {
-    return `${pricing.currency} ${pricing.preferredPricePerSeat.toLocaleString(
-      "en-KE",
+    return `Up to ${pricing.currency} ${pricing.maximumPricePerSeat.toLocaleString(
+      'en-KE',
     )}`;
   }
 
@@ -224,11 +245,11 @@ function formatPrice(
     pricing.maximumPricePerSeat !== undefined
   ) {
     return `Up to ${pricing.currency} ${pricing.maximumPricePerSeat.toLocaleString(
-      "en-KE",
+      'en-KE',
     )}`;
   }
 
-  return "Flexible";
+  return 'Flexible';
 }
 
 // -----------------------------------------------------------------------------
@@ -243,11 +264,11 @@ function DemandIcon({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center justify-center",
-        "size-[clamp(1.35rem,2vw,1.75rem)]",
-        "rounded-full",
-        "bg-[var(--background-subtle)]",
-        "text-[var(--foreground-secondary)]",
+        'inline-flex shrink-0 items-center justify-center',
+        'size-[clamp(1.35rem,2vw,1.75rem)]',
+        'rounded-full',
+        'bg-[var(--background-subtle)]',
+        'text-[var(--foreground-secondary)]',
       )}
     >
       {children}
@@ -258,26 +279,26 @@ function DemandIcon({
 function StatusBadge({
   status,
 }: {
-  readonly status: MyJourneyDemand["status"];
+  readonly status: MyJourneyDemand['status'];
 }) {
   const isPositive =
-    status === "OPEN" ||
-    status === "MATCHED" ||
-    status === "FULFILLED";
+    status === 'OPEN' ||
+    status === 'MATCHED' ||
+    status === 'FULFILLED';
 
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1",
-        "rounded-full",
-        "border border-[var(--border-subtle)]",
-        "px-[clamp(0.4rem,0.7vw,0.6rem)]",
-        "py-[clamp(0.2rem,0.35vw,0.3rem)]",
-        "text-[clamp(0.46rem,0.62vw,0.56rem)]",
-        "font-semibold uppercase tracking-[0.07em]",
+        'inline-flex shrink-0 items-center gap-1',
+        'rounded-full',
+        'border border-[var(--border-subtle)]',
+        'px-[clamp(0.4rem,0.7vw,0.6rem)]',
+        'py-[clamp(0.2rem,0.35vw,0.3rem)]',
+        'text-[clamp(0.46rem,0.62vw,0.56rem)]',
+        'font-semibold uppercase tracking-[0.07em]',
         isPositive
-          ? "bg-[var(--success-soft)] text-[var(--success)]"
-          : "bg-[var(--background-subtle)] text-[var(--foreground-secondary)]",
+          ? 'bg-[var(--success-soft)] text-[var(--success)]'
+          : 'bg-[var(--background-subtle)] text-[var(--foreground-secondary)]',
       )}
     >
       {isPositive ? (
@@ -300,9 +321,9 @@ export function MyJourneyDemandCard({
   demand,
   onManage,
   className,
-  emphasis = "compact",
+  emphasis = 'compact',
 }: MyJourneyDemandCardProps) {
-  const isCompact = emphasis === "compact";
+  const isCompact = emphasis === 'compact';
 
   const corridor = demand.corridor;
   const schedule = demand.schedule;
@@ -314,11 +335,11 @@ export function MyJourneyDemandCard({
   // ---------------------------------------------------------------------------
 
   const originName =
-    corridor?.originName ?? "Origin not set";
+    corridor?.originName ?? 'Origin not set';
 
   const destinationName =
     corridor?.destinationName ??
-    "Destination not set";
+    'Destination not set';
 
   const waypointCount =
     corridor?.waypoints.length ?? 0;
@@ -349,7 +370,7 @@ export function MyJourneyDemandCard({
     validLatestDeparture !== undefined;
 
   const timezone =
-    schedule?.timezone || "Africa/Nairobi";
+    schedule?.timezone || 'Africa/Nairobi';
 
   const departureLabel =
     formatDate(validEarliestDeparture);
@@ -368,7 +389,7 @@ export function MyJourneyDemandCard({
             validLatestDeparture,
             timezone,
           )}`
-        : "Departure not set";
+        : 'Departure not set';
 
   // ---------------------------------------------------------------------------
   // Capacity
@@ -392,13 +413,13 @@ export function MyJourneyDemandCard({
   return (
     <Card
       className={cn(
-        "overflow-hidden",
-        "rounded-[clamp(0.75rem,1.2vw,1rem)]",
-        "border border-[var(--border-subtle)]",
-        "bg-[var(--background)]",
-        "shadow-sm",
-        "transition-all duration-200",
-        "hover:-translate-y-px hover:shadow-md",
+        'overflow-hidden',
+        'rounded-[clamp(0.75rem,1.2vw,1rem)]',
+        'border border-[var(--border-subtle)]',
+        'bg-[var(--background)]',
+        'shadow-sm',
+        'transition-all duration-200',
+        'hover:-translate-y-px hover:shadow-md',
         className,
       )}
     >
@@ -408,11 +429,11 @@ export function MyJourneyDemandCard({
 
       <div
         className={cn(
-          "grid",
-          "grid-cols-[108px_21%_minmax(220px,1.2fr)_18%_155px]",
-          "divide-x divide-[var(--border-subtle)]",
-          "px-3 lg:px-4",
-          isCompact ? "py-3" : "py-5",
+          'grid',
+          'grid-cols-[108px_21%_minmax(220px,1.2fr)_18%_155px]',
+          'divide-x divide-[var(--border-subtle)]',
+          'px-3 lg:px-4',
+          isCompact ? 'py-3' : 'py-5',
         )}
       >
         {/* --------------------------------------------------------------- */}
@@ -421,17 +442,17 @@ export function MyJourneyDemandCard({
 
         <section
           className={cn(
-            "flex min-w-0 flex-col justify-center",
-            "pr-[clamp(0.65rem,1.2vw,1rem)]",
+            'flex min-w-0 flex-col justify-center',
+            'pr-[clamp(0.65rem,1.2vw,1rem)]',
           )}
         >
           <div
             className={cn(
-              "mb-[clamp(0.3rem,0.55vw,0.45rem)]",
-              "flex items-center gap-1.5",
-              "text-[clamp(0.48rem,0.68vw,0.58rem)]",
-              "font-semibold uppercase tracking-[0.08em]",
-              "text-[var(--foreground-muted)]",
+              'mb-[clamp(0.3rem,0.55vw,0.45rem)]',
+              'flex items-center gap-1.5',
+              'text-[clamp(0.48rem,0.68vw,0.58rem)]',
+              'font-semibold uppercase tracking-[0.08em]',
+              'text-[var(--foreground-muted)]',
             )}
           >
             <CalendarDays
@@ -444,10 +465,10 @@ export function MyJourneyDemandCard({
 
           <div
             className={cn(
-              "truncate",
-              "text-[clamp(0.72rem,1vw,0.9rem)]",
-              "font-bold",
-              "text-[var(--foreground)]",
+              'truncate',
+              'text-[clamp(0.72rem,1vw,0.9rem)]',
+              'font-bold',
+              'text-[var(--foreground)]',
             )}
           >
             {departureLabel}
@@ -455,10 +476,10 @@ export function MyJourneyDemandCard({
 
           <div
             className={cn(
-              "mt-0.5 truncate",
-              "text-[clamp(0.56rem,0.78vw,0.68rem)]",
-              "font-medium",
-              "text-[var(--foreground-secondary)]",
+              'mt-0.5 truncate',
+              'text-[clamp(0.56rem,0.78vw,0.68rem)]',
+              'font-medium',
+              'text-[var(--foreground-secondary)]',
             )}
           >
             {departureTimeLabel}
@@ -467,9 +488,9 @@ export function MyJourneyDemandCard({
           {schedule?.hasArrivalConstraint ? (
             <div
               className={cn(
-                "mt-1 truncate",
-                "text-[clamp(0.45rem,0.62vw,0.55rem)]",
-                "text-[var(--foreground-muted)]",
+                'mt-1 truncate',
+                'text-[clamp(0.45rem,0.62vw,0.55rem)]',
+                'text-[var(--foreground-muted)]',
               )}
             >
               Arrival constraint
@@ -483,17 +504,17 @@ export function MyJourneyDemandCard({
 
         <section
           className={cn(
-            "flex min-w-0 flex-col justify-center",
-            "px-[clamp(0.7rem,1.25vw,1rem)]",
+            'flex min-w-0 flex-col justify-center',
+            'px-[clamp(0.7rem,1.25vw,1rem)]',
           )}
         >
           <div
             className={cn(
-              "mb-[clamp(0.4rem,0.7vw,0.55rem)]",
-              "flex items-center gap-1.5",
-              "text-[clamp(0.46rem,0.62vw,0.55rem)]",
-              "font-semibold uppercase tracking-[0.08em]",
-              "text-[var(--foreground-muted)]",
+              'mb-[clamp(0.4rem,0.7vw,0.55rem)]',
+              'flex items-center gap-1.5',
+              'text-[clamp(0.46rem,0.62vw,0.55rem)]',
+              'font-semibold uppercase tracking-[0.08em]',
+              'text-[var(--foreground-muted)]',
             )}
           >
             <DemandIcon>
@@ -509,15 +530,15 @@ export function MyJourneyDemandCard({
           <div className="min-w-0">
             <div
               className={cn(
-                "truncate",
-                "text-[clamp(0.72rem,1vw,0.9rem)]",
-                "font-bold",
-                "text-[var(--foreground)]",
+                'truncate',
+                'text-[clamp(0.72rem,1vw,0.9rem)]',
+                'font-bold',
+                'text-[var(--foreground)]',
               )}
             >
               {demand.isDraft
-                ? "Unpublished"
-                : "My Journey Demand"}
+                ? 'Unpublished'
+                : 'My Journey Demand'}
             </div>
 
             <div className="mt-1 flex min-w-0 items-center gap-1.5">
@@ -532,18 +553,18 @@ export function MyJourneyDemandCard({
 
         <section
           className={cn(
-            "flex min-w-0 flex-col justify-center",
-            "bg-[var(--background-brand)]",
-            "px-[clamp(0.8rem,1.6vw,1.35rem)]",
-            "text-center",
+            'flex min-w-0 flex-col justify-center',
+            'bg-[var(--background-brand)]',
+            'px-[clamp(0.8rem,1.6vw,1.35rem)]',
+            'text-center',
           )}
         >
           <div
             className={cn(
-              "mb-[clamp(0.35rem,0.6vw,0.5rem)]",
-              "text-[clamp(0.42rem,0.62vw,0.55rem)]",
-              "font-semibold uppercase tracking-[0.08em]",
-              "text-[var(--brand)]",
+              'mb-[clamp(0.35rem,0.6vw,0.5rem)]',
+              'text-[clamp(0.42rem,0.62vw,0.55rem)]',
+              'font-semibold uppercase tracking-[0.08em]',
+              'text-[var(--brand)]',
             )}
           >
             Requested route
@@ -551,25 +572,25 @@ export function MyJourneyDemandCard({
 
           <div
             className={cn(
-              "flex min-w-0 items-center justify-center",
-              "gap-[clamp(0.35rem,0.7vw,0.65rem)]",
+              'flex min-w-0 items-center justify-center',
+              'gap-[clamp(0.35rem,0.7vw,0.65rem)]',
             )}
           >
             <MapPin
               className={cn(
-                "size-[clamp(0.75rem,1vw,0.95rem)]",
-                "shrink-0",
-                "text-[var(--brand)]",
+                'size-[clamp(0.75rem,1vw,0.95rem)]',
+                'shrink-0',
+                'text-[var(--brand)]',
               )}
               aria-hidden="true"
             />
 
             <span
               className={cn(
-                "min-w-0 truncate",
-                "text-[clamp(0.72rem,1.1vw,1rem)]",
-                "font-bold",
-                "text-[var(--foreground)]",
+                'min-w-0 truncate',
+                'text-[clamp(0.72rem,1.1vw,1rem)]',
+                'font-bold',
+                'text-[var(--foreground)]',
               )}
               title={originName}
             >
@@ -578,28 +599,28 @@ export function MyJourneyDemandCard({
 
             <ArrowRight
               className={cn(
-                "size-[clamp(0.7rem,0.95vw,0.9rem)]",
-                "shrink-0",
-                "text-[var(--brand)]",
+                'size-[clamp(0.7rem,0.95vw,0.9rem)]',
+                'shrink-0',
+                'text-[var(--brand)]',
               )}
               aria-hidden="true"
             />
 
             <MapPin
               className={cn(
-                "size-[clamp(0.75rem,1vw,0.95rem)]",
-                "shrink-0",
-                "text-[var(--foreground-secondary)]",
+                'size-[clamp(0.75rem,1vw,0.95rem)]',
+                'shrink-0',
+                'text-[var(--foreground-secondary)]',
               )}
               aria-hidden="true"
             />
 
             <span
               className={cn(
-                "min-w-0 truncate",
-                "text-[clamp(0.72rem,1.1vw,1rem)]",
-                "font-bold",
-                "text-[var(--foreground)]",
+                'min-w-0 truncate',
+                'text-[clamp(0.72rem,1.1vw,1rem)]',
+                'font-bold',
+                'text-[var(--foreground)]',
               )}
               title={destinationName}
             >
@@ -609,10 +630,10 @@ export function MyJourneyDemandCard({
 
           <div
             className={cn(
-              "mt-[clamp(0.35rem,0.6vw,0.5rem)]",
-              "flex items-center justify-center gap-1",
-              "text-[clamp(0.45rem,0.62vw,0.55rem)]",
-              "text-[var(--foreground-muted)]",
+              'mt-[clamp(0.35rem,0.6vw,0.5rem)]',
+              'flex items-center justify-center gap-1',
+              'text-[clamp(0.45rem,0.62vw,0.55rem)]',
+              'text-[var(--foreground-muted)]',
             )}
           >
             <MapPin
@@ -623,9 +644,9 @@ export function MyJourneyDemandCard({
             <span>
               {waypointCount > 0
                 ? `${waypointCount} waypoint${
-                    waypointCount === 1 ? "" : "s"
+                    waypointCount === 1 ? '' : 's'
                   }`
-                : "Direct corridor"}
+                : 'Direct corridor'}
             </span>
           </div>
         </section>
@@ -636,17 +657,17 @@ export function MyJourneyDemandCard({
 
         <section
           className={cn(
-            "flex min-w-0 flex-col justify-center",
-            "px-[clamp(0.7rem,1.25vw,1rem)]",
+            'flex min-w-0 flex-col justify-center',
+            'px-[clamp(0.7rem,1.25vw,1rem)]',
           )}
         >
           <div
             className={cn(
-              "mb-[clamp(0.35rem,0.6vw,0.5rem)]",
-              "flex items-center gap-1.5",
-              "text-[clamp(0.46rem,0.62vw,0.55rem)]",
-              "font-semibold uppercase tracking-[0.08em]",
-              "text-[var(--foreground-muted)]",
+              'mb-[clamp(0.35rem,0.6vw,0.5rem)]',
+              'flex items-center gap-1.5',
+              'text-[clamp(0.46rem,0.62vw,0.55rem)]',
+              'font-semibold uppercase tracking-[0.08em]',
+              'text-[var(--foreground-muted)]',
             )}
           >
             <UsersRound
@@ -659,37 +680,37 @@ export function MyJourneyDemandCard({
 
           <div
             className={cn(
-              "flex items-baseline gap-1.5",
-              "text-[clamp(0.95rem,1.45vw,1.25rem)]",
-              "font-bold",
-              "text-[var(--foreground)]",
+              'flex items-baseline gap-1.5',
+              'text-[clamp(0.95rem,1.45vw,1.25rem)]',
+              'font-bold',
+              'text-[var(--foreground)]',
             )}
           >
             <span>{requestedSeats}</span>
 
             <span
               className={cn(
-                "text-[clamp(0.52rem,0.72vw,0.64rem)]",
-                "font-medium",
-                "text-[var(--foreground-muted)]",
+                'text-[clamp(0.52rem,0.72vw,0.64rem)]',
+                'font-medium',
+                'text-[var(--foreground-muted)]',
               )}
             >
               {requestedSeats === 1
-                ? "seat"
-                : "seats"}
+                ? 'seat'
+                : 'seats'}
             </span>
           </div>
 
           <div
             className={cn(
-              "mt-1",
-              "text-[clamp(0.46rem,0.65vw,0.56rem)]",
-              "text-[var(--foreground-secondary)]",
+              'mt-1',
+              'text-[clamp(0.46rem,0.65vw,0.56rem)]',
+              'text-[var(--foreground-secondary)]',
             )}
           >
             {matchedSeats > 0
               ? `${matchedSeats} matched · ${remainingSeats} remaining`
-              : "No seats matched yet"}
+              : 'No seats matched yet'}
           </div>
         </section>
 
@@ -699,27 +720,27 @@ export function MyJourneyDemandCard({
 
         <section
           className={cn(
-            "flex min-w-0 flex-col justify-center",
-            "pl-[clamp(0.7rem,1.25vw,1rem)]",
+            'flex min-w-0 flex-col justify-center',
+            'pl-[clamp(0.7rem,1.25vw,1rem)]',
           )}
         >
           <div
             className={cn(
-              "mb-[clamp(0.35rem,0.6vw,0.5rem)]",
-              "text-[clamp(0.46rem,0.62vw,0.55rem)]",
-              "font-semibold uppercase tracking-[0.08em]",
-              "text-[var(--foreground-muted)]",
+              'mb-[clamp(0.35rem,0.6vw,0.5rem)]',
+              'text-[clamp(0.46rem,0.62vw,0.55rem)]',
+              'font-semibold uppercase tracking-[0.08em]',
+              'text-[var(--foreground-muted)]',
             )}
           >
-            Price preference
+            Maximum price
           </div>
 
           <div
             className={cn(
-              "truncate",
-              "text-[clamp(0.8rem,1.15vw,1rem)]",
-              "font-bold",
-              "text-[var(--foreground)]",
+              'truncate',
+              'text-[clamp(0.8rem,1.15vw,1rem)]',
+              'font-bold',
+              'text-[var(--foreground)]',
             )}
             title={priceLabel}
           >
@@ -728,9 +749,9 @@ export function MyJourneyDemandCard({
 
           <div
             className={cn(
-              "mt-1 truncate",
-              "text-[clamp(0.46rem,0.65vw,0.56rem)]",
-              "text-[var(--foreground-secondary)]",
+              'mt-1 truncate',
+              'text-[clamp(0.46rem,0.65vw,0.56rem)]',
+              'text-[var(--foreground-secondary)]',
             )}
           >
             per seat
@@ -744,23 +765,23 @@ export function MyJourneyDemandCard({
 
       <div
         className={cn(
-          "flex min-w-0 items-center justify-between",
-          "gap-[clamp(0.6rem,1.2vw,1rem)]",
-          "border-t border-[var(--border-subtle)]",
-          "bg-[var(--background-subtle)]",
-          "px-[clamp(0.7rem,1.45vw,1.2rem)]",
-          "py-[clamp(0.45rem,0.9vw,0.7rem)]",
+          'flex min-w-0 items-center justify-between',
+          'gap-[clamp(0.6rem,1.2vw,1rem)]',
+          'border-t border-[var(--border-subtle)]',
+          'bg-[var(--background-subtle)]',
+          'px-[clamp(0.7rem,1.45vw,1.2rem)]',
+          'py-[clamp(0.45rem,0.9vw,0.7rem)]',
         )}
       >
         {/* Route context -------------------------------------------------- */}
 
         <div
           className={cn(
-            "flex min-w-0 items-center",
-            "gap-[clamp(0.45rem,0.9vw,0.75rem)]",
-            "text-[clamp(0.52rem,0.72vw,0.64rem)]",
-            "font-medium",
-            "text-[var(--foreground-secondary)]",
+            'flex min-w-0 items-center',
+            'gap-[clamp(0.45rem,0.9vw,0.75rem)]',
+            'text-[clamp(0.52rem,0.72vw,0.64rem)]',
+            'font-medium',
+            'text-[var(--foreground-secondary)]',
           )}
         >
           <MapPin
@@ -801,21 +822,21 @@ export function MyJourneyDemandCard({
           disabled={onManage === undefined}
           aria-label={`Manage Journey Demand from ${originName} to ${destinationName}`}
           className={cn(
-            "inline-flex shrink-0 items-center justify-center gap-1.5",
-            "rounded-[clamp(0.45rem,0.7vw,0.6rem)]",
-            "border border-[var(--border-subtle)]",
-            "bg-[var(--background)]",
-            "px-[clamp(0.6rem,1vw,0.85rem)]",
-            "py-[clamp(0.35rem,0.6vw,0.5rem)]",
-            "text-[clamp(0.5rem,0.68vw,0.6rem)]",
-            "font-semibold",
-            "text-[var(--foreground)]",
-            "transition-colors",
-            "hover:bg-[var(--background-brand)]",
-            "focus-visible:outline-2",
-            "focus-visible:outline-[var(--brand)]",
-            "focus-visible:outline-offset-2",
-            "disabled:cursor-default disabled:opacity-50",
+            'inline-flex shrink-0 items-center justify-center gap-1.5',
+            'rounded-[clamp(0.45rem,0.7vw,0.6rem)]',
+            'border border-[var(--border-subtle)]',
+            'bg-[var(--background)]',
+            'px-[clamp(0.6rem,1vw,0.85rem)]',
+            'py-[clamp(0.35rem,0.6vw,0.5rem)]',
+            'text-[clamp(0.5rem,0.68vw,0.6rem)]',
+            'font-semibold',
+            'text-[var(--foreground)]',
+            'transition-colors',
+            'hover:bg-[var(--background-brand)]',
+            'focus-visible:outline-2',
+            'focus-visible:outline-[var(--brand)]',
+            'focus-visible:outline-offset-2',
+            'disabled:cursor-default disabled:opacity-50',
           )}
         >
           <Settings2

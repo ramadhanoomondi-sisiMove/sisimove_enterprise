@@ -347,7 +347,7 @@ export default function JourneyCompletionPage({
         <div className="section-sm">
           <div className="flex flex-col gap-1">
             <Link
-              href={AUTHENTICATED_ROUTES.JOURNEY(journeyPublicId)}
+              href={AUTHENTICATED_ROUTES.MY_JOURNEY(journeyPublicId)}
               className={[
                 'w-fit text-sm font-medium',
                 'text-[var(--brand)]',

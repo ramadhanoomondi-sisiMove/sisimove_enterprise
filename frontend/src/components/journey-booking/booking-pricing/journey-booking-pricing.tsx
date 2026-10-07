@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Booking Pricing
+// sisiMove — Journey Booking Detail Pricing
 // -----------------------------------------------------------------------------
 //
 // Presentation of the historical pricing snapshot captured when the booking
@@ -28,11 +28,20 @@
 // the supplied values exactly as provided by the API model.
 // -----------------------------------------------------------------------------
 
-import type { JourneyBookingPricing } from '@/features/journey-booking/models';
+import type { JourneyBookingDetailPricing } from '@/features/journey-booking/models';
+
+// -----------------------------------------------------------------------------
+// Types
+// -----------------------------------------------------------------------------
+
 export interface JourneyBookingPricingProps {
-  pricing: JourneyBookingPricing;
+  pricing: JourneyBookingDetailPricing;
   className?: string;
 }
+
+// -----------------------------------------------------------------------------
+// Component
+// -----------------------------------------------------------------------------
 
 export function JourneyBookingPricing({
   pricing,
@@ -50,6 +59,10 @@ export function JourneyBookingPricing({
         .filter(Boolean)
         .join(' ')}
     >
+      {/* -------------------------------------------------------------------
+          Section heading
+          ------------------------------------------------------------------- */}
+
       <div>
         <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
           Booking price
@@ -63,11 +76,18 @@ export function JourneyBookingPricing({
         </h2>
       </div>
 
+      {/* -------------------------------------------------------------------
+          Pricing breakdown
+          ------------------------------------------------------------------- */}
+
       <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)]">
         <div className="divide-y divide-[var(--border-subtle)]">
           <PricingRow
             label="Price per seat"
-            value={formatMoney(pricing.pricePerSeat, pricing.currency)}
+            value={formatMoney(
+              pricing.pricePerSeat,
+              pricing.currency,
+            )}
           />
 
           <PricingRow
@@ -77,7 +97,10 @@ export function JourneyBookingPricing({
 
           <PricingRow
             label="Subtotal"
-            value={formatMoney(pricing.subtotal, pricing.currency)}
+            value={formatMoney(
+              pricing.subtotal,
+              pricing.currency,
+            )}
           />
 
           {pricing.discountAmount !== 0 && (
@@ -107,11 +130,18 @@ export function JourneyBookingPricing({
             </span>
 
             <span className="text-base font-semibold text-[var(--foreground)]">
-              {formatMoney(pricing.totalAmount, pricing.currency)}
+              {formatMoney(
+                pricing.totalAmount,
+                pricing.currency,
+              )}
             </span>
           </div>
         </div>
       </div>
+
+      {/* -------------------------------------------------------------------
+          Historical pricing note
+          ------------------------------------------------------------------- */}
 
       <p className="text-xs leading-5 text-[var(--foreground-muted)]">
         This is the pricing captured when the booking was created. It is not
@@ -120,6 +150,10 @@ export function JourneyBookingPricing({
     </section>
   );
 }
+
+// -----------------------------------------------------------------------------
+// Pricing Row
+// -----------------------------------------------------------------------------
 
 interface PricingRowProps {
   label: string;
@@ -154,6 +188,10 @@ function PricingRow({
   );
 }
 
+// -----------------------------------------------------------------------------
+// Formatting
+// -----------------------------------------------------------------------------
+
 /**
  * Formats a monetary amount using the frontend's integer monetary convention.
  *
@@ -173,7 +211,10 @@ function formatSignedMoney(
   amount: number,
   currency: string,
 ): string {
-  const absoluteValue = formatMoney(Math.abs(amount), currency);
+  const absoluteValue = formatMoney(
+    Math.abs(amount),
+    currency,
+  );
 
   if (amount > 0) {
     return `+${absoluteValue}`;

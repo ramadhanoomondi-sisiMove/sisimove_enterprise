@@ -1,8 +1,104 @@
+// -----------------------------------------------------------------------------
+// Path:
+//
 // src/domains/journey-booking/presentation/rest/controllers/journey-booking.controller.ts
+//
+// -----------------------------------------------------------------------------
+
+//
+// sisiMove — Journey Booking REST Controller
+//
+// REST boundary for Journey Booking.
+//
+// IMPORTANT ARCHITECTURAL RULE
+// ----------------------------
+//
+// Domain aggregates/entities NEVER cross the HTTP boundary.
+//
+// Application handlers may return:
+//
+//   - JourneyBookingAggregate
+//   - JourneyBookingEntity
+//   - JourneyBookingEntity[]
+//
+// This controller converts those domain objects into the stable REST contract:
+//
+//   JourneyBookingResponse
+//
+// through:
+//
+//   JourneyBookingResponseMapper
+//
+// This prevents NestJS from serializing domain internals such as:
+//
+//   _id
+//   _publicId
+//   props
+//   value objects
+//   domain events
+//
+// and guarantees that the frontend receives:
+//
+//   {
+//     publicId,
+//     journeyPublicId,
+//     passengerPublicId,
+//     status,
+//     seats,
+//     ...
+//   }
+//
+// SECURITY
+// --------
+//
+// Passenger identity for booking creation is ALWAYS derived from the
+// authenticated JWT.
+//
+// The client must never submit passengerPublicId when creating a booking.
+//
+// Correlation IDs are generated at the HTTP boundary.
+//
+// Causation IDs are undefined for normal HTTP-originated commands.
+//
+// AUTHORIZATION
+// -------------
+//
+// booking:read
+//     Authenticated booking discovery/read operations.
+//
+// booking:create
+//     Authenticated traveller creates a booking.
+//
+// booking:cancel
+//     Authenticated traveller cancellation.
+//
+// booking:manage
+//     Privileged booking lifecycle/payment operations.
+//
+// ROUTE ORDERING
+// --------------
+//
+// Static routes are declared before:
+//
+//     :journeyBookingPublicId
+//
+// so routes such as:
+//
+//     /mine
+//     /journey/:journeyPublicId
+//     /passenger/:passengerPublicId
+//     /status/:status
+//     /transaction/:transactionPublicId
+//
+// cannot be interpreted as booking public IDs.
+//
+// -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
-// Journey Booking — REST Controller
+// Node.js
 // -----------------------------------------------------------------------------
+
+import { randomUUID } from 'node:crypto';
 
 // -----------------------------------------------------------------------------
 // NestJS
@@ -15,7 +111,6 @@ import {
   Inject,
   Param,
   Post,
-  Req,
   UseGuards,
 } from '@nestjs/common';
 
@@ -23,23 +118,25 @@ import {
 // Swagger
 // -----------------------------------------------------------------------------
 
-import { ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
 
 // -----------------------------------------------------------------------------
 // Authentication / Authorization
 // -----------------------------------------------------------------------------
 
-import {
-  JwtAuthGuard,
-  PermissionsGuard,
-  RequirePermissions,
-} from '../../../../../foundation/security/auth';
+import * as auth from '../../../../../foundation/security/auth';
 
 // -----------------------------------------------------------------------------
 // Foundation Application Contracts
 // -----------------------------------------------------------------------------
 
 import type { CommandHandler } from '../../../../../foundation/kernel/application/command-handler';
+
 import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
 
 // -----------------------------------------------------------------------------
@@ -76,6 +173,7 @@ import {
   FindJourneyBookingsByPassengerQuery,
   FindJourneyBookingsByStatusQuery,
   GetJourneyBookingByPublicIdQuery,
+  GetJourneyBookingDetailQuery,
   GetMyJourneyBookingsQuery,
 } from '../../../application/queries';
 
@@ -109,38 +207,44 @@ import {
 import {
   AuthorizeJourneyBookingPaymentDto,
   CancelJourneyBookingDto,
-  CaptureJourneyBookingPaymentDto,
-  CompleteJourneyBookingDto,
-  ConfirmJourneyBookingDto,
   CreateJourneyBookingDto,
-  ExpireJourneyBookingDto,
   FailJourneyBookingPaymentDto,
   PartiallyRefundJourneyBookingPaymentDto,
-  RefundJourneyBookingPaymentDto,
 } from '../dto/request';
 
 // -----------------------------------------------------------------------------
-// Request Type
+// REST Response Mapper
 // -----------------------------------------------------------------------------
 
-interface AuthenticatedRequest {
-  user: {
-    publicId: string;
-  };
-}
+import {
+  JourneyBookingResponseMapper,
+  type JourneyBookingResponse,
+} from '../mappers/journey-booking-response.mapper';
 
 // -----------------------------------------------------------------------------
+// Detail REST Response Mapper
+// -----------------------------------------------------------------------------
+
+import { JourneyBookingDetailResponseMapper } from '../mappers/journey-booking-detail-response.mapper';
+
+import type { JourneyBookingDetailResponse } from '../../../application/responses/journey-booking-detail.response';
+
+// =============================================================================
 // Controller
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 @ApiTags('Journey Bookings')
 @Controller('journey-bookings')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
 export class JourneyBookingController {
-  constructor(
-    // ========================================================================
+  // ===========================================================================
+  // Constructor
+  // ===========================================================================
+
+  public constructor(
+    // =========================================================================
     // Lifecycle Command Handlers
-    // ========================================================================
+    // =========================================================================
 
     @Inject(JOURNEY_BOOKING_TOKENS.COMMAND_HANDLERS.CREATE)
     private readonly createJourneyBookingHandler: CommandHandler<
@@ -172,9 +276,9 @@ export class JourneyBookingController {
       JourneyBookingAggregate
     >,
 
-    // ========================================================================
+    // =========================================================================
     // Payment Command Handlers
-    // ========================================================================
+    // =========================================================================
 
     @Inject(JOURNEY_BOOKING_TOKENS.COMMAND_HANDLERS.AUTHORIZE_PAYMENT)
     private readonly authorizeJourneyBookingPaymentHandler: CommandHandler<
@@ -206,14 +310,20 @@ export class JourneyBookingController {
       JourneyBookingAggregate
     >,
 
-    // ========================================================================
+    // =========================================================================
     // Journey Booking Query Handlers
-    // ========================================================================
+    // =========================================================================
 
     @Inject(JOURNEY_BOOKING_TOKENS.QUERY_HANDLERS.GET_BY_PUBLIC_ID)
     private readonly getJourneyBookingByPublicIdHandler: QueryHandler<
       GetJourneyBookingByPublicIdQuery,
       JourneyBookingAggregate
+    >,
+
+    @Inject(JOURNEY_BOOKING_TOKENS.QUERY_HANDLERS.GET_DETAIL)
+    private readonly getJourneyBookingDetailHandler: QueryHandler<
+      GetJourneyBookingDetailQuery,
+      JourneyBookingDetailResponse
     >,
 
     @Inject(JOURNEY_BOOKING_TOKENS.QUERY_HANDLERS.GET_MY)
@@ -222,9 +332,9 @@ export class JourneyBookingController {
       JourneyBookingEntity[]
     >,
 
-    // ========================================================================
+    // =========================================================================
     // Discovery Query Handlers
-    // ========================================================================
+    // =========================================================================
 
     @Inject(JOURNEY_BOOKING_TOKENS.QUERY_HANDLERS.FIND_BY_JOURNEY)
     private readonly findJourneyBookingsByJourneyHandler: QueryHandler<
@@ -256,6 +366,7 @@ export class JourneyBookingController {
       JourneyBookingEntity
     >,
   ) {}
+
   // ===========================================================================
   // QUERY ENDPOINTS
   // ===========================================================================
@@ -264,233 +375,432 @@ export class JourneyBookingController {
   // Get My Journey Bookings
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get my journey bookings',
+    description:
+      'Returns journey bookings belonging to the currently authenticated traveller.',
+  })
   @Get('mine')
-  @RequirePermissions('journey-booking:read')
+  @auth.RequirePermissions('booking:read')
   public async getMine(
-    @Req() request: AuthenticatedRequest,
-  ): Promise<JourneyBookingEntity[]> {
+    @auth.CurrentIdentity() identity: auth.AuthenticatedIdentity,
+  ): Promise<JourneyBookingResponse[]> {
     const passengerPublicId = new JourneyBookingPassengerPublicId(
-      request.user.publicId,
+      identity.identityPublicId,
     );
 
-    return this.getMyJourneyBookingsHandler.execute(
+    const bookings = await this.getMyJourneyBookingsHandler.execute(
       new GetMyJourneyBookingsQuery(passengerPublicId),
     );
+
+    return JourneyBookingResponseMapper.fromEntities(bookings);
   }
 
   // ---------------------------------------------------------------------------
   // Find By Journey
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Find journey bookings by journey',
+    description: 'Returns bookings associated with the specified journey.',
+  })
+  @ApiParam({
+    name: 'journeyPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Journey.',
+  })
   @Get('journey/:journeyPublicId')
-  @RequirePermissions('journey-booking:read')
+  @auth.RequirePermissions('booking:read')
   public async findByJourney(
     @Param('journeyPublicId') journeyPublicId: string,
-  ): Promise<JourneyBookingEntity[]> {
-    return this.findJourneyBookingsByJourneyHandler.execute(
+  ): Promise<JourneyBookingResponse[]> {
+    const bookings = await this.findJourneyBookingsByJourneyHandler.execute(
       new FindJourneyBookingsByJourneyQuery(
         new JourneyBookingJourneyPublicId(journeyPublicId),
       ),
     );
+
+    return JourneyBookingResponseMapper.fromEntities(bookings);
   }
 
   // ---------------------------------------------------------------------------
   // Find By Passenger
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Find journey bookings by passenger',
+    description: 'Returns bookings associated with the specified passenger.',
+  })
+  @ApiParam({
+    name: 'passengerPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the passenger.',
+  })
   @Get('passenger/:passengerPublicId')
-  @RequirePermissions('journey-booking:read')
+  @auth.RequirePermissions('booking:read')
   public async findByPassenger(
     @Param('passengerPublicId') passengerPublicId: string,
-  ): Promise<JourneyBookingEntity[]> {
-    return this.findJourneyBookingsByPassengerHandler.execute(
+  ): Promise<JourneyBookingResponse[]> {
+    const bookings = await this.findJourneyBookingsByPassengerHandler.execute(
       new FindJourneyBookingsByPassengerQuery(
         new JourneyBookingPassengerPublicId(passengerPublicId),
       ),
     );
+
+    return JourneyBookingResponseMapper.fromEntities(bookings);
   }
 
   // ---------------------------------------------------------------------------
   // Find By Status
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Find journey bookings by status',
+    description:
+      'Returns bookings matching the specified journey booking status.',
+  })
+  @ApiParam({
+    name: 'status',
+    type: String,
+    required: true,
+    description: 'Journey Booking status.',
+  })
   @Get('status/:status')
-  @RequirePermissions('journey-booking:read')
+  @auth.RequirePermissions('booking:read')
   public async findByStatus(
     @Param('status') status: string,
-  ): Promise<JourneyBookingEntity[]> {
-    return this.findJourneyBookingsByStatusHandler.execute(
-      new FindJourneyBookingsByStatusQuery(this.toJourneyBookingStatus(status)),
+  ): Promise<JourneyBookingResponse[]> {
+    const bookingStatus = this.toJourneyBookingStatus(status);
+
+    const bookings = await this.findJourneyBookingsByStatusHandler.execute(
+      new FindJourneyBookingsByStatusQuery(bookingStatus),
     );
+
+    return JourneyBookingResponseMapper.fromEntities(bookings);
   }
 
   // ---------------------------------------------------------------------------
   // Find By Journey And Passenger
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Find journey bookings by journey and passenger',
+    description:
+      'Returns bookings associated with the specified journey and passenger.',
+  })
+  @ApiParam({
+    name: 'journeyPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Journey.',
+  })
+  @ApiParam({
+    name: 'passengerPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the passenger.',
+  })
   @Get('journey/:journeyPublicId/passenger/:passengerPublicId')
-  @RequirePermissions('journey-booking:read')
+  @auth.RequirePermissions('booking:read')
   public async findByJourneyAndPassenger(
     @Param('journeyPublicId') journeyPublicId: string,
     @Param('passengerPublicId') passengerPublicId: string,
-  ): Promise<JourneyBookingEntity[]> {
-    return this.findJourneyBookingsByJourneyAndPassengerHandler.execute(
-      new FindJourneyBookingsByJourneyAndPassengerQuery(
-        new JourneyBookingJourneyPublicId(journeyPublicId),
-        new JourneyBookingPassengerPublicId(passengerPublicId),
-      ),
-    );
+  ): Promise<JourneyBookingResponse[]> {
+    const bookings =
+      await this.findJourneyBookingsByJourneyAndPassengerHandler.execute(
+        new FindJourneyBookingsByJourneyAndPassengerQuery(
+          new JourneyBookingJourneyPublicId(journeyPublicId),
+          new JourneyBookingPassengerPublicId(passengerPublicId),
+        ),
+      );
+
+    return JourneyBookingResponseMapper.fromEntities(bookings);
   }
 
   // ---------------------------------------------------------------------------
   // Find By Transaction
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Find journey booking by transaction',
+    description:
+      'Returns the journey booking associated with the specified transaction.',
+  })
+  @ApiParam({
+    name: 'transactionPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the transaction.',
+  })
   @Get('transaction/:transactionPublicId')
-  @RequirePermissions('journey-booking:read')
+  @auth.RequirePermissions('booking:read')
   public async findByTransaction(
     @Param('transactionPublicId') transactionPublicId: string,
-  ): Promise<JourneyBookingEntity> {
-    return this.findJourneyBookingByTransactionHandler.execute(
+  ): Promise<JourneyBookingResponse> {
+    const booking = await this.findJourneyBookingByTransactionHandler.execute(
       new FindJourneyBookingByTransactionQuery(
         new JourneyBookingTransactionPublicId(transactionPublicId),
       ),
     );
+
+    return JourneyBookingResponseMapper.fromEntity(booking);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Get Journey Booking Detail
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns the authenticated passenger's detailed booking view.
+   *
+   * Passenger identity is derived exclusively from the authenticated JWT.
+   * The application query handler enforces booking ownership and composes
+   * the historical booking data with Journey, Traveller, and Trust details.
+   */
+
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get journey booking detail',
+    description:
+      'Returns the detailed journey booking view for the currently authenticated passenger.',
+  })
+  @ApiParam({
+    name: 'journeyBookingPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Journey Booking.',
+  })
+  @Get(':journeyBookingPublicId/detail')
+  @auth.RequirePermissions('booking:read')
+  public async getDetail(
+    @Param('journeyBookingPublicId') journeyBookingPublicId: string,
+    @auth.CurrentIdentity() identity: auth.AuthenticatedIdentity,
+  ): Promise<JourneyBookingDetailResponse> {
+    const passengerPublicId = new JourneyBookingPassengerPublicId(
+      identity.identityPublicId,
+    );
+
+    const response = await this.getJourneyBookingDetailHandler.execute(
+      new GetJourneyBookingDetailQuery(
+        new JourneyBookingPublicId(journeyBookingPublicId),
+        passengerPublicId,
+      ),
+    );
+
+    return JourneyBookingDetailResponseMapper.toResponse(response);
   }
 
   // ---------------------------------------------------------------------------
   // Get Journey Booking By Public ID
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get journey booking by public ID',
+    description:
+      'Returns the journey booking associated with the specified public ID.',
+  })
+  @ApiParam({
+    name: 'journeyBookingPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Journey Booking.',
+  })
   @Get(':journeyBookingPublicId')
-  @RequirePermissions('journey-booking:read')
+  @auth.RequirePermissions('booking:read')
   public async getByPublicId(
     @Param('journeyBookingPublicId') journeyBookingPublicId: string,
-  ): Promise<JourneyBookingAggregate> {
-    return this.getJourneyBookingByPublicIdHandler.execute(
+  ): Promise<JourneyBookingResponse> {
+    const booking = await this.getJourneyBookingByPublicIdHandler.execute(
       new GetJourneyBookingByPublicIdQuery(
         new JourneyBookingPublicId(journeyBookingPublicId),
       ),
     );
+
+    return JourneyBookingResponseMapper.toResponse(booking);
   }
 
   // ===========================================================================
-  // LIFECYCLE COMMANDS
+  // COMMAND ENDPOINTS
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
   // Create
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Create journey booking',
+    description:
+      'Creates a journey booking for the currently authenticated traveller.',
+  })
   @Post()
-  @RequirePermissions('journey-booking:create')
+  @auth.RequirePermissions('booking:create')
   public async create(
     @Body() dto: CreateJourneyBookingDto,
-  ): Promise<JourneyBookingAggregate> {
-    return this.createJourneyBookingHandler.execute(
+    @auth.CurrentIdentity() identity: auth.AuthenticatedIdentity,
+  ): Promise<JourneyBookingResponse> {
+    const passengerPublicId = new JourneyBookingPassengerPublicId(
+      identity.identityPublicId,
+    );
+
+    const seats = JourneyBookingSeats.create(dto.seats);
+
+    const booking = await this.createJourneyBookingHandler.execute(
       new CreateJourneyBookingCommand(
         new JourneyBookingJourneyPublicId(dto.journeyPublicId),
-        new JourneyBookingPassengerPublicId(dto.passengerPublicId),
-        JourneyBookingSeats.create(dto.seats),
-        dto.correlationId,
-        dto.causationId,
+        passengerPublicId,
+        seats,
+        randomUUID(),
+        undefined,
       ),
     );
+
+    return JourneyBookingResponseMapper.toResponse(booking);
   }
 
   // ---------------------------------------------------------------------------
   // Confirm
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Confirm journey booking',
+    description: 'Confirms an eligible journey booking.',
+  })
+  @ApiParam({
+    name: 'journeyBookingPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Journey Booking.',
+  })
   @Post(':journeyBookingPublicId/confirm')
-  @RequirePermissions('journey-booking:confirm')
+  @auth.RequirePermissions('booking:manage')
   public async confirm(
     @Param('journeyBookingPublicId') journeyBookingPublicId: string,
-    @Body() dto: ConfirmJourneyBookingDto,
-  ): Promise<JourneyBookingAggregate> {
-    return this.confirmJourneyBookingHandler.execute(
+  ): Promise<JourneyBookingResponse> {
+    const booking = await this.confirmJourneyBookingHandler.execute(
       new ConfirmJourneyBookingCommand(
         new JourneyBookingPublicId(journeyBookingPublicId),
-        dto.correlationId,
-        dto.causationId,
+        randomUUID(),
+        undefined,
       ),
     );
+
+    return JourneyBookingResponseMapper.toResponse(booking);
   }
 
   // ---------------------------------------------------------------------------
   // Cancel
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Cancel journey booking',
+    description: 'Cancels a journey booking.',
+  })
+  @ApiParam({
+    name: 'journeyBookingPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Journey Booking.',
+  })
   @Post(':journeyBookingPublicId/cancel')
-  @RequirePermissions('journey-booking:cancel')
+  @auth.RequirePermissions('booking:cancel')
   public async cancel(
     @Param('journeyBookingPublicId') journeyBookingPublicId: string,
     @Body() dto: CancelJourneyBookingDto,
-  ): Promise<JourneyBookingAggregate> {
+    @auth.CurrentIdentity() identity: auth.AuthenticatedIdentity,
+  ): Promise<JourneyBookingResponse> {
+    const cancelledByPublicId = new JourneyBookingPassengerPublicId(
+      identity.identityPublicId,
+    );
+
     const reason = JourneyBookingCancellationReason.create(dto.reason);
 
-    return this.cancelJourneyBookingHandler.execute(
+    const booking = await this.cancelJourneyBookingHandler.execute(
       new CancelJourneyBookingCommand(
-        // Journey Booking Public ID
         new JourneyBookingPublicId(journeyBookingPublicId),
-
-        // Cancellation Reason
         reason,
-
-        // Correlation ID
-        dto.correlationId,
-
-        // Cancelled By Public ID
-        dto.cancelledByPublicId,
-
-        // Reason Description
+        randomUUID(),
+        cancelledByPublicId.value,
         dto.reasonDescription,
-
-        // Causation ID
-        dto.causationId,
-
-        // Cancellation Time
+        undefined,
         dto.cancelledAt !== undefined ? new Date(dto.cancelledAt) : undefined,
       ),
     );
+
+    return JourneyBookingResponseMapper.toResponse(booking);
   }
 
   // ---------------------------------------------------------------------------
   // Complete
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Complete journey booking',
+    description: 'Marks a journey booking as completed.',
+  })
+  @ApiParam({
+    name: 'journeyBookingPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Journey Booking.',
+  })
   @Post(':journeyBookingPublicId/complete')
-  @RequirePermissions('journey-booking:complete')
+  @auth.RequirePermissions('booking:manage')
   public async complete(
     @Param('journeyBookingPublicId') journeyBookingPublicId: string,
-    @Body() dto: CompleteJourneyBookingDto,
-  ): Promise<JourneyBookingAggregate> {
-    return this.completeJourneyBookingHandler.execute(
+  ): Promise<JourneyBookingResponse> {
+    const booking = await this.completeJourneyBookingHandler.execute(
       new CompleteJourneyBookingCommand(
         new JourneyBookingPublicId(journeyBookingPublicId),
-        dto.correlationId,
-        dto.causationId,
+        randomUUID(),
+        undefined,
       ),
     );
+
+    return JourneyBookingResponseMapper.toResponse(booking);
   }
 
   // ---------------------------------------------------------------------------
   // Expire
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Expire journey booking',
+    description: 'Expires an eligible journey booking.',
+  })
+  @ApiParam({
+    name: 'journeyBookingPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Journey Booking.',
+  })
   @Post(':journeyBookingPublicId/expire')
-  @RequirePermissions('journey-booking:expire')
+  @auth.RequirePermissions('booking:manage')
   public async expire(
     @Param('journeyBookingPublicId') journeyBookingPublicId: string,
-    @Body() dto: ExpireJourneyBookingDto,
-  ): Promise<JourneyBookingAggregate> {
-    return this.expireJourneyBookingHandler.execute(
+  ): Promise<JourneyBookingResponse> {
+    const booking = await this.expireJourneyBookingHandler.execute(
       new ExpireJourneyBookingCommand(
         new JourneyBookingPublicId(journeyBookingPublicId),
-        dto.correlationId,
-        dto.causationId,
+        randomUUID(),
+        undefined,
       ),
     );
+
+    return JourneyBookingResponseMapper.toResponse(booking);
   }
 
   // ===========================================================================
@@ -501,99 +811,165 @@ export class JourneyBookingController {
   // Authorize Payment
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Authorize journey booking payment',
+    description:
+      'Authorizes payment for a journey booking using the supplied transaction reference.',
+  })
+  @ApiParam({
+    name: 'journeyBookingPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Journey Booking.',
+  })
   @Post(':journeyBookingPublicId/payment/authorize')
-  @RequirePermissions('journey-booking:payment:authorize')
+  @auth.RequirePermissions('booking:manage')
   public async authorizePayment(
     @Param('journeyBookingPublicId') journeyBookingPublicId: string,
     @Body() dto: AuthorizeJourneyBookingPaymentDto,
-  ): Promise<JourneyBookingAggregate> {
-    return this.authorizeJourneyBookingPaymentHandler.execute(
+  ): Promise<JourneyBookingResponse> {
+    const booking = await this.authorizeJourneyBookingPaymentHandler.execute(
       new AuthorizeJourneyBookingPaymentCommand(
         new JourneyBookingPublicId(journeyBookingPublicId),
         new JourneyBookingTransactionPublicId(dto.transactionPublicId),
-        dto.correlationId,
-        dto.causationId,
+        randomUUID(),
+        undefined,
       ),
     );
+
+    return JourneyBookingResponseMapper.toResponse(booking);
   }
 
   // ---------------------------------------------------------------------------
   // Capture Payment
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Capture journey booking payment',
+    description: 'Captures an authorized booking payment.',
+  })
+  @ApiParam({
+    name: 'journeyBookingPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Journey Booking.',
+  })
   @Post(':journeyBookingPublicId/payment/capture')
-  @RequirePermissions('journey-booking:payment:capture')
+  @auth.RequirePermissions('booking:manage')
   public async capturePayment(
     @Param('journeyBookingPublicId') journeyBookingPublicId: string,
-    @Body() dto: CaptureJourneyBookingPaymentDto,
-  ): Promise<JourneyBookingAggregate> {
-    return this.captureJourneyBookingPaymentHandler.execute(
+  ): Promise<JourneyBookingResponse> {
+    const booking = await this.captureJourneyBookingPaymentHandler.execute(
       new CaptureJourneyBookingPaymentCommand(
         new JourneyBookingPublicId(journeyBookingPublicId),
-        dto.correlationId,
-        dto.causationId,
+        randomUUID(),
+        undefined,
       ),
     );
+
+    return JourneyBookingResponseMapper.toResponse(booking);
   }
 
   // ---------------------------------------------------------------------------
   // Fail Payment
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Fail journey booking payment',
+    description: 'Records a failed booking payment.',
+  })
+  @ApiParam({
+    name: 'journeyBookingPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Journey Booking.',
+  })
   @Post(':journeyBookingPublicId/payment/fail')
-  @RequirePermissions('journey-booking:payment:fail')
+  @auth.RequirePermissions('booking:manage')
   public async failPayment(
     @Param('journeyBookingPublicId') journeyBookingPublicId: string,
     @Body() dto: FailJourneyBookingPaymentDto,
-  ): Promise<JourneyBookingAggregate> {
-    return this.failJourneyBookingPaymentHandler.execute(
+  ): Promise<JourneyBookingResponse> {
+    const booking = await this.failJourneyBookingPaymentHandler.execute(
       new FailJourneyBookingPaymentCommand(
         new JourneyBookingPublicId(journeyBookingPublicId),
         JourneyBookingPaymentFailureReason.create(dto.failureReason),
-        dto.correlationId,
-        dto.causationId,
+        randomUUID(),
+        undefined,
       ),
     );
+
+    return JourneyBookingResponseMapper.toResponse(booking);
   }
 
   // ---------------------------------------------------------------------------
   // Refund Payment
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Refund journey booking payment',
+    description: 'Refunds the payment associated with a journey booking.',
+  })
+  @ApiParam({
+    name: 'journeyBookingPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Journey Booking.',
+  })
   @Post(':journeyBookingPublicId/payment/refund')
-  @RequirePermissions('journey-booking:payment:refund')
+  @auth.RequirePermissions('booking:manage')
   public async refundPayment(
     @Param('journeyBookingPublicId') journeyBookingPublicId: string,
-    @Body() dto: RefundJourneyBookingPaymentDto,
-  ): Promise<JourneyBookingAggregate> {
-    return this.refundJourneyBookingPaymentHandler.execute(
+  ): Promise<JourneyBookingResponse> {
+    const booking = await this.refundJourneyBookingPaymentHandler.execute(
       new RefundJourneyBookingPaymentCommand(
         new JourneyBookingPublicId(journeyBookingPublicId),
-        dto.correlationId,
-        dto.causationId,
+        randomUUID(),
+        undefined,
       ),
     );
+
+    return JourneyBookingResponseMapper.toResponse(booking);
   }
 
   // ---------------------------------------------------------------------------
   // Partial Refund
   // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Partially refund journey booking payment',
+    description:
+      'Records a partial refund against the payment associated with a journey booking.',
+  })
+  @ApiParam({
+    name: 'journeyBookingPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Journey Booking.',
+  })
   @Post(':journeyBookingPublicId/payment/refund/partial')
-  @RequirePermissions('journey-booking:payment:refund')
+  @auth.RequirePermissions('booking:manage')
   public async partiallyRefundPayment(
     @Param('journeyBookingPublicId') journeyBookingPublicId: string,
     @Body() dto: PartiallyRefundJourneyBookingPaymentDto,
-  ): Promise<JourneyBookingAggregate> {
-    return this.partiallyRefundJourneyBookingPaymentHandler.execute(
-      new PartiallyRefundJourneyBookingPaymentCommand(
-        new JourneyBookingPublicId(journeyBookingPublicId),
-        dto.refundedAmount,
-        dto.remainingAmount,
-        dto.correlationId,
-        dto.causationId,
-      ),
-    );
+  ): Promise<JourneyBookingResponse> {
+    const booking =
+      await this.partiallyRefundJourneyBookingPaymentHandler.execute(
+        new PartiallyRefundJourneyBookingPaymentCommand(
+          new JourneyBookingPublicId(journeyBookingPublicId),
+          dto.refundedAmount,
+          dto.remainingAmount,
+          randomUUID(),
+          undefined,
+        ),
+      );
+
+    return JourneyBookingResponseMapper.toResponse(booking);
   }
 
   // ===========================================================================
@@ -626,31 +1002,6 @@ export class JourneyBookingController {
       default:
         throw new Error(
           `Invalid Journey Booking status '${value}'. Expected PENDING, CONFIRMED, CANCELLED, COMPLETED, or EXPIRED.`,
-        );
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Cancellation Reason
-  // ---------------------------------------------------------------------------
-
-  private toJourneyBookingCancellationReason(
-    value: string,
-  ): JourneyBookingCancellationReason {
-    const normalized = value.trim().toUpperCase();
-
-    switch (normalized) {
-      case 'PASSENGER_REQUEST':
-      case 'PROVIDER_REQUEST':
-      case 'JOURNEY_CANCELLED':
-      case 'NO_SHOW':
-      case 'SYSTEM':
-      case 'OTHER':
-        return JourneyBookingCancellationReason.create(normalized);
-
-      default:
-        throw new Error(
-          `Invalid Journey Booking cancellation reason '${value}'.`,
         );
     }
   }

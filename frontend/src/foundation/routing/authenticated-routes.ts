@@ -34,21 +34,24 @@
 // IMPORTANT ROUTING RULE
 // -----------------------------------------------------------------------------
 //
-// Public marketplace resources and authenticated owner-management resources
-// use different URL namespaces.
+// Public marketplace resources and authenticated application resources use
+// different URL namespaces.
 //
-// Public:
+// Public Journey:
 //
 //     /journeys/[publicId]
-//     /demands/[publicId]
 //
-// Authenticated owner management:
+// Authenticated owner-management:
 //
 //     /my-journeys/[publicId]
-//     /my-demands/[publicId]
+//
+// Authenticated booking:
+//
+//     /bookings/new?journeyPublicId=[journeyPublicId]
+//     /bookings/[bookingPublicId]
 //
 // Route groups do not distinguish dynamic URL patterns. Explicit /my-*
-// namespaces therefore prevent ambiguous Next.js routes.
+// and /bookings namespaces therefore keep the application boundaries clear.
 //
 // -----------------------------------------------------------------------------
 //
@@ -81,26 +84,6 @@
 //
 // -----------------------------------------------------------------------------
 //
-// JOURNEY DEMAND CREATION RULE
-// -----------------------------------------------------------------------------
-//
-// Journey Demand follows the same owner-management namespace:
-//
-//     /my-demands/new
-//
-// The entry page creates the JourneyDemand aggregate exactly once.
-//
-// Subsequent steps operate on that existing JourneyDemand:
-//
-//     /my-demands/[journeyDemandPublicId]/edit
-//     /my-demands/[journeyDemandPublicId]/edit/route
-//     /my-demands/[journeyDemandPublicId]/edit/schedule
-//     /my-demands/[journeyDemandPublicId]/edit/seats
-//     /my-demands/[journeyDemandPublicId]/edit/pricing
-//     /my-demands/[journeyDemandPublicId]/edit/review
-//
-// -----------------------------------------------------------------------------
-//
 // PUBLIC VS AUTHENTICATED DETAIL
 // -----------------------------------------------------------------------------
 //
@@ -112,16 +95,17 @@
 //
 //     /my-journeys/[publicId]
 //
-// Public Journey Demand:
+// The public Journey detail is shareable and may be viewed without
+// authentication.
 //
-//     /demands/[publicId]
+// Authentication is required when the visitor proceeds into an authenticated
+// capability such as booking.
 //
-// Authenticated owner Journey Demand:
+// The authenticated owner-management Journey remains:
 //
-//     /my-demands/[publicId]
+//     /my-journeys/[publicId]
 //
-// The public and authenticated resources intentionally have different
-// namespaces.
+// The public Journey route is therefore NOT an owner-management route.
 //
 // -----------------------------------------------------------------------------
 //
@@ -149,7 +133,11 @@
 //     /my-journeys/[journeyPublicId]/edit/photos
 //     /my-journeys/[journeyPublicId]/edit/review
 //
-// There is intentionally no separate /journeys/[publicId]/edit route.
+// There is intentionally no separate:
+//
+//     /journeys/[publicId]/edit
+//
+// route.
 //
 // -----------------------------------------------------------------------------
 //
@@ -165,6 +153,106 @@
 // The Journey management surface remains:
 //
 //     /my-journeys/[journeyPublicId]
+//
+// -----------------------------------------------------------------------------
+//
+// BOOKING ROUTING
+// -----------------------------------------------------------------------------
+//
+// Booking is a separate aggregate and application boundary from Journey.
+//
+// The booking flow therefore belongs to the /bookings namespace rather than
+// becoming a child route of /journeys/[publicId].
+//
+// The flow is:
+//
+//     /journeys/[journeyPublicId]
+//             │
+//             │ Book Journey
+//             ▼
+//     /bookings/new?journeyPublicId=[journeyPublicId]
+//             │
+//             │ review / confirm booking
+//             ▼
+//     booking creation
+//             │
+//             ▼
+//     /bookings/[bookingPublicId]
+//
+// The Journey public detail answers:
+//
+//     "What Journey is available?"
+//
+// The booking creation/review surface answers:
+//
+//     "What am I about to book?"
+//
+// The persisted booking detail answers:
+//
+//     "What booking did I create?"
+//
+// The authenticated booking collection is:
+//
+//     /my-bookings
+//
+// Individual persisted booking detail remains:
+//
+//     /bookings/[bookingPublicId]
+//
+// IMPORTANT:
+//
+//     BOOKING_NEW
+//
+// does NOT identify a persisted Booking aggregate yet.
+//
+// It identifies the booking creation/review workflow using the Journey public
+// ID as its input.
+//
+// After successful booking creation, the application navigates to:
+//
+//     BOOKING(bookingPublicId)
+//
+// The booking's own public ID then becomes the canonical identifier.
+//
+// -----------------------------------------------------------------------------
+//
+// VERIFICATION ROUTING
+// -----------------------------------------------------------------------------
+//
+// Verification intentionally has TWO authenticated surfaces.
+//
+// Dedicated verification onboarding:
+//
+//     /verification
+//
+// This is the "Get Verified" entry point for authenticated members who have
+// not yet reached a verification level.
+//
+// Verification management:
+//
+//     /profile/verification
+//
+// This is the member-profile verification management surface. It is NOT the
+// onboarding route and should not be used as the primary "Get Verified"
+// navigation destination.
+//
+// Navigation presentation:
+//
+//     NONE
+//         → Get Verified
+//
+//     MEMBER
+//         → My Bookings
+//
+//     DRIVER
+//         → My Journeys
+//         → My Bookings
+//
+// These navigation decisions are presentation concerns only.
+//
+// This route definition does not enforce verification. Verification
+// authorization remains the responsibility of the corresponding application
+// boundary and backend authorization layer.
 //
 // -----------------------------------------------------------------------------
 //
@@ -186,7 +274,9 @@ export const AUTHENTICATED_ROUTES = {
   // ===========================================================================
 
   /**
-   * Authenticated application home / marketplace entry point.
+   * Authenticated application home / Journey marketplace entry point.
+   *
+   * The authenticated home is supply-first and Journey-focused.
    */
   HOME: "/home",
 
@@ -309,88 +399,79 @@ export const AUTHENTICATED_ROUTES = {
     `/my-journeys/${encodeURIComponent(journeyPublicId)}/completion`,
 
   // ===========================================================================
-  // My Journey Demands
-  // ===========================================================================
-  //
-  // Authenticated owner-management namespace.
-  //
-  // ===========================================================================
-
-  /**
-   * Authenticated traveller's Journey Demand collection.
-   */
-  MY_DEMANDS: "/my-demands",
-
-  /**
-   * Journey Demand creation entry point.
-   *
-   * This page creates the JourneyDemand aggregate exactly once.
-   */
-  MY_DEMAND_NEW: "/my-demands/new",
-
-  /**
-   * Canonical authenticated Journey Demand management/detail surface.
-   */
-  MY_DEMAND: (journeyDemandPublicId: string) =>
-    `/my-demands/${encodeURIComponent(journeyDemandPublicId)}`,
-
-  /**
-   * Journey Demand creation/edit workflow root.
-   */
-  MY_DEMAND_EDIT: (journeyDemandPublicId: string) =>
-    `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit`,
-
-  // ===========================================================================
-  // Journey Demand Creation / Editing Workflow
-  // ===========================================================================
-
-  /**
-   * Journey Demand route creation/edit step.
-   */
-  JOURNEY_DEMAND_CREATE_ROUTE: (journeyDemandPublicId: string) =>
-    `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit/route`,
-
-  /**
-   * Journey Demand schedule creation/edit step.
-   */
-  JOURNEY_DEMAND_CREATE_SCHEDULE: (journeyDemandPublicId: string) =>
-    `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit/schedule`,
-
-  /**
-   * Journey Demand seats creation/edit step.
-   */
-  JOURNEY_DEMAND_CREATE_SEATS: (journeyDemandPublicId: string) =>
-    `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit/seats`,
-
-  /**
-   * Journey Demand pricing creation/edit step.
-   */
-  JOURNEY_DEMAND_CREATE_PRICING: (journeyDemandPublicId: string) =>
-    `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit/pricing`,
-
-  /**
-   * Journey Demand final review step.
-   */
-  JOURNEY_DEMAND_CREATE_REVIEW: (journeyDemandPublicId: string) =>
-    `/my-demands/${encodeURIComponent(journeyDemandPublicId)}/edit/review`,
-
-  // ===========================================================================
   // Bookings
   // ===========================================================================
-
+  //
+  // Booking is a separate aggregate and application boundary from Journey.
+  //
+  // ===========================================================================
+  
   /**
    * Authenticated traveller's booking collection.
+   *
+   * This is the member-facing collection of persisted bookings.
    */
   MY_BOOKINGS: "/my-bookings",
 
   /**
+   * Booking creation/review entry point.
+   *
+   * This route does NOT represent an existing Booking aggregate.
+   *
+   * It receives the Journey public ID that the traveller intends to book:
+   *
+   *     /bookings/new?journeyPublicId=[journeyPublicId]
+   *
+   * The booking workflow resolves the Journey through its public ID,
+   * presents the booking review surface, and creates the Booking only when
+   * the traveller confirms.
+   *
+   * After successful creation, navigation proceeds to BOOKING().
+   */
+  BOOKING_NEW: (journeyPublicId: string) =>
+    `/bookings/new?journeyPublicId=${encodeURIComponent(journeyPublicId)}`,
+
+  /**
    * Authenticated booking detail.
    *
-   * Booking uses its own public namespace because a booking is a separate
-   * aggregate and application boundary.
+   * This route represents an existing persisted Booking aggregate.
+   *
+   * Booking uses its own public namespace because a Booking is a separate
+   * aggregate and application boundary from Journey.
    */
-  BOOKING: (journeyBookingPublicId: string) =>
-    `/bookings/${encodeURIComponent(journeyBookingPublicId)}`,
+  BOOKING: (bookingPublicId: string) =>
+    `/bookings/${encodeURIComponent(bookingPublicId)}`,
+
+  // ===========================================================================
+  // Verification
+  // ===========================================================================
+  //
+  // Verification has intentionally separate onboarding and management
+  // surfaces.
+  //
+  //     /verification
+  //         Dedicated "Get Verified" onboarding flow.
+  //
+  //     /profile/verification
+  //         Verification management from the member profile.
+  //
+  // The authenticated navigation uses VERIFICATION when the current
+  // VerificationLevel is NONE.
+  //
+  // ===========================================================================
+
+  /**
+   * Dedicated authenticated verification onboarding flow.
+   *
+   * This is the destination for:
+   *
+   *     VerificationLevel.NONE
+   *         ↓
+   *     Get Verified
+   *
+   * This is intentionally separate from PROFILE_VERIFICATION.
+   */
+  VERIFICATION: "/verification",
 
   // ===========================================================================
   // Assets
@@ -446,7 +527,16 @@ export const AUTHENTICATED_ROUTES = {
   PROFILE: "/profile",
 
   /**
-   * Authenticated member verification surface.
+   * Authenticated member verification management surface.
+   *
+   * This route belongs to Profile and is intended for managing the member's
+   * existing verification state.
+   *
+   * It is intentionally NOT the "Get Verified" onboarding destination.
+   *
+   * The dedicated onboarding route is:
+   *
+   *     AUTHENTICATED_ROUTES.VERIFICATION
    */
   PROFILE_VERIFICATION: "/profile/verification",
 

@@ -30,16 +30,14 @@
     "skipLibCheck": true,
     "noFallthroughCasesInSwitch": true,
 
-    "baseUrl": ".",
-
     "types": ["node", "jest"],
 
     "paths": {
-      "@foundation/*": ["src/foundation/*"],
-      "@modules/*": ["src/modules/*"],
-      "@infrastructure/*": ["src/infrastructure/*"],
-      "@shared/*": ["src/shared/*"],
-      "@config/*": ["src/config/*"]
+      "@foundation/*": ["./src/foundation/*"],
+      "@modules/*": ["./src/modules/*"],
+      "@infrastructure/*": ["./src/infrastructure/*"],
+      "@shared/*": ["./src/shared/*"],
+      "@config/*": ["./src/config/*"]
     }
   },
 

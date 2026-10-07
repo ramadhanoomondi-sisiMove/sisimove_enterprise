@@ -4,13 +4,14 @@
 // Prisma
 // -----------------------------------------------------------------------------
 
+import { Injectable } from '@nestjs/common';
 import type { Prisma, $Enums } from '@prisma/client';
 
 // -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
-import type { PrismaService } from '../../../../../../infrastructure/database/prisma/prisma.service';
+import { PrismaService } from '../../../../../../infrastructure/database/prisma/prisma.service';
 
 // -----------------------------------------------------------------------------
 // Aggregate
@@ -77,16 +78,17 @@ import {
   type JourneyBookingWithComponents,
 } from '../../../persistence/prisma/mappers/journey-booking-prisma.mapper';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Repository
-// -----------------------------------------------------------------------------
+// =============================================================================
 
+@Injectable()
 export class PrismaJourneyBookingRepository implements JourneyBookingRepository {
   // ===========================================================================
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly prisma: PrismaService) {}
+  public constructor(private readonly prisma: PrismaService) {}
 
   // ===========================================================================
   // Prisma Enum Boundary
@@ -1261,9 +1263,10 @@ export class PrismaJourneyBookingRepository implements JourneyBookingRepository 
 
     return count > 0;
   }
-  // ---------------------------------------------------------------------------
+
+  // ===========================================================================
   // Find By Transaction Public ID
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public async findByTransactionPublicId(
     transactionPublicId: JourneyBookingTransactionPublicId,
@@ -1286,6 +1289,7 @@ export class PrismaJourneyBookingRepository implements JourneyBookingRepository 
 
     return this.toAggregate(record);
   }
+
   // ===========================================================================
   // Aggregate Reconstruction
   // ===========================================================================

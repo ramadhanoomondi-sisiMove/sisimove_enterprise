@@ -8,8 +8,8 @@
 // - sisiMove is a marketplace for planned long-distance journeys.
 // - Members already travelling somewhere can make available seats discoverable.
 // - Travellers looking for a journey can discover existing journeys.
-// - When a suitable journey is not visible, travellers can publish a demand.
-// - The marketplace connects planned journeys with real travel needs.
+// - A published journey contains the information travellers need to decide
+//   whether it is suitable before booking.
 // - The journey — not the vehicle, profile, or transaction — is the primary
 //   unit of the marketplace.
 // - Trust, identity, journey details and communication help people decide
@@ -17,28 +17,29 @@
 //
 // Core marketplace loop:
 //
-//   PLAN → PUBLISH → DISCOVER → MATCH → TRAVEL → COMPLETE
+//   PLAN → PUBLISH → DISCOVER → BOOK → TRAVEL → COMPLETE
 //
 // Marketplace participants:
 //
-//   MEMBER / JOURNEY PROVIDER
+//   JOURNEY PROVIDER
 //   └── already planning a long-distance journey
-//       └── makes available seats discoverable
+//       └── publishes available seats
+//       └── receives bookings
+//       └── travels the planned journey
 //
-//   TRAVELLER / JOURNEY SEEKER
-//   └── already needs to travel somewhere
-//       └── discovers a suitable journey
-//       └── or publishes a demand
+//   TRAVELLER
+//   └── needs to make a long-distance journey
+//       └── discovers published journeys
+//       └── reviews the journey and provider
+//       └── books a suitable seat
 //
 // The page is intentionally presentation-only.
 //
 // Non-responsibilities:
 // - authentication;
 // - journey queries;
-// - journey-demand queries;
 // - booking mutations;
 // - journey creation;
-// - demand creation;
 // - trust decisions;
 // - payment processing.
 //
@@ -60,7 +61,6 @@ import {
   Search,
   ShieldCheck,
   TicketCheck,
-  UserRoundSearch,
   Users,
 } from "lucide-react";
 
@@ -96,15 +96,15 @@ export default function HowItWorksPage() {
 
               <p className="mt-6 max-w-2xl text-base leading-7 text-[var(--foreground-secondary)] sm:text-lg sm:leading-8">
                 sisiMove brings together people who are already planning a
-                journey and people who need to make one. Discover a journey
-                going your way, make your available seats discoverable, or
-                tell the marketplace where you need to go.
+                journey and people looking for a journey. Members can make
+                available seats discoverable, while travellers can find a
+                suitable journey going their way.
               </p>
 
               <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--foreground-muted)] sm:text-base">
-                Instead of starting with a vehicle or a ride request, sisiMove
-                starts with the journey itself — where, when, and who is
-                travelling.
+                Instead of starting with a vehicle or a transaction, sisiMove
+                starts with the journey itself — where, when, who is travelling
+                and whether there is an available seat.
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -118,9 +118,9 @@ export default function HowItWorksPage() {
                   </Button>
                 </Link>
 
-                <Link href={PUBLIC_ROUTES.DEMANDS}>
+                <Link href={PUBLIC_ROUTES.JOURNEYS}>
                   <Button variant="outline">
-                    Find travel demands
+                    Publish a journey
                     <ArrowRight
                       aria-hidden="true"
                       className="ml-2 h-4 w-4"
@@ -223,7 +223,7 @@ export default function HowItWorksPage() {
                   />
 
                   <span className="text-xs font-semibold text-[var(--foreground)]">
-                    Journey + travel need = match
+                    A planned journey becomes an opportunity
                   </span>
                 </div>
               </div>
@@ -233,7 +233,7 @@ export default function HowItWorksPage() {
       </section>
 
       {/* --------------------------------------------------------------------- */}
-      {/* Problem / market                                                     */}
+      {/* Problem / market                                                      */}
       {/* --------------------------------------------------------------------- */}
 
       <section className="border-b border-[var(--border-subtle)] bg-[var(--surface)]">
@@ -251,12 +251,13 @@ export default function HowItWorksPage() {
               <p className="mt-5 text-sm leading-7 text-[var(--foreground-secondary)] sm:text-base">
                 Every day, people plan long-distance journeys between cities,
                 towns and communities. Some already have a vehicle and empty
-                seats. Others already know where they need to go but have not
-                found a suitable journey.
+                seats. Others need to travel but do not have a suitable journey
+                arranged.
               </p>
 
               <p className="mt-4 text-sm leading-7 text-[var(--foreground-secondary)] sm:text-base">
-                sisiMove creates a market around those two realities.
+                sisiMove creates a marketplace around the journeys that are
+                already happening.
               </p>
             </div>
 
@@ -269,24 +270,24 @@ export default function HowItWorksPage() {
               />
 
               <MarketReality
-                icon={UserRoundSearch}
-                eyebrow="NEED TO TRAVEL"
-                title="A travel need can find an existing journey."
-                description="A traveller may already know their destination and timing. Instead of starting from scratch, they can discover journeys already being planned."
+                icon={Search}
+                eyebrow="LOOKING TO TRAVEL"
+                title="A traveller can find an existing journey."
+                description="A traveller may already know where and when they need to travel. They can discover journeys that fit those plans."
               />
 
               <MarketReality
-                icon={MapPin}
-                eyebrow="WHEN NOTHING FITS"
-                title="A demand makes the gap visible."
-                description="When a suitable journey is not available, a traveller can publish a demand describing where and when they want to travel."
+                icon={Route}
+                eyebrow="CLEAR JOURNEY INFORMATION"
+                title="The journey provides the context."
+                description="Route, schedule, available seats, price, vehicle and relevant preferences help travellers understand what is being offered."
               />
 
               <MarketReality
                 icon={Handshake}
                 eyebrow="THE MARKETPLACE"
-                title="Journeys and demands can meet."
-                description="The marketplace gives both sides a shared place to discover opportunities, review details and decide whether a journey makes sense."
+                title="The right journey can become a shared trip."
+                description="When a published journey fits a traveller's plans, they can review the details, book a seat and prepare to travel together."
               />
             </div>
           </div>
@@ -308,14 +309,14 @@ export default function HowItWorksPage() {
             </p>
 
             <h2 className="mt-3 text-3xl font-bold tracking-tight text-[var(--foreground)] sm:text-4xl">
-              Plan → Publish → Discover → Match → Travel
+              Plan → Publish → Discover → Book → Travel
             </h2>
 
             <p className="mt-4 text-sm leading-6 text-[var(--foreground-secondary)] sm:text-base">
               sisiMove is built around planned journeys. A journey provider
-              publishes where they are going; a traveller discovers where they
-              need to go; and the marketplace creates the opportunity for the
-              two to meet.
+              publishes where they are going and the seats they can make
+              available. Travellers discover journeys that fit their plans,
+              book suitable seats and travel together.
             </p>
           </div>
 
@@ -331,28 +332,28 @@ export default function HowItWorksPage() {
               number="02"
               icon={Route}
               title="Publish"
-              description="The journey or travel demand becomes visible to the marketplace."
+              description="The journey, available seats and travel details become visible."
             />
 
             <HowItWorksStep
               number="03"
               icon={Search}
               title="Discover"
-              description="Members and travellers explore journeys and demands going their way."
+              description="Travellers explore published journeys going their way."
             />
 
             <HowItWorksStep
               number="04"
-              icon={Handshake}
-              title="Match"
-              description="A suitable journey and travel need can come together."
+              icon={TicketCheck}
+              title="Book"
+              description="A traveller reviews a suitable journey and books an available seat."
             />
 
             <HowItWorksStep
               number="05"
               icon={CarFront}
               title="Travel"
-              description="People coordinate, meet and make the planned journey together."
+              description="The provider and travellers coordinate, meet and make the journey together."
             />
           </div>
         </div>
@@ -366,7 +367,7 @@ export default function HowItWorksPage() {
         <div className="page-container py-14 sm:py-18">
           <div className="mx-auto max-w-3xl text-center">
             <p className="text-sm font-semibold uppercase tracking-wide text-[var(--brand)]">
-              One marketplace. Two starting points.
+              One marketplace. Two participants.
             </p>
 
             <h2 className="mt-3 text-3xl font-bold tracking-tight text-[var(--foreground)] sm:text-4xl">
@@ -375,9 +376,9 @@ export default function HowItWorksPage() {
             </h2>
 
             <p className="mt-4 text-sm leading-6 text-[var(--foreground-secondary)] sm:text-base">
-              You do not need to know the other person beforehand. The
-              marketplace provides the shared space where planned journeys and
-              travel needs can become visible to one another.
+              sisiMove gives journey providers a simple way to make available
+              seats discoverable and gives travellers a simple way to find and
+              book journeys that fit their plans.
             </p>
           </div>
 
@@ -387,13 +388,12 @@ export default function HowItWorksPage() {
               icon={CarFront}
               title="Publish a journey"
               description="You already know your route and are planning to make the trip. If you have available seats, make the journey discoverable."
-              accent="brand"
               steps={[
                 "Create the journey you already plan to make.",
                 "Add the route, date, departure window and available seats.",
                 "Set the journey price and relevant travel preferences.",
-                "Let travellers discover the journey.",
-                "Review suitable requests and bookings.",
+                "Publish the journey for travellers to discover.",
+                "Review and manage bookings as they come in.",
                 "Coordinate the trip and travel together.",
               ]}
               actionHref={PUBLIC_ROUTES.JOURNEYS}
@@ -402,27 +402,26 @@ export default function HowItWorksPage() {
 
             <MarketplacePath
               eyebrow="I NEED TO GO"
-              icon={UserRoundSearch}
-              title="Find or request a journey"
-              description="You already know where you need to travel. Start by looking for a journey that fits. If one is not available, make the need visible."
-              accent="brand"
+              icon={Search}
+              title="Find a journey"
+              description="You already know where you need to travel. Search published journeys, review what fits your plans and book an available seat."
               steps={[
                 "Search for journeys matching your route and timing.",
                 "Review the journey, available seats and price.",
-                "Review the member and relevant trust information.",
-                "Book when a journey fits your plans.",
-                "If nothing fits, publish your travel demand.",
-                "Let potential journey providers discover your need.",
+                "Review the provider and relevant trust information.",
+                "Check the vehicle and travel preferences.",
+                "Book when the journey fits your plans.",
+                "Coordinate the trip and travel together.",
               ]}
-              actionHref={PUBLIC_ROUTES.DEMANDS}
-              actionLabel="Explore travel demands"
+              actionHref={PUBLIC_ROUTES.JOURNEYS}
+              actionLabel="Explore journeys"
             />
           </div>
         </div>
       </section>
 
       {/* --------------------------------------------------------------------- */}
-      {/* Demand marketplace                                                     */}
+      {/* Journey marketplace                                                   */}
       {/* --------------------------------------------------------------------- */}
 
       <section className="border-y border-[var(--border-subtle)] bg-[var(--background-brand)]">
@@ -430,33 +429,34 @@ export default function HowItWorksPage() {
           <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:gap-16">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--brand)]">
-                <UserRoundSearch
+                <Route
                   aria-hidden="true"
                   className="h-3.5 w-3.5"
                 />
-                Travel demand
+                Published journey
               </div>
 
               <h2 className="mt-5 text-3xl font-bold tracking-tight text-[var(--foreground)] sm:text-4xl">
-                Not every journey exists yet. That is part of the market.
+                Every published journey gives travellers something real to
+                choose.
               </h2>
 
               <p className="mt-5 text-sm leading-7 text-[var(--foreground-secondary)] sm:text-base">
-                Sometimes the journey you need is not published. Instead of
-                searching endlessly, sisiMove lets you describe the journey
-                you are looking for.
+                A sisiMove journey is more than a route between two places.
+                It gives travellers enough context to understand when the
+                journey is happening, how many seats are available, what it
+                costs and who they may be travelling with.
               </p>
 
               <p className="mt-4 text-sm leading-7 text-[var(--foreground-secondary)] sm:text-base">
-                Your demand becomes a marketplace signal: a clear indication
-                of where someone wants to go, when they want to go, how many
-                seats they need and what travel conditions matter to them.
+                The goal is simple: make planned long-distance journeys easier
+                to discover and easier to evaluate before booking.
               </p>
 
               <div className="mt-7">
-                <Link href={PUBLIC_ROUTES.DEMANDS}>
+                <Link href={PUBLIC_ROUTES.JOURNEYS}>
                   <Button>
-                    Explore travel demands
+                    Explore journeys
                     <ArrowRight
                       aria-hidden="true"
                       className="ml-2 h-4 w-4"
@@ -470,16 +470,16 @@ export default function HowItWorksPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground-muted)]">
-                    Travel demand
+                    Published journey
                   </p>
 
                   <p className="mt-1 text-lg font-bold text-[var(--foreground)]">
-                    @traveller needs a journey
+                    Nairobi → Kisumu
                   </p>
                 </div>
 
-                <span className="rounded-full bg-[var(--brand-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--brand)]">
-                  Open
+                <span className="rounded-full bg-[var(--success-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--success)]">
+                  Available
                 </span>
               </div>
 
@@ -507,20 +507,20 @@ export default function HowItWorksPage() {
               </div>
 
               <div className="mt-4 grid grid-cols-3 gap-3">
-                <DemandSignal
+                <JourneySignal
                   label="Date"
                   value="18 Oct"
                 />
 
-                <DemandSignal
-                  label="Demand"
-                  value="2 seats"
+                <JourneySignal
+                  label="Seats"
+                  value="2 available"
                   emphasis
                 />
 
-                <DemandSignal
+                <JourneySignal
                   label="Price"
-                  value="Preferred"
+                  value="KES 1,200"
                 />
               </div>
 
@@ -536,13 +536,18 @@ export default function HowItWorksPage() {
 
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-[var(--foreground)]">
-                    A journey provider may already be going this way.
+                    Published by a verified member.
                   </p>
 
                   <p className="mt-0.5 text-xs text-[var(--foreground-muted)]">
-                    The demand gives the marketplace something to match.
+                    Review the journey and provider before booking.
                   </p>
                 </div>
+
+                <BadgeCheck
+                  aria-hidden="true"
+                  className="ml-auto h-5 w-5 shrink-0 text-[var(--success)]"
+                />
               </div>
             </div>
           </div>
@@ -586,7 +591,7 @@ export default function HowItWorksPage() {
             <JourneyInformation
               icon={Users}
               title="Capacity"
-              description="See available seats and understand the travel demand around a journey."
+              description="See available seats and understand how much space remains on the journey."
             />
 
             <JourneyInformation
@@ -648,7 +653,7 @@ export default function HowItWorksPage() {
               <p className="mt-4 text-sm leading-7 text-[var(--foreground-secondary)] sm:text-base">
                 Travelling together requires more than matching two points on
                 a map. sisiMove exposes relevant journey and member context so
-                people can evaluate whether an opportunity fits them.
+                people can evaluate whether a published journey fits them.
               </p>
             </div>
 
@@ -656,7 +661,7 @@ export default function HowItWorksPage() {
               <TrustItem
                 icon={CircleUserRound}
                 title="Identity"
-                description="See the relevant public identity information associated with the journey or travel demand."
+                description="See the relevant public identity information associated with the journey provider."
               />
 
               <TrustItem
@@ -693,12 +698,12 @@ export default function HowItWorksPage() {
             </p>
 
             <h2 className="mt-3 text-3xl font-bold tracking-tight text-[var(--foreground)] sm:text-4xl">
-              A match is the beginning of the journey relationship.
+              Discovery is only the beginning.
             </h2>
 
             <p className="mt-4 text-sm leading-6 text-[var(--foreground-secondary)] sm:text-base">
               sisiMove is designed around the complete journey lifecycle,
-              rather than stopping at discovery.
+              rather than stopping when a traveller finds a listing.
             </p>
           </div>
 
@@ -709,46 +714,39 @@ export default function HowItWorksPage() {
                   number="01"
                   icon={Search}
                   title="Discover"
-                  description="Find a published journey or discover an open travel demand."
+                  description="Find a published journey matching your route and travel plans."
                 />
 
                 <LifecycleStep
                   number="02"
                   icon={Route}
                   title="Review"
-                  description="Compare the route, schedule, seats, price, preferences and available member information."
+                  description="Compare the route, schedule, seats, price, preferences, vehicle and available member information."
                 />
 
                 <LifecycleStep
                   number="03"
-                  icon={Handshake}
-                  title="Match"
-                  description="A traveller and journey provider find an opportunity that fits their respective plans."
+                  icon={TicketCheck}
+                  title="Book"
+                  description="A traveller requests and confirms a place on a suitable published journey."
                 />
 
                 <LifecycleStep
                   number="04"
-                  icon={TicketCheck}
-                  title="Book"
-                  description="A traveller requests and confirms a place on a suitable journey."
-                />
-
-                <LifecycleStep
-                  number="05"
                   icon={MessageCircle}
                   title="Coordinate"
                   description="The people involved use the journey relationship and communication tools to prepare for travel."
                 />
 
                 <LifecycleStep
-                  number="06"
+                  number="05"
                   icon={Users}
                   title="Board & Travel"
                   description="Participants meet at the agreed point, board and make the planned long-distance journey together."
                 />
 
                 <LifecycleStep
-                  number="07"
+                  number="06"
                   icon={CheckCircle2}
                   title="Complete"
                   description="The journey reaches completion and the marketplace records the completed travel experience."
@@ -779,9 +777,10 @@ export default function HowItWorksPage() {
 
                   <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--foreground-secondary)] sm:text-base">
                     A member does not need to become a transport operator to
-                    make an available seat useful. A traveller does not need
-                    to arrange an entire trip alone. sisiMove creates the
-                    marketplace layer between those two realities.
+                    make an available seat useful. A traveller does not need to
+                    arrange an entire trip alone. sisiMove creates the
+                    marketplace layer around journeys people are already
+                    planning.
                   </p>
                 </div>
 
@@ -816,9 +815,9 @@ export default function HowItWorksPage() {
             </h2>
 
             <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-[var(--foreground-secondary)] sm:text-base">
-              Explore journeys already being planned, discover travel demands,
-              and see how people are connecting around the routes they need to
-              travel.
+              Explore journeys already being planned, discover available
+              seats, and see how sisiMove helps people connect around the
+              journeys they are already making.
             </p>
 
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
@@ -832,9 +831,9 @@ export default function HowItWorksPage() {
                 </Button>
               </Link>
 
-              <Link href={PUBLIC_ROUTES.DEMANDS}>
+              <Link href={PUBLIC_ROUTES.JOURNEYS}>
                 <Button variant="outline">
-                  Explore travel demands
+                  Publish a journey
                 </Button>
               </Link>
             </div>
@@ -911,17 +910,17 @@ function JourneyMetric({
   );
 }
 
-interface DemandSignalProps {
+interface JourneySignalProps {
   readonly label: string;
   readonly value: string;
   readonly emphasis?: boolean;
 }
 
-function DemandSignal({
+function JourneySignal({
   label,
   value,
   emphasis = false,
-}: DemandSignalProps) {
+}: JourneySignalProps) {
   return (
     <div
       className={
@@ -1032,7 +1031,6 @@ interface MarketplacePathProps {
   readonly icon: typeof Compass;
   readonly title: string;
   readonly description: string;
-  readonly accent: "brand";
   readonly steps: readonly string[];
   readonly actionHref: string;
   readonly actionLabel: string;
@@ -1211,3 +1209,4 @@ function LifecycleStep({
     </div>
   );
 }
+

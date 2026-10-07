@@ -1,3 +1,5 @@
+'use client';
+
 // -----------------------------------------------------------------------------
 // sisiMove — Login Form
 // -----------------------------------------------------------------------------
@@ -20,19 +22,7 @@
 // - No authentication-context manipulation.
 // - No routing.
 //
-// The feature hook owns the application authentication workflow.
-// This component owns only the form interaction boundary.
-//
-// Import boundary:
-//
-// - Feature dependencies are imported from the authentication feature.
-// - Sibling presentation components are imported directly.
-// - This component must not import from './index' because that barrel exports
-//   LoginForm itself and would introduce an unnecessary circular dependency.
-//
 // -----------------------------------------------------------------------------
-
-'use client';
 
 import type { ChangeEvent, FormEvent } from 'react';
 import { useCallback, useState } from 'react';
@@ -40,7 +30,6 @@ import { useCallback, useState } from 'react';
 import {
   authenticateLoginSchema,
   useAuthenticateLogin,
-  type AuthenticateLoginFormValues,
   type AuthenticateLoginResponse,
 } from '@/features/authentication/login';
 
@@ -61,9 +50,6 @@ export interface LoginFormProps {
    *
    * Password recovery is not configured yet. The temporary "#" default keeps
    * the entry point visible while the recovery route is being designed.
-   *
-   * Once the route exists, the parent can provide the real route without
-   * changing the form implementation.
    */
   readonly forgotPasswordHref?: string;
 
@@ -92,11 +78,35 @@ interface LoginFieldErrors {
   readonly password?: string;
 }
 
+/**
+ * Mutable version used only while constructing validation errors.
+ *
+ * The public LoginFieldErrors contract remains readonly.
+ */
+interface MutableLoginFieldErrors {
+  emailOrPhoneNumber?: string;
+  password?: string;
+}
+
 // =============================================================================
-// Initial Form State
+// Local Form State
+// =============================================================================
+//
+// The authentication feature contract is readonly.
+//
+// React-controlled form state must be mutable because the values change as
+// the user types. Therefore the form owns this separate mutable presentation
+// state.
+//
+// The readonly authentication contract is created only when calling login().
 // =============================================================================
 
-const INITIAL_FORM_VALUES: AuthenticateLoginFormValues = {
+interface LoginFormState {
+  emailOrPhoneNumber: string;
+  password: string;
+}
+
+const INITIAL_FORM_VALUES: LoginFormState = {
   emailOrPhoneNumber: '',
   password: '',
 };
@@ -115,10 +125,12 @@ function getFieldErrors(
     readonly message: string;
   }[],
 ): LoginFieldErrors {
-  const errors: {
-    emailOrPhoneNumber?: string;
-    password?: string;
-  } = {};
+  /**
+   * This object is intentionally mutable while we construct it.
+   *
+   * It is returned as the readonly LoginFieldErrors contract.
+   */
+  const errors: MutableLoginFieldErrors = {};
 
   for (const issue of issues) {
     const field = issue.path[0];
@@ -128,6 +140,7 @@ function getFieldErrors(
       errors.emailOrPhoneNumber === undefined
     ) {
       errors.emailOrPhoneNumber = issue.message;
+      continue;
     }
 
     if (
@@ -150,15 +163,22 @@ export function LoginForm({
   onSuccess,
   className,
 }: LoginFormProps) {
-  const [values, setValues] =
-    useState<AuthenticateLoginFormValues>(
-      INITIAL_FORM_VALUES,
-    );
+  // ===========================================================================
+  // Local Form State
+  // ===========================================================================
+
+  const [values, setValues] = useState<LoginFormState>(
+    INITIAL_FORM_VALUES,
+  );
 
   const [fieldErrors, setFieldErrors] =
     useState<LoginFieldErrors>(
       createInitialFieldErrors,
     );
+
+  // ===========================================================================
+  // Authentication Hook
+  // ===========================================================================
 
   const {
     login,
@@ -236,8 +256,18 @@ export function LoginForm({
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
 
+      // Prevent duplicate submissions.
+      if (isLoading) {
+        return;
+      }
+
+      // Clear previous validation and authentication errors.
       setFieldErrors(createInitialFieldErrors());
       reset();
+
+      // -----------------------------------------------------------------------
+      // Validate
+      // -----------------------------------------------------------------------
 
       const result =
         authenticateLoginSchema.safeParse(values);
@@ -250,31 +280,45 @@ export function LoginForm({
         return;
       }
 
+      // -----------------------------------------------------------------------
+      // Authenticate
+      // -----------------------------------------------------------------------
+
       try {
+        /*
+         * result.data is already validated by authenticateLoginSchema.
+         *
+         * We create a fresh object here instead of modifying the readonly
+         * feature contract.
+         */
         const response = await login({
           emailOrPhoneNumber:
             result.data.emailOrPhoneNumber,
 
-          password: result.data.password,
+          password:
+            result.data.password,
         });
+
+        // ---------------------------------------------------------------------
+        // Successful Authentication
+        // ---------------------------------------------------------------------
 
         if (onSuccess) {
           await onSuccess(response);
         }
       } catch {
         // ---------------------------------------------------------------------
-        // Authentication errors are owned by the login hook.
+        // Authentication errors are normalized by useAuthenticateLogin().
         //
-        // The hook normalizes the caught error and exposes it through `error`.
-        // LoginError is responsible for presenting the safe user-facing
-        // message.
+        // The normalized error is exposed through the hook's `error` state
+        // and presented by LoginError.
         //
-        // The form intentionally does not expose raw transport/backend
-        // details.
+        // Raw transport/backend details are intentionally not handled here.
         // ---------------------------------------------------------------------
       }
     },
     [
+      isLoading,
       login,
       onSuccess,
       reset,
@@ -286,13 +330,12 @@ export function LoginForm({
   // Successful Authentication
   // ===========================================================================
   //
-  // AuthenticationProvider has already received and persisted the session
-  // through useAuthenticateLogin before `data` becomes available.
+  // The authentication hook has already established the authentication
+  // session.
   //
-  // The form therefore has nothing further to render after successful login.
+  // The parent page receives the successful response through onSuccess and
+  // owns navigation.
   //
-  // The parent may use `onSuccess` for navigation or another application-level
-  // transition.
   // ===========================================================================
 
   if (data?.success === true) {
@@ -314,7 +357,7 @@ export function LoginForm({
       <div className="space-y-5">
         {/* -------------------------------------------------------------------
             Credentials
-        ------------------------------------------------------------------- */}
+            ------------------------------------------------------------------- */}
 
         <LoginCredentials
           value={values.emailOrPhoneNumber}
@@ -325,7 +368,7 @@ export function LoginForm({
 
         {/* -------------------------------------------------------------------
             Password
-        ------------------------------------------------------------------- */}
+            ------------------------------------------------------------------- */}
 
         <LoginPasswordField
           value={values.password}
@@ -336,10 +379,7 @@ export function LoginForm({
 
         {/* -------------------------------------------------------------------
             Password Recovery
-        -------------------------------------------------------------------
-            The route is temporarily "#". The link is intentionally visible
-            now so the final login composition can be reviewed visually.
-        ------------------------------------------------------------------- */}
+            ------------------------------------------------------------------- */}
 
         <div className="flex justify-end">
           <LoginForgotPassword
@@ -350,13 +390,13 @@ export function LoginForm({
 
         {/* -------------------------------------------------------------------
             Authentication Error
-        ------------------------------------------------------------------- */}
+            ------------------------------------------------------------------- */}
 
         <LoginError error={error} />
 
         {/* -------------------------------------------------------------------
             Submit
-        ------------------------------------------------------------------- */}
+            ------------------------------------------------------------------- */}
 
         <LoginSubmit
           isLoading={isLoading}

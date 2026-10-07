@@ -1,4 +1,4 @@
-'use client';
+// 'use client';
 
 // -----------------------------------------------------------------------------
 // sisiMove — Journey Booking Summary
@@ -10,6 +10,7 @@
 // - Present the booking's primary identity and lifecycle information.
 // - Present passenger seat quantity.
 // - Present the associated Journey reference.
+// - Present snapshot route information when available.
 // - Provide a reusable summary surface for booking detail and management UI.
 //
 // Non-responsibilities:
@@ -28,11 +29,11 @@
 //             ▼
 //     JourneyBookingSummary
 //             │
-//             ├── JourneyBooking model
+//             ├── JourneyBookingDetail model
 //             └── JourneyBookingStatusBadge
 //
-// The component intentionally consumes the frontend domain model rather than
-// backend DTOs. API response mapping belongs in the feature mapper layer.
+// The component intentionally consumes the frontend application model rather
+// than backend DTOs. API response mapping belongs in the feature mapper layer.
 //
 // -----------------------------------------------------------------------------
 
@@ -43,7 +44,7 @@ import {
   Card,
 } from '@/components/ui';
 
-import type { JourneyBooking } from '@/features/journey-booking/models';
+import type { JourneyBookingDetail } from '@/features/journey-booking/models';
 import { JourneyBookingStatusBadge } from '../booking-status';
 
 // -----------------------------------------------------------------------------
@@ -52,9 +53,9 @@ import { JourneyBookingStatusBadge } from '../booking-status';
 
 export interface JourneyBookingSummaryProps {
   /**
-   * Booking aggregate represented by the summary.
+   * Detailed booking represented by the summary.
    */
-  booking: JourneyBooking;
+  booking: JourneyBookingDetail;
 
   /**
    * Optional content rendered in the summary header.
@@ -133,6 +134,26 @@ export function JourneyBookingSummary({
             mono
           />
         </div>
+
+        {/* -------------------------------------------------------------------
+            Journey snapshot
+            ------------------------------------------------------------------- */}
+
+        {booking.snapshot && (
+          <div className="border-t border-[var(--border-subtle)] pt-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <SummaryItem
+                label="From"
+                value={booking.snapshot.originName}
+              />
+
+              <SummaryItem
+                label="To"
+                value={booking.snapshot.destinationName}
+              />
+            </div>
+          </div>
+        )}
 
         {/* -------------------------------------------------------------------
             Lifecycle timestamps

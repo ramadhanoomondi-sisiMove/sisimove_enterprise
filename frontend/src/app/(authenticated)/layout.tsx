@@ -7,12 +7,15 @@
 // Responsibilities:
 // - resolve the current Traveller Profile;
 // - resolve the Traveller Profile's public avatar Asset reference;
-// - supply presentation-ready traveller data to AuthenticatedShell.
+// - resolve the current Identity Verification aggregate;
+// - supply presentation-ready traveller data and verification capability
+//   to AuthenticatedShell.
 //
 // Non-responsibilities:
 // - authentication state management;
 // - session management;
 // - route authorization;
+// - verification business logic;
 // - notification fetching;
 // - notification state management;
 // - marketplace data fetching;
@@ -30,35 +33,34 @@
 //                  usePublicAsset()
 //                         │
 //                         └── avatar.url
-//                                  │
-//                                  ▼
-//                         AuthenticatedShell
-//                                  │
-//                                  ▼
-//                         AuthenticatedHeader
-//                           │              │
-//                           │              └── AuthenticatedAccountMenu
-//                           │
-//                           └── AuthenticatedNotifications
-//                                      │
-//                                      ▼
-//                                NotificationBell
-//                                      │
-//                                      ▼
-//                               useNotifications()
 //
-// The layout is the composition boundary for current traveller presentation
-// data. Header and shell components do not fetch Traveller Profile or Asset
-// data.
+//     useVerification()
+//              │
+//              └── verification.level
+//                         │
+//                         ▼
+//                  AuthenticatedShell
+//                         │
+//                         ▼
+//                  AuthenticatedHeader
+//                         │
+//                         ▼
+//              AuthenticatedNavigation
 //
-// Notification state deliberately does not pass through this layout.
-// `NotificationBell` owns its notification query because notifications are
-// independent authenticated server state.
+// Verification presentation:
 //
-// Marketplace components are intentionally not composed here. Authenticated
-// pages own marketplace composition because JourneyMarketplace and
-// JourneyDemandMarketplace are core capabilities that can also be composed
-// by public pages.
+//     NONE
+//       → Get Verified
+//
+//     MEMBER
+//       → My Bookings
+//
+//     DRIVER
+//       → My Journeys
+//       → My Bookings
+//
+// Backend authorization remains authoritative.
+// Navigation visibility is presentation only.
 //
 // -----------------------------------------------------------------------------
 
@@ -77,6 +79,25 @@ import { AuthenticatedShell } from "@/components/authenticated";
 // -----------------------------------------------------------------------------
 
 import { useCurrentTravellerProfile } from "@/features/traveller-profile";
+
+// -----------------------------------------------------------------------------
+// Verification
+// -----------------------------------------------------------------------------
+//
+// The Verification feature owns retrieval of the current authenticated
+// Identity's Verification aggregate.
+//
+//     GET /verifications/me
+//              ↓
+//       useVerification()
+//              ↓
+//       verification.level
+//
+// The layout does not calculate verification permissions.
+// It only passes the already-resolved VerificationLevel to the shell.
+// -----------------------------------------------------------------------------
+
+import { useVerification } from "@/features/verification/hooks";
 
 // -----------------------------------------------------------------------------
 // Assets
@@ -131,6 +152,27 @@ export default function AuthenticatedLayout({
   } = useCurrentTravellerProfile();
 
   // ---------------------------------------------------------------------------
+  // Current Verification
+  // ---------------------------------------------------------------------------
+  //
+  // The Verification hook loads:
+  //
+  //     GET /verifications/me
+  //
+  // The resulting `verification.level` is passed unchanged to
+  // AuthenticatedShell.
+  //
+  // The layout does not determine authorization.
+  //
+  // ---------------------------------------------------------------------------
+
+  const {
+    verification,
+    isLoading: verificationLoading,
+    error: verificationError,
+  } = useVerification();
+
+  // ---------------------------------------------------------------------------
   // Avatar Asset Reference
   // ---------------------------------------------------------------------------
   //
@@ -179,6 +221,40 @@ export default function AuthenticatedLayout({
   }
 
   // ---------------------------------------------------------------------------
+  // Current Verification Loading
+  // ---------------------------------------------------------------------------
+  //
+  // Navigation visibility depends on the resolved VerificationLevel.
+  //
+  // Do not render authenticated navigation before Verification has loaded.
+  // This prevents the application from briefly presenting the wrong
+  // verification-level navigation.
+  //
+  // ---------------------------------------------------------------------------
+
+  if (verificationLoading) {
+    return (
+      <div
+        className={[
+          "min-h-screen",
+          "bg-[var(--background)]",
+          "text-[var(--foreground)]",
+        ].join(" ")}
+      >
+        <div
+          className="flex min-h-screen items-center justify-center px-4"
+          aria-busy="true"
+          aria-live="polite"
+        >
+          <p className="text-sm text-[var(--foreground-muted)]">
+            Loading your verification status…
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Current Traveller Profile Failure
   // ---------------------------------------------------------------------------
   //
@@ -215,6 +291,46 @@ export default function AuthenticatedLayout({
   }
 
   // ---------------------------------------------------------------------------
+  // Current Verification Failure
+  // ---------------------------------------------------------------------------
+  //
+  // A missing Verification aggregate is treated as an error rather than
+  // silently converting the user to NONE.
+  //
+  // Registration is expected to create the Verification aggregate, so a
+  // missing result should not be interpreted as an unverified user.
+  //
+  // ---------------------------------------------------------------------------
+
+  if (verificationError || verification == null) {
+    return (
+      <div
+        className={[
+          "min-h-screen",
+          "bg-[var(--background)]",
+          "text-[var(--foreground)]",
+        ].join(" ")}
+      >
+        <div className="flex min-h-screen items-center justify-center px-4">
+          <div
+            className="max-w-md text-center"
+            role="alert"
+          >
+            <h1 className="text-lg font-semibold text-[var(--foreground)]">
+              We could not load your verification status
+            </h1>
+
+            <p className="mt-2 text-sm text-[var(--foreground-muted)]">
+              Your verification status is required to determine the
+              appropriate SisiMove access level.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Authenticated Application Shell
   // ---------------------------------------------------------------------------
   //
@@ -223,6 +339,16 @@ export default function AuthenticatedLayout({
   // If the Asset request is still loading or fails, `null` is passed to the
   // account menu and the shared Avatar primitive can render its initials
   // fallback.
+  //
+  // Verification level is now passed from the actual Verification aggregate.
+  //
+  //     verification.level
+  //             ↓
+  //     AuthenticatedShell
+  //             ↓
+  //     AuthenticatedHeader
+  //             ↓
+  //     AuthenticatedNavigation
   //
   // Notification state is intentionally absent from this composition boundary.
   // The notification feature independently owns that server state.
@@ -233,6 +359,7 @@ export default function AuthenticatedLayout({
     <AuthenticatedShell
       travellerHandle={travellerProfile.handle}
       travellerAvatarUrl={avatarAsset?.url ?? null}
+      verificationLevel={verification.level}
     >
       {children}
     </AuthenticatedShell>

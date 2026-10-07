@@ -25,3 +25,5 @@ export { FindJourneyBookingsByStatusHandler } from './find-journey-bookings-by-s
 export { FindJourneyBookingsByJourneyAndPassengerHandler } from './find-journey-bookings-by-journey-and-passenger.handler';
 
 export { FindJourneyBookingByTransactionHandler } from './find-journey-booking-by-transaction.handler';
+
+export { GetJourneyBookingDetailQueryHandler } from './get-journey-booking-detail.query-handler';

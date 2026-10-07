@@ -6,6 +6,8 @@
 // Foundation
 // -----------------------------------------------------------------------------
 
+import { Inject, Injectable } from '@nestjs/common';
+
 import type { QueryHandler } from '../../../../foundation/kernel/application/query-handler';
 
 // -----------------------------------------------------------------------------
@@ -27,6 +29,12 @@ import type { JourneyBookingAggregate } from '../../domain/aggregates/journey-bo
 import type { JourneyBookingRepository } from '../../domain/repositories/journey-booking.repository';
 
 // -----------------------------------------------------------------------------
+// Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_BOOKING_TOKENS } from '../journey-booking.tokens';
+
+// -----------------------------------------------------------------------------
 // Exceptions
 // -----------------------------------------------------------------------------
 
@@ -46,7 +54,14 @@ import { JourneyBookingNotFoundException } from '../../domain/exceptions';
  * 3. Return the rehydrated JourneyBookingAggregate.
  *
  * Persistence and aggregate rehydration remain repository concerns.
+ *
+ * Dependency injection:
+ *
+ * The repository is resolved through the Journey Booking repository token.
+ * The handler therefore depends on the repository contract rather than on a
+ * concrete persistence implementation.
  */
+@Injectable()
 export class GetJourneyBookingByPublicIdHandler implements QueryHandler<
   GetJourneyBookingByPublicIdQuery,
   JourneyBookingAggregate
@@ -55,7 +70,10 @@ export class GetJourneyBookingByPublicIdHandler implements QueryHandler<
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly repository: JourneyBookingRepository) {}
+  constructor(
+    @Inject(JOURNEY_BOOKING_TOKENS.REPOSITORY)
+    private readonly repository: JourneyBookingRepository,
+  ) {}
 
   // ===========================================================================
   // Execute

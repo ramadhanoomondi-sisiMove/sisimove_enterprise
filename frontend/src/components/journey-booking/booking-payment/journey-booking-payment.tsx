@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// sisiMove — Journey Booking Payment
+// sisiMove — Journey Booking Detail Payment
 // -----------------------------------------------------------------------------
 //
 // Presentation of the payment state associated with a Journey Booking.
@@ -23,22 +23,31 @@
 // Payment status is server-authoritative. The frontend must never transition
 // payment state locally.
 //
-// Also note that JourneyBookingPayment.amount represents the amount associated
-// with the payment transaction. It should not be assumed to equal
-// JourneyBookingPricing.totalAmount because additional commercial amounts may
-// be applicable to the passenger payment.
+// Also note that JourneyBookingDetailPayment.amount represents the amount
+// associated with the payment transaction. It should not be assumed to equal
+// JourneyBookingDetailPricing.totalAmount because additional commercial
+// amounts may be applicable to the passenger payment.
 // -----------------------------------------------------------------------------
 
-import type { JourneyBookingPayment } from '@/features/journey-booking/models';
 import { Badge, type BadgeVariant } from '@/components/ui';
 
+import type { JourneyBookingDetailPayment } from '@/features/journey-booking/models';
+
+// -----------------------------------------------------------------------------
+// Types
+// -----------------------------------------------------------------------------
+
 export interface JourneyBookingPaymentProps {
-  payment: JourneyBookingPayment;
+  payment: JourneyBookingDetailPayment;
   className?: string;
 }
 
+// -----------------------------------------------------------------------------
+// Payment Status
+// -----------------------------------------------------------------------------
+
 const PAYMENT_STATUS_LABELS: Record<
-  JourneyBookingPayment['status'],
+  JourneyBookingDetailPayment['status'],
   string
 > = {
   PENDING: 'Pending',
@@ -50,7 +59,7 @@ const PAYMENT_STATUS_LABELS: Record<
 };
 
 const PAYMENT_STATUS_VARIANTS: Record<
-  JourneyBookingPayment['status'],
+  JourneyBookingDetailPayment['status'],
   BadgeVariant
 > = {
   PENDING: 'warning',
@@ -60,6 +69,10 @@ const PAYMENT_STATUS_VARIANTS: Record<
   PARTIALLY_REFUNDED: 'warning',
   REFUNDED: 'default',
 };
+
+// -----------------------------------------------------------------------------
+// Component
+// -----------------------------------------------------------------------------
 
 export function JourneyBookingPayment({
   payment,
@@ -77,6 +90,10 @@ export function JourneyBookingPayment({
         .filter(Boolean)
         .join(' ')}
     >
+      {/* -------------------------------------------------------------------
+          Section heading
+          ------------------------------------------------------------------- */}
+
       <div>
         <p className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
           Payment
@@ -100,11 +117,18 @@ export function JourneyBookingPayment({
         </div>
       </div>
 
+      {/* -------------------------------------------------------------------
+          Payment details
+          ------------------------------------------------------------------- */}
+
       <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)]">
         <div className="divide-y divide-[var(--border-subtle)]">
           <PaymentRow
             label="Amount"
-            value={formatMoney(payment.amount, payment.currency)}
+            value={formatMoney(
+              payment.amount,
+              payment.currency,
+            )}
             emphasized
           />
 
@@ -154,6 +178,7 @@ export function JourneyBookingPayment({
               <p className="text-xs font-medium text-[var(--danger)]">
                 Payment issue
               </p>
+
               <p className="mt-1 break-words text-sm text-[var(--foreground)]">
                 {payment.failureReason}
               </p>
@@ -164,6 +189,10 @@ export function JourneyBookingPayment({
     </section>
   );
 }
+
+// -----------------------------------------------------------------------------
+// Payment Row
+// -----------------------------------------------------------------------------
 
 interface PaymentRowProps {
   label: string;
@@ -189,7 +218,9 @@ function PaymentRow({
           'min-w-0',
           'max-w-[65%]',
           'truncate',
-          emphasized ? 'text-base font-semibold' : 'text-sm font-medium',
+          emphasized
+            ? 'text-base font-semibold'
+            : 'text-sm font-medium',
           'text-[var(--foreground)]',
           mono ? 'font-mono text-xs' : '',
         ]
@@ -202,6 +233,10 @@ function PaymentRow({
     </div>
   );
 }
+
+// -----------------------------------------------------------------------------
+// Formatting
+// -----------------------------------------------------------------------------
 
 /**
  * Formats an integer amount stored in the smallest currency unit.
