@@ -597,9 +597,11 @@ export class JourneyBookingAggregate extends AggregateRoot<JourneyBookingEntity>
     return this.pricing?.publicId;
   }
 
-  // ===========================================================================
+  // src/domains/booking/domain/aggregates/journey-booking.aggregate.ts
+
+  // -----------------------------------------------------------------------------
   // Payment
-  // ===========================================================================
+  // -----------------------------------------------------------------------------
 
   public attachPayment(payment: JourneyBookingPaymentEntity): void {
     if (!payment) {
@@ -607,14 +609,6 @@ export class JourneyBookingAggregate extends AggregateRoot<JourneyBookingEntity>
     }
 
     this.journeyBooking.setPayment(payment);
-  }
-
-  public removePayment(): void {
-    if (!this.hasPayment()) {
-      return;
-    }
-
-    this.journeyBooking.clearPayment();
     this.journeyBooking.setUpdatedAt(new Date());
     this.journeyBooking.incrementVersion();
   }

@@ -1,4 +1,6 @@
 // -----------------------------------------------------------------------------
+// Path: src/features/traveller-profile/models/public-traveller-profile.ts
+// -----------------------------------------------------------------------------
 // sisiMove — Public Traveller Profile
 // -----------------------------------------------------------------------------
 //
@@ -36,10 +38,9 @@
 // - memberPublicId as an implementation detail;
 // - private Trust information;
 // - private Journey information;
-// - private Journey Demand information;
 // - operational booking information;
 // - private contact information;
-// - internal persistence state.
+// - internal persistence state;
 //
 // -----------------------------------------------------------------------------
 
@@ -48,8 +49,6 @@ import type { PublicTraveller } from './public-traveller';
 import type { PublicTravellerTrust } from '@/features/trust/models/public-traveller-trust';
 
 import type { PublicJourney } from '@/features/journey/models';
-
-import type { PublicJourneyDemand } from '@/features/journey-demand/models';
 
 // -----------------------------------------------------------------------------
 // Public Traveller Profile
@@ -75,12 +74,4 @@ export interface PublicTravellerProfile {
    * Only journeys already authorized for public discovery belong here.
    */
   journeys: readonly PublicJourney[];
-
-  /**
-   * Public Journey Demands associated with this traveller.
-   *
-   * Only demands already authorized for public discovery belong here.
-   */
-  demands: readonly PublicJourneyDemand[];
 }
-

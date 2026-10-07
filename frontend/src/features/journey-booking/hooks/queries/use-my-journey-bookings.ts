@@ -1,48 +1,59 @@
+// src/features/journey-booking/hooks/queries/use-my-journey-bookings.ts
+
 // -----------------------------------------------------------------------------
 // Journey Booking — My Bookings Query Hook
 // -----------------------------------------------------------------------------
 //
-// React query hook for loading Journey Bookings belonging to the currently
-// authenticated passenger.
+// React Query hook for loading detailed Journey Bookings belonging to the
+// currently authenticated passenger.
 //
 // The backend derives the passenger identity from the authenticated session.
-// The frontend therefore does not accept or pass a passengerPublicId here.
+// The frontend therefore does not accept or pass a passengerPublicId.
 //
 // Responsibilities:
-// - invoke the authenticated "mine" API operation;
-// - map every transport response into the frontend JourneyBooking model;
+// - invoke the authenticated "my booking details" API operation;
+// - expose JourneyBookingDetail[] to the UI;
 // - provide a stable React Query cache key;
-// - expose loading, error, and data state to the UI.
+// - expose loading, error, and data state.
 //
-// This hook does not perform booking filtering, lifecycle decisions, or payment
-// interpretation. Those concerns remain outside the query hook.
+// The API adapter returns the feature detail representation directly, so no
+// additional mapper is required here.
+//
 // -----------------------------------------------------------------------------
 
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
 
-import { getMyJourneyBookings } from '../../api';
 import {
-  mapJourneyBookings,
-  type JourneyBookingApiResponse,
-} from '../../mappers';
-import type { JourneyBooking } from '../../models';
+  getMyJourneyBookingDetails,
+} from '../../api/management/get-my-journey-bookings-detail.api';
+
+import type { JourneyBookingDetail } from '../../models';
+
+// -----------------------------------------------------------------------------
+// Query Key
+// -----------------------------------------------------------------------------
 
 const MY_JOURNEY_BOOKINGS_QUERY_KEY = 'my-journey-bookings';
 
+// -----------------------------------------------------------------------------
+// Query Hook
+// -----------------------------------------------------------------------------
+
 /**
- * Loads the authenticated passenger's Journey Bookings.
+ * Loads detailed Journey Bookings belonging to the authenticated passenger.
+ *
+ * The returned booking objects use JourneyBookingDetail so they can be
+ * consumed directly by JourneyBookingCard and other booking-management
+ * surfaces.
  */
 export function useMyJourneyBookings() {
-  return useQuery<JourneyBooking[], Error>({
+  return useQuery<readonly JourneyBookingDetail[], Error>({
     queryKey: [MY_JOURNEY_BOOKINGS_QUERY_KEY],
-    queryFn: async () => {
-      const response = await getMyJourneyBookings();
 
-      return mapJourneyBookings(
-        response as JourneyBookingApiResponse[],
-      );
+    queryFn: async () => {
+      return getMyJourneyBookingDetails();
     },
   });
 }

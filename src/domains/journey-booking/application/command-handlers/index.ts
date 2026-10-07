@@ -1,3 +1,5 @@
+// src/domains/journey-booking/application/handlers/index.ts
+
 // -----------------------------------------------------------------------------
 // Journey Booking — Command Handlers
 // -----------------------------------------------------------------------------
@@ -7,6 +9,16 @@
 // -----------------------------------------------------------------------------
 
 export { CreateJourneyBookingHandler } from './create-journey-booking.handler';
+
+// -----------------------------------------------------------------------------
+// Booking Components
+// -----------------------------------------------------------------------------
+
+export { CreateJourneyBookingSnapshotHandler } from './create-journey-booking-snapshot.handler';
+
+export { SetJourneyBookingPricingHandler } from './set-journey-booking-pricing.handler';
+
+export { CreateJourneyBookingPaymentHandler } from './create-journey-booking-payment.handler';
 
 // -----------------------------------------------------------------------------
 // Booking Lifecycle

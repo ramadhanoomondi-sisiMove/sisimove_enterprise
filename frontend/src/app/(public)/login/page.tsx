@@ -1,16 +1,25 @@
 // -----------------------------------------------------------------------------
+// Path: src/app/(public)/login/page.tsx
+// -----------------------------------------------------------------------------
 // sisiMove — Login Route
 // -----------------------------------------------------------------------------
 //
 // Next.js route entry point for the public login page.
 //
-// This file intentionally contains no authentication logic. The page-level
-// composition lives in components/authentication/login.
+// The LoginPage client component uses useSearchParams() for the optional
+// returnTo continuation. It therefore must be rendered beneath a Suspense
+// boundary for production prerendering.
+//
 // -----------------------------------------------------------------------------
+
+import { Suspense } from 'react';
 
 import { LoginPage } from '@/components/authentication/login';
 
 export default function LoginRoute() {
-  return <LoginPage />;
+  return (
+    <Suspense fallback={null}>
+      <LoginPage />
+    </Suspense>
+  );
 }
-

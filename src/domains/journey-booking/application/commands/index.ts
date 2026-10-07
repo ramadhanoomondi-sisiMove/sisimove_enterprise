@@ -1,3 +1,5 @@
+// src/domains/journey-booking/application/commands/index.ts
+
 // -----------------------------------------------------------------------------
 // Journey Booking — Commands
 // -----------------------------------------------------------------------------
@@ -7,6 +9,16 @@
 // -----------------------------------------------------------------------------
 
 export { CreateJourneyBookingCommand } from './create-journey-booking.command';
+
+// -----------------------------------------------------------------------------
+// Booking Components
+// -----------------------------------------------------------------------------
+
+export { CreateJourneyBookingSnapshotCommand } from './create-journey-booking-snapshot.command';
+
+export { SetJourneyBookingPricingCommand } from './set-journey-booking-pricing.command';
+
+export { CreateJourneyBookingPaymentCommand } from './create-journey-booking-payment.command';
 
 // -----------------------------------------------------------------------------
 // Booking Lifecycle

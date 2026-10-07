@@ -313,9 +313,7 @@ export default function VerificationPage() {
           'sm:py-8',
         )}
       >
-        <VerificationOnboarding
-          requirements={[]}
-        />
+       <VerificationOnboarding />
       </main>
     );
   }
@@ -389,9 +387,7 @@ export default function VerificationPage() {
         'sm:py-8',
       )}
     >
-      <VerificationOnboarding
-        requirements={requirements}
-      />
+    <VerificationOnboarding />
     </main>
   );
 }

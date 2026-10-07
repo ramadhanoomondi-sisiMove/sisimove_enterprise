@@ -1,11 +1,18 @@
-// -----------------------------------------------------------------------------
 // src/domains/journey-booking/application/journey-booking.tokens.ts
+
 // -----------------------------------------------------------------------------
-//
 // sisiMove — Journey Booking Dependency Injection Tokens
+// -----------------------------------------------------------------------------
 //
 // Central registry of dependency-injection tokens used by the Journey Booking
 // application layer.
+//
+// Command handlers are separated by responsibility:
+//
+//   - Booking creation
+//   - Booking component assembly
+//   - Booking lifecycle
+//   - Payment lifecycle
 //
 // Query handlers are separated by responsibility:
 //
@@ -13,8 +20,8 @@
 //   - Detail/read-model queries
 //   - Discovery queries
 //
-// The detail query has its own handler because it is a purpose-specific
-// application read use case that composes:
+// Detail queries have dedicated handlers because they are purpose-specific
+// application read use cases that compose:
 //
 //   Journey Booking
 //        ↓
@@ -24,8 +31,8 @@
 //      ↙     ↘
 // Traveller   Trust
 //
-// It must therefore remain distinct from the generic aggregate retrieval
-// handlers.
+// Individual booking detail and passenger booking collection detail remain
+// separate use cases.
 //
 // -----------------------------------------------------------------------------
 
@@ -42,10 +49,24 @@ export const JOURNEY_BOOKING_TOKENS = {
 
   COMMAND_HANDLERS: {
     // -------------------------------------------------------------------------
-    // Journey Booking Lifecycle
+    // Journey Booking Creation
     // -------------------------------------------------------------------------
 
     CREATE: Symbol('CreateJourneyBookingHandler'),
+
+    // -------------------------------------------------------------------------
+    // Booking Components
+    // -------------------------------------------------------------------------
+
+    CREATE_SNAPSHOT: Symbol('CreateJourneyBookingSnapshotHandler'),
+
+    SET_PRICING: Symbol('SetJourneyBookingPricingHandler'),
+
+    CREATE_PAYMENT: Symbol('CreateJourneyBookingPaymentHandler'),
+
+    // -------------------------------------------------------------------------
+    // Journey Booking Lifecycle
+    // -------------------------------------------------------------------------
 
     CONFIRM: Symbol('ConfirmJourneyBookingHandler'),
 
@@ -56,7 +77,7 @@ export const JOURNEY_BOOKING_TOKENS = {
     EXPIRE: Symbol('ExpireJourneyBookingHandler'),
 
     // -------------------------------------------------------------------------
-    // Payment
+    // Payment Lifecycle
     // -------------------------------------------------------------------------
 
     AUTHORIZE_PAYMENT: Symbol('AuthorizeJourneyBookingPaymentHandler'),
@@ -93,13 +114,20 @@ export const JOURNEY_BOOKING_TOKENS = {
     //
     // Purpose-specific passenger-facing booking detail.
     //
-    // Unlike GET / GET_BY_PUBLIC_ID, this handler does not simply expose the
-    // JourneyBooking aggregate. It performs application-level composition and
-    // authorization for the booking detail read model.
+    // GET_DETAIL:
+    //   Returns the detailed representation of one authorized booking.
+    //
+    // GET_MY_DETAILS:
+    //   Returns detailed representations of the authenticated passenger's
+    //   booking collection.
+    //
+    // Both use cases compose information across bounded-context boundaries.
     //
     // -------------------------------------------------------------------------
 
     GET_DETAIL: Symbol('GetJourneyBookingDetailQueryHandler'),
+
+    GET_MY_DETAILS: Symbol('GetMyJourneyBookingDetailsQueryHandler'),
 
     // -------------------------------------------------------------------------
     // Discovery

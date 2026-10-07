@@ -1,24 +1,33 @@
+// frontend/src/features/journey-booking/api/journey-bookings/index.ts
+
 // -----------------------------------------------------------------------------
-// Journey Booking — Lifecycle API Barrel
+// Journey Booking — API Barrel
 // -----------------------------------------------------------------------------
 //
-// Public barrel for Journey Booking lifecycle mutations.
+// Public barrel for Journey Booking API operations.
 //
-// These operations represent state transitions owned by the backend
-// JourneyBooking aggregate:
-//
+// Lifecycle operations:
 // - Create
 // - Confirm
 // - Cancel
 // - Complete
 // - Expire
 //
-// The frontend does not implement lifecycle transitions itself. Each operation
-// delegates to the Journey Booking HTTP API, where the aggregate remains
+// Booking preparation operations:
+// - Snapshot
+// - Pricing
+//
+// Payment operations:
+// - Create Payment
+//
+// The frontend does not implement Journey Booking domain rules itself.
+// Each operation delegates to the backend, where the aggregate remains
 // authoritative for invariants, validation, state transitions, timestamps,
 // versioning, and domain events.
-//
-// Payment operations intentionally live in the separate payment API boundary.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Lifecycle
 // -----------------------------------------------------------------------------
 
 export {
@@ -48,3 +57,33 @@ export {
   expireJourneyBooking,
   type ExpireJourneyBookingResponse,
 } from './expire-journey-booking.api';
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+export {
+  createJourneyBookingSnapshot,
+  type CreateJourneyBookingSnapshotRequest,
+  type CreateJourneyBookingSnapshotResponse,
+} from './create-journey-booking-snapshot.api';
+
+// -----------------------------------------------------------------------------
+// Pricing
+// -----------------------------------------------------------------------------
+
+export {
+  setJourneyBookingPricing,
+  type SetJourneyBookingPricingRequest,
+  type SetJourneyBookingPricingResponse,
+} from './set-journey-booking-pricing.api';
+
+// -----------------------------------------------------------------------------
+// Payment
+// -----------------------------------------------------------------------------
+
+export {
+  createJourneyBookingPayment,
+  type CreateJourneyBookingPaymentRequest,
+  type CreateJourneyBookingPaymentResponse,
+} from './create-journey-booking-payment.api';

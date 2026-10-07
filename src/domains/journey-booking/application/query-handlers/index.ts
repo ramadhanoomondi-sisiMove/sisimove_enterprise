@@ -13,6 +13,14 @@ export { GetJourneyBookingByPublicIdHandler } from './get-journey-booking-by-pub
 export { GetMyJourneyBookingsHandler } from './get-my-journey-bookings.handler';
 
 // -----------------------------------------------------------------------------
+// Detail
+// -----------------------------------------------------------------------------
+
+export { GetJourneyBookingDetailQueryHandler } from './get-journey-booking-detail.query-handler';
+
+export { GetMyJourneyBookingDetailsQueryHandler } from './get-my-journey-booking-details.handler';
+
+// -----------------------------------------------------------------------------
 // Discovery
 // -----------------------------------------------------------------------------
 
@@ -25,5 +33,3 @@ export { FindJourneyBookingsByStatusHandler } from './find-journey-bookings-by-s
 export { FindJourneyBookingsByJourneyAndPassengerHandler } from './find-journey-bookings-by-journey-and-passenger.handler';
 
 export { FindJourneyBookingByTransactionHandler } from './find-journey-booking-by-transaction.handler';
-
-export { GetJourneyBookingDetailQueryHandler } from './get-journey-booking-detail.query-handler';

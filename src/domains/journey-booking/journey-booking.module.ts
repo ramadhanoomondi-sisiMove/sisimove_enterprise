@@ -1,5 +1,11 @@
 // src/domains/journey-booking/journey-booking.module.ts
 
+// -----------------------------------------------------------------------------
+
+// Journey Booking — Module
+
+// -----------------------------------------------------------------------------
+
 import { Module } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
@@ -7,6 +13,9 @@ import { Module } from '@nestjs/common';
 // -----------------------------------------------------------------------------
 
 import { IdentityModule } from '../identity/identity.module';
+import { JourneyModule } from '../journey/journey.module';
+import { SocialModule } from '../social/social.module';
+import { TrustModule } from '../trust/trust.module';
 
 // -----------------------------------------------------------------------------
 // Infrastructure
@@ -43,10 +52,13 @@ import {
   CompleteJourneyBookingHandler,
   ConfirmJourneyBookingHandler,
   CreateJourneyBookingHandler,
+  CreateJourneyBookingPaymentHandler,
+  CreateJourneyBookingSnapshotHandler,
   ExpireJourneyBookingHandler,
   FailJourneyBookingPaymentHandler,
   PartiallyRefundJourneyBookingPaymentHandler,
   RefundJourneyBookingPaymentHandler,
+  SetJourneyBookingPricingHandler,
 } from './application/command-handlers';
 
 // -----------------------------------------------------------------------------
@@ -62,6 +74,7 @@ import {
   GetJourneyBookingByPublicIdHandler,
   GetJourneyBookingDetailQueryHandler,
   GetJourneyBookingHandler,
+  GetMyJourneyBookingDetailsQueryHandler,
   GetMyJourneyBookingsHandler,
 } from './application/query-handlers';
 
@@ -77,17 +90,30 @@ import {
   imports: [
     // -------------------------------------------------------------------------
     // Identity
-    //
-    // Provides authentication and authorization infrastructure required by the
-    // Journey Booking REST presentation boundary.
     // -------------------------------------------------------------------------
 
     IdentityModule,
 
     // -------------------------------------------------------------------------
+    // Journey
+    // -------------------------------------------------------------------------
+
+    JourneyModule,
+
+    // -------------------------------------------------------------------------
+    // Social
+    // -------------------------------------------------------------------------
+
+    SocialModule,
+
+    // -------------------------------------------------------------------------
+    // Trust
+    // -------------------------------------------------------------------------
+
+    TrustModule,
+
+    // -------------------------------------------------------------------------
     // Prisma
-    //
-    // Provides the Prisma client required by Journey Booking persistence.
     // -------------------------------------------------------------------------
 
     PrismaModule,
@@ -111,13 +137,36 @@ import {
     ...JOURNEY_BOOKING_PROVIDERS,
 
     // =========================================================================
-    // Booking Lifecycle Command Handlers
+    // Booking Creation
     // =========================================================================
 
     {
       provide: JOURNEY_BOOKING_TOKENS.COMMAND_HANDLERS.CREATE,
       useClass: CreateJourneyBookingHandler,
     },
+
+    // =========================================================================
+    // Booking Components
+    // =========================================================================
+
+    {
+      provide: JOURNEY_BOOKING_TOKENS.COMMAND_HANDLERS.CREATE_SNAPSHOT,
+      useClass: CreateJourneyBookingSnapshotHandler,
+    },
+
+    {
+      provide: JOURNEY_BOOKING_TOKENS.COMMAND_HANDLERS.SET_PRICING,
+      useClass: SetJourneyBookingPricingHandler,
+    },
+
+    {
+      provide: JOURNEY_BOOKING_TOKENS.COMMAND_HANDLERS.CREATE_PAYMENT,
+      useClass: CreateJourneyBookingPaymentHandler,
+    },
+
+    // =========================================================================
+    // Booking Lifecycle Command Handlers
+    // =========================================================================
 
     {
       provide: JOURNEY_BOOKING_TOKENS.COMMAND_HANDLERS.CONFIRM,
@@ -188,12 +237,19 @@ import {
     },
 
     // =========================================================================
-    // Journey Booking Detail Query Handler
+    // Journey Booking Detail Query Handlers
     // =========================================================================
+
+    GetJourneyBookingDetailQueryHandler,
 
     {
       provide: JOURNEY_BOOKING_TOKENS.QUERY_HANDLERS.GET_DETAIL,
-      useClass: GetJourneyBookingDetailQueryHandler,
+      useExisting: GetJourneyBookingDetailQueryHandler,
+    },
+
+    {
+      provide: JOURNEY_BOOKING_TOKENS.QUERY_HANDLERS.GET_MY_DETAILS,
+      useClass: GetMyJourneyBookingDetailsQueryHandler,
     },
 
     // =========================================================================
@@ -229,16 +285,6 @@ import {
 
   // ===========================================================================
   // Exports
-  // ===========================================================================
-  //
-  // Keep the module boundary narrow.
-  //
-  // Command and query handlers are consumed internally by the controller and
-  // therefore remain private to this module.
-  //
-  // The repository token is exported so other bounded contexts can integrate
-  // with Journey Booking through its application contract rather than directly
-  // depending on Prisma persistence.
   // ===========================================================================
 
   exports: [JOURNEY_BOOKING_TOKENS.REPOSITORY],

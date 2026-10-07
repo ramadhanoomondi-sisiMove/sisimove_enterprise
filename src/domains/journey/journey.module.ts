@@ -1,6 +1,9 @@
 // -----------------------------------------------------------------------------
+//
 // sisiMove — Journey Module
+//
 // -----------------------------------------------------------------------------
+
 //
 // The Journey bounded context owns:
 //
@@ -16,9 +19,11 @@
 // own, persist, or reconstruct those external contexts.
 //
 // -----------------------------------------------------------------------------
+
 //
 // PUBLIC MARKETPLACE READ COMPOSITION
 //
+
 // A public Journey contains an opaque providerPublicId.
 //
 // That identifier is a cross-domain reference to the member/provider identity
@@ -29,14 +34,16 @@
 // The public Journey query composes:
 //
 //     Journey
-//        │
-//        ├── providerPublicId
-//        │        │
-//        │        ├──► Traveller public read capability
-//        │        │
-//        │        └──► Trust public read capability
-//        │
-//        └── Journey-owned public data
+//
+//          │
+//
+//          ├── providerPublicId
+//          │       │
+//          │       ├──► Traveller public read capability
+//          │       │
+//          │       └──► Trust public read capability
+//          │
+//          └── Journey-owned public data
 //
 // The authenticated Journey read boundary may additionally resolve Asset
 // presentation references through the exported Asset public-reference
@@ -68,11 +75,15 @@
 // capabilities it consumes.
 //
 // -----------------------------------------------------------------------------
+
 //
 // MODULE DEPENDENCY DIRECTION
 //
+
 //     Journey read boundary
+//
 //          │
+//
 //          ├──────────────► SocialModule
 //          │                    │
 //          │                    └── public Traveller capability
@@ -89,9 +100,11 @@
 // relationships.
 //
 // -----------------------------------------------------------------------------
+
 //
 // ASSET PUBLIC REFERENCE
 //
+
 // JourneyVehicle stores only:
 //
 //     assetPublicId
@@ -124,8 +137,8 @@
 // Journey only consumes the reduced public Asset reference.
 //
 // -----------------------------------------------------------------------------
+
 // -----------------------------------------------------------------------------
-//
 // NestJS
 // -----------------------------------------------------------------------------
 
@@ -228,85 +241,24 @@ import {
   imports: [
     // =========================================================================
     // Identity / Authorization
-    //
-    // Required by cross-domain authorization infrastructure such as:
-    //
-    //   PermissionsGuard
-    //     -> GetIdentityPermissionsHandler
-    //     -> GetIdentityRolesHandler
-    //
-    // Journey consumes the exported Identity application capabilities but does
-    // not own Identity.
     // =========================================================================
 
     IdentityModule,
 
     // =========================================================================
     // Social / Traveller Profile Public Read Boundary
-    //
-    // The public Journey marketplace read boundary enriches a public Journey
-    // with the reduced public Traveller Profile associated with the Journey's
-    // opaque providerPublicId.
-    //
-    // Journey does not own Traveller Profile data and therefore does not:
-    //
-    // - inject TravellerProfileRepository;
-    // - access Traveller Profile persistence directly;
-    // - reconstruct TravellerProfileAggregate;
-    // - register GetPublicTravellerByMemberQueryHandler locally.
-    //
-    // SocialModule owns the Traveller Profile application boundary and exports
-    // the public Traveller query capability consumed by Journey.
     // =========================================================================
 
     SocialModule,
 
     // =========================================================================
     // Trust / Public Trust Read Boundary
-    //
-    // The public Journey marketplace read boundary also enriches a public
-    // Journey with the reduced public Trust projection associated with the
-    // same opaque provider/member public identifier.
-    //
-    // Trust remains the owner of:
-    //
-    // - Trust Profile;
-    // - Trust ratings;
-    // - Trust reviews;
-    // - Trust badges;
-    // - Trust verification;
-    // - Trust-related projections.
-    //
-    // Journey does not access Trust persistence directly.
-    //
     // =========================================================================
 
     TrustModule,
 
     // =========================================================================
     // Assets / Public Asset Reference Boundary
-    //
-    // JourneyVehicle stores only an opaque assetPublicId.
-    //
-    // Journey does not own Asset data and does not access Asset persistence
-    // directly.
-    //
-    // AssetsModule owns the public Asset reference capability:
-    //
-    //   ASSET_TOKENS.QUERY_HANDLERS.GET_PUBLIC_ASSET_REFERENCE
-    //
-    // Importing AssetsModule makes that exported application capability
-    // available to JourneyController.
-    //
-    // This is a read-side application dependency only.
-    //
-    // Journey does not:
-    //
-    // - inject AssetRepository;
-    // - construct AssetAggregate;
-    // - construct AssetDeliveryPort implementations;
-    // - construct storage implementations;
-    // - resolve Asset URLs itself.
     // =========================================================================
 
     AssetsModule,
@@ -483,11 +435,28 @@ import {
 
     // =========================================================================
     // Journey — General Query
+    //
+    // Register the concrete handler class as the primary provider.
+    //
+    // GetJourneyBookingDetailQueryHandler injects GetJourneyQueryHandler
+    // directly by class.
+    // =========================================================================
+
+    {
+      provide: GetJourneyQueryHandler,
+      useClass: GetJourneyQueryHandler,
+    },
+
+    // =========================================================================
+    // Journey — General Query Token
+    //
+    // Preserve the existing token-based application contract while ensuring
+    // both tokens resolve to the same GetJourneyQueryHandler instance.
     // =========================================================================
 
     {
       provide: JOURNEY_TOKENS.QUERY_HANDLERS.GET,
-      useClass: GetJourneyQueryHandler,
+      useExisting: GetJourneyQueryHandler,
     },
 
     // =========================================================================
@@ -510,22 +479,7 @@ import {
     },
 
     // =========================================================================
-    // Journey — Public Marketplace Collection
-    // =========================================================================
-    //
-    // GET_PUBLIC_MANY is the public Journey marketplace read boundary.
-    //
-    // An empty query represents the default marketplace inventory:
-    //
-    //   all publicly discoverable Journeys.
-    //
-    // Optional discovery criteria narrow the collection.
-    //
-    // This remains intentionally separate from SEARCH_PUBLISHED, which
-    // represents explicit Journey search semantics.
-    //
-    // The handler may compose Journey data with reduced public Traveller and
-    // Trust projections through their exported application capabilities.
+    // Public Journey — Marketplace Collection
     // =========================================================================
 
     {
@@ -635,6 +589,15 @@ import {
     // =========================================================================
 
     JOURNEY_TOKENS.REPOSITORY,
+
+    // =========================================================================
+    // Journey — General Query Handler Class
+    //
+    // Export the concrete class because Journey Booking injects
+    // GetJourneyQueryHandler directly by class.
+    // =========================================================================
+
+    GetJourneyQueryHandler,
 
     // =========================================================================
     // Journey — Lifecycle Command Handler Tokens

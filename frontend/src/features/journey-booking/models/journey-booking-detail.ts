@@ -4,14 +4,24 @@
 // SisiMove — Journey Booking Detail Model
 // -----------------------------------------------------------------------------
 //
-// Frontend application model for the detailed Journey Booking view.
+// Frontend application model for Journey Booking detail and booking-list
+// surfaces.
 //
 // This model mirrors the stable application response exposed by the backend.
 // It intentionally does not reproduce backend domain entities or value
 // objects.
 //
-// The model is used by the API adapter and can later be transformed by the
-// feature mapper into UI-specific view models.
+// The JourneyBookingDetail model is the canonical booking representation
+// consumed by presentation components that require the complete booking
+// snapshot, pricing, payment, cancellation, and optional journey context.
+//
+// IMPORTANT:
+//
+// `journey` is nullable because a booking may reference a Journey that is no
+// longer available in the current application state.
+//
+// `snapshot` is also nullable, but when present it remains the authoritative
+// historical representation of the Journey at booking time.
 //
 // -----------------------------------------------------------------------------
 
@@ -24,8 +34,17 @@ import type { JourneyBookingStatus } from './journey-booking-status';
 // -----------------------------------------------------------------------------
 
 export interface JourneyBookingDetailSnapshot {
+  /**
+   * Historical snapshot identifier.
+   */
   readonly publicId: string;
 
+  /**
+   * Historical Journey route.
+   *
+   * These values belong to the booking snapshot and must not be replaced
+   * with current Journey values.
+   */
   readonly originName: string;
   readonly destinationName: string;
 
@@ -44,6 +63,9 @@ export interface JourneyBookingDetailSnapshot {
 
   readonly timezone: string;
 
+  /**
+   * Historical vehicle information.
+   */
   readonly vehicleMake: string | null;
   readonly vehicleModel: string | null;
   readonly vehicleYear: number | null;
@@ -61,6 +83,9 @@ export interface JourneyBookingDetailSnapshot {
 export interface JourneyBookingDetailPricing {
   readonly publicId: string;
 
+  /**
+   * Monetary values are represented in the smallest currency unit.
+   */
   readonly pricePerSeat: number;
   readonly seats: number;
   readonly subtotal: number;
@@ -83,7 +108,11 @@ export interface JourneyBookingDetailPayment {
 
   readonly status: JourneyBookingPaymentStatus;
 
+  /**
+   * Monetary amount represented in the smallest currency unit.
+   */
   readonly amount: number;
+
   readonly currency: string;
 
   readonly transactionPublicId: string | null;
@@ -199,13 +228,26 @@ export interface JourneyBookingDetailJourney {
 // -----------------------------------------------------------------------------
 
 export interface JourneyBookingDetail {
+  /**
+   * Public booking identifier.
+   */
   readonly publicId: string;
 
+  /**
+   * References the Journey associated with this booking.
+   */
   readonly journeyPublicId: string;
+
+  /**
+   * Passenger associated with the booking.
+   */
   readonly passengerPublicId: string;
 
   readonly status: JourneyBookingStatus;
 
+  /**
+   * Number of seats reserved by the passenger.
+   */
   readonly seats: number;
 
   readonly confirmedAt: string | null;
@@ -213,10 +255,33 @@ export interface JourneyBookingDetail {
   readonly completedAt: string | null;
   readonly expiredAt: string | null;
 
+  /**
+   * Current Journey context.
+   *
+   * This is intentionally nullable.
+   */
   readonly journey: JourneyBookingDetailJourney | null;
+
+  /**
+   * Historical Journey snapshot captured when the booking was created.
+   *
+   * Booking presentation should prefer this data over the current Journey.
+   */
   readonly snapshot: JourneyBookingDetailSnapshot | null;
+
+  /**
+   * Historical booking pricing.
+   */
   readonly pricing: JourneyBookingDetailPricing | null;
+
+  /**
+   * Booking payment information.
+   */
   readonly payment: JourneyBookingDetailPayment | null;
+
+  /**
+   * Cancellation information, when applicable.
+   */
   readonly cancellation: JourneyBookingDetailCancellation | null;
 
   readonly version: number;
@@ -226,9 +291,25 @@ export interface JourneyBookingDetail {
 }
 
 // -----------------------------------------------------------------------------
-// API Response Model
+// API Response — Detail
 // -----------------------------------------------------------------------------
 
 export interface JourneyBookingDetailResponse {
   readonly booking: JourneyBookingDetail;
+}
+
+// -----------------------------------------------------------------------------
+// API Response — Collection
+// -----------------------------------------------------------------------------
+//
+// The booking-list endpoint should return the same complete booking shape when
+// JourneyBookingCard consumes JourneyBookingDetail.
+//
+// Keeping a dedicated collection response makes the API boundary explicit
+// without introducing a second incompatible booking model.
+//
+// -----------------------------------------------------------------------------
+
+export interface JourneyBookingDetailCollectionResponse {
+  readonly bookings: readonly JourneyBookingDetail[];
 }

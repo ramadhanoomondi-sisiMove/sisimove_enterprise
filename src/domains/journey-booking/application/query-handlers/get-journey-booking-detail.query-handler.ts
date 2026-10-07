@@ -1,5 +1,7 @@
 // -----------------------------------------------------------------------------
+
 // Journey Booking — Get Detail Query Handler
+
 // -----------------------------------------------------------------------------
 
 import { Inject, Injectable } from '@nestjs/common';
@@ -61,20 +63,26 @@ import { GetJourneyQueryHandler } from '../../../journey/application/query-handl
 // -----------------------------------------------------------------------------
 
 import { GetPublicTravellerByMemberQuery } from '../../../social/application/queries/get-public-traveller-by-member.query';
+
 import {
   GetPublicTravellerByMemberQueryHandler,
   type PublicTravellerProfileResponse,
 } from '../../../social/application/query-handlers/get-public-traveller-by-member.query-handler';
+
+import { TRAVELLER_PROFILE_TOKENS } from '../../../social/application/traveller-profile.tokens';
 
 // -----------------------------------------------------------------------------
 // Trust Profile bounded context
 // -----------------------------------------------------------------------------
 
 import { GetPublicTrustProfileByMemberQuery } from '../../../trust/application/queries/trust-profile/get-public-trust-profile-by-member.query';
+
 import {
   GetPublicTrustProfileByMemberQueryHandler,
   type PublicTrustProfile,
 } from '../../../trust/application/query-handlers/trust-profile/get-public-trust-profile-by-member.query-handler';
+
+import { TRUST_PROFILE_TOKENS } from '../../../trust/application/trust-profile.tokens';
 
 // -----------------------------------------------------------------------------
 // Domain Value Objects
@@ -97,8 +105,12 @@ export class GetJourneyBookingDetailQueryHandler implements QueryHandler<
 
     private readonly getJourneyQueryHandler: GetJourneyQueryHandler,
 
+    @Inject(
+      TRAVELLER_PROFILE_TOKENS.QUERY_HANDLERS.GET_PUBLIC_BY_MEMBER_PUBLIC_ID,
+    )
     private readonly getPublicTravellerByMemberQueryHandler: GetPublicTravellerByMemberQueryHandler,
 
+    @Inject(TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_PUBLIC_BY_MEMBER_PUBLIC_ID)
     private readonly getPublicTrustProfileByMemberQueryHandler: GetPublicTrustProfileByMemberQueryHandler,
   ) {}
 

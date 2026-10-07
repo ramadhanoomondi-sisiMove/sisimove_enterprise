@@ -1,103 +1,3 @@
-// -----------------------------------------------------------------------------
-// Path:
-//
-// src/domains/journey-booking/presentation/rest/controllers/journey-booking.controller.ts
-//
-// -----------------------------------------------------------------------------
-
-//
-// sisiMove — Journey Booking REST Controller
-//
-// REST boundary for Journey Booking.
-//
-// IMPORTANT ARCHITECTURAL RULE
-// ----------------------------
-//
-// Domain aggregates/entities NEVER cross the HTTP boundary.
-//
-// Application handlers may return:
-//
-//   - JourneyBookingAggregate
-//   - JourneyBookingEntity
-//   - JourneyBookingEntity[]
-//
-// This controller converts those domain objects into the stable REST contract:
-//
-//   JourneyBookingResponse
-//
-// through:
-//
-//   JourneyBookingResponseMapper
-//
-// This prevents NestJS from serializing domain internals such as:
-//
-//   _id
-//   _publicId
-//   props
-//   value objects
-//   domain events
-//
-// and guarantees that the frontend receives:
-//
-//   {
-//     publicId,
-//     journeyPublicId,
-//     passengerPublicId,
-//     status,
-//     seats,
-//     ...
-//   }
-//
-// SECURITY
-// --------
-//
-// Passenger identity for booking creation is ALWAYS derived from the
-// authenticated JWT.
-//
-// The client must never submit passengerPublicId when creating a booking.
-//
-// Correlation IDs are generated at the HTTP boundary.
-//
-// Causation IDs are undefined for normal HTTP-originated commands.
-//
-// AUTHORIZATION
-// -------------
-//
-// booking:read
-//     Authenticated booking discovery/read operations.
-//
-// booking:create
-//     Authenticated traveller creates a booking.
-//
-// booking:cancel
-//     Authenticated traveller cancellation.
-//
-// booking:manage
-//     Privileged booking lifecycle/payment operations.
-//
-// ROUTE ORDERING
-// --------------
-//
-// Static routes are declared before:
-//
-//     :journeyBookingPublicId
-//
-// so routes such as:
-//
-//     /mine
-//     /journey/:journeyPublicId
-//     /passenger/:passengerPublicId
-//     /status/:status
-//     /transaction/:transactionPublicId
-//
-// cannot be interpreted as booking public IDs.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// Node.js
-// -----------------------------------------------------------------------------
-
 import { randomUUID } from 'node:crypto';
 
 // -----------------------------------------------------------------------------
@@ -156,10 +56,13 @@ import {
   CompleteJourneyBookingCommand,
   ConfirmJourneyBookingCommand,
   CreateJourneyBookingCommand,
+  CreateJourneyBookingPaymentCommand,
+  CreateJourneyBookingSnapshotCommand,
   ExpireJourneyBookingCommand,
   FailJourneyBookingPaymentCommand,
   PartiallyRefundJourneyBookingPaymentCommand,
   RefundJourneyBookingPaymentCommand,
+  SetJourneyBookingPricingCommand,
 } from '../../../application/commands';
 
 // -----------------------------------------------------------------------------
@@ -174,6 +77,7 @@ import {
   FindJourneyBookingsByStatusQuery,
   GetJourneyBookingByPublicIdQuery,
   GetJourneyBookingDetailQuery,
+  GetMyJourneyBookingDetailsQuery,
   GetMyJourneyBookingsQuery,
 } from '../../../application/queries';
 
@@ -190,13 +94,27 @@ import type { JourneyBookingEntity } from '../../../domain/entities/journey-book
 // -----------------------------------------------------------------------------
 
 import {
+  JourneyBookingAdjustmentAmount,
+  JourneyBookingArrivalAt,
   JourneyBookingCancellationReason,
+  JourneyBookingCoordinates,
+  JourneyBookingCurrency,
+  JourneyBookingDepartureAt,
+  JourneyBookingDestinationName,
+  JourneyBookingDiscountAmount,
   JourneyBookingJourneyPublicId,
+  JourneyBookingOriginName,
   JourneyBookingPassengerPublicId,
+  JourneyBookingPaymentAmount,
   JourneyBookingPaymentFailureReason,
+  JourneyBookingPaymentStatus,
+  JourneyBookingPricePerSeat,
   JourneyBookingPublicId,
   JourneyBookingSeats,
   JourneyBookingStatus,
+  JourneyBookingSubtotal,
+  JourneyBookingTimezone,
+  JourneyBookingTotalAmount,
   JourneyBookingTransactionPublicId,
 } from '../../../domain/value-objects';
 
@@ -204,12 +122,17 @@ import {
 // DTOs
 // -----------------------------------------------------------------------------
 
+// src/domains/journey-booking/presentation/http/controllers/journey-booking.controller.ts
+
 import {
   AuthorizeJourneyBookingPaymentDto,
   CancelJourneyBookingDto,
   CreateJourneyBookingDto,
+  CreateJourneyBookingPaymentDto,
+  CreateJourneyBookingSnapshotDto,
   FailJourneyBookingPaymentDto,
   PartiallyRefundJourneyBookingPaymentDto,
+  SetJourneyBookingPricingDto,
 } from '../dto/request';
 
 // -----------------------------------------------------------------------------
@@ -311,6 +234,27 @@ export class JourneyBookingController {
     >,
 
     // =========================================================================
+    // Booking Component Command Handlers
+    // =========================================================================
+
+    @Inject(JOURNEY_BOOKING_TOKENS.COMMAND_HANDLERS.CREATE_SNAPSHOT)
+    private readonly createJourneyBookingSnapshotHandler: CommandHandler<
+      CreateJourneyBookingSnapshotCommand,
+      JourneyBookingAggregate
+    >,
+
+    @Inject(JOURNEY_BOOKING_TOKENS.COMMAND_HANDLERS.SET_PRICING)
+    private readonly setJourneyBookingPricingHandler: CommandHandler<
+      SetJourneyBookingPricingCommand,
+      JourneyBookingAggregate
+    >,
+
+    @Inject(JOURNEY_BOOKING_TOKENS.COMMAND_HANDLERS.CREATE_PAYMENT)
+    private readonly createJourneyBookingPaymentHandler: CommandHandler<
+      CreateJourneyBookingPaymentCommand,
+      JourneyBookingAggregate
+    >,
+    // =========================================================================
     // Journey Booking Query Handlers
     // =========================================================================
 
@@ -330,6 +274,12 @@ export class JourneyBookingController {
     private readonly getMyJourneyBookingsHandler: QueryHandler<
       GetMyJourneyBookingsQuery,
       JourneyBookingEntity[]
+    >,
+
+    @Inject(JOURNEY_BOOKING_TOKENS.QUERY_HANDLERS.GET_MY_DETAILS)
+    private readonly getMyJourneyBookingDetailsHandler: QueryHandler<
+      GetMyJourneyBookingDetailsQuery,
+      JourneyBookingDetailResponse[]
     >,
 
     // =========================================================================
@@ -370,6 +320,44 @@ export class JourneyBookingController {
   // ===========================================================================
   // QUERY ENDPOINTS
   // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Get My Journey Booking Details
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns the authenticated passenger's detailed booking collection.
+   *
+   * Passenger identity is derived exclusively from the authenticated JWT.
+   *
+   * The application query handler resolves the passenger's bookings and
+   * composes the detailed booking views with Journey, Traveller, and Trust
+   * information.
+   */
+
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get my journey booking details',
+    description:
+      'Returns detailed journey booking views belonging to the currently authenticated passenger.',
+  })
+  @Get('mine/detail')
+  @auth.RequirePermissions('booking:read')
+  public async getMineDetail(
+    @auth.CurrentIdentity() identity: auth.AuthenticatedIdentity,
+  ): Promise<JourneyBookingDetailResponse[]> {
+    const passengerPublicId = new JourneyBookingPassengerPublicId(
+      identity.identityPublicId,
+    );
+
+    const responses = await this.getMyJourneyBookingDetailsHandler.execute(
+      new GetMyJourneyBookingDetailsQuery(passengerPublicId),
+    );
+
+    return responses.map((response) =>
+      JourneyBookingDetailResponseMapper.toResponse(response),
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // Get My Journey Bookings
@@ -667,6 +655,176 @@ export class JourneyBookingController {
     return JourneyBookingResponseMapper.toResponse(booking);
   }
 
+  // src/domains/journey-booking/presentation/http/controllers/journey-booking.controller.ts
+
+  // ===========================================================================
+  // BOOKING COMPONENT COMMANDS
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Create Journey Booking Snapshot
+  // ---------------------------------------------------------------------------
+
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Create journey booking snapshot',
+    description:
+      'Creates the immutable journey, route, schedule, and vehicle snapshot for a booking.',
+  })
+  @ApiParam({
+    name: 'journeyBookingPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Journey Booking.',
+  })
+  @Post(':journeyBookingPublicId/snapshot')
+  @auth.RequirePermissions('booking:manage')
+  public async createSnapshot(
+    @Param('journeyBookingPublicId') journeyBookingPublicId: string,
+    @Body() dto: CreateJourneyBookingSnapshotDto,
+  ): Promise<JourneyBookingResponse> {
+    const booking = await this.createJourneyBookingSnapshotHandler.execute(
+      new CreateJourneyBookingSnapshotCommand(
+        new JourneyBookingPublicId(journeyBookingPublicId),
+
+        JourneyBookingOriginName.create(dto.originName),
+
+        JourneyBookingDestinationName.create(dto.destinationName),
+
+        JourneyBookingCoordinates.create(
+          dto.originCoordinates.latitude,
+          dto.originCoordinates.longitude,
+        ),
+
+        JourneyBookingCoordinates.create(
+          dto.destinationCoordinates.latitude,
+          dto.destinationCoordinates.longitude,
+        ),
+
+        JourneyBookingDepartureAt.create(new Date(dto.departureAt)),
+
+        JourneyBookingTimezone.create(dto.timezone),
+
+        dto.correlationId ?? randomUUID(),
+
+        dto.arrivalAt !== undefined
+          ? JourneyBookingArrivalAt.create(new Date(dto.arrivalAt))
+          : undefined,
+
+        dto.vehicleMake,
+        dto.vehicleModel,
+        dto.vehicleYear,
+        dto.vehicleColor,
+        dto.vehicleRegistration,
+
+        dto.causationId,
+      ),
+    );
+
+    return JourneyBookingResponseMapper.toResponse(booking);
+  }
+
+  // src/domains/journey-booking/presentation/http/controllers/journey-booking.controller.ts
+
+  // ---------------------------------------------------------------------------
+  // Set Journey Booking Pricing
+  // ---------------------------------------------------------------------------
+
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Set journey booking pricing',
+    description:
+      'Creates or updates the pricing component associated with a journey booking.',
+  })
+  @ApiParam({
+    name: 'journeyBookingPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Journey Booking.',
+  })
+  @Post(':journeyBookingPublicId/pricing')
+  @auth.RequirePermissions('booking:manage')
+  public async setPricing(
+    @Param('journeyBookingPublicId') journeyBookingPublicId: string,
+    @Body() dto: SetJourneyBookingPricingDto,
+  ): Promise<JourneyBookingResponse> {
+    const booking = await this.setJourneyBookingPricingHandler.execute(
+      new SetJourneyBookingPricingCommand(
+        new JourneyBookingPublicId(journeyBookingPublicId),
+
+        new JourneyBookingPricePerSeat(dto.pricePerSeat),
+
+        JourneyBookingSeats.create(dto.seats),
+
+        new JourneyBookingSubtotal(dto.subtotal),
+
+        new JourneyBookingTotalAmount(dto.totalAmount),
+
+        new JourneyBookingCurrency(dto.currency),
+
+        dto.correlationId ?? randomUUID(),
+
+        dto.discountAmount !== undefined
+          ? new JourneyBookingDiscountAmount(dto.discountAmount)
+          : undefined,
+
+        dto.adjustmentAmount !== undefined
+          ? new JourneyBookingAdjustmentAmount(dto.adjustmentAmount)
+          : undefined,
+
+        dto.causationId,
+      ),
+    );
+
+    return JourneyBookingResponseMapper.toResponse(booking);
+  }
+
+  // src/domains/journey-booking/presentation/http/controllers/journey-booking.controller.ts
+
+  // ---------------------------------------------------------------------------
+  // Create Journey Booking Payment
+  // ---------------------------------------------------------------------------
+
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Create journey booking payment',
+    description:
+      'Creates the initial payment component associated with a journey booking.',
+  })
+  @ApiParam({
+    name: 'journeyBookingPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Journey Booking.',
+  })
+  @Post(':journeyBookingPublicId/payment')
+  @auth.RequirePermissions('booking:manage')
+  public async createPayment(
+    @Param('journeyBookingPublicId') journeyBookingPublicId: string,
+    @Body() dto: CreateJourneyBookingPaymentDto,
+  ): Promise<JourneyBookingResponse> {
+    const booking = await this.createJourneyBookingPaymentHandler.execute(
+      new CreateJourneyBookingPaymentCommand(
+        new JourneyBookingPublicId(journeyBookingPublicId),
+
+        JourneyBookingPaymentStatus.create(dto.status),
+
+        new JourneyBookingPaymentAmount(dto.amount),
+
+        new JourneyBookingCurrency(dto.currency),
+
+        dto.correlationId ?? randomUUID(),
+
+        dto.transactionPublicId !== undefined
+          ? new JourneyBookingTransactionPublicId(dto.transactionPublicId)
+          : undefined,
+
+        dto.causationId,
+      ),
+    );
+
+    return JourneyBookingResponseMapper.toResponse(booking);
+  }
   // ---------------------------------------------------------------------------
   // Confirm
   // ---------------------------------------------------------------------------

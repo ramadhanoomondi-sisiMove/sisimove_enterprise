@@ -1,24 +1,24 @@
+// src/features/journey-booking/api/management/index.ts
+
 // -----------------------------------------------------------------------------
 // Journey Booking — Management API Barrel
 // -----------------------------------------------------------------------------
 //
 // Public barrel for authenticated Journey Booking management/read operations.
 //
-// Management APIs represent the current authenticated passenger's booking
-// collection. The backend derives the passenger identity from the authenticated
-// session, so callers do not provide a passenger public identifier.
+// The collection and detailed collection are intentionally separate:
 //
-// This boundary is intentionally separate from:
+//   getMyJourneyBookings()
+//       → GET /journey-bookings/mine
 //
-// - discovery APIs, which query bookings using explicit identifiers;
-// - lifecycle APIs, which mutate booking state;
-// - payment APIs, which mutate booking-local payment state.
+//   getMyJourneyBookingDetails()
+//       → GET /journey-bookings/mine/detail
 //
-// The barrel contains exports only. HTTP behavior remains inside the concrete
-// API implementation.
+// Passenger identity is always derived by the backend.
 // -----------------------------------------------------------------------------
 
 export {
   getMyJourneyBookings,
   type GetMyJourneyBookingsResponse,
 } from './get-my-journey-bookings.api';
+

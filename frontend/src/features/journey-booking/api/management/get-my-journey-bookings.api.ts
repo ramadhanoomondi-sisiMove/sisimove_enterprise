@@ -1,3 +1,5 @@
+// src/features/journey-booking/api/management/get-my-journey-bookings.api.ts
+
 // -----------------------------------------------------------------------------
 // SisiMove — Get My Journey Bookings API
 // -----------------------------------------------------------------------------
@@ -10,30 +12,18 @@
 //   GET /api/v1/journey-bookings/mine
 //
 // Backend authorization:
+//
 //   journey-booking:read
 //
 // The backend derives the passenger identity from the authenticated request
-// context. The frontend therefore does NOT send passengerPublicId for this
-// user-facing operation.
+// context. The frontend therefore does NOT send passengerPublicId.
 //
-// This is the preferred discovery operation for the authenticated
+// This is the collection/discovery operation for the authenticated
 // "My Bookings" workflow.
 //
-// Architectural responsibilities:
+// Detailed booking information is provided separately by:
 //
-// - Define the HTTP contract for the current user's booking collection.
-// - Require the authenticated API boundary.
-// - Return the backend collection response.
-//
-// Non-responsibilities:
-//
-// - Resolving the current identity.
-// - Reading authentication storage directly.
-// - Passenger identity selection.
-// - Booking lifecycle behavior.
-// - Payment processing.
-// - React Query/cache management.
-// - UI presentation.
+//   GET /api/v1/journey-bookings/mine/detail
 //
 // -----------------------------------------------------------------------------
 
@@ -46,12 +36,12 @@ import type { JourneyBooking } from '../../models/journey-booking';
 // -----------------------------------------------------------------------------
 
 /**
- * Response returned by the authenticated "my bookings" endpoint.
+ * Response returned by the authenticated "my bookings" collection endpoint.
  *
- * The backend returns JourneyBookingEntity[] mapped into the standard
- * JourneyBookingResponse representation.
+ * The backend returns the current passenger's Journey Booking collection
+ * using the standard JourneyBooking response representation.
  */
-export type GetMyJourneyBookingsResponse = JourneyBooking[];
+export type GetMyJourneyBookingsResponse = readonly JourneyBooking[];
 
 // -----------------------------------------------------------------------------
 // API Function
@@ -62,8 +52,9 @@ export type GetMyJourneyBookingsResponse = JourneyBooking[];
  * passenger.
  *
  * Passenger identity is derived by the backend from the authenticated
- * request. This prevents the user-facing "my bookings" operation from
- * accepting an arbitrary passenger identifier.
+ * request.
+ *
+ * No passenger public identifier is accepted by this user-facing operation.
  *
  * @returns
  *   Journey Bookings associated with the authenticated passenger.

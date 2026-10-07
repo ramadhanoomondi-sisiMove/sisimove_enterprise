@@ -12,6 +12,7 @@ import type { UniqueEntityId } from '../../../../foundation/kernel/domain/unique
 
 // -----------------------------------------------------------------------------
 // Domain Value Objects
+
 // -----------------------------------------------------------------------------
 
 import { JourneyBookingPaymentPublicId } from '../value-objects/journey-booking-payment-public-id.vo';

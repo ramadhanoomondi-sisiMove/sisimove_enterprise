@@ -1,25 +1,36 @@
-//src/features/journey-booking/hooks/mutations/index.ts
+// src/features/journey-booking/hooks/mutations/index.ts
+
 // -----------------------------------------------------------------------------
 // Journey Booking — Mutation Hooks Barrel
 // -----------------------------------------------------------------------------
 //
 // Public barrel for Journey Booking React Query mutation hooks.
 //
-// Mutation hooks expose backend-owned booking lifecycle transitions to the
-// React UI while keeping HTTP communication and response mapping inside their
-// respective layers.
+// Mutation hooks expose backend-owned Journey Booking operations to the React
+// UI while keeping HTTP communication inside the API layer.
 //
-// Supported lifecycle mutations:
+// Supported mutations:
 //
+// Lifecycle:
 // - Create
 // - Confirm
 // - Cancel
 // - Complete
 // - Expire
 //
-// Payment mutations are intentionally outside this barrel. They belong to the
-// separate payment API boundary and are not part of the booking lifecycle
-// mutation surface.
+// Booking preparation:
+// - Create Snapshot
+// - Set Pricing
+//
+// Payment:
+// - Create Payment
+//
+// The backend JourneyBooking aggregate remains authoritative for invariants,
+// validation, state transitions, timestamps, versioning, and domain events.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Lifecycle mutations
 // -----------------------------------------------------------------------------
 
 export {
@@ -45,3 +56,30 @@ export {
   useExpireJourneyBooking,
   type ExpireJourneyBookingVariables,
 } from './use-expire-journey-booking';
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+export {
+  useCreateJourneyBookingSnapshot,
+  type CreateJourneyBookingSnapshotVariables,
+} from './use-create-journey-booking-snapshot';
+
+// -----------------------------------------------------------------------------
+// Pricing
+// -----------------------------------------------------------------------------
+
+export {
+  useSetJourneyBookingPricing,
+  type SetJourneyBookingPricingVariables,
+} from './use-set-journey-booking-pricing';
+
+// -----------------------------------------------------------------------------
+// Payment
+// -----------------------------------------------------------------------------
+
+export {
+  useCreateJourneyBookingPayment,
+  type CreateJourneyBookingPaymentVariables,
+} from './use-create-journey-booking-payment';

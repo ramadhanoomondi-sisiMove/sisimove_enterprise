@@ -17,6 +17,16 @@ export { default as CompleteJourneyBookingDto } from './complete-journey-booking
 export { default as ExpireJourneyBookingDto } from './expire-journey-booking.dto';
 
 // -----------------------------------------------------------------------------
+// Booking Components
+// -----------------------------------------------------------------------------
+
+export { default as CreateJourneyBookingSnapshotDto } from './create-journey-booking-snapshot.dto';
+
+export { default as SetJourneyBookingPricingDto } from './set-journey-booking-pricing.dto';
+
+export { default as CreateJourneyBookingPaymentDto } from './create-journey-booking-payment.dto';
+
+// -----------------------------------------------------------------------------
 // Payment
 // -----------------------------------------------------------------------------
 

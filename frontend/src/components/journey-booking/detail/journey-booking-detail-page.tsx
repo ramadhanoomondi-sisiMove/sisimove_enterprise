@@ -29,12 +29,19 @@
 // - Reconstructing current Journey information.
 //
 // The backend/API/query layers remain authoritative for booking state.
+//
 // -----------------------------------------------------------------------------
 
 'use client';
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+
+import {
+  ArrowLeft,
+  CircleAlert,
+  CircleHelp,
+} from 'lucide-react';
 
 import {
   Card,
@@ -145,67 +152,89 @@ export function JourneyBookingDetailPage({
 
   return (
     <main className="page-shell">
-      <div className="page-container py-6 sm:py-8 lg:py-10">
-        <div className="flex flex-col gap-6">
-          {/* -----------------------------------------------------------------
-              Page header
-              ----------------------------------------------------------------- */}
+      <div className="page-container py-5 sm:py-8 lg:py-10">
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 sm:gap-8">
+          {/* ----------------------------------------------------------------- */}
+          {/* Page Header                                                       */}
+          {/* ----------------------------------------------------------------- */}
 
-          <header className="flex flex-col gap-4">
-            <div>
-              <Link
-                href="/my-bookings"
-                className="inline-flex items-center gap-2 text-sm font-medium text-[var(--foreground-secondary)] transition-colors hover:text-[var(--brand)]"
-              >
-                <span aria-hidden="true">←</span>
-                My bookings
-              </Link>
-            </div>
+          <header className="flex flex-col gap-5">
+            <Link
+              href="/my-bookings"
+              className={[
+                'group inline-flex w-fit items-center gap-2',
+                'text-sm font-medium',
+                'text-[var(--foreground-secondary)]',
+                'transition-colors',
+                'hover:text-[var(--brand)]',
+                'focus-visible:outline-none',
+                'focus-visible:ring-2',
+                'focus-visible:ring-[var(--brand)]',
+                'focus-visible:ring-offset-2',
+              ].join(' ')}
+            >
+              <ArrowLeft
+                size={16}
+                strokeWidth={1.8}
+                aria-hidden="true"
+                className="transition-transform duration-200 group-hover:-translate-x-0.5"
+              />
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <span>My bookings</span>
+            </Link>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div className="min-w-0">
-                <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--foreground-muted)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--foreground-muted)]">
                   Journey booking
                 </p>
 
-                <h1 className="mt-1 break-words text-2xl font-semibold tracking-tight text-[var(--foreground)] sm:text-3xl">
-                  Booking details
-                </h1>
+                <div className="mt-1.5 flex flex-wrap items-center gap-3">
+                  <h1 className="break-words text-2xl font-semibold tracking-tight text-[var(--foreground)] sm:text-3xl">
+                    Booking details
+                  </h1>
 
-                <p className="mt-2 break-all font-mono text-xs text-[var(--foreground-muted)]">
+                  {isFetching && (
+                    <span
+                      className="inline-flex items-center rounded-full border border-[var(--border-subtle)] bg-[var(--background-subtle)] px-2.5 py-1 text-[11px] font-medium text-[var(--foreground-muted)]"
+                      aria-live="polite"
+                    >
+                      Updating…
+                    </span>
+                  )}
+                </div>
+
+                <p
+                  className="mt-2 break-all font-mono text-[11px] text-[var(--foreground-subtle)]"
+                  title={booking.publicId}
+                >
                   {booking.publicId}
                 </p>
               </div>
-
-              {isFetching && (
-                <span
-                  className="text-xs font-medium text-[var(--foreground-muted)]"
-                  aria-live="polite"
-                >
-                  Updating…
-                </span>
-              )}
             </div>
           </header>
 
-          {/* -----------------------------------------------------------------
-              Booking summary
-              ----------------------------------------------------------------- */}
+          {/* ----------------------------------------------------------------- */}
+          {/* Booking Summary                                                   */}
+          {/* ----------------------------------------------------------------- */}
 
           <JourneyBookingSummary booking={booking} />
 
-          {/* -----------------------------------------------------------------
-              Main booking content
-              ----------------------------------------------------------------- */}
+          {/* ----------------------------------------------------------------- */}
+          {/* Main Booking Content                                              */}
+          {/* ----------------------------------------------------------------- */}
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.9fr)]">
-            {/* ===============================================================
-                Primary column
-                =============================================================== */}
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(300px,0.85fr)] lg:gap-6">
+            {/* =============================================================== */}
+            {/* Primary Column                                                   */}
+            {/* =============================================================== */}
 
-            <div className="flex min-w-0 flex-col gap-6">
+            <div className="flex min-w-0 flex-col gap-5 lg:gap-6">
               {booking.snapshot && (
-                <Card padding="md">
+                <Card
+                  padding="md"
+                  className="overflow-hidden"
+                >
                   <JourneyBookingSnapshot
                     snapshot={booking.snapshot}
                   />
@@ -213,7 +242,10 @@ export function JourneyBookingDetailPage({
               )}
 
               {booking.pricing && (
-                <Card padding="md">
+                <Card
+                  padding="md"
+                  className="overflow-hidden"
+                >
                   <JourneyBookingPricing
                     pricing={booking.pricing}
                   />
@@ -221,7 +253,10 @@ export function JourneyBookingDetailPage({
               )}
 
               {booking.cancellation && (
-                <Card padding="md">
+                <Card
+                  padding="md"
+                  className="overflow-hidden"
+                >
                   <JourneyBookingCancellation
                     cancellation={booking.cancellation}
                   />
@@ -231,13 +266,16 @@ export function JourneyBookingDetailPage({
               {children}
             </div>
 
-            {/* ===============================================================
-                Secondary column
-                =============================================================== */}
+            {/* =============================================================== */}
+            {/* Secondary Column                                                 */}
+            {/* =============================================================== */}
 
-            <aside className="flex min-w-0 flex-col gap-6">
+            <aside className="flex min-w-0 flex-col gap-5 lg:gap-6">
               {booking.payment && (
-                <Card padding="md">
+                <Card
+                  padding="md"
+                  className="overflow-hidden"
+                >
                   <JourneyBookingPayment
                     payment={booking.payment}
                   />
@@ -267,15 +305,22 @@ function BookingReferenceCard({
   return (
     <Card
       padding="md"
-      className="surface-brand"
+      className={[
+        'overflow-hidden',
+        'border-[var(--border-subtle)]',
+        'bg-[var(--background-brand)]',
+      ].join(' ')}
     >
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-5">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--foreground-muted)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--foreground-muted)]">
             Booking reference
           </p>
 
-          <p className="mt-2 break-all font-mono text-base font-semibold text-[var(--foreground)]">
+          <p
+            className="mt-2 break-all font-mono text-sm font-semibold leading-5 text-[var(--foreground)]"
+            title={booking.publicId}
+          >
             {booking.publicId}
           </p>
         </div>
@@ -297,10 +342,12 @@ function BookingReferenceCard({
           />
         </div>
 
-        <p className="text-xs leading-5 text-[var(--foreground-muted)]">
-          Keep this booking reference available when contacting sisiMove
-          support about this booking.
-        </p>
+        <div className="border-t border-[var(--border-subtle)] pt-4">
+          <p className="text-xs leading-5 text-[var(--foreground-muted)]">
+            Keep this booking reference available when contacting sisiMove
+            support about this booking.
+          </p>
+        </div>
       </div>
     </Card>
   );
@@ -321,7 +368,7 @@ function ReferenceValue({
 }: ReferenceValueProps) {
   return (
     <div className="min-w-0">
-      <p className="text-xs font-medium text-[var(--foreground-muted)]">
+      <p className="text-[11px] font-medium text-[var(--foreground-muted)]">
         {label}
       </p>
 
@@ -342,9 +389,9 @@ function ReferenceValue({
 function JourneyBookingDetailLoading() {
   return (
     <main className="page-shell">
-      <div className="page-container py-6 sm:py-8 lg:py-10">
+      <div className="page-container py-5 sm:py-8 lg:py-10">
         <div
-          className="flex flex-col gap-6"
+          className="mx-auto flex w-full max-w-5xl flex-col gap-6 sm:gap-8"
           aria-busy="true"
           aria-label="Loading booking"
         >
@@ -358,13 +405,13 @@ function JourneyBookingDetailLoading() {
 
           <LoadingCard className="min-h-40" />
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.9fr)]">
-            <div className="flex flex-col gap-6">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(300px,0.85fr)] lg:gap-6">
+            <div className="flex flex-col gap-5 lg:gap-6">
               <LoadingCard className="min-h-72" />
               <LoadingCard className="min-h-56" />
             </div>
 
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-5 lg:gap-6">
               <LoadingCard className="min-h-56" />
               <LoadingCard className="min-h-48" />
             </div>
@@ -419,8 +466,8 @@ function JourneyBookingDetailError({
 }: JourneyBookingDetailErrorProps) {
   return (
     <main className="page-shell">
-      <div className="page-container py-6 sm:py-8 lg:py-10">
-        <div className="mx-auto flex min-h-[60vh] max-w-xl items-center justify-center">
+      <div className="page-container py-5 sm:py-8 lg:py-10">
+        <div className="mx-auto flex min-h-[60vh] w-full max-w-xl items-center justify-center">
           <Card
             padding="lg"
             className="w-full"
@@ -430,15 +477,18 @@ function JourneyBookingDetailError({
                 aria-hidden="true"
                 className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--danger-soft)] text-[var(--danger)]"
               >
-                !
+                <CircleAlert
+                  size={22}
+                  strokeWidth={1.8}
+                />
               </div>
 
               <div>
-                <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--foreground-muted)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--foreground-muted)]">
                   Booking
                 </p>
 
-                <h1 className="mt-1 text-xl font-semibold text-[var(--foreground)]">
+                <h1 className="mt-1 text-xl font-semibold tracking-tight text-[var(--foreground)]">
                   We couldn&apos;t load this booking
                 </h1>
 
@@ -476,7 +526,7 @@ function JourneyBookingDetailError({
 
                 <Link
                   href="/my-bookings"
-                  className="inline-flex min-h-10 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-4 text-sm font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--background-subtle)]"
+                  className="inline-flex min-h-10 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-4 text-sm font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--background-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)] focus-visible:ring-offset-2"
                 >
                   Back to my bookings
                 </Link>
@@ -502,8 +552,8 @@ function JourneyBookingDetailEmpty({
 }: JourneyBookingDetailEmptyProps) {
   return (
     <main className="page-shell">
-      <div className="page-container py-6 sm:py-8 lg:py-10">
-        <div className="mx-auto flex min-h-[60vh] max-w-xl items-center justify-center">
+      <div className="page-container py-5 sm:py-8 lg:py-10">
+        <div className="mx-auto flex min-h-[60vh] w-full max-w-xl items-center justify-center">
           <Card
             padding="lg"
             className="w-full"
@@ -513,15 +563,18 @@ function JourneyBookingDetailEmpty({
                 aria-hidden="true"
                 className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--background-muted)] text-[var(--foreground-muted)]"
               >
-                ?
+                <CircleHelp
+                  size={22}
+                  strokeWidth={1.8}
+                />
               </div>
 
               <div>
-                <p className="text-xs font-medium uppercase tracking-[0.08em] text-[var(--foreground-muted)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--foreground-muted)]">
                   Booking
                 </p>
 
-                <h1 className="mt-1 text-xl font-semibold text-[var(--foreground)]">
+                <h1 className="mt-1 text-xl font-semibold tracking-tight text-[var(--foreground)]">
                   Booking not found
                 </h1>
 
@@ -538,7 +591,7 @@ function JourneyBookingDetailEmpty({
 
               <Link
                 href="/my-bookings"
-                className="inline-flex min-h-10 items-center justify-center rounded-[var(--radius-md)] bg-[var(--brand)] px-4 text-sm font-semibold text-[var(--brand-foreground)] transition-colors hover:bg-[var(--brand-hover)]"
+                className="inline-flex min-h-10 w-full items-center justify-center rounded-[var(--radius-md)] bg-[var(--brand)] px-4 text-sm font-semibold text-[var(--brand-foreground)] transition-colors hover:bg-[var(--brand-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)] focus-visible:ring-offset-2 sm:w-auto"
               >
                 Back to my bookings
               </Link>
