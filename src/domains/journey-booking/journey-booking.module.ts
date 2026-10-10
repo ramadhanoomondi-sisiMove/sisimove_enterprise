@@ -1,19 +1,16 @@
-// src/domains/journey-booking/journey-booking.module.ts
-
 // -----------------------------------------------------------------------------
-
 // Journey Booking — Module
-
 // -----------------------------------------------------------------------------
 
-import { Module } from '@nestjs/common';
-
+import { forwardRef, Module } from '@nestjs/common';
 // -----------------------------------------------------------------------------
 // Domain Dependencies
 // -----------------------------------------------------------------------------
 
+import { FinancialModule } from '../financial/financial.module';
 import { IdentityModule } from '../identity/identity.module';
 import { JourneyModule } from '../journey/journey.module';
+import { JourneyBoardingModule } from '../journey-boarding/journey-boarding.module';
 import { SocialModule } from '../social/social.module';
 import { TrustModule } from '../trust/trust.module';
 
@@ -51,6 +48,7 @@ import {
   CaptureJourneyBookingPaymentHandler,
   CompleteJourneyBookingHandler,
   ConfirmJourneyBookingHandler,
+  ConfirmJourneyBookingWithPaymentHandler,
   CreateJourneyBookingHandler,
   CreateJourneyBookingPaymentHandler,
   CreateJourneyBookingSnapshotHandler,
@@ -96,9 +94,23 @@ import {
 
     // -------------------------------------------------------------------------
     // Journey
+    //
+    // Provides the Journey repository required to resolve the journey associated
+    // with a booking and reserve journey capacity during confirmation.
     // -------------------------------------------------------------------------
 
-    JourneyModule,
+    forwardRef(() => JourneyModule),
+
+    // -------------------------------------------------------------------------
+    // Journey Boarding
+    //
+    // Exposes JOURNEY_BOARDING_TOKENS.REPOSITORY through the module's exports.
+    //
+    // ConfirmJourneyBookingWithPaymentHandler uses this repository to register
+    // the expected passenger against the boarding associated with the journey.
+    // -------------------------------------------------------------------------
+
+    JourneyBoardingModule,
 
     // -------------------------------------------------------------------------
     // Social
@@ -113,7 +125,19 @@ import {
     TrustModule,
 
     // -------------------------------------------------------------------------
+    // Financial
+    //
+    // Provides the Financial Account, Financial Account Hold, and Financial
+    // Transaction repositories required by booking payment workflows.
+    // -------------------------------------------------------------------------
+
+    FinancialModule,
+
+    // -------------------------------------------------------------------------
     // Prisma
+    //
+    // Provides shared Prisma infrastructure, including the unit of work used
+    // by atomic booking confirmation and payment authorization.
     // -------------------------------------------------------------------------
 
     PrismaModule,
@@ -171,6 +195,22 @@ import {
     {
       provide: JOURNEY_BOOKING_TOKENS.COMMAND_HANDLERS.CONFIRM,
       useClass: ConfirmJourneyBookingHandler,
+    },
+
+    // -------------------------------------------------------------------------
+    // Atomic Payment + Booking Confirmation
+    //
+    // This handler coordinates payment authorization, booking confirmation,
+    // journey capacity reservation, and expected passenger registration.
+    //
+    // These operations are intended to participate in the same Prisma
+    // transaction through the shared unit of work and transaction context.
+    // All participating repositories must use that transaction context.
+    // -------------------------------------------------------------------------
+
+    {
+      provide: JOURNEY_BOOKING_TOKENS.COMMAND_HANDLERS.CONFIRM_WITH_PAYMENT,
+      useClass: ConfirmJourneyBookingWithPaymentHandler,
     },
 
     {
@@ -286,8 +326,16 @@ import {
   // ===========================================================================
   // Exports
   // ===========================================================================
+  //
+  // Preserve the existing repository export. Other modules should consume the
+  // booking repository through its application contract rather than depending
+  // on the concrete Prisma implementation.
+  // ===========================================================================
 
-  exports: [JOURNEY_BOOKING_TOKENS.REPOSITORY],
+  exports: [
+    JOURNEY_BOOKING_TOKENS.REPOSITORY,
+    JOURNEY_BOOKING_TOKENS.QUERY_HANDLERS.FIND_BY_JOURNEY,
+  ],
 })
 export class JourneyBookingModule {}
 

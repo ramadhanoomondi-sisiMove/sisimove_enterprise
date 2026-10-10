@@ -3,6 +3,12 @@
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
+
+// -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
@@ -13,6 +19,12 @@ import type { QueryHandler } from '../../../../foundation/kernel/application/que
 // -----------------------------------------------------------------------------
 
 import type { GetJourneyBoardingQuery } from '../queries/get-journey-boarding.query';
+
+// -----------------------------------------------------------------------------
+// Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_BOARDING_TOKENS } from '../journey-boarding.tokens';
 
 // -----------------------------------------------------------------------------
 // Aggregate
@@ -44,7 +56,15 @@ import { JourneyBoardingNotFoundException } from '../../domain/exceptions';
  * 1. Query the Journey Boarding repository.
  * 2. Translate a missing aggregate into JourneyBoardingNotFoundException.
  * 3. Return the rehydrated JourneyBoardingAggregate.
+ *
+ * Dependency injection:
+ *
+ * - The repository interface is resolved through
+ *   JOURNEY_BOARDING_TOKENS.REPOSITORY.
+ * - The token allows NestJS to inject the concrete infrastructure repository
+ *   without requiring the domain repository interface at runtime.
  */
+@Injectable()
 export class GetJourneyBoardingHandler implements QueryHandler<
   GetJourneyBoardingQuery,
   JourneyBoardingAggregate
@@ -53,7 +73,10 @@ export class GetJourneyBoardingHandler implements QueryHandler<
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly repository: JourneyBoardingRepository) {}
+  public constructor(
+    @Inject(JOURNEY_BOARDING_TOKENS.REPOSITORY)
+    private readonly repository: JourneyBoardingRepository,
+  ) {}
 
   // ===========================================================================
   // Execute
@@ -87,3 +110,9 @@ export class GetJourneyBoardingHandler implements QueryHandler<
     return aggregate;
   }
 }
+
+// -----------------------------------------------------------------------------
+// Default Export
+// -----------------------------------------------------------------------------
+
+export default GetJourneyBoardingHandler;

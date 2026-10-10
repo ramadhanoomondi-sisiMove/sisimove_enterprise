@@ -1,58 +1,15 @@
 // -----------------------------------------------------------------------------
 // Support — Application DI Tokens
 // -----------------------------------------------------------------------------
-//
-// Central dependency-injection tokens for the Support application layer.
-//
-// Covers:
-//
-// - repositories;
-// - command handlers;
-// - query handlers.
-//
-// Aggregate boundary:
-//
-// SupportCaseAggregate
-// ├── SupportCaseEntity
-// ├── SupportCaseParticipantEntity[]
-// ├── SupportCaseMessageEntity[]
-// ├── SupportCaseNoteEntity[]
-// ├── SupportCaseEvidenceEntity[]
-// └── SupportCaseResolutionEntity?
-//
-// IMPORTANT:
-//
-// Support is responsible for:
-//
-// - Support Case lifecycle;
-// - Support Case assignment;
-// - Support Case priority and category;
-// - Support Case participant lifecycle;
-// - Support Case message lifecycle;
-// - Support Case note lifecycle;
-// - Support Case evidence lifecycle;
-// - Support Case resolution lifecycle;
-// - Support Case domain event recording.
-//
-// The SupportCaseEntity is the aggregate root.
-//
-// Child entities are owned by the SupportCaseAggregate and are therefore
-// persisted and rehydrated through the SupportCaseRepository.
-//
-// The application layer depends only on repository abstractions and MUST NOT
-// import concrete persistence implementations directly.
-//
-// Concrete infrastructure implementations are bound to these tokens by the
-// infrastructure dependency-injection layer.
-//
-// Cross-domain references such as member, identity, asset, journey, booking,
-// payment, or other domain public IDs remain opaque to Support.
-//
-// -----------------------------------------------------------------------------
 
-// =============================================================================
-// Support Tokens
-// =============================================================================
+/**
+ * Central dependency-injection tokens for the Support application layer.
+ *
+ * Covers repositories, command handlers, and query handlers.
+ *
+ * Cross-domain references such as member, identity, asset, journey, booking,
+ * payment, or other domain public IDs remain opaque to Support.
+ */
 
 export const SUPPORT_TOKENS = {
   // ===========================================================================
@@ -60,17 +17,12 @@ export const SUPPORT_TOKENS = {
   // ===========================================================================
 
   REPOSITORIES: {
-    // =========================================================================
-    // Support Case
-    // =========================================================================
-
     /**
      * Support Case aggregate repository.
      *
      * Infrastructure provides the concrete persistence implementation.
-     *
-     * The repository is responsible for persisting and rehydrating the
-     * complete SupportCaseAggregate, including its owned child entities.
+     * The repository persists and rehydrates the complete SupportCaseAggregate,
+     * including its owned child entities.
      */
     SUPPORT_CASE: Symbol('SupportCaseRepository'),
   } as const,
@@ -88,6 +40,14 @@ export const SUPPORT_TOKENS = {
      * Creates a Support Case aggregate.
      */
     CREATE_SUPPORT_CASE: Symbol('CreateSupportCaseHandler'),
+
+    /**
+     * Creates a Support Case linked to a Journey.
+     *
+     * The application handler validates access to the Journey and delegates
+     * Support Case creation to the existing CreateSupportCaseHandler.
+     */
+    CREATE_JOURNEY_SUPPORT_CASE: Symbol('CreateJourneySupportCaseHandler'),
 
     /**
      * Assigns a Support Case to an internal member.

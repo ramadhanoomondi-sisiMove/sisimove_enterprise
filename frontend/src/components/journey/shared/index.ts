@@ -1,3 +1,4 @@
+//src/components/journey/shared/index.ts
 // -----------------------------------------------------------------------------
 // sisiMove — Journey Shared Components
 // -----------------------------------------------------------------------------
@@ -18,6 +19,7 @@
 //       JourneyRoute,
 //       JourneyScheduleSummary,
 //       JourneyStatusBadge,
+//       JourneyUnreadMessagesBadge,
 //       JourneyVehicleAsset,
 //       JourneyVehicleSummary,
 //       JourneyWaypoints,
@@ -57,3 +59,20 @@ export type { JourneyWaypointsProps } from "./journey-waypoints";
 
 export { JourneyActions } from "./journey-actions";
 export type { JourneyActionsProps } from "./journey-actions";
+
+export { JourneyBookingsSummary } from "./journey-bookings-summary";
+export type { JourneyBookingsSummaryProps } from "./journey-bookings-summary";
+
+export { JourneyBoardingSummary } from "./journey-boarding-summary";
+export type { JourneyBoardingSummaryProps } from "./journey-boarding-summary";
+
+export { JourneyUnreadMessagesBadge } from "./journey-unread-messages-badge";
+export type {
+  JourneyUnreadMessagesBadgeProps,
+} from "./journey-unread-messages-badge";
+
+export { JourneyGetSupportAction } from './journey-get-support-action';
+export type {
+  JourneyGetSupportActionProps,
+} from './journey-get-support-action';
+

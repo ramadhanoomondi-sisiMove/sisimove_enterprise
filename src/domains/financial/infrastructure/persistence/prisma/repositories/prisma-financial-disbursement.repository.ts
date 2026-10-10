@@ -42,7 +42,7 @@
 // - Preserve public domain identities.
 // - Preserve source-account ownership.
 // - Preserve destination association.
-// - Persist aggregate-owned attempts atomically.
+// - Persist aggregate-owned attempts.
 // - Synchronize attempt lifecycle state.
 // - Support aggregate queries.
 // - Support destination resolution.
@@ -51,6 +51,42 @@
 // - Support transaction-reference queries.
 // - Support lifecycle-status queries.
 // - Support existence queries.
+//
+// Transaction boundary:
+//
+// This repository DOES NOT create its own Prisma transaction.
+//
+// All persistence operations use PrismaTransactionContext.
+//
+// When the repository is called inside a PrismaUnitOfWork, the transaction
+// context resolves to the active Prisma.TransactionClient and therefore all
+// operations performed by this repository participate in the ambient
+// application transaction.
+//
+// When no UnitOfWork is active, the transaction context falls back to the
+// application PrismaService.
+//
+// Therefore:
+//
+//     Application Workflow
+//             │
+//             ▼
+//     PrismaUnitOfWork
+//             │
+//             ▼
+//     PrismaTransactionContext
+//             │
+//       ┌─────┴─────┐
+//       ▼           ▼
+//   Transaction   PrismaService
+//
+// The repository is deliberately transaction-agnostic.
+//
+// Atomicity belongs to the application UnitOfWork boundary, not to an
+// individual repository method.
+//
+// This is required so workflows spanning multiple Financial aggregates or
+// multiple domains can participate in one database transaction.
 //
 // This repository does NOT:
 //
@@ -69,10 +105,25 @@
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Injectable } from '@nestjs/common';
+
+// -----------------------------------------------------------------------------
+// Prisma Transaction Context
+// -----------------------------------------------------------------------------
+
+import {
+  PrismaTransactionContext,
+  type PrismaClientLike,
+} from '../../../../../../infrastructure/database/prisma/prisma-transaction.context';
+
+// -----------------------------------------------------------------------------
 // Prisma
 // -----------------------------------------------------------------------------
 
-import type { Prisma, PrismaClient } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 
 // -----------------------------------------------------------------------------
 // Repository Contract
@@ -127,12 +178,39 @@ import { FinancialDisbursementException } from '../../../../domain/exceptions/fi
 // Repository
 // =============================================================================
 
+@Injectable()
 export class PrismaFinancialDisbursementRepository implements FinancialDisbursementRepository {
   // ===========================================================================
   // Constructor
   // ===========================================================================
 
-  public constructor(private readonly prisma: PrismaClient) {}
+  public constructor(
+    private readonly transactionContext: PrismaTransactionContext,
+  ) {}
+
+  // ===========================================================================
+  // Ambient Prisma Client
+  // ===========================================================================
+
+  /**
+   * Returns the Prisma client associated with the current application
+   * transaction context.
+   *
+   * IMPORTANT:
+   *
+   * This is intentionally not a PrismaService property.
+   *
+   * PrismaTransactionContext resolves to:
+   *
+   * - Prisma.TransactionClient when a PrismaUnitOfWork is active;
+   * - PrismaService when no UnitOfWork is active.
+   *
+   * Consequently, every repository operation participates automatically in
+   * the surrounding application transaction when one exists.
+   */
+  private get prisma(): PrismaClientLike {
+    return this.transactionContext.getClient();
+  }
 
   // ===========================================================================
   // Create
@@ -141,7 +219,7 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
   /**
    * Persists a brand-new Financial Disbursement aggregate.
    *
-   * Persistence is atomic:
+   * Persistence consists of:
    *
    * FinancialDisbursement
    * └── FinancialDisbursementAttempt[]
@@ -149,103 +227,112 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
    * The selected Financial Disbursement Destination already exists.
    *
    * The destination is referenced but is never created or modified here.
+   *
+   * IMPORTANT:
+   *
+   * This method does not create its own transaction.
+   *
+   * If atomicity is required, the application command handler/use-case must
+   * execute this method inside PrismaUnitOfWork.
    */
   public async create(
     aggregate: FinancialDisbursementAggregate,
   ): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      // -----------------------------------------------------------------------
-      // Resolve Source Financial Account
-      // -----------------------------------------------------------------------
-
-      const accountId = await this.resolveAccountId(
-        tx,
-        aggregate.sourceAccountPublicId,
+    if (aggregate === undefined) {
+      throw new FinancialDisbursementException(
+        'Financial Disbursement aggregate is required.',
       );
+    }
 
-      // -----------------------------------------------------------------------
-      // Resolve Destination
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Resolve Source Financial Account
+    // -------------------------------------------------------------------------
 
-      const destinationId = await this.resolveDestinationId(
-        tx,
-        aggregate.destinationPublicId,
-        accountId,
+    const accountId = await this.resolveAccountId(
+      aggregate.sourceAccountPublicId,
+    );
+
+    // -------------------------------------------------------------------------
+    // Resolve Destination
+    // -------------------------------------------------------------------------
+
+    const destinationId = await this.resolveDestinationId(
+      aggregate.destinationPublicId,
+      accountId,
+    );
+
+    // -------------------------------------------------------------------------
+    // Map Aggregate
+    // -------------------------------------------------------------------------
+
+    const persistence =
+      FinancialDisbursementPrismaMapper.aggregateToPersistence(aggregate);
+
+    // -------------------------------------------------------------------------
+    // Validate Source Account Consistency
+    // -------------------------------------------------------------------------
+
+    if (persistence.disbursement.sourceAccountId !== accountId) {
+      throw new FinancialDisbursementException(
+        `Financial Disbursement "${aggregate.publicId.value}" contains an inconsistent source Financial Account reference.`,
       );
+    }
 
-      // -----------------------------------------------------------------------
-      // Map Aggregate
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Validate Destination Consistency
+    // -------------------------------------------------------------------------
 
-      const persistence =
-        FinancialDisbursementPrismaMapper.aggregateToPersistence(aggregate);
+    if (persistence.disbursement.destinationId !== destinationId) {
+      throw new FinancialDisbursementException(
+        `Financial Disbursement "${aggregate.publicId.value}" contains an inconsistent Financial Disbursement Destination reference.`,
+      );
+    }
 
-      // -----------------------------------------------------------------------
-      // Validate Source Account Consistency
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Create Disbursement
+    // -------------------------------------------------------------------------
 
-      if (persistence.disbursement.sourceAccountId !== accountId) {
-        throw new FinancialDisbursementException(
-          `Financial Disbursement "${aggregate.publicId.value}" contains an inconsistent source Financial Account reference.`,
-        );
-      }
+    await this.prisma.financialDisbursement.create({
+      data: {
+        id: persistence.disbursement.id,
 
-      // -----------------------------------------------------------------------
-      // Validate Destination Consistency
-      // -----------------------------------------------------------------------
+        publicId: persistence.disbursement.publicId,
 
-      if (persistence.disbursement.destinationId !== destinationId) {
-        throw new FinancialDisbursementException(
-          `Financial Disbursement "${aggregate.publicId.value}" contains an inconsistent Financial Disbursement Destination reference.`,
-        );
-      }
+        sourceAccountId: accountId,
 
-      // -----------------------------------------------------------------------
-      // Create Disbursement
-      // -----------------------------------------------------------------------
+        destinationId,
 
-      await tx.financialDisbursement.create({
-        data: {
-          id: persistence.disbursement.id,
+        amount: persistence.disbursement.amount,
 
-          publicId: persistence.disbursement.publicId,
+        currency: persistence.disbursement.currency,
 
-          sourceAccountId: accountId,
+        status: persistence.disbursement.status,
 
-          destinationId,
+        referenceType: persistence.disbursement.referenceType,
 
-          amount: persistence.disbursement.amount,
+        referencePublicId: persistence.disbursement.referencePublicId,
 
-          currency: persistence.disbursement.currency,
+        transactionPublicId: persistence.disbursement.transactionPublicId,
 
-          status: persistence.disbursement.status,
+        requestedAt: persistence.disbursement.requestedAt,
 
-          referenceType: persistence.disbursement.referenceType,
+        completedAt: persistence.disbursement.completedAt,
 
-          referencePublicId: persistence.disbursement.referencePublicId,
+        failedAt: persistence.disbursement.failedAt,
 
-          transactionPublicId: persistence.disbursement.transactionPublicId,
+        cancelledAt: persistence.disbursement.cancelledAt,
 
-          requestedAt: persistence.disbursement.requestedAt,
+        createdAt: persistence.disbursement.createdAt,
 
-          completedAt: persistence.disbursement.completedAt,
-
-          failedAt: persistence.disbursement.failedAt,
-
-          cancelledAt: persistence.disbursement.cancelledAt,
-
-          createdAt: persistence.disbursement.createdAt,
-
-          updatedAt: persistence.disbursement.updatedAt,
-        },
-      });
-
-      // -----------------------------------------------------------------------
-      // Create Aggregate-Owned Attempts
-      // -----------------------------------------------------------------------
-
-      await this.createAttempts(tx, aggregate);
+        updatedAt: persistence.disbursement.updatedAt,
+      },
     });
+
+    // -------------------------------------------------------------------------
+    // Create Aggregate-Owned Attempts
+    // -------------------------------------------------------------------------
+
+    await this.createAttempts(aggregate);
   }
 
   // ===========================================================================
@@ -267,133 +354,156 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
    * 7. Update the Financial Disbursement.
    * 8. Synchronize aggregate-owned attempts.
    *
-   * All operations occur inside one database transaction.
+   * IMPORTANT:
+   *
+   * No repository-owned transaction is created here.
+   *
+   * When called from a PrismaUnitOfWork, all operations below use the same
+   * transaction-scoped Prisma client and therefore remain atomic.
    */
   public async save(aggregate: FinancialDisbursementAggregate): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      // -----------------------------------------------------------------------
-      // Load Existing Disbursement
-      // -----------------------------------------------------------------------
-
-      const existing = await tx.financialDisbursement.findUnique({
-        where: {
-          id: aggregate.id.toString(),
-        },
-
-        select: {
-          id: true,
-          publicId: true,
-          sourceAccountId: true,
-          destinationId: true,
-        },
-      });
-
-      // -----------------------------------------------------------------------
-      // Existence
-      // -----------------------------------------------------------------------
-
-      if (existing === null) {
-        throw new FinancialDisbursementException(
-          `Financial Disbursement "${aggregate.publicId.value}" does not exist and cannot be updated.`,
-        );
-      }
-
-      // -----------------------------------------------------------------------
-      // Public Identity Stability
-      // -----------------------------------------------------------------------
-
-      if (existing.publicId !== aggregate.publicId.value) {
-        throw new FinancialDisbursementException(
-          `Financial Disbursement internal identity "${aggregate.id.toString()}" is associated with a different public identity.`,
-        );
-      }
-
-      // -----------------------------------------------------------------------
-      // Resolve Source Financial Account
-      // -----------------------------------------------------------------------
-
-      const accountId = await this.resolveAccountId(
-        tx,
-        aggregate.sourceAccountPublicId,
+    if (aggregate === undefined) {
+      throw new FinancialDisbursementException(
+        'Financial Disbursement aggregate is required.',
       );
+    }
 
-      // -----------------------------------------------------------------------
-      // Source Account Ownership Stability
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Load Existing Disbursement
+    // -------------------------------------------------------------------------
 
-      if (existing.sourceAccountId !== accountId) {
-        throw new FinancialDisbursementException(
-          `Financial Disbursement "${aggregate.publicId.value}" cannot be moved to another Financial Account.`,
-        );
-      }
+    const existing = await this.prisma.financialDisbursement.findUnique({
+      where: {
+        id: aggregate.id.toString(),
+      },
 
-      // -----------------------------------------------------------------------
-      // Resolve Destination
-      // -----------------------------------------------------------------------
-
-      const destinationId = await this.resolveDestinationId(
-        tx,
-        aggregate.destinationPublicId,
-        accountId,
-      );
-
-      // -----------------------------------------------------------------------
-      // Destination Association Stability
-      // -----------------------------------------------------------------------
-
-      if (existing.destinationId !== destinationId) {
-        throw new FinancialDisbursementException(
-          `Financial Disbursement "${aggregate.publicId.value}" cannot be moved to another Financial Disbursement Destination.`,
-        );
-      }
-
-      // -----------------------------------------------------------------------
-      // Map Aggregate
-      // -----------------------------------------------------------------------
-
-      const persistence =
-        FinancialDisbursementPrismaMapper.aggregateToPersistence(aggregate);
-
-      // -----------------------------------------------------------------------
-      // Update Disbursement
-      // -----------------------------------------------------------------------
-
-      await tx.financialDisbursement.update({
-        where: {
-          id: aggregate.id.toString(),
-        },
-
-        data: {
-          amount: persistence.disbursement.amount,
-
-          currency: persistence.disbursement.currency,
-
-          status: persistence.disbursement.status,
-
-          referenceType: persistence.disbursement.referenceType,
-
-          referencePublicId: persistence.disbursement.referencePublicId,
-
-          transactionPublicId: persistence.disbursement.transactionPublicId,
-
-          requestedAt: persistence.disbursement.requestedAt,
-
-          completedAt: persistence.disbursement.completedAt,
-
-          failedAt: persistence.disbursement.failedAt,
-
-          cancelledAt: persistence.disbursement.cancelledAt,
-
-          updatedAt: persistence.disbursement.updatedAt,
-        },
-      });
-
-      // -----------------------------------------------------------------------
-      // Synchronize Aggregate-Owned Attempts
-      // -----------------------------------------------------------------------
-
-      await this.synchronizeAttempts(tx, aggregate);
+      select: {
+        id: true,
+        publicId: true,
+        sourceAccountId: true,
+        destinationId: true,
+      },
     });
+
+    // -------------------------------------------------------------------------
+    // Existence
+    // -------------------------------------------------------------------------
+
+    if (existing === null) {
+      throw new FinancialDisbursementException(
+        `Financial Disbursement "${aggregate.publicId.value}" does not exist and cannot be updated.`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Public Identity Stability
+    // -------------------------------------------------------------------------
+
+    if (existing.publicId !== aggregate.publicId.value) {
+      throw new FinancialDisbursementException(
+        `Financial Disbursement internal identity "${aggregate.id.toString()}" is associated with a different public identity.`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Resolve Source Financial Account
+    // -------------------------------------------------------------------------
+
+    const accountId = await this.resolveAccountId(
+      aggregate.sourceAccountPublicId,
+    );
+
+    // -------------------------------------------------------------------------
+    // Source Account Ownership Stability
+    // -------------------------------------------------------------------------
+
+    if (existing.sourceAccountId !== accountId) {
+      throw new FinancialDisbursementException(
+        `Financial Disbursement "${aggregate.publicId.value}" cannot be moved to another Financial Account.`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Resolve Destination
+    // -------------------------------------------------------------------------
+
+    const destinationId = await this.resolveDestinationId(
+      aggregate.destinationPublicId,
+      accountId,
+    );
+
+    // -------------------------------------------------------------------------
+    // Destination Association Stability
+    // -------------------------------------------------------------------------
+
+    if (existing.destinationId !== destinationId) {
+      throw new FinancialDisbursementException(
+        `Financial Disbursement "${aggregate.publicId.value}" cannot be moved to another Financial Disbursement Destination.`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Map Aggregate
+    // -------------------------------------------------------------------------
+
+    const persistence =
+      FinancialDisbursementPrismaMapper.aggregateToPersistence(aggregate);
+
+    // -------------------------------------------------------------------------
+    // Validate Persistence References
+    // -------------------------------------------------------------------------
+
+    if (persistence.disbursement.sourceAccountId !== accountId) {
+      throw new FinancialDisbursementException(
+        `Financial Disbursement "${aggregate.publicId.value}" contains an inconsistent source Financial Account reference.`,
+      );
+    }
+
+    if (persistence.disbursement.destinationId !== destinationId) {
+      throw new FinancialDisbursementException(
+        `Financial Disbursement "${aggregate.publicId.value}" contains an inconsistent Financial Disbursement Destination reference.`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Update Disbursement
+    // -------------------------------------------------------------------------
+
+    await this.prisma.financialDisbursement.update({
+      where: {
+        id: aggregate.id.toString(),
+      },
+
+      data: {
+        amount: persistence.disbursement.amount,
+
+        currency: persistence.disbursement.currency,
+
+        status: persistence.disbursement.status,
+
+        referenceType: persistence.disbursement.referenceType,
+
+        referencePublicId: persistence.disbursement.referencePublicId,
+
+        transactionPublicId: persistence.disbursement.transactionPublicId,
+
+        requestedAt: persistence.disbursement.requestedAt,
+
+        completedAt: persistence.disbursement.completedAt,
+
+        failedAt: persistence.disbursement.failedAt,
+
+        cancelledAt: persistence.disbursement.cancelledAt,
+
+        updatedAt: persistence.disbursement.updatedAt,
+      },
+    });
+
+    // -------------------------------------------------------------------------
+    // Synchronize Aggregate-Owned Attempts
+    // -------------------------------------------------------------------------
+
+    await this.synchronizeAttempts(aggregate);
   }
 
   // ===========================================================================
@@ -492,10 +602,7 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
   public async findBySourceAccountPublicId(
     sourceAccountPublicId: FinancialAccountPublicId,
   ): Promise<FinancialDisbursementAggregate[]> {
-    const accountId = await this.resolveAccountId(
-      this.prisma,
-      sourceAccountPublicId,
-    );
+    const accountId = await this.resolveAccountId(sourceAccountPublicId);
 
     const records = await this.prisma.financialDisbursement.findMany({
       where: {
@@ -690,9 +797,18 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
    * FinancialAccountPublicId
    *          ↓
    * FinancialAccount.id
+   *
+   * The public ID remains the domain-level identity.
+   *
+   * The internal Prisma ID is resolved only at the persistence boundary.
+   *
+   * IMPORTANT:
+   *
+   * This method intentionally uses the ambient Prisma client. It does not
+   * accept a Prisma client argument because transaction scope is owned by
+   * PrismaTransactionContext.
    */
   private async resolveAccountId(
-    prisma: PrismaClient | Prisma.TransactionClient,
     accountPublicId: FinancialAccountPublicId,
   ): Promise<string> {
     const normalized = accountPublicId.value.trim();
@@ -703,7 +819,7 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
       );
     }
 
-    const account = await prisma.financialAccount.findUnique({
+    const account = await this.prisma.financialAccount.findUnique({
       where: {
         publicId: normalized,
       },
@@ -735,9 +851,19 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
    *
    * Additionally verifies that the destination belongs to the source
    * Financial Account.
+   *
+   * IMPORTANT:
+   *
+   * Destination ownership is a persistence invariant:
+   *
+   * FinancialAccount
+   *      │
+   *      └── FinancialDisbursementDestination
+   *
+   * A destination belonging to another Financial Account cannot be attached
+   * to this Financial Disbursement.
    */
   private async resolveDestinationId(
-    prisma: PrismaClient | Prisma.TransactionClient,
     destinationPublicId: FinancialDisbursementDestinationPublicId,
     accountId: string,
   ): Promise<string> {
@@ -750,7 +876,7 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
     }
 
     const destination =
-      await prisma.financialDisbursementDestination.findUnique({
+      await this.prisma.financialDisbursementDestination.findUnique({
         where: {
           publicId: normalized,
         },
@@ -783,10 +909,13 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
   /**
    * Creates all attempts belonging to a newly-created Financial Disbursement.
    *
-   * The surrounding Prisma transaction guarantees atomicity.
+   * Attempts are aggregate-owned and therefore persisted as part of the
+   * aggregate persistence operation.
+   *
+   * Atomicity is supplied by the ambient PrismaTransactionContext when the
+   * caller is executing inside a PrismaUnitOfWork.
    */
   private async createAttempts(
-    prisma: PrismaClient | Prisma.TransactionClient,
     aggregate: FinancialDisbursementAggregate,
   ): Promise<void> {
     if (aggregate.attempts.length === 0) {
@@ -810,10 +939,20 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
         FinancialDisbursementPrismaMapper.attemptToPersistence(attempt);
 
       // -----------------------------------------------------------------------
+      // Persistence Parent Consistency
+      // -----------------------------------------------------------------------
+
+      if (persistence.disbursementId !== disbursementId) {
+        throw new FinancialDisbursementException(
+          `Financial Disbursement Attempt "${attempt.publicId.value}" contains an inconsistent Financial Disbursement reference.`,
+        );
+      }
+
+      // -----------------------------------------------------------------------
       // Create
       // -----------------------------------------------------------------------
 
-      await prisma.financialDisbursementAttempt.create({
+      await this.prisma.financialDisbursementAttempt.create({
         data: {
           id: persistence.id,
 
@@ -863,9 +1002,13 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
    * - Missing persisted attempt -> preserve.
    *
    * Attempts are never deleted.
+   *
+   * The aggregate owns the lifecycle of its attempts, but this repository
+   * intentionally does not interpret retry policy or provider semantics.
+   *
+   * It only persists the state supplied by the aggregate.
    */
   private async synchronizeAttempts(
-    prisma: PrismaClient | Prisma.TransactionClient,
     aggregate: FinancialDisbursementAggregate,
   ): Promise<void> {
     const disbursementId = aggregate.id.toString();
@@ -885,27 +1028,38 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
         FinancialDisbursementPrismaMapper.attemptToPersistence(attempt);
 
       // -----------------------------------------------------------------------
+      // Persistence Parent Consistency
+      // -----------------------------------------------------------------------
+
+      if (persistence.disbursementId !== disbursementId) {
+        throw new FinancialDisbursementException(
+          `Financial Disbursement Attempt "${attempt.publicId.value}" contains an inconsistent Financial Disbursement reference.`,
+        );
+      }
+
+      // -----------------------------------------------------------------------
       // Locate Existing Attempt
       // -----------------------------------------------------------------------
 
-      const existing = await prisma.financialDisbursementAttempt.findUnique({
-        where: {
-          id: persistence.id,
-        },
+      const existing =
+        await this.prisma.financialDisbursementAttempt.findUnique({
+          where: {
+            id: persistence.id,
+          },
 
-        select: {
-          id: true,
-          publicId: true,
-          disbursementId: true,
-        },
-      });
+          select: {
+            id: true,
+            publicId: true,
+            disbursementId: true,
+          },
+        });
 
       // -----------------------------------------------------------------------
       // Insert New Attempt
       // -----------------------------------------------------------------------
 
       if (existing === null) {
-        await prisma.financialDisbursementAttempt.create({
+        await this.prisma.financialDisbursementAttempt.create({
           data: {
             id: persistence.id,
 
@@ -966,7 +1120,7 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
       // Update Existing Attempt
       // -----------------------------------------------------------------------
 
-      await prisma.financialDisbursementAttempt.update({
+      await this.prisma.financialDisbursementAttempt.update({
         where: {
           id: persistence.id,
         },

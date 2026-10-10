@@ -3013,27 +3013,27 @@ await prisma.verificationRequest.upsert({
     },
   });
 
-  await prisma.financialAccountBalance.upsert({
-    where: {
-      accountId: memberAccount.id,
-    },
-    update: {
-      availableAmount: 0,
-      pendingAmount: 0,
-      heldAmount: 0,
-      currency: 'KES',
-      version: 1,
-    },
-    create: {
-      publicId: 'SM-FIN-BALANCE-MEMBER-001',
-      accountId: memberAccount.id,
-      availableAmount: 0,
-      pendingAmount: 0,
-      heldAmount: 0,
-      currency: 'KES',
-      version: 1,
-    },
-  });
+await prisma.financialAccountBalance.upsert({
+  where: {
+    accountId: memberAccount.id,
+  },
+  update: {
+    availableAmount: 10000,
+    pendingAmount: 0,
+    heldAmount: 0,
+    currency: 'KES',
+    version: 1,
+  },
+  create: {
+    publicId: 'SM-FIN-BALANCE-MEMBER-001',
+    accountId: memberAccount.id,
+    availableAmount: 10000,
+    pendingAmount: 0,
+    heldAmount: 0,
+    currency: 'KES',
+    version: 1,
+  },
+});
 
   await prisma.financialAccountBalance.upsert({
     where: {
@@ -3078,7 +3078,60 @@ await prisma.verificationRequest.upsert({
       version: 1,
     },
   });
+const memberWalletFundingTransaction =
+  await prisma.financialTransaction.upsert({
+    where: {
+      publicId: 'SM-FIN-TX-WALLET-FUNDING-MEMBER-001',
+    },
+    update: {
+      type: FinancialTransactionType.ADJUSTMENT,
+      status: FinancialTransactionStatus.COMPLETED,
+      sourceAccountId: null,
+      destinationAccountId: memberAccount.id,
+      amount: 11260,
+      currency: 'KES',
+      referenceType: 'SeedWalletFunding',
+      referencePublicId: identities.member.publicId,
+      accountingJournalPublicId: null,
+      completedAt: NOW,
+      failedAt: null,
+      reversedAt: null,
+      cancelledAt: null,
+    },
+    create: {
+      publicId: 'SM-FIN-TX-WALLET-FUNDING-MEMBER-001',
+      type: FinancialTransactionType.ADJUSTMENT,
+      status: FinancialTransactionStatus.COMPLETED,
+      sourceAccountId: null,
+      destinationAccountId: memberAccount.id,
+      amount: 11260,
+      currency: 'KES',
+      referenceType: 'SeedWalletFunding',
+      referencePublicId: identities.member.publicId,
+      completedAt: NOW,
+    },
+  });
 
+await prisma.financialTransactionEntry.upsert({
+  where: {
+    publicId: 'SM-FIN-ENTRY-WALLET-FUNDING-CREDIT-001',
+  },
+  update: {
+    transactionId: memberWalletFundingTransaction.id,
+    accountId: memberAccount.id,
+    type: FinancialTransactionEntryType.CREDIT,
+    balanceType: FinancialBalanceType.AVAILABLE,
+    amount: 11260,
+  },
+  create: {
+    publicId: 'SM-FIN-ENTRY-WALLET-FUNDING-CREDIT-001',
+    transactionId: memberWalletFundingTransaction.id,
+    accountId: memberAccount.id,
+    type: FinancialTransactionEntryType.CREDIT,
+    balanceType: FinancialBalanceType.AVAILABLE,
+    amount: 11260,
+  },
+});
   const memberPaymentMethod = await prisma.financialPaymentMethod.upsert({
     where: {
       provider_providerReference: {
@@ -3391,11 +3444,21 @@ await prisma.verificationRequest.upsert({
     },
   });
 
+
+
+  
+
   // ===========================================================================
   // 19. MESSAGING
   // ===========================================================================
 
   console.log('[19/22] Seeding messaging...');
+
+  const MESSAGING_SEEDED_AT = new Date();
+  const DRIVER_MESSAGE_SENT_AT = new Date(
+    MESSAGING_SEEDED_AT.getTime() - 2_000,
+  );
+  const PASSENGER_MESSAGE_SENT_AT = MESSAGING_SEEDED_AT;
 
   const conversation = await prisma.messagingConversation.upsert({
     where: {
@@ -3406,7 +3469,8 @@ await prisma.verificationRequest.upsert({
       status: MessagingConversationStatus.ACTIVE,
       journeyPublicId: journey.publicId,
       bookingPublicId: booking.publicId,
-      lastMessageAt: NOW,
+      createdAt: DRIVER_MESSAGE_SENT_AT,
+      lastMessageAt: PASSENGER_MESSAGE_SENT_AT,
       closedAt: null,
     },
     create: {
@@ -3415,10 +3479,14 @@ await prisma.verificationRequest.upsert({
       status: MessagingConversationStatus.ACTIVE,
       journeyPublicId: journey.publicId,
       bookingPublicId: booking.publicId,
-      lastMessageAt: NOW,
+      createdAt: DRIVER_MESSAGE_SENT_AT,
+      lastMessageAt: PASSENGER_MESSAGE_SENT_AT,
     },
   });
 
+  // Both participants start with no read timestamp.
+  // This allows each participant to have an unread message
+  // from the other participant.
   const messagingParticipants = [
     {
       publicId: 'SM-MPARTICIPANT-DRIVER-001',
@@ -3443,10 +3511,11 @@ await prisma.verificationRequest.upsert({
       update: {
         role: participant.role,
         status: MessagingParticipantStatus.ACTIVE,
-        joinedAt: NOW,
+        createdAt: DRIVER_MESSAGE_SENT_AT,
+        joinedAt: DRIVER_MESSAGE_SENT_AT,
         leftAt: null,
         removedAt: null,
-        lastReadAt: NOW,
+        lastReadAt: null,
       },
       create: {
         publicId: participant.publicId,
@@ -3454,12 +3523,14 @@ await prisma.verificationRequest.upsert({
         memberPublicId: participant.memberPublicId,
         role: participant.role,
         status: MessagingParticipantStatus.ACTIVE,
-        joinedAt: NOW,
-        lastReadAt: NOW,
+        createdAt: DRIVER_MESSAGE_SENT_AT,
+        joinedAt: DRIVER_MESSAGE_SENT_AT,
+        lastReadAt: null,
       },
     });
   }
 
+  // Driver's message: unread by the passenger.
   await prisma.messagingMessage.upsert({
     where: {
       publicId: 'SM-MESSAGE-001',
@@ -3471,7 +3542,8 @@ await prisma.verificationRequest.upsert({
       status: MessagingMessageStatus.SENT,
       content: 'Hello! I will be at Nairobi CBD before departure.',
       assetId: null,
-      sentAt: NOW,
+      sentAt: DRIVER_MESSAGE_SENT_AT,
+      createdAt: DRIVER_MESSAGE_SENT_AT,
       editedAt: null,
       deletedAt: null,
       moderatedAt: null,
@@ -3483,9 +3555,43 @@ await prisma.verificationRequest.upsert({
       type: MessagingMessageType.TEXT,
       status: MessagingMessageStatus.SENT,
       content: 'Hello! I will be at Nairobi CBD before departure.',
-      sentAt: NOW,
+      assetId: null,
+      sentAt: DRIVER_MESSAGE_SENT_AT,
+      createdAt: DRIVER_MESSAGE_SENT_AT,
     },
   });
+
+  // Passenger's reply: unread by the driver.
+  await prisma.messagingMessage.upsert({
+    where: {
+      publicId: 'SM-MESSAGE-002',
+    },
+    update: {
+      conversationId: conversation.id,
+      senderPublicId: identities.member.publicId,
+      type: MessagingMessageType.TEXT,
+      status: MessagingMessageStatus.SENT,
+      content: 'Hello! I have booked my seat. Where should I meet you?',
+      assetId: null,
+      sentAt: PASSENGER_MESSAGE_SENT_AT,
+      createdAt: PASSENGER_MESSAGE_SENT_AT,
+      editedAt: null,
+      deletedAt: null,
+      moderatedAt: null,
+    },
+    create: {
+      publicId: 'SM-MESSAGE-002',
+      conversationId: conversation.id,
+      senderPublicId: identities.member.publicId,
+      type: MessagingMessageType.TEXT,
+      status: MessagingMessageStatus.SENT,
+      content: 'Hello! I have booked my seat. Where should I meet you?',
+      assetId: null,
+      sentAt: PASSENGER_MESSAGE_SENT_AT,
+      createdAt: PASSENGER_MESSAGE_SENT_AT,
+    },
+  });
+
 
   // ===========================================================================
   // 20. NOTIFICATIONS

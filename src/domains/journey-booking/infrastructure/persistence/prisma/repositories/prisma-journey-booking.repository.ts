@@ -11,7 +11,10 @@ import type { Prisma, $Enums } from '@prisma/client';
 // Foundation
 // -----------------------------------------------------------------------------
 
-import { PrismaService } from '../../../../../../infrastructure/database/prisma/prisma.service';
+import {
+  PrismaTransactionContext,
+  type PrismaClientLike,
+} from '../../../../../../infrastructure/database/prisma/prisma-transaction.context';
 
 // -----------------------------------------------------------------------------
 // Aggregate
@@ -82,13 +85,74 @@ import {
 // Repository
 // =============================================================================
 
+/**
+ * Prisma persistence implementation for the JourneyBooking aggregate.
+ *
+ * Transaction ownership
+ * ---------------------
+ *
+ * This repository deliberately does NOT create its own Prisma transaction.
+ *
+ * All database access goes through PrismaTransactionContext. When a
+ * PrismaUnitOfWork is active, the context returns the transaction-scoped
+ * Prisma client. Otherwise it falls back to the application Prisma client.
+ *
+ * This is important because JourneyBooking persistence may participate in
+ * larger application workflows such as:
+ *
+ *     Booking
+ *       -> Financial authorization
+ *       -> Journey state changes
+ *       -> Booking payment state
+ *       -> Booking aggregate persistence
+ *
+ * The application/unit-of-work layer owns the transaction boundary so that
+ * multiple repositories can participate in one atomic database transaction.
+ *
+ * Aggregate ownership
+ * -------------------
+ *
+ * JourneyBooking is the aggregate root.
+ *
+ * Its persistence-owned components are:
+ *
+ *     JourneyBookingAggregate
+ *     ├── JourneyBookingEntity
+ *     ├── JourneyBookingSnapshotEntity
+ *     ├── JourneyBookingPricingEntity
+ *     ├── JourneyBookingPaymentEntity
+ *     └── JourneyBookingCancellationEntity
+ *
+ * These components are therefore persisted together by this repository.
+ */
 @Injectable()
 export class PrismaJourneyBookingRepository implements JourneyBookingRepository {
   // ===========================================================================
   // Constructor
   // ===========================================================================
 
-  public constructor(private readonly prisma: PrismaService) {}
+  public constructor(
+    private readonly transactionContext: PrismaTransactionContext,
+  ) {}
+
+  // ===========================================================================
+  // Ambient Prisma Client
+  // ===========================================================================
+
+  /**
+   * Returns the Prisma client associated with the current persistence scope.
+   *
+   * If the repository is being called inside PrismaUnitOfWork, this is the
+   * transaction-scoped client.
+   *
+   * If no unit of work is active, PrismaTransactionContext returns the normal
+   * application Prisma client.
+   *
+   * Repositories therefore remain transaction-agnostic.
+   */
+  private get prisma(): PrismaClientLike {
+    return this.transactionContext.getClient();
+  }
 
   // ===========================================================================
   // Prisma Enum Boundary
@@ -145,19 +209,109 @@ export class PrismaJourneyBookingRepository implements JourneyBookingRepository 
   // Aggregate Persistence
   // ===========================================================================
 
+  /**
+   * Persists the complete JourneyBooking aggregate.
+   *
+   * IMPORTANT:
+   *
+   * This method intentionally does not call `$transaction()`.
+   *
+   * The complete aggregate persistence operation uses the ambient Prisma
+   * client supplied by PrismaTransactionContext. When invoked inside a
+   * PrismaUnitOfWork, every operation below participates in that same
+   * transaction and can therefore roll back together with other domain
+   * repositories.
+   *
+   * The persistence sequence is:
+   *
+   *     JourneyBooking root
+   *         ↓
+   *     Snapshot
+   *         ↓
+   *     Pricing
+   *         ↓
+   *     Payment
+   *         ↓
+   *     Cancellation
+   *
+   * Optional aggregate components are removed from persistence when they no
+   * longer exist on the aggregate.
+   */
   public async save(aggregate: JourneyBookingAggregate): Promise<void> {
+    if (aggregate === undefined) {
+      throw new Error('Journey Booking aggregate is required.');
+    }
+
     const persistence = JourneyBookingPrismaMapper.toPersistence(aggregate);
 
-    await this.prisma.$transaction(async (tx) => {
-      const journeyBookingId = persistence.journeyBooking.id;
+    const journeyBookingId = persistence.journeyBooking.id;
+
+    // =========================================================================
+    // Journey Booking
+    // =========================================================================
+
+    await this.prisma.journeyBooking.upsert({
+      where: {
+        id: journeyBookingId,
+      },
 
       // -----------------------------------------------------------------------
-      // Journey Booking
+      // Create
       // -----------------------------------------------------------------------
 
-      await tx.journeyBooking.upsert({
+      create: {
+        id: persistence.journeyBooking.id,
+        publicId: persistence.journeyBooking.publicId,
+        journeyPublicId: persistence.journeyBooking.journeyPublicId,
+        passengerPublicId: persistence.journeyBooking.passengerPublicId,
+
+        status: this.toPrismaJourneyBookingStatus(
+          persistence.journeyBooking.status,
+        ),
+
+        seats: persistence.journeyBooking.seats,
+        confirmedAt: persistence.journeyBooking.confirmedAt,
+        cancelledAt: persistence.journeyBooking.cancelledAt,
+        completedAt: persistence.journeyBooking.completedAt,
+        expiredAt: persistence.journeyBooking.expiredAt,
+        version: persistence.journeyBooking.version,
+        createdAt: persistence.journeyBooking.createdAt,
+        updatedAt: persistence.journeyBooking.updatedAt,
+      },
+
+      // -----------------------------------------------------------------------
+      // Update
+      // -----------------------------------------------------------------------
+
+      update: {
+        publicId: persistence.journeyBooking.publicId,
+        journeyPublicId: persistence.journeyBooking.journeyPublicId,
+        passengerPublicId: persistence.journeyBooking.passengerPublicId,
+
+        status: this.toPrismaJourneyBookingStatus(
+          persistence.journeyBooking.status,
+        ),
+
+        seats: persistence.journeyBooking.seats,
+        confirmedAt: persistence.journeyBooking.confirmedAt,
+        cancelledAt: persistence.journeyBooking.cancelledAt,
+        completedAt: persistence.journeyBooking.completedAt,
+        expiredAt: persistence.journeyBooking.expiredAt,
+        version: persistence.journeyBooking.version,
+        updatedAt: persistence.journeyBooking.updatedAt,
+      },
+    });
+
+    // =========================================================================
+    // Snapshot
+    // =========================================================================
+
+    if (persistence.snapshot !== undefined) {
+      const snapshot = persistence.snapshot;
+
+      await this.prisma.journeyBookingSnapshot.upsert({
         where: {
-          id: journeyBookingId,
+          id: snapshot.id,
         },
 
         // ---------------------------------------------------------------------
@@ -165,23 +319,25 @@ export class PrismaJourneyBookingRepository implements JourneyBookingRepository 
         // ---------------------------------------------------------------------
 
         create: {
-          id: persistence.journeyBooking.id,
-          publicId: persistence.journeyBooking.publicId,
-          journeyPublicId: persistence.journeyBooking.journeyPublicId,
-          passengerPublicId: persistence.journeyBooking.passengerPublicId,
-
-          status: this.toPrismaJourneyBookingStatus(
-            persistence.journeyBooking.status,
-          ),
-
-          seats: persistence.journeyBooking.seats,
-          confirmedAt: persistence.journeyBooking.confirmedAt,
-          cancelledAt: persistence.journeyBooking.cancelledAt,
-          completedAt: persistence.journeyBooking.completedAt,
-          expiredAt: persistence.journeyBooking.expiredAt,
-          version: persistence.journeyBooking.version,
-          createdAt: persistence.journeyBooking.createdAt,
-          updatedAt: persistence.journeyBooking.updatedAt,
+          id: snapshot.id,
+          publicId: snapshot.publicId,
+          bookingId: snapshot.bookingId,
+          originName: snapshot.originName,
+          originLatitude: snapshot.originLatitude,
+          originLongitude: snapshot.originLongitude,
+          destinationName: snapshot.destinationName,
+          destinationLatitude: snapshot.destinationLatitude,
+          destinationLongitude: snapshot.destinationLongitude,
+          departureAt: snapshot.departureAt,
+          arrivalAt: snapshot.arrivalAt,
+          timezone: snapshot.timezone,
+          vehicleMake: snapshot.vehicleMake,
+          vehicleModel: snapshot.vehicleModel,
+          vehicleYear: snapshot.vehicleYear,
+          vehicleColor: snapshot.vehicleColor,
+          vehicleRegistration: snapshot.vehicleRegistration,
+          createdAt: snapshot.createdAt,
+          updatedAt: snapshot.updatedAt,
         },
 
         // ---------------------------------------------------------------------
@@ -189,288 +345,226 @@ export class PrismaJourneyBookingRepository implements JourneyBookingRepository 
         // ---------------------------------------------------------------------
 
         update: {
-          publicId: persistence.journeyBooking.publicId,
-          journeyPublicId: persistence.journeyBooking.journeyPublicId,
-          passengerPublicId: persistence.journeyBooking.passengerPublicId,
-
-          status: this.toPrismaJourneyBookingStatus(
-            persistence.journeyBooking.status,
-          ),
-
-          seats: persistence.journeyBooking.seats,
-          confirmedAt: persistence.journeyBooking.confirmedAt,
-          cancelledAt: persistence.journeyBooking.cancelledAt,
-          completedAt: persistence.journeyBooking.completedAt,
-          expiredAt: persistence.journeyBooking.expiredAt,
-          version: persistence.journeyBooking.version,
-          updatedAt: persistence.journeyBooking.updatedAt,
+          publicId: snapshot.publicId,
+          bookingId: snapshot.bookingId,
+          originName: snapshot.originName,
+          originLatitude: snapshot.originLatitude,
+          originLongitude: snapshot.originLongitude,
+          destinationName: snapshot.destinationName,
+          destinationLatitude: snapshot.destinationLatitude,
+          destinationLongitude: snapshot.destinationLongitude,
+          departureAt: snapshot.departureAt,
+          arrivalAt: snapshot.arrivalAt,
+          timezone: snapshot.timezone,
+          vehicleMake: snapshot.vehicleMake,
+          vehicleModel: snapshot.vehicleModel,
+          vehicleYear: snapshot.vehicleYear,
+          vehicleColor: snapshot.vehicleColor,
+          vehicleRegistration: snapshot.vehicleRegistration,
+          updatedAt: snapshot.updatedAt,
         },
       });
-
+    } else {
       // -----------------------------------------------------------------------
-      // Snapshot
-      // -----------------------------------------------------------------------
-
-      if (persistence.snapshot !== undefined) {
-        const snapshot = persistence.snapshot;
-
-        await tx.journeyBookingSnapshot.upsert({
-          where: {
-            id: snapshot.id,
-          },
-
-          // -------------------------------------------------------------------
-          // Create
-          // -------------------------------------------------------------------
-
-          create: {
-            id: snapshot.id,
-            publicId: snapshot.publicId,
-            bookingId: snapshot.bookingId,
-            originName: snapshot.originName,
-            originLatitude: snapshot.originLatitude,
-            originLongitude: snapshot.originLongitude,
-            destinationName: snapshot.destinationName,
-            destinationLatitude: snapshot.destinationLatitude,
-            destinationLongitude: snapshot.destinationLongitude,
-            departureAt: snapshot.departureAt,
-            arrivalAt: snapshot.arrivalAt,
-            timezone: snapshot.timezone,
-            vehicleMake: snapshot.vehicleMake,
-            vehicleModel: snapshot.vehicleModel,
-            vehicleYear: snapshot.vehicleYear,
-            vehicleColor: snapshot.vehicleColor,
-            vehicleRegistration: snapshot.vehicleRegistration,
-            createdAt: snapshot.createdAt,
-            updatedAt: snapshot.updatedAt,
-          },
-
-          // -------------------------------------------------------------------
-          // Update
-          // -------------------------------------------------------------------
-
-          update: {
-            publicId: snapshot.publicId,
-            bookingId: snapshot.bookingId,
-            originName: snapshot.originName,
-            originLatitude: snapshot.originLatitude,
-            originLongitude: snapshot.originLongitude,
-            destinationName: snapshot.destinationName,
-            destinationLatitude: snapshot.destinationLatitude,
-            destinationLongitude: snapshot.destinationLongitude,
-            departureAt: snapshot.departureAt,
-            arrivalAt: snapshot.arrivalAt,
-            timezone: snapshot.timezone,
-            vehicleMake: snapshot.vehicleMake,
-            vehicleModel: snapshot.vehicleModel,
-            vehicleYear: snapshot.vehicleYear,
-            vehicleColor: snapshot.vehicleColor,
-            vehicleRegistration: snapshot.vehicleRegistration,
-            updatedAt: snapshot.updatedAt,
-          },
-        });
-      } else {
-        // ---------------------------------------------------------------------
-        // No Snapshot
-        // ---------------------------------------------------------------------
-
-        await tx.journeyBookingSnapshot.deleteMany({
-          where: {
-            bookingId: journeyBookingId,
-          },
-        });
-      }
-
-      // -----------------------------------------------------------------------
-      // Pricing
+      // No Snapshot
       // -----------------------------------------------------------------------
 
-      if (persistence.pricing !== undefined) {
-        const pricing = persistence.pricing;
+      await this.prisma.journeyBookingSnapshot.deleteMany({
+        where: {
+          bookingId: journeyBookingId,
+        },
+      });
+    }
 
-        await tx.journeyBookingPricing.upsert({
-          where: {
-            id: pricing.id,
-          },
+    // =========================================================================
+    // Pricing
+    // =========================================================================
 
-          // -------------------------------------------------------------------
-          // Create
-          // -------------------------------------------------------------------
+    if (persistence.pricing !== undefined) {
+      const pricing = persistence.pricing;
 
-          create: {
-            id: pricing.id,
-            publicId: pricing.publicId,
-            bookingId: pricing.bookingId,
-            pricePerSeat: pricing.pricePerSeat,
-            seats: pricing.seats,
-            subtotal: pricing.subtotal,
-            discountAmount: pricing.discountAmount,
-            adjustmentAmount: pricing.adjustmentAmount,
-            totalAmount: pricing.totalAmount,
-            currency: pricing.currency,
-            createdAt: pricing.createdAt,
-            updatedAt: pricing.updatedAt,
-          },
+      await this.prisma.journeyBookingPricing.upsert({
+        where: {
+          id: pricing.id,
+        },
 
-          // -------------------------------------------------------------------
-          // Update
-          // -------------------------------------------------------------------
-
-          update: {
-            publicId: pricing.publicId,
-            bookingId: pricing.bookingId,
-            pricePerSeat: pricing.pricePerSeat,
-            seats: pricing.seats,
-            subtotal: pricing.subtotal,
-            discountAmount: pricing.discountAmount,
-            adjustmentAmount: pricing.adjustmentAmount,
-            totalAmount: pricing.totalAmount,
-            currency: pricing.currency,
-            updatedAt: pricing.updatedAt,
-          },
-        });
-      } else {
         // ---------------------------------------------------------------------
-        // No Pricing
+        // Create
         // ---------------------------------------------------------------------
 
-        await tx.journeyBookingPricing.deleteMany({
-          where: {
-            bookingId: journeyBookingId,
-          },
-        });
-      }
+        create: {
+          id: pricing.id,
+          publicId: pricing.publicId,
+          bookingId: pricing.bookingId,
+          pricePerSeat: pricing.pricePerSeat,
+          seats: pricing.seats,
+          subtotal: pricing.subtotal,
+          discountAmount: pricing.discountAmount,
+          adjustmentAmount: pricing.adjustmentAmount,
+          totalAmount: pricing.totalAmount,
+          currency: pricing.currency,
+          createdAt: pricing.createdAt,
+          updatedAt: pricing.updatedAt,
+        },
 
+        // ---------------------------------------------------------------------
+        // Update
+        // ---------------------------------------------------------------------
+
+        update: {
+          publicId: pricing.publicId,
+          bookingId: pricing.bookingId,
+          pricePerSeat: pricing.pricePerSeat,
+          seats: pricing.seats,
+          subtotal: pricing.subtotal,
+          discountAmount: pricing.discountAmount,
+          adjustmentAmount: pricing.adjustmentAmount,
+          totalAmount: pricing.totalAmount,
+          currency: pricing.currency,
+          updatedAt: pricing.updatedAt,
+        },
+      });
+    } else {
       // -----------------------------------------------------------------------
-      // Payment
-      // -----------------------------------------------------------------------
-
-      if (persistence.payment !== undefined) {
-        const payment = persistence.payment;
-
-        await tx.journeyBookingPayment.upsert({
-          where: {
-            id: payment.id,
-          },
-
-          // -------------------------------------------------------------------
-          // Create
-          // -------------------------------------------------------------------
-
-          create: {
-            id: payment.id,
-            publicId: payment.publicId,
-            bookingId: payment.bookingId,
-
-            status: this.toPrismaJourneyBookingPaymentStatus(payment.status),
-
-            amount: payment.amount,
-            currency: payment.currency,
-            transactionPublicId: payment.transactionPublicId,
-            authorizedAt: payment.authorizedAt,
-            capturedAt: payment.capturedAt,
-            failedAt: payment.failedAt,
-            refundedAt: payment.refundedAt,
-            failureReason: payment.failureReason,
-            createdAt: payment.createdAt,
-            updatedAt: payment.updatedAt,
-          },
-
-          // -------------------------------------------------------------------
-          // Update
-          // -------------------------------------------------------------------
-
-          update: {
-            publicId: payment.publicId,
-            bookingId: payment.bookingId,
-
-            status: this.toPrismaJourneyBookingPaymentStatus(payment.status),
-
-            amount: payment.amount,
-            currency: payment.currency,
-            transactionPublicId: payment.transactionPublicId,
-            authorizedAt: payment.authorizedAt,
-            capturedAt: payment.capturedAt,
-            failedAt: payment.failedAt,
-            refundedAt: payment.refundedAt,
-            failureReason: payment.failureReason,
-            updatedAt: payment.updatedAt,
-          },
-        });
-      } else {
-        // ---------------------------------------------------------------------
-        // No Payment
-        // ---------------------------------------------------------------------
-
-        await tx.journeyBookingPayment.deleteMany({
-          where: {
-            bookingId: journeyBookingId,
-          },
-        });
-      }
-
-      // -----------------------------------------------------------------------
-      // Cancellation
+      // No Pricing
       // -----------------------------------------------------------------------
 
-      if (persistence.cancellation !== undefined) {
-        const cancellation = persistence.cancellation;
+      await this.prisma.journeyBookingPricing.deleteMany({
+        where: {
+          bookingId: journeyBookingId,
+        },
+      });
+    }
 
-        await tx.journeyBookingCancellation.upsert({
-          where: {
-            id: cancellation.id,
-          },
+    // =========================================================================
+    // Payment
+    // =========================================================================
 
-          // -------------------------------------------------------------------
-          // Create
-          // -------------------------------------------------------------------
+    if (persistence.payment !== undefined) {
+      const payment = persistence.payment;
 
-          create: {
-            id: cancellation.id,
-            publicId: cancellation.publicId,
-            bookingId: cancellation.bookingId,
+      await this.prisma.journeyBookingPayment.upsert({
+        where: {
+          id: payment.id,
+        },
 
-            reason: this.toPrismaJourneyBookingCancellationReason(
-              cancellation.reason,
-            ),
-
-            cancelledByPublicId: cancellation.cancelledByPublicId,
-            reasonDescription: cancellation.reasonDescription,
-            cancelledAt: cancellation.cancelledAt,
-            createdAt: cancellation.createdAt,
-            updatedAt: cancellation.updatedAt,
-          },
-
-          // -------------------------------------------------------------------
-          // Update
-          // -------------------------------------------------------------------
-
-          update: {
-            publicId: cancellation.publicId,
-            bookingId: cancellation.bookingId,
-
-            reason: this.toPrismaJourneyBookingCancellationReason(
-              cancellation.reason,
-            ),
-
-            cancelledByPublicId: cancellation.cancelledByPublicId,
-            reasonDescription: cancellation.reasonDescription,
-            cancelledAt: cancellation.cancelledAt,
-            updatedAt: cancellation.updatedAt,
-          },
-        });
-      } else {
         // ---------------------------------------------------------------------
-        // No Cancellation
+        // Create
         // ---------------------------------------------------------------------
 
-        await tx.journeyBookingCancellation.deleteMany({
-          where: {
-            bookingId: journeyBookingId,
-          },
-        });
-      }
-    });
+        create: {
+          id: payment.id,
+          publicId: payment.publicId,
+          bookingId: payment.bookingId,
+
+          status: this.toPrismaJourneyBookingPaymentStatus(payment.status),
+
+          amount: payment.amount,
+          currency: payment.currency,
+          transactionPublicId: payment.transactionPublicId,
+          authorizedAt: payment.authorizedAt,
+          capturedAt: payment.capturedAt,
+          failedAt: payment.failedAt,
+          refundedAt: payment.refundedAt,
+          failureReason: payment.failureReason,
+          createdAt: payment.createdAt,
+          updatedAt: payment.updatedAt,
+        },
+
+        // ---------------------------------------------------------------------
+        // Update
+        // ---------------------------------------------------------------------
+
+        update: {
+          publicId: payment.publicId,
+          bookingId: payment.bookingId,
+
+          status: this.toPrismaJourneyBookingPaymentStatus(payment.status),
+
+          amount: payment.amount,
+          currency: payment.currency,
+          transactionPublicId: payment.transactionPublicId,
+          authorizedAt: payment.authorizedAt,
+          capturedAt: payment.capturedAt,
+          failedAt: payment.failedAt,
+          refundedAt: payment.refundedAt,
+          failureReason: payment.failureReason,
+          updatedAt: payment.updatedAt,
+        },
+      });
+    } else {
+      // -----------------------------------------------------------------------
+      // No Payment
+      // -----------------------------------------------------------------------
+
+      await this.prisma.journeyBookingPayment.deleteMany({
+        where: {
+          bookingId: journeyBookingId,
+        },
+      });
+    }
+
+    // =========================================================================
+    // Cancellation
+    // =========================================================================
+
+    if (persistence.cancellation !== undefined) {
+      const cancellation = persistence.cancellation;
+
+      await this.prisma.journeyBookingCancellation.upsert({
+        where: {
+          id: cancellation.id,
+        },
+
+        // ---------------------------------------------------------------------
+        // Create
+        // ---------------------------------------------------------------------
+
+        create: {
+          id: cancellation.id,
+          publicId: cancellation.publicId,
+          bookingId: cancellation.bookingId,
+
+          reason: this.toPrismaJourneyBookingCancellationReason(
+            cancellation.reason,
+          ),
+
+          cancelledByPublicId: cancellation.cancelledByPublicId,
+          reasonDescription: cancellation.reasonDescription,
+          cancelledAt: cancellation.cancelledAt,
+          createdAt: cancellation.createdAt,
+          updatedAt: cancellation.updatedAt,
+        },
+
+        // ---------------------------------------------------------------------
+        // Update
+        // ---------------------------------------------------------------------
+
+        update: {
+          publicId: cancellation.publicId,
+          bookingId: cancellation.bookingId,
+
+          reason: this.toPrismaJourneyBookingCancellationReason(
+            cancellation.reason,
+          ),
+
+          cancelledByPublicId: cancellation.cancelledByPublicId,
+          reasonDescription: cancellation.reasonDescription,
+          cancelledAt: cancellation.cancelledAt,
+          updatedAt: cancellation.updatedAt,
+        },
+      });
+    } else {
+      // -----------------------------------------------------------------------
+      // No Cancellation
+      // -----------------------------------------------------------------------
+
+      await this.prisma.journeyBookingCancellation.deleteMany({
+        where: {
+          bookingId: journeyBookingId,
+        },
+      });
+    }
   }
 
   // ===========================================================================
@@ -605,47 +699,53 @@ export class PrismaJourneyBookingRepository implements JourneyBookingRepository 
   // Delete / Exists
   // ===========================================================================
 
+  /**
+   * Deletes the complete JourneyBooking aggregate.
+   *
+   * No repository-owned transaction is created here.
+   *
+   * Component deletion followed by root deletion participates in the ambient
+   * transaction when this method is called inside PrismaUnitOfWork.
+   */
   public async delete(id: JourneyBookingId): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      const journeyBookingId = id.value;
+    const journeyBookingId = id.value;
 
-      // -----------------------------------------------------------------------
-      // Components
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Components
+    // -------------------------------------------------------------------------
 
-      await tx.journeyBookingSnapshot.deleteMany({
-        where: {
-          bookingId: journeyBookingId,
-        },
-      });
+    await this.prisma.journeyBookingSnapshot.deleteMany({
+      where: {
+        bookingId: journeyBookingId,
+      },
+    });
 
-      await tx.journeyBookingPricing.deleteMany({
-        where: {
-          bookingId: journeyBookingId,
-        },
-      });
+    await this.prisma.journeyBookingPricing.deleteMany({
+      where: {
+        bookingId: journeyBookingId,
+      },
+    });
 
-      await tx.journeyBookingPayment.deleteMany({
-        where: {
-          bookingId: journeyBookingId,
-        },
-      });
+    await this.prisma.journeyBookingPayment.deleteMany({
+      where: {
+        bookingId: journeyBookingId,
+      },
+    });
 
-      await tx.journeyBookingCancellation.deleteMany({
-        where: {
-          bookingId: journeyBookingId,
-        },
-      });
+    await this.prisma.journeyBookingCancellation.deleteMany({
+      where: {
+        bookingId: journeyBookingId,
+      },
+    });
 
-      // -----------------------------------------------------------------------
-      // Root
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Root
+    // -------------------------------------------------------------------------
 
-      await tx.journeyBooking.delete({
-        where: {
-          id: journeyBookingId,
-        },
-      });
+    await this.prisma.journeyBooking.delete({
+      where: {
+        id: journeyBookingId,
+      },
     });
   }
 

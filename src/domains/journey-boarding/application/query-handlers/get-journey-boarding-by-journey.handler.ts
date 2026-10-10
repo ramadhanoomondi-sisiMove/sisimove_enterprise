@@ -1,84 +1,48 @@
-// -----------------------------------------------------------------------------
-// Journey Boarding — Get By Journey Query Handler
-// -----------------------------------------------------------------------------
+// src/domains/journey-boarding/application/query-handlers/get-journey-boarding-by-journey.handler.ts
 
-// -----------------------------------------------------------------------------
-// Foundation
-// -----------------------------------------------------------------------------
+import { Inject, Injectable } from '@nestjs/common';
 
 import type { QueryHandler } from '../../../../foundation/kernel/application/query-handler';
 
-// -----------------------------------------------------------------------------
-// Query
-// -----------------------------------------------------------------------------
+import { JOURNEY_BOARDING_TOKENS } from '../journey-boarding.tokens';
 
 import type { GetJourneyBoardingByJourneyQuery } from '../queries/get-journey-boarding-by-journey.query';
 
-// -----------------------------------------------------------------------------
-// Entity
-// -----------------------------------------------------------------------------
-
-import type { JourneyBoardingEntity } from '../../domain/entities/journey-boarding.entity';
-
-// -----------------------------------------------------------------------------
-// Repository
-// -----------------------------------------------------------------------------
+import { JourneyBoardingAggregate } from '../../domain/aggregates/journey-boarding.aggregate';
 
 import type { JourneyBoardingRepository } from '../../domain/repositories/journey-boarding.repository';
 
-// -----------------------------------------------------------------------------
-// Exceptions
-// -----------------------------------------------------------------------------
-
 import { JourneyBoardingNotFoundException } from '../../domain/exceptions';
 
-// -----------------------------------------------------------------------------
-// Handler
-// -----------------------------------------------------------------------------
-
-/**
- * Handles retrieval of the Journey Boarding root associated with a Journey.
- *
- * This query intentionally uses the repository's root-entity lookup rather
- * than aggregate rehydration because the repository contract explicitly
- * exposes findJourneyBoardingByJourneyId() as a root query.
- */
+@Injectable()
 export class GetJourneyBoardingByJourneyHandler implements QueryHandler<
   GetJourneyBoardingByJourneyQuery,
-  JourneyBoardingEntity
+  JourneyBoardingAggregate
 > {
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
-  constructor(private readonly repository: JourneyBoardingRepository) {}
-
-  // ===========================================================================
-  // Execute
-  // ===========================================================================
+  public constructor(
+    @Inject(JOURNEY_BOARDING_TOKENS.REPOSITORY)
+    private readonly repository: JourneyBoardingRepository,
+  ) {}
 
   public async execute(
     query: GetJourneyBoardingByJourneyQuery,
-  ): Promise<JourneyBoardingEntity> {
-    // -------------------------------------------------------------------------
-    // Lookup
-    // -------------------------------------------------------------------------
-
+  ): Promise<JourneyBoardingAggregate> {
     const journeyBoarding =
       await this.repository.findJourneyBoardingByJourneyId(query.journeyId);
-
-    // -------------------------------------------------------------------------
-    // Not Found
-    // -------------------------------------------------------------------------
 
     if (journeyBoarding === null) {
       throw new JourneyBoardingNotFoundException(query.journeyId.value);
     }
 
-    // -------------------------------------------------------------------------
-    // Result
-    // -------------------------------------------------------------------------
+    const [participants, events] = await Promise.all([
+      this.repository.findParticipants(journeyBoarding.id),
+      this.repository.findEvents(journeyBoarding.id),
+    ]);
 
-    return journeyBoarding;
+    return JourneyBoardingAggregate.rehydrate(
+      journeyBoarding,
+      participants,
+      events,
+    );
   }
 }

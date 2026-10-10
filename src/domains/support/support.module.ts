@@ -214,8 +214,11 @@
 // NestJS
 // -----------------------------------------------------------------------------
 
-import { Module } from '@nestjs/common';
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
 
+import { Module } from '@nestjs/common';
 // -----------------------------------------------------------------------------
 // Infrastructure — Database
 // -----------------------------------------------------------------------------
@@ -239,7 +242,8 @@ import { SUPPORT_PROVIDERS } from './infrastructure/dependency-injection/support
 // -----------------------------------------------------------------------------
 
 import { SUPPORT_TOKENS } from './application/support.tokens';
-
+import { JourneyModule } from '../journey/journey.module';
+import { JourneyBookingModule } from '../journey-booking/journey-booking.module';
 // -----------------------------------------------------------------------------
 // Application — Command Handlers
 // -----------------------------------------------------------------------------
@@ -254,6 +258,7 @@ import {
   ChangeSupportCaseCategoryHandler,
   ChangeSupportCasePriorityHandler,
   CloseSupportCaseHandler,
+  CreateJourneySupportCaseHandler,
   CreateSupportCaseHandler,
   CreateSupportCaseResolutionHandler,
   DeleteSupportCaseMessageHandler,
@@ -294,41 +299,21 @@ import {
   // ===========================================================================
   // Imports
   // ===========================================================================
-  //
-  // PrismaModule provides PrismaService to the concrete Support Prisma
-  // repository registered through SUPPORT_PROVIDERS.
-  //
-  // ---------------------------------------------------------------------------
 
-  imports: [PrismaModule],
+  imports: [PrismaModule, JourneyModule, JourneyBookingModule],
 
   // ===========================================================================
   // Controllers
   // ===========================================================================
-  //
-  // Support REST transport boundary.
-  //
-  // The controller contains no domain business rules.
-  //
-  // ---------------------------------------------------------------------------
 
   controllers: [SupportCasesController],
 
   // ===========================================================================
   // Providers
   // ===========================================================================
-  //
-  // Infrastructure repository bindings are supplied by SUPPORT_PROVIDERS.
-  //
-  // Application handlers are bound to their exact Support DI tokens.
-  //
-  // ---------------------------------------------------------------------------
 
   providers: [
-    // =========================================================================
     // Infrastructure
-    // =========================================================================
-
     ...SUPPORT_PROVIDERS,
 
     // =========================================================================
@@ -338,6 +323,11 @@ import {
     {
       provide: SUPPORT_TOKENS.COMMAND_HANDLERS.CREATE_SUPPORT_CASE,
       useClass: CreateSupportCaseHandler,
+    },
+
+    {
+      provide: SUPPORT_TOKENS.COMMAND_HANDLERS.CREATE_JOURNEY_SUPPORT_CASE,
+      useClass: CreateJourneySupportCaseHandler,
     },
 
     {
@@ -425,7 +415,7 @@ import {
     },
 
     // =========================================================================
-    // Support Case Note — Command Handlers
+    // Support Case Note — Command Handler
     // =========================================================================
 
     {
@@ -434,7 +424,7 @@ import {
     },
 
     // =========================================================================
-    // Support Case Evidence — Command Handlers
+    // Support Case Evidence — Command Handler
     // =========================================================================
 
     {
@@ -443,7 +433,7 @@ import {
     },
 
     // =========================================================================
-    // Support Case Resolution — Command Handlers
+    // Support Case Resolution — Command Handler
     // =========================================================================
 
     {
@@ -544,137 +534,69 @@ import {
   // ===========================================================================
   // Exports
   // ===========================================================================
-  //
-  // Expose application-facing tokens only.
-  //
-  // Concrete Prisma repositories remain private to SupportModule.
-  //
-  // ---------------------------------------------------------------------------
 
   exports: [
-    // =========================================================================
     // Repository
-    // =========================================================================
-
     SUPPORT_TOKENS.REPOSITORIES.SUPPORT_CASE,
 
-    // =========================================================================
     // Support Case — Command Handlers
-    // =========================================================================
-
     SUPPORT_TOKENS.COMMAND_HANDLERS.CREATE_SUPPORT_CASE,
-
+    SUPPORT_TOKENS.COMMAND_HANDLERS.CREATE_JOURNEY_SUPPORT_CASE,
     SUPPORT_TOKENS.COMMAND_HANDLERS.ASSIGN_SUPPORT_CASE,
-
     SUPPORT_TOKENS.COMMAND_HANDLERS.UNASSIGN_SUPPORT_CASE,
-
     SUPPORT_TOKENS.COMMAND_HANDLERS.CHANGE_SUPPORT_CASE_PRIORITY,
-
     SUPPORT_TOKENS.COMMAND_HANDLERS.CHANGE_SUPPORT_CASE_CATEGORY,
-
     SUPPORT_TOKENS.COMMAND_HANDLERS.START_SUPPORT_CASE,
-
     SUPPORT_TOKENS.COMMAND_HANDLERS.WAIT_FOR_MEMBER_SUPPORT_CASE,
-
     SUPPORT_TOKENS.COMMAND_HANDLERS.WAIT_FOR_INTERNAL_ACTION_SUPPORT_CASE,
-
     SUPPORT_TOKENS.COMMAND_HANDLERS.RESOLVE_SUPPORT_CASE,
-
     SUPPORT_TOKENS.COMMAND_HANDLERS.CLOSE_SUPPORT_CASE,
-
     SUPPORT_TOKENS.COMMAND_HANDLERS.CANCEL_SUPPORT_CASE,
 
-    // =========================================================================
     // Support Case Participant — Command Handlers
-    // =========================================================================
-
     SUPPORT_TOKENS.COMMAND_HANDLERS.ADD_SUPPORT_CASE_PARTICIPANT,
-
     SUPPORT_TOKENS.COMMAND_HANDLERS.REMOVE_SUPPORT_CASE_PARTICIPANT,
 
-    // =========================================================================
     // Support Case Message — Command Handlers
-    // =========================================================================
-
     SUPPORT_TOKENS.COMMAND_HANDLERS.ADD_SUPPORT_CASE_MESSAGE,
-
     SUPPORT_TOKENS.COMMAND_HANDLERS.EDIT_SUPPORT_CASE_MESSAGE,
-
     SUPPORT_TOKENS.COMMAND_HANDLERS.DELETE_SUPPORT_CASE_MESSAGE,
 
-    // =========================================================================
     // Support Case Note — Command Handler
-    // =========================================================================
-
     SUPPORT_TOKENS.COMMAND_HANDLERS.ADD_SUPPORT_CASE_NOTE,
 
-    // =========================================================================
     // Support Case Evidence — Command Handler
-    // =========================================================================
-
     SUPPORT_TOKENS.COMMAND_HANDLERS.ADD_SUPPORT_CASE_EVIDENCE,
 
-    // =========================================================================
     // Support Case Resolution — Command Handler
-    // =========================================================================
-
     SUPPORT_TOKENS.COMMAND_HANDLERS.CREATE_SUPPORT_CASE_RESOLUTION,
 
-    // =========================================================================
     // Support Case — Query Handlers
-    // =========================================================================
-
     SUPPORT_TOKENS.QUERY_HANDLERS.GET_SUPPORT_CASE,
-
     SUPPORT_TOKENS.QUERY_HANDLERS.GET_SUPPORT_CASES,
-
     SUPPORT_TOKENS.QUERY_HANDLERS.GET_SUPPORT_CASES_BY_REQUESTER,
-
     SUPPORT_TOKENS.QUERY_HANDLERS.GET_SUPPORT_CASES_BY_ASSIGNEE,
-
     SUPPORT_TOKENS.QUERY_HANDLERS.GET_SUPPORT_CASES_BY_REFERENCE,
-
     SUPPORT_TOKENS.QUERY_HANDLERS.GET_SUPPORT_CASES_BY_STATUS,
-
     SUPPORT_TOKENS.QUERY_HANDLERS.GET_SUPPORT_CASES_BY_CATEGORY,
-
     SUPPORT_TOKENS.QUERY_HANDLERS.GET_SUPPORT_CASES_BY_PRIORITY,
 
-    // =========================================================================
     // Support Case Participant — Query Handler
-    // =========================================================================
-
     SUPPORT_TOKENS.QUERY_HANDLERS.GET_SUPPORT_CASE_PARTICIPANTS,
 
-    // =========================================================================
     // Support Case Message — Query Handler
-    // =========================================================================
-
     SUPPORT_TOKENS.QUERY_HANDLERS.GET_SUPPORT_CASE_MESSAGES,
 
-    // =========================================================================
     // Support Case Note — Query Handler
-    // =========================================================================
-
     SUPPORT_TOKENS.QUERY_HANDLERS.GET_SUPPORT_CASE_NOTES,
 
-    // =========================================================================
     // Support Case Evidence — Query Handler
-    // =========================================================================
-
     SUPPORT_TOKENS.QUERY_HANDLERS.GET_SUPPORT_CASE_EVIDENCE,
 
-    // =========================================================================
     // Support Case Resolution — Query Handler
-    // =========================================================================
-
     SUPPORT_TOKENS.QUERY_HANDLERS.GET_SUPPORT_CASE_RESOLUTION,
   ],
 })
 export class SupportModule {}
-
-// =============================================================================
-// Default Export
-// =============================================================================
 
 export default SupportModule;

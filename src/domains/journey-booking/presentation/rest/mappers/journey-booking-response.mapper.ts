@@ -91,13 +91,19 @@ export interface JourneyBookingSnapshotResponse {
 
   destinationName: string;
 
-  originCoordinates: unknown;
+  originCoordinates: {
+    latitude: number;
+    longitude: number;
+  };
 
-  destinationCoordinates: unknown;
+  destinationCoordinates: {
+    latitude: number;
+    longitude: number;
+  };
 
-  departureAt: unknown;
+  departureAt: Date;
 
-  arrivalAt: unknown;
+  arrivalAt: Date | undefined;
 
   timezone: string;
 
@@ -315,13 +321,13 @@ export class JourneyBookingResponseMapper {
 
       destinationName: snapshot.destinationName.value,
 
-      originCoordinates: snapshot.originCoordinates,
+      originCoordinates: snapshot.originCoordinates.value,
 
-      destinationCoordinates: snapshot.destinationCoordinates,
+      destinationCoordinates: snapshot.destinationCoordinates.value,
 
-      departureAt: snapshot.departureAt,
+      departureAt: snapshot.departureAt.toDate(),
 
-      arrivalAt: snapshot.arrivalAt,
+      arrivalAt: snapshot.arrivalAt?.toDate(),
 
       timezone: snapshot.timezone.value,
 

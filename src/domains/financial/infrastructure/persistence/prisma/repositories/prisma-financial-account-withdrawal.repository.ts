@@ -22,17 +22,44 @@
 //
 // It is NOT a relation to FinancialDisbursementDestination.
 //
+// Transaction boundary:
+//
+// This repository does NOT create its own Prisma transaction.
+//
+// The ambient PrismaTransactionContext determines whether persistence occurs
+// through:
+//
+//     Prisma.TransactionClient
+//
+// or:
+//
+//     PrismaService
+//
+// Therefore, application workflows that require atomicity must execute inside
+// a PrismaUnitOfWork.
+//
 // -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Injectable } from '@nestjs/common';
+
+// -----------------------------------------------------------------------------
+// Prisma Transaction Context
+// -----------------------------------------------------------------------------
+
+import {
+  PrismaTransactionContext,
+  type PrismaClientLike,
+} from '../../../../../../infrastructure/database/prisma/prisma-transaction.context';
 
 // -----------------------------------------------------------------------------
 // Prisma
 // -----------------------------------------------------------------------------
 
-import {
-  FinancialDisbursementDestinationType as PrismaFinancialDisbursementDestinationType,
-  type Prisma,
-  type PrismaClient,
-} from '@prisma/client';
+import { FinancialDisbursementDestinationType as PrismaFinancialDisbursementDestinationType } from '@prisma/client';
 
 // -----------------------------------------------------------------------------
 // Repository Contract
@@ -87,12 +114,46 @@ import { FinancialAccountWithdrawalException } from '../../../../domain/exceptio
 // Repository
 // =============================================================================
 
+@Injectable()
 export class PrismaFinancialAccountWithdrawalRepository implements FinancialAccountWithdrawalRepository {
   // ===========================================================================
   // Constructor
   // ===========================================================================
 
-  public constructor(private readonly prisma: PrismaClient) {}
+  /**
+   * Resolves the Prisma client through the ambient transaction context.
+   *
+   * Inside a UnitOfWork:
+   *
+   *     Prisma.TransactionClient
+   *
+   * Outside a UnitOfWork:
+   *
+   *     PrismaService
+   *
+   * The repository therefore never owns the transaction boundary.
+   */
+  public constructor(
+    private readonly transactionContext: PrismaTransactionContext,
+  ) {}
+
+  // ===========================================================================
+  // Current Prisma Client
+  // ===========================================================================
+
+  /**
+   * Returns the Prisma client appropriate for the current execution context.
+   *
+   * Inside a UnitOfWork this is the transaction-scoped Prisma client.
+   *
+   * Outside a UnitOfWork it falls back to the application Prisma client.
+   *
+   * Every repository operation must use this client so that account lookups
+   * and withdrawal persistence participate in the same ambient transaction.
+   */
+  private get prisma(): PrismaClientLike {
+    return this.transactionContext.getClient();
+  }
 
   // ===========================================================================
   // Save
@@ -107,124 +168,170 @@ export class PrismaFinancialAccountWithdrawalRepository implements FinancialAcco
    * The withdrawal destination is persisted directly as an immutable snapshot.
    *
    * No FinancialDisbursementDestination relation is resolved.
+   *
+   * No repository-owned Prisma transaction is created.
+   *
+   * When called inside a UnitOfWork, the update participates in the caller's
+   * transaction.
    */
   public async save(
     aggregate: FinancialAccountWithdrawalAggregate,
   ): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      // -----------------------------------------------------------------------
-      // Existing Record
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Validate Aggregate
+    // -------------------------------------------------------------------------
 
-      const existing = await tx.financialAccountWithdrawal.findUnique({
-        where: {
-          id: aggregate.id.toString(),
-        },
-
-        select: {
-          id: true,
-          publicId: true,
-          accountId: true,
-        },
-      });
-
-      // -----------------------------------------------------------------------
-      // Existence
-      // -----------------------------------------------------------------------
-
-      if (existing === null) {
-        throw new FinancialAccountWithdrawalException(
-          `Financial Account Withdrawal "${aggregate.publicId.value}" does not exist and cannot be updated.`,
-        );
-      }
-
-      // -----------------------------------------------------------------------
-      // Public Identity Stability
-      // -----------------------------------------------------------------------
-
-      if (existing.publicId !== aggregate.publicId.value) {
-        throw new FinancialAccountWithdrawalException(
-          `Financial Account Withdrawal internal identity "${aggregate.id.toString()}" is associated with a different public identity.`,
-        );
-      }
-
-      // -----------------------------------------------------------------------
-      // Account Resolution
-      // -----------------------------------------------------------------------
-
-      const accountId = await this.resolveAccountId(
-        tx,
-        aggregate.accountPublicId,
+    if (aggregate === undefined) {
+      throw new FinancialAccountWithdrawalException(
+        'Financial Account Withdrawal aggregate is required.',
       );
+    }
 
-      // -----------------------------------------------------------------------
-      // Account Ownership Stability
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Existing Record
+    // -------------------------------------------------------------------------
 
-      if (existing.accountId !== accountId) {
-        throw new FinancialAccountWithdrawalException(
-          `Financial Account Withdrawal "${aggregate.publicId.value}" cannot be moved to another Financial Account.`,
-        );
-      }
+    const existing = await this.prisma.financialAccountWithdrawal.findUnique({
+      where: {
+        id: aggregate.id.toString(),
+      },
 
-      // -----------------------------------------------------------------------
-      // Domain → Persistence
-      // -----------------------------------------------------------------------
+      select: {
+        id: true,
+        publicId: true,
+        accountId: true,
+      },
+    });
 
-      const persistence =
-        FinancialAccountWithdrawalPrismaMapper.aggregateToPersistence(
-          aggregate,
-        );
+    // -------------------------------------------------------------------------
+    // Existence
+    // -------------------------------------------------------------------------
 
-      const withdrawal = persistence.withdrawal;
-
-      // -----------------------------------------------------------------------
-      // Destination Type
-      // -----------------------------------------------------------------------
-
-      const destinationType = this.toPrismaDestinationType(
-        withdrawal.destinationType,
+    if (existing === null) {
+      throw new FinancialAccountWithdrawalException(
+        `Financial Account Withdrawal "${aggregate.publicId.value}" does not exist and cannot be updated.`,
       );
+    }
 
-      // -----------------------------------------------------------------------
-      // Update
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Public Identity Stability
+    // -------------------------------------------------------------------------
 
-      await tx.financialAccountWithdrawal.update({
-        where: {
-          id: aggregate.id.toString(),
-        },
+    if (existing.publicId !== aggregate.publicId.value) {
+      throw new FinancialAccountWithdrawalException(
+        `Financial Account Withdrawal internal identity "${aggregate.id.toString()}" is associated with a different public identity.`,
+      );
+    }
 
-        data: {
-          accountId,
+    // -------------------------------------------------------------------------
+    // Account Resolution
+    // -------------------------------------------------------------------------
 
-          amount: withdrawal.amount,
+    const accountId = await this.resolveAccountId(aggregate.accountPublicId);
 
-          currency: withdrawal.currency,
+    // -------------------------------------------------------------------------
+    // Account Ownership Stability
+    // -------------------------------------------------------------------------
 
-          destinationType,
+    if (existing.accountId !== accountId) {
+      throw new FinancialAccountWithdrawalException(
+        `Financial Account Withdrawal "${aggregate.publicId.value}" cannot be moved to another Financial Account.`,
+      );
+    }
 
-          destinationValue: withdrawal.destinationValue,
+    // -------------------------------------------------------------------------
+    // Domain → Persistence
+    // -------------------------------------------------------------------------
 
-          status: withdrawal.status,
+    const persistence =
+      FinancialAccountWithdrawalPrismaMapper.aggregateToPersistence(aggregate);
 
-          referenceType: withdrawal.referenceType,
+    const withdrawal = persistence.withdrawal;
 
-          referencePublicId: withdrawal.referencePublicId,
+    // -------------------------------------------------------------------------
+    // Persistence Account Consistency
+    // -------------------------------------------------------------------------
 
-          disbursementPublicId: withdrawal.disbursementPublicId,
+    if (withdrawal.accountId !== accountId) {
+      throw new FinancialAccountWithdrawalException(
+        `Financial Account Withdrawal "${aggregate.publicId.value}" contains an inconsistent Financial Account reference.`,
+      );
+    }
 
-          requestedAt: withdrawal.requestedAt,
+    // -------------------------------------------------------------------------
+    // Destination Type
+    // -------------------------------------------------------------------------
 
-          completedAt: withdrawal.completedAt,
+    const destinationType = this.toPrismaDestinationType(
+      withdrawal.destinationType,
+    );
 
-          failedAt: withdrawal.failedAt,
+    // -------------------------------------------------------------------------
+    // Update
+    // -------------------------------------------------------------------------
 
-          cancelledAt: withdrawal.cancelledAt,
+    await this.prisma.financialAccountWithdrawal.update({
+      where: {
+        id: aggregate.id.toString(),
+      },
 
-          updatedAt: withdrawal.updatedAt,
-        },
-      });
+      data: {
+        // ---------------------------------------------------------------------
+        // Owning Account
+        // ---------------------------------------------------------------------
+
+        accountId,
+
+        // ---------------------------------------------------------------------
+        // Financial Amount
+        // ---------------------------------------------------------------------
+
+        amount: withdrawal.amount,
+
+        currency: withdrawal.currency,
+
+        // ---------------------------------------------------------------------
+        // Immutable Destination Snapshot
+        // ---------------------------------------------------------------------
+
+        destinationType,
+
+        destinationValue: withdrawal.destinationValue,
+
+        // ---------------------------------------------------------------------
+        // Lifecycle
+        // ---------------------------------------------------------------------
+
+        status: withdrawal.status,
+
+        // ---------------------------------------------------------------------
+        // Business Reference
+        // ---------------------------------------------------------------------
+
+        referenceType: withdrawal.referenceType,
+
+        referencePublicId: withdrawal.referencePublicId,
+
+        // ---------------------------------------------------------------------
+        // Cross-Aggregate Reference
+        // ---------------------------------------------------------------------
+
+        disbursementPublicId: withdrawal.disbursementPublicId,
+
+        // ---------------------------------------------------------------------
+        // Lifecycle Timestamps
+        // ---------------------------------------------------------------------
+
+        requestedAt: withdrawal.requestedAt,
+
+        completedAt: withdrawal.completedAt,
+
+        failedAt: withdrawal.failedAt,
+
+        cancelledAt: withdrawal.cancelledAt,
+
+        updatedAt: withdrawal.updatedAt,
+      },
     });
   }
 
@@ -236,8 +343,19 @@ export class PrismaFinancialAccountWithdrawalRepository implements FinancialAcco
    * Physical deletion of Financial Account Withdrawals is unsupported.
    *
    * Financial withdrawal records must remain auditable.
+   *
+   * Lifecycle changes must be represented through the aggregate's domain
+   * behavior and persisted with save().
    */
   public delete(aggregate: FinancialAccountWithdrawalAggregate): Promise<void> {
+    if (aggregate === undefined) {
+      return Promise.reject(
+        new FinancialAccountWithdrawalException(
+          'Financial Account Withdrawal aggregate is required.',
+        ),
+      );
+    }
+
     return Promise.reject(
       new FinancialAccountWithdrawalException(
         `Financial Account Withdrawal "${aggregate.publicId.value}" cannot be physically deleted.`,
@@ -280,11 +398,14 @@ export class PrismaFinancialAccountWithdrawalRepository implements FinancialAcco
 
   /**
    * Finds all withdrawals belonging to a Financial Account.
+   *
+   * The public Financial Account identity is resolved to the internal Prisma
+   * foreign key entirely inside infrastructure.
    */
   public async findByAccountPublicId(
     accountPublicId: FinancialAccountPublicId,
   ): Promise<FinancialAccountWithdrawalAggregate[]> {
-    const accountId = await this.resolveAccountId(this.prisma, accountPublicId);
+    const accountId = await this.resolveAccountId(accountPublicId);
 
     const records = await this.prisma.financialAccountWithdrawal.findMany({
       where: {
@@ -319,7 +440,7 @@ export class PrismaFinancialAccountWithdrawalRepository implements FinancialAcco
     accountPublicId: FinancialAccountPublicId,
     status: FinancialAccountWithdrawalStatus,
   ): Promise<FinancialAccountWithdrawalAggregate[]> {
-    const accountId = await this.resolveAccountId(this.prisma, accountPublicId);
+    const accountId = await this.resolveAccountId(accountPublicId);
 
     const records = await this.prisma.financialAccountWithdrawal.findMany({
       where: {
@@ -382,6 +503,8 @@ export class PrismaFinancialAccountWithdrawalRepository implements FinancialAcco
    * Finds the withdrawal associated with a Financial Disbursement public ID.
    *
    * The disbursement identifier is an opaque cross-aggregate reference.
+   *
+   * No Financial Disbursement aggregate is loaded or resolved here.
    */
   public async findByDisbursementPublicId(
     disbursementPublicId: string,
@@ -544,7 +667,7 @@ export class PrismaFinancialAccountWithdrawalRepository implements FinancialAcco
   public async findEntitiesByAccountPublicId(
     accountPublicId: FinancialAccountPublicId,
   ): Promise<FinancialAccountWithdrawalEntity[]> {
-    const accountId = await this.resolveAccountId(this.prisma, accountPublicId);
+    const accountId = await this.resolveAccountId(accountPublicId);
 
     const records = await this.prisma.financialAccountWithdrawal.findMany({
       where: {
@@ -616,7 +739,7 @@ export class PrismaFinancialAccountWithdrawalRepository implements FinancialAcco
   public async existsByAccountPublicId(
     accountPublicId: FinancialAccountPublicId,
   ): Promise<boolean> {
-    const accountId = await this.resolveAccountId(this.prisma, accountPublicId);
+    const accountId = await this.resolveAccountId(accountPublicId);
 
     const record = await this.prisma.financialAccountWithdrawal.findFirst({
       where: {
@@ -635,8 +758,22 @@ export class PrismaFinancialAccountWithdrawalRepository implements FinancialAcco
   // Resolve Financial Account
   // ===========================================================================
 
+  /**
+   * Resolves:
+   *
+   * FinancialAccountPublicId
+   *           ↓
+   * FinancialAccount.id
+   *
+   * The public identity remains the domain-level reference.
+   *
+   * The internal database identity remains an infrastructure concern.
+   *
+   * The lookup uses the ambient Prisma client so that, inside a UnitOfWork,
+   * the account resolution and withdrawal operation execute against the same
+   * transaction-scoped Prisma client.
+   */
   private async resolveAccountId(
-    prisma: PrismaClient | Prisma.TransactionClient,
     accountPublicId: FinancialAccountPublicId,
   ): Promise<string> {
     const normalized = accountPublicId.value.trim();
@@ -647,7 +784,7 @@ export class PrismaFinancialAccountWithdrawalRepository implements FinancialAcco
       );
     }
 
-    const account = await prisma.financialAccount.findUnique({
+    const account = await this.prisma.financialAccount.findUnique({
       where: {
         publicId: normalized,
       },
@@ -675,6 +812,9 @@ export class PrismaFinancialAccountWithdrawalRepository implements FinancialAcco
    *
    * The domain intentionally keeps the withdrawal destination snapshot
    * independent from Prisma.
+   *
+   * The repository owns the infrastructure mapping between the domain string
+   * representation and the Prisma enum representation.
    */
   private toPrismaDestinationType(
     value: string,
@@ -700,6 +840,11 @@ export class PrismaFinancialAccountWithdrawalRepository implements FinancialAcco
   // Disbursement Public ID Normalization
   // ===========================================================================
 
+  /**
+   * Normalizes and validates the opaque Financial Disbursement public ID.
+   *
+   * The repository does not resolve the Financial Disbursement aggregate.
+   */
   private normalizeDisbursementPublicId(value: string): string {
     const normalized = value.trim();
 

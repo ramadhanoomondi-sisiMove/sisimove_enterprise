@@ -3,7 +3,6 @@
 // sisiMove — Journey Module
 //
 // -----------------------------------------------------------------------------
-
 //
 // The Journey bounded context owns:
 //
@@ -19,122 +18,25 @@
 // own, persist, or reconstruct those external contexts.
 //
 // -----------------------------------------------------------------------------
-
-//
-// PUBLIC MARKETPLACE READ COMPOSITION
-//
-
-// A public Journey contains an opaque providerPublicId.
-//
-// That identifier is a cross-domain reference to the member/provider identity
-// associated with the Journey. It is deliberately not a Prisma relation and
-// does not make Traveller Profile, Trust Profile, or Assets part of the
-// Journey aggregate.
-//
-// The public Journey query composes:
-//
-//     Journey
-//
-//          │
-//
-//          ├── providerPublicId
-//          │       │
-//          │       ├──► Traveller public read capability
-//          │       │
-//          │       └──► Trust public read capability
-//          │
-//          └── Journey-owned public data
-//
-// The authenticated Journey read boundary may additionally resolve Asset
-// presentation references through the exported Asset public-reference
-// capability.
-//
-// Therefore:
-//
-// - Journey remains the owner of Journey creation;
-// - Journey remains the owner of Journey persistence;
-// - Traveller Profile remains owned by its bounded context;
-// - Trust Profile remains owned by its bounded context;
-// - Asset remains owned by the Asset bounded context;
-// - Journey consumes Asset public-reference resolution as an application
-//   capability;
-// - the public Journey query is responsible only for read-side composition.
-//
-// Journey does NOT:
-//
-// - inject TravellerProfileRepository;
-// - inject TrustProfileRepository;
-// - inject AssetRepository;
-// - query Traveller, Trust, or Asset persistence directly;
-// - construct TravellerProfileAggregate;
-// - construct TrustProfileAggregate;
-// - construct AssetAggregate;
-// - register external query handlers locally.
-//
-// Instead, Journey imports the modules that export the application
-// capabilities it consumes.
-//
-// -----------------------------------------------------------------------------
-
 //
 // MODULE DEPENDENCY DIRECTION
 //
-
-//     Journey read boundary
+// Journey
+//   ├── IdentityModule
+//   ├── SocialModule
+//   ├── TrustModule
+//   ├── AssetsModule
+//   ├── JourneyBoardingModule
+//   └── PrismaModule
 //
-//          │
+// JourneyBoardingModule supplies the Journey Boarding repository required by
+// PublishJourneyHandler.
 //
-//          ├──────────────► SocialModule
-//          │                    │
-//          │                    └── public Traveller capability
-//          │
-//          ├──────────────► TrustModule
-//          │                    │
-//          │                    └── public Trust capability
-//          │
-//          └──────────────► AssetsModule
-//                               │
-//                               └── public Asset reference capability
+// PublishJourneyHandler creates the Journey Boarding aggregate when a Journey
+// is published. The boarding repository must use the ambient Prisma transaction
+// so Journey publication and boarding initialization remain atomic.
 //
-// These are application-level read dependencies, not domain ownership
-// relationships.
-//
-// -----------------------------------------------------------------------------
-
-//
-// ASSET PUBLIC REFERENCE
-//
-
-// JourneyVehicle stores only:
-//
-//     assetPublicId
-//
-// Journey does not construct an Asset URL.
-//
-// When the authenticated Journey read boundary needs the vehicle image:
-//
-//     JourneyController
-//          │
-//          ▼
-//     GetPublicAssetReferenceHandler
-//          │
-//          ▼
-//     AssetsModule
-//          │
-//          ▼
-//     AssetDeliveryPort
-//          │
-//          ▼
-//     { publicId, url }
-//
-// The Asset bounded context remains responsible for:
-//
-// - validating the Asset;
-// - validating Asset usability/visibility;
-// - resolving the consumer-facing URL;
-// - deciding how the Asset is physically delivered.
-//
-// Journey only consumes the reduced public Asset reference.
+// JourneyBoardingModule must export JOURNEY_BOARDING_TOKENS.REPOSITORY.
 //
 // -----------------------------------------------------------------------------
 
@@ -142,7 +44,7 @@
 // NestJS
 // -----------------------------------------------------------------------------
 
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Domain Dependencies
@@ -152,7 +54,9 @@ import { IdentityModule } from '../identity/identity.module';
 import { SocialModule } from '../social/social.module';
 import { TrustModule } from '../trust/trust.module';
 import { AssetsModule } from '../assets/assets.module';
-
+import { JourneyBoardingModule } from '../journey-boarding/journey-boarding.module';
+import { JourneyBookingModule } from '../journey-booking/journey-booking.module';
+import { MessagingModule } from '../messaging/messaging.module';
 // -----------------------------------------------------------------------------
 // Infrastructure
 // -----------------------------------------------------------------------------
@@ -262,6 +166,25 @@ import {
     // =========================================================================
 
     AssetsModule,
+
+    // =========================================================================
+    // Journey Boarding / Boarding Repository
+    // =========================================================================
+    //
+    // PublishJourneyHandler injects JOURNEY_BOARDING_TOKENS.REPOSITORY.
+    //
+    // Importing JourneyBoardingModule makes that provider available only if
+    // JourneyBoardingModule registers and exports the repository token.
+    //
+    // This is an application dependency. Journey Boarding remains responsible
+    // for its own aggregate, persistence, and participant invariants.
+    // =========================================================================
+
+    JourneyBoardingModule,
+
+    forwardRef(() => JourneyBookingModule),
+
+    MessagingModule,
 
     // =========================================================================
     // Prisma
@@ -434,12 +357,7 @@ import {
     },
 
     // =========================================================================
-    // Journey — General Query
-    //
-    // Register the concrete handler class as the primary provider.
-    //
-    // GetJourneyBookingDetailQueryHandler injects GetJourneyQueryHandler
-    // directly by class.
+    // Journey — General Query Handler Class
     // =========================================================================
 
     {
@@ -448,10 +366,7 @@ import {
     },
 
     // =========================================================================
-    // Journey — General Query Token
-    //
-    // Preserve the existing token-based application contract while ensuring
-    // both tokens resolve to the same GetJourneyQueryHandler instance.
+    // Journey — General Query Handler Token
     // =========================================================================
 
     {
@@ -592,9 +507,6 @@ import {
 
     // =========================================================================
     // Journey — General Query Handler Class
-    //
-    // Export the concrete class because Journey Booking injects
-    // GetJourneyQueryHandler directly by class.
     // =========================================================================
 
     GetJourneyQueryHandler,

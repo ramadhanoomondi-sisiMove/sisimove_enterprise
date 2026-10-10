@@ -1,27 +1,28 @@
-// -----------------------------------------------------------------------------
-// Path: src/foundation/routing/authenticated-routes.ts
-// -----------------------------------------------------------------------------
-// sisiMove — Authenticated Routes
-// -----------------------------------------------------------------------------
-//
-// Canonical routes for authenticated application surfaces.
-//
-// This file defines URL construction only.
-//
-// It does NOT:
-// - authenticate users;
-// - inspect authentication state;
-// - restore sessions;
-// - redirect unauthenticated users;
-// - enforce verification;
-// - enforce permissions;
-// - determine lifecycle capabilities;
-// - perform navigation;
-// - define Next.js middleware.
-//
-// Those responsibilities belong to their respective application boundaries.
-//
-// -----------------------------------------------------------------------------
+
+ // -----------------------------------------------------------------------------
+ // Path: src/foundation/routing/authenticated-routes.ts
+ // -----------------------------------------------------------------------------
+ // sisiMove — Authenticated Routes
+ // -----------------------------------------------------------------------------
+ //
+ // Canonical routes for authenticated application surfaces.
+ //
+ // This file defines URL construction only.
+ //
+ // It does NOT:
+ // - authenticate users;
+ // - inspect authentication state;
+ // - restore sessions;
+ // - redirect unauthenticated users;
+ // - enforce verification;
+ // - enforce permissions;
+ // - determine lifecycle capabilities;
+ // - perform navigation;
+ // - define Next.js middleware.
+ //
+ // Those responsibilities belong to their respective application boundaries.
+ //
+ // -----------------------------------------------------------------------------
 
 export const AUTHENTICATED_ROUTES = {
   // ===========================================================================
@@ -122,6 +123,12 @@ export const AUTHENTICATED_ROUTES = {
   // ===========================================================================
   // Journey Operational Surfaces
   // ===========================================================================
+
+  /**
+   * Journey-specific bookings list for the provider.
+   */
+  JOURNEY_BOOKINGS: (journeyPublicId: string) =>
+    `/my-journeys/${encodeURIComponent(journeyPublicId)}/bookings`,
 
   /**
    * Journey boarding operational surface.
@@ -279,6 +286,17 @@ export const AUTHENTICATED_ROUTES = {
    */
   SUPPORT_CASE: (supportCasePublicId: string) =>
     `/support/cases/${encodeURIComponent(supportCasePublicId)}`,
+
+  
+  /**
+   * Create a Support Case associated with a specific Journey.
+   *
+   * The Journey public ID is carried in the URL so the support form
+   * can identify the Journey without asking the member to enter it.
+   */
+  JOURNEY_SUPPORT_NEW: (journeyPublicId: string) =>
+    `/support/new?journeyPublicId=${encodeURIComponent(journeyPublicId)}`,
+
 
   // ===========================================================================
   // Settings

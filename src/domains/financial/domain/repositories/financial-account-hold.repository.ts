@@ -93,10 +93,20 @@ export interface FinancialAccountHoldRepository {
   // ===========================================================================
 
   /**
-   * Persists a Financial Account Hold aggregate.
+   * Persists a brand-new Financial Account Hold aggregate.
    *
    * The repository implementation is responsible for translating the
    * aggregate into its persistence representation.
+   *
+   * The repository does not execute financial movement.
+   */
+  create(aggregate: FinancialAccountHoldAggregate): Promise<void>;
+
+  /**
+   * Persists the current state of an existing Financial Account Hold aggregate.
+   *
+   * The repository implementation is responsible for updating an
+   * already-persisted aggregate.
    *
    * The repository does not execute financial movement.
    */

@@ -3,12 +3,36 @@
 // -----------------------------------------------------------------------------
 // Journey Boarding — Mark Passenger No-Show Command Handler
 // -----------------------------------------------------------------------------
+//
+// Responsibilities:
+// - Resolve the Journey Boarding aggregate by public identifier.
+// - Delegate the passenger no-show operation to the aggregate.
+// - Persist the updated aggregate.
+// - Return the updated aggregate.
+//
+// Architectural rules:
+// - Inject the repository through the centralized dependency-injection token.
+// - Keep participant and lifecycle invariants inside the aggregate.
+// - Use a domain-specific exception when the aggregate cannot be found.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
+
+// -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_BOARDING_TOKENS } from '../journey-boarding.tokens';
 
 // -----------------------------------------------------------------------------
 // Command
@@ -38,19 +62,7 @@ import { JourneyBoardingNotFoundException } from '../../domain/exceptions';
 // Handler
 // -----------------------------------------------------------------------------
 
-/**
- * Handles marking a passenger as a no-show.
- *
- * Workflow:
- *
- * 1. Resolve the Journey Boarding aggregate by public ID.
- * 2. Fail when the aggregate does not exist.
- * 3. Delegate the no-show operation to the aggregate.
- * 4. Persist the mutated aggregate.
- * 5. Return the updated aggregate.
- *
- * All lifecycle and participant invariants remain inside the aggregate.
- */
+@Injectable()
 export class MarkPassengerNoShowHandler implements CommandHandler<
   MarkPassengerNoShowCommand,
   JourneyBoardingAggregate
@@ -59,7 +71,10 @@ export class MarkPassengerNoShowHandler implements CommandHandler<
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly repository: JourneyBoardingRepository) {}
+  public constructor(
+    @Inject(JOURNEY_BOARDING_TOKENS.REPOSITORY)
+    private readonly repository: JourneyBoardingRepository,
+  ) {}
 
   // ===========================================================================
   // Execute
@@ -84,6 +99,11 @@ export class MarkPassengerNoShowHandler implements CommandHandler<
 
     // -------------------------------------------------------------------------
     // Domain Operation
+    // -------------------------------------------------------------------------
+    //
+    // The aggregate validates whether the passenger can be marked as a
+    // no-show, applies the participant status transition, updates its state,
+    // and records the corresponding domain event.
     // -------------------------------------------------------------------------
 
     aggregate.markPassengerNoShow(

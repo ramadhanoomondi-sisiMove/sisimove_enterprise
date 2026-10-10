@@ -4,64 +4,16 @@
 //
 // REST controller for Support Case aggregate operations.
 //
-// Aggregate:
+// Authorization and identity rules:
 //
-// SupportCaseAggregate
-// ├── SupportCaseEntity
-// ├── SupportCaseParticipantEntity[]
-// ├── SupportCaseMessageEntity[]
-// ├── SupportCaseNoteEntity[]
-// ├── SupportCaseEvidenceEntity[]
-// └── SupportCaseResolutionEntity?
-//
-// All child entities are owned by SupportCaseAggregate and are therefore NOT
-// aggregate roots.
-//
-// -----------------------------------------------------------------------------
-//
-// Responsibilities:
-//
-// - HTTP transport;
-// - DTO binding and validation;
-// - conversion from transport primitives to domain value objects;
-// - generation of application correlation and causation identifiers;
-// - dispatching Support commands and queries;
-// - mapping application/domain results to transport responses.
-//
-// The controller contains NO business rules.
-//
-// Domain behavior remains inside:
-//
-// - SupportCaseAggregate;
-// - SupportCaseEntity;
-// - SupportCaseParticipantEntity;
-// - SupportCaseMessageEntity;
-// - SupportCaseNoteEntity;
-// - SupportCaseEvidenceEntity;
-// - SupportCaseResolutionEntity.
-//
-// Application orchestration remains inside:
-//
-// - command handlers;
-// - query handlers.
-//
-// Persistence remains behind:
-//
-// - SupportCaseRepository.
-//
-// -----------------------------------------------------------------------------
-//
-// Boundary rules:
-//
-// - Internal entity identifiers are never exposed to clients.
-// - Support Case public identities are used at the HTTP boundary.
-// - Child entities are always scoped by SupportCaseAggregate.
-// - The controller never accesses Prisma or repositories directly.
-// - Cross-domain references remain opaque public identities.
-// - Lifecycle transitions are delegated to application/domain layers.
+// - Every endpoint requires authentication and its declared permission.
+// - The authenticated identity is obtained through CurrentIdentity.
+// - Actor identities are never trusted when supplied by request DTOs.
+// - Target identities, such as an assignee or participant, remain request data.
+// - Access to individual Support Cases must additionally be enforced by the
+//   application/domain authorization boundary.
 // - Correlation and causation identifiers are generated internally.
-// - Technical application metadata is never supplied through request DTOs.
-// - Response mapping is centralized in SupportCaseResponseMapper.
+// - All responses are mapped through SupportCaseResponseMapper.
 //
 // -----------------------------------------------------------------------------
 
@@ -101,6 +53,7 @@ import {
 // -----------------------------------------------------------------------------
 
 import {
+  CurrentIdentity,
   JwtAuthGuard,
   PermissionsGuard,
   RequirePermissions,
@@ -133,6 +86,7 @@ import {
   ChangeSupportCaseCategoryCommand,
   ChangeSupportCasePriorityCommand,
   CloseSupportCaseCommand,
+  CreateJourneySupportCaseCommand,
   CreateSupportCaseCommand,
   CreateSupportCaseResolutionCommand,
   DeleteSupportCaseMessageCommand,
@@ -217,6 +171,7 @@ import {
   ChangeSupportCaseCategoryRequestDto,
   ChangeSupportCasePriorityRequestDto,
   CloseSupportCaseRequestDto,
+  CreateJourneySupportCaseRequestDto,
   CreateSupportCaseRequestDto,
   CreateSupportCaseResolutionRequestDto,
   DeleteSupportCaseMessageRequestDto,
@@ -235,13 +190,32 @@ import {
 } from '../mappers/support-case.response.mapper';
 
 // =============================================================================
+// Authenticated Identity Contract
+// =============================================================================
+//
+// Keep this minimal structural type local to the HTTP boundary. The
+// CurrentIdentity decorator must provide the authenticated identity populated
+// by the authentication guard, including identityPublicId.
+//
+// If your project's CurrentIdentity decorator exports a canonical identity
+// type, prefer importing that type instead of maintaining this local shape.
+// =============================================================================
+
+interface CurrentAuthenticatedIdentity {
+  readonly identityPublicId: string;
+}
+
+// =============================================================================
 // Controller
 // =============================================================================
 
 @ApiTags('Support Cases')
 @ApiBearerAuth('access-token')
 @Controller('support-cases')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SupportCasesController {
+  // ===========================================================================
+  // Constructor — Command and Query Handlers
   // ===========================================================================
 
   public constructor(
@@ -252,6 +226,12 @@ export class SupportCasesController {
     @Inject(SUPPORT_TOKENS.COMMAND_HANDLERS.CREATE_SUPPORT_CASE)
     private readonly createSupportCaseHandler: CommandHandler<
       CreateSupportCaseCommand,
+      SupportCaseAggregate
+    >,
+
+    @Inject(SUPPORT_TOKENS.COMMAND_HANDLERS.CREATE_JOURNEY_SUPPORT_CASE)
+    private readonly createJourneySupportCaseHandler: CommandHandler<
+      CreateJourneySupportCaseCommand,
       SupportCaseAggregate
     >,
 
@@ -478,7 +458,6 @@ export class SupportCasesController {
       'Returns Support Case aggregates available through the Support application query boundary.',
   })
   @Get()
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case:read')
   public async getSupportCases(): Promise<SupportCaseResponse[]> {
     const supportCases = await this.getSupportCasesHandler.execute(
@@ -505,12 +484,21 @@ export class SupportCasesController {
     description: 'Public identity of the requester.',
   })
   @Get('by-requester/:requesterPublicId')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case:read')
   public async getByRequester(
     @Param('requesterPublicId') requesterPublicId: string,
+    @CurrentIdentity() identity: CurrentAuthenticatedIdentity,
   ): Promise<SupportCaseResponse[]> {
-    const requester = SupportCaseRequesterPublicId.create(requesterPublicId);
+    // A caller without broader administrative authorization must not be able
+    // to enumerate another requester's support cases merely by changing the
+    // route parameter. The permission guard remains responsible for deciding
+    // which permissions the caller has. This controller always scopes the
+    // requester query to the authenticated identity.
+    const requester = SupportCaseRequesterPublicId.create(
+      identity.identityPublicId,
+    );
+
+    void requesterPublicId;
 
     const supportCases = await this.getSupportCasesByRequesterHandler.execute(
       new GetSupportCasesByRequesterQuery(requester),
@@ -536,7 +524,6 @@ export class SupportCasesController {
     description: 'Public identity of the assignee.',
   })
   @Get('by-assignee/:assignedToPublicId')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case:read')
   public async getByAssignee(
     @Param('assignedToPublicId') assignedToPublicId: string,
@@ -574,7 +561,6 @@ export class SupportCasesController {
     description: 'Public identity of the referenced domain resource.',
   })
   @Get('by-reference/:referenceType/:referencePublicId')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case:read')
   public async getByReference(
     @Param('referenceType') referenceType: string,
@@ -607,15 +593,10 @@ export class SupportCasesController {
     description: 'Support Case lifecycle status.',
   })
   @Get('by-status/:status')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case:read')
   public async getByStatus(
     @Param('status') status: string,
   ): Promise<SupportCaseResponse[]> {
-    // -------------------------------------------------------------------------
-    // HTTP primitive → Domain Value Object
-    // -------------------------------------------------------------------------
-
     const value = SupportCaseStatus.create(status);
 
     const supportCases = await this.getSupportCasesByStatusHandler.execute(
@@ -642,7 +623,6 @@ export class SupportCasesController {
     description: 'Support Case category.',
   })
   @Get('by-category/:category')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case:read')
   public async getByCategory(
     @Param('category') category: string,
@@ -673,15 +653,10 @@ export class SupportCasesController {
     description: 'Support Case priority.',
   })
   @Get('by-priority/:priority')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case:read')
   public async getByPriority(
     @Param('priority') priority: string,
   ): Promise<SupportCaseResponse[]> {
-    // -------------------------------------------------------------------------
-    // HTTP primitive → Domain Value Object
-    // -------------------------------------------------------------------------
-
     const value = SupportCasePriority.create(priority);
 
     const supportCases = await this.getSupportCasesByPriorityHandler.execute(
@@ -709,7 +684,6 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Get(':supportCasePublicId')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case:read')
   public async get(
     @Param('supportCasePublicId') supportCasePublicId: string,
@@ -725,10 +699,6 @@ export class SupportCasesController {
   // Support Case Child Queries
   // ===========================================================================
 
-  // ---------------------------------------------------------------------------
-  // Get Participants
-  // ---------------------------------------------------------------------------
-
   @ApiOperation({
     summary: 'Get support case participants',
     description:
@@ -741,7 +711,6 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Get(':supportCasePublicId/participants')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case-participant:read')
   public async getParticipants(
     @Param('supportCasePublicId') supportCasePublicId: string,
@@ -759,10 +728,6 @@ export class SupportCasesController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Get Messages
-  // ---------------------------------------------------------------------------
-
   @ApiOperation({
     summary: 'Get support case messages',
     description:
@@ -775,7 +740,6 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Get(':supportCasePublicId/messages')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case-message:read')
   public async getMessages(
     @Param('supportCasePublicId') supportCasePublicId: string,
@@ -791,10 +755,6 @@ export class SupportCasesController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Get Notes
-  // ---------------------------------------------------------------------------
-
   @ApiOperation({
     summary: 'Get support case notes',
     description: 'Returns the note child entities belonging to a Support Case.',
@@ -806,7 +766,6 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Get(':supportCasePublicId/notes')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case-note:read')
   public async getNotes(
     @Param('supportCasePublicId') supportCasePublicId: string,
@@ -822,10 +781,6 @@ export class SupportCasesController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Get Evidence
-  // ---------------------------------------------------------------------------
-
   @ApiOperation({
     summary: 'Get support case evidence',
     description:
@@ -838,7 +793,6 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Get(':supportCasePublicId/evidence')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case-evidence:read')
   public async getEvidence(
     @Param('supportCasePublicId') supportCasePublicId: string,
@@ -856,10 +810,6 @@ export class SupportCasesController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Get Resolution
-  // ---------------------------------------------------------------------------
-
   @ApiOperation({
     summary: 'Get support case resolution',
     description:
@@ -872,7 +822,6 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Get(':supportCasePublicId/resolution')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case-resolution:read')
   public async getResolution(
     @Param('supportCasePublicId') supportCasePublicId: string,
@@ -898,22 +847,18 @@ export class SupportCasesController {
   // Support Case Commands
   // ===========================================================================
 
-  // ---------------------------------------------------------------------------
-  // Create Support Case
-  // ---------------------------------------------------------------------------
-
   @ApiOperation({
     summary: 'Create a support case',
     description: 'Creates a new Support Case aggregate.',
   })
   @Post()
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case:create')
   public async create(
     @Body() dto: CreateSupportCaseRequestDto,
+    @CurrentIdentity() identity: CurrentAuthenticatedIdentity,
   ): Promise<SupportCaseResponse> {
     const command = new CreateSupportCaseCommand(
-      SupportCaseRequesterPublicId.create(dto.requesterPublicId),
+      SupportCaseRequesterPublicId.create(identity.identityPublicId),
       SupportCasePriority.create(dto.priority),
       SupportCaseCategory.create(dto.category),
       SupportCaseSubject.create(dto.subject),
@@ -936,6 +881,47 @@ export class SupportCasesController {
   }
 
   // ---------------------------------------------------------------------------
+  // Create Support Case For Journey
+  // ---------------------------------------------------------------------------
+
+  @ApiOperation({
+    summary: 'Create a support case for a Journey',
+    description:
+      'Creates a Support Case linked to the specified Journey. The authenticated identity is used as the requester.',
+  })
+  @ApiParam({
+    name: 'journeyPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Journey requiring support.',
+  })
+  @Post('journeys/:journeyPublicId')
+  @RequirePermissions('support-case:create')
+  public async createForJourney(
+    @Param('journeyPublicId') journeyPublicId: string,
+    @Body() dto: CreateJourneySupportCaseRequestDto,
+    @CurrentIdentity() identity: CurrentAuthenticatedIdentity,
+  ): Promise<SupportCaseResponse> {
+    const command = new CreateJourneySupportCaseCommand(
+      SupportCaseRequesterPublicId.create(identity.identityPublicId),
+      SupportCaseReferencePublicId.create(journeyPublicId),
+      SupportCasePriority.create(dto.priority),
+      SupportCaseCategory.create(dto.category),
+      SupportCaseSubject.create(dto.subject),
+      randomUUID(),
+      randomUUID(),
+      dto.description === undefined
+        ? undefined
+        : SupportCaseDescription.create(dto.description),
+    );
+
+    const supportCase =
+      await this.createJourneySupportCaseHandler.execute(command);
+
+    return SupportCaseResponseMapper.toResponse(supportCase);
+  }
+
+  // ---------------------------------------------------------------------------
   // Assign
   // ---------------------------------------------------------------------------
 
@@ -950,7 +936,6 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Post(':supportCasePublicId/assign')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case:assign')
   public async assign(
     @Param('supportCasePublicId') supportCasePublicId: string,
@@ -983,7 +968,6 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Post(':supportCasePublicId/unassign')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case:assign')
   public async unassign(
     @Param('supportCasePublicId') supportCasePublicId: string,
@@ -1014,7 +998,6 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Post(':supportCasePublicId/priority')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case:update')
   public async changePriority(
     @Param('supportCasePublicId') supportCasePublicId: string,
@@ -1048,7 +1031,6 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Post(':supportCasePublicId/category')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case:update')
   public async changeCategory(
     @Param('supportCasePublicId') supportCasePublicId: string,
@@ -1082,7 +1064,6 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Post(':supportCasePublicId/start')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case:start')
   public async start(
     @Param('supportCasePublicId') supportCasePublicId: string,
@@ -1113,7 +1094,6 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Post(':supportCasePublicId/wait-for-member')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case:update')
   public async waitForMember(
     @Param('supportCasePublicId') supportCasePublicId: string,
@@ -1146,7 +1126,6 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Post(':supportCasePublicId/wait-for-internal-action')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case:update')
   public async waitForInternalAction(
     @Param('supportCasePublicId') supportCasePublicId: string,
@@ -1179,17 +1158,17 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Post(':supportCasePublicId/resolve')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case:resolve')
   public async resolve(
     @Param('supportCasePublicId') supportCasePublicId: string,
     @Body() dto: ResolveSupportCaseRequestDto,
+    @CurrentIdentity() identity: CurrentAuthenticatedIdentity,
   ): Promise<SupportCaseResponse> {
     const command = new ResolveSupportCaseCommand(
       new SupportCasePublicId(supportCasePublicId),
       SupportCaseResolutionType.create(dto.resolutionType),
       SupportCaseResolutionSummary.create(dto.resolutionSummary),
-      SupportCaseResolutionResolvedByPublicId.create(dto.resolvedByPublicId),
+      SupportCaseResolutionResolvedByPublicId.create(identity.identityPublicId),
       randomUUID(),
       dto.resolvedAt === undefined ? undefined : new Date(dto.resolvedAt),
       randomUUID(),
@@ -1215,7 +1194,6 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Post(':supportCasePublicId/close')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case:close')
   public async close(
     @Param('supportCasePublicId') supportCasePublicId: string,
@@ -1248,7 +1226,6 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Post(':supportCasePublicId/cancel')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case:cancel')
   public async cancel(
     @Param('supportCasePublicId') supportCasePublicId: string,
@@ -1270,10 +1247,6 @@ export class SupportCasesController {
   // Participant Commands
   // ===========================================================================
 
-  // ---------------------------------------------------------------------------
-  // Add Participant
-  // ---------------------------------------------------------------------------
-
   @ApiOperation({
     summary: 'Add a support case participant',
     description: 'Adds a participant to the Support Case aggregate.',
@@ -1285,7 +1258,6 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Post(':supportCasePublicId/participants')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case-participant:create')
   public async addParticipant(
     @Param('supportCasePublicId') supportCasePublicId: string,
@@ -1305,10 +1277,6 @@ export class SupportCasesController {
     return SupportCaseResponseMapper.toResponse(supportCase);
   }
 
-  // ---------------------------------------------------------------------------
-  // Remove Participant
-  // ---------------------------------------------------------------------------
-
   @ApiOperation({
     summary: 'Remove a support case participant',
     description: 'Removes a participant from the Support Case aggregate.',
@@ -1326,7 +1294,6 @@ export class SupportCasesController {
     description: 'Public identity of the participant.',
   })
   @Post(':supportCasePublicId/participants/:participantPublicId/remove')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case-participant:remove')
   public async removeParticipant(
     @Param('supportCasePublicId') supportCasePublicId: string,
@@ -1351,10 +1318,6 @@ export class SupportCasesController {
   // Message Commands
   // ===========================================================================
 
-  // ---------------------------------------------------------------------------
-  // Add Message
-  // ---------------------------------------------------------------------------
-
   @ApiOperation({
     summary: 'Add a support case message',
     description: 'Adds a message to the Support Case aggregate.',
@@ -1366,15 +1329,15 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Post(':supportCasePublicId/messages')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case-message:create')
   public async addMessage(
     @Param('supportCasePublicId') supportCasePublicId: string,
     @Body() dto: AddSupportCaseMessageRequestDto,
+    @CurrentIdentity() identity: CurrentAuthenticatedIdentity,
   ): Promise<SupportCaseResponse> {
     const command = new AddSupportCaseMessageCommand(
       new SupportCasePublicId(supportCasePublicId),
-      SupportCaseMessageSenderPublicId.create(dto.senderPublicId),
+      SupportCaseMessageSenderPublicId.create(identity.identityPublicId),
       SupportCaseMessageType.create(dto.type),
       randomUUID(),
       dto.content === undefined
@@ -1393,10 +1356,6 @@ export class SupportCasesController {
     return SupportCaseResponseMapper.toResponse(supportCase);
   }
 
-  // ---------------------------------------------------------------------------
-  // Edit Message
-  // ---------------------------------------------------------------------------
-
   @ApiOperation({
     summary: 'Edit a support case message',
     description: 'Edits an existing Support Case message.',
@@ -1414,7 +1373,6 @@ export class SupportCasesController {
     description: 'Public identity of the message.',
   })
   @Post(':supportCasePublicId/messages/:messagePublicId/edit')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case-message:update')
   public async editMessage(
     @Param('supportCasePublicId') supportCasePublicId: string,
@@ -1435,10 +1393,6 @@ export class SupportCasesController {
     return SupportCaseResponseMapper.toResponse(supportCase);
   }
 
-  // ---------------------------------------------------------------------------
-  // Delete Message
-  // ---------------------------------------------------------------------------
-
   @ApiOperation({
     summary: 'Delete a support case message',
     description: 'Deletes a Support Case message according to domain rules.',
@@ -1456,7 +1410,6 @@ export class SupportCasesController {
     description: 'Public identity of the message.',
   })
   @Post(':supportCasePublicId/messages/:messagePublicId/delete')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case-message:delete')
   public async deleteMessage(
     @Param('supportCasePublicId') supportCasePublicId: string,
@@ -1481,10 +1434,6 @@ export class SupportCasesController {
   // Note Commands
   // ===========================================================================
 
-  // ---------------------------------------------------------------------------
-  // Add Note
-  // ---------------------------------------------------------------------------
-
   @ApiOperation({
     summary: 'Add a support case note',
     description: 'Adds an internal note to the Support Case aggregate.',
@@ -1496,15 +1445,15 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Post(':supportCasePublicId/notes')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case-note:create')
   public async addNote(
     @Param('supportCasePublicId') supportCasePublicId: string,
     @Body() dto: AddSupportCaseNoteRequestDto,
+    @CurrentIdentity() identity: CurrentAuthenticatedIdentity,
   ): Promise<SupportCaseResponse> {
     const command = new AddSupportCaseNoteCommand(
       new SupportCasePublicId(supportCasePublicId),
-      SupportCaseNoteAuthorPublicId.create(dto.authorPublicId),
+      SupportCaseNoteAuthorPublicId.create(identity.identityPublicId),
       SupportCaseNoteContent.create(dto.content),
       randomUUID(),
       randomUUID(),
@@ -1519,10 +1468,6 @@ export class SupportCasesController {
   // Evidence Commands
   // ===========================================================================
 
-  // ---------------------------------------------------------------------------
-  // Add Evidence
-  // ---------------------------------------------------------------------------
-
   @ApiOperation({
     summary: 'Add support case evidence',
     description: 'Adds evidence to the Support Case aggregate.',
@@ -1534,15 +1479,15 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Post(':supportCasePublicId/evidence')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case-evidence:create')
   public async addEvidence(
     @Param('supportCasePublicId') supportCasePublicId: string,
     @Body() dto: AddSupportCaseEvidenceRequestDto,
+    @CurrentIdentity() identity: CurrentAuthenticatedIdentity,
   ): Promise<SupportCaseResponse> {
     const command = new AddSupportCaseEvidenceCommand(
       new SupportCasePublicId(supportCasePublicId),
-      SupportCaseEvidenceSubmittedByPublicId.create(dto.submittedByPublicId),
+      SupportCaseEvidenceSubmittedByPublicId.create(identity.identityPublicId),
       SupportCaseEvidenceAssetId.create(dto.assetId),
       randomUUID(),
       dto.description === undefined
@@ -1561,10 +1506,6 @@ export class SupportCasesController {
   // Resolution Commands
   // ===========================================================================
 
-  // ---------------------------------------------------------------------------
-  // Create Resolution
-  // ---------------------------------------------------------------------------
-
   @ApiOperation({
     summary: 'Create a support case resolution',
     description:
@@ -1577,17 +1518,17 @@ export class SupportCasesController {
     description: 'Public identity of the Support Case.',
   })
   @Post(':supportCasePublicId/resolution')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support-case-resolution:create')
   public async createResolution(
     @Param('supportCasePublicId') supportCasePublicId: string,
     @Body() dto: CreateSupportCaseResolutionRequestDto,
+    @CurrentIdentity() identity: CurrentAuthenticatedIdentity,
   ): Promise<SupportCaseResponse> {
     const command = new CreateSupportCaseResolutionCommand(
       new SupportCasePublicId(supportCasePublicId),
       SupportCaseResolutionType.create(dto.type),
       SupportCaseResolutionSummary.create(dto.summary),
-      SupportCaseResolutionResolvedByPublicId.create(dto.resolvedByPublicId),
+      SupportCaseResolutionResolvedByPublicId.create(identity.identityPublicId),
       randomUUID(),
       dto.resolvedAt === undefined ? undefined : new Date(dto.resolvedAt),
       randomUUID(),

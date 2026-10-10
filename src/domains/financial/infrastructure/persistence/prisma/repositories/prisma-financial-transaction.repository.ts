@@ -1,8 +1,9 @@
 // -----------------------------------------------------------------------------
-// Prisma Financial Transaction Repository
+// sisiMove — Prisma Financial Transaction Repository
 // -----------------------------------------------------------------------------
 //
-// Infrastructure repository for the Financial Transaction aggregate.
+// Infrastructure implementation of the FinancialTransactionRepository
+// contract.
 //
 // Aggregate boundary:
 //
@@ -10,39 +11,65 @@
 // ├── FinancialTransactionEntity
 // └── FinancialTransactionEntryEntity[]
 //
-// Responsibilities:
+// Ownership:
 //
-// - Financial Transaction aggregate persistence and rehydration
-// - Aggregate identity lookup
-// - Transaction lifecycle queries
-// - Transaction classification queries
-// - Currency queries
-// - Account-reference queries
-// - Business-reference queries
-// - Accounting-reference queries
-// - Aggregate-owned entry queries
-// - Transaction integrity queries
-// - Transaction amount queries
-// - Transaction counting
+// - FinancialTransaction is the aggregate root.
+// - FinancialTransactionEntry is an aggregate-owned child entity.
+// - FinancialAccount references remain opaque domain references.
+// - Accounting references remain opaque identifiers.
 //
-// IMPORTANT:
+// -----------------------------------------------------------------------------
 //
-// FinancialTransactionEntryEntity is NOT an aggregate root.
+// TRANSACTION PARTICIPATION:
 //
-// Entries are persisted atomically with their owning Financial Transaction.
+// This repository does NOT create its own Prisma transactions.
 //
-// This repository therefore does NOT expose:
+// PrismaTransactionContext determines which Prisma client is currently
+// available:
 //
-// - saveEntry()
-// - deleteEntry()
+//     UnitOfWork
+//         │
+//         ▼
+//     PrismaUnitOfWork
+//         │
+//         ▼
+//     Prisma $transaction(tx)
+//         │
+//         ▼
+//     PrismaTransactionContext
+//         │
+//         ▼
+//     PrismaFinancialTransactionRepository
 //
-// Financial Account references are opaque domain references:
+// When called inside a UnitOfWork, all operations use the transaction-scoped
+// Prisma client.
+//
+// When called outside a UnitOfWork, the context falls back to PrismaService.
+//
+// This is essential because Financial Transaction persistence can participate
+// in larger application workflows such as:
+//
+//     Booking
+//        ↓
+//     Payment
+//        ↓
+//     Financial Transaction
+//        ↓
+//     Financial Account
+//
+// The repository therefore never owns the transaction boundary.
+//
+// -----------------------------------------------------------------------------
+//
+// CROSS-DOMAIN ACCOUNT REFERENCES:
+//
+// The domain uses:
 //
 //   FinancialAccountReference
 //   ├── type
 //   └── publicId
 //
-// Prisma, however, stores:
+// Prisma stores:
 //
 //   FinancialAccount.id
 //
@@ -50,12 +77,36 @@
 //
 //   FinancialAccountReference.publicId
 //                 ↓
-//   FinancialAccount.id
+//        FinancialAccount.id
 //
-// before delegating persistence mapping to the mapper.
+// before persistence.
 //
-// This repository does NOT manage:
+// The repository never rehydrates or manages a FinancialAccount aggregate.
 //
+// -----------------------------------------------------------------------------
+//
+// AGGREGATE PERSISTENCE:
+//
+// FinancialTransaction
+// └── FinancialTransactionEntry[]
+//
+// Entries are aggregate-owned children.
+//
+// The complete transaction aggregate is persisted through the same ambient
+// Prisma client.
+//
+// No saveEntry() or deleteEntry() operation exists.
+//
+// -----------------------------------------------------------------------------
+//
+// ACCOUNTING:
+//
+// accountingJournalPublicId is persisted as an opaque identifier.
+//
+// This repository does not manage:
+//
+// - AccountingJournalAggregate
+// - AccountingEntryAggregate
 // - FinancialAccountAggregate
 // - FinancialPaymentAggregate
 // - FinancialAccountHoldAggregate
@@ -65,9 +116,13 @@
 //
 // Accounting remains outside the Financial bounded context.
 //
-// accountingJournalPublicId is persisted only as an opaque identifier.
-//
 // -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Prisma
@@ -79,9 +134,16 @@ import type { $Enums, Prisma } from '@prisma/client';
 // Foundation
 // -----------------------------------------------------------------------------
 
-import type { PrismaService } from '../../../../../../infrastructure/database/prisma/prisma.service';
-
 import { UniqueEntityId } from '../../../../../../foundation/kernel/domain/unique-entity-id';
+
+// -----------------------------------------------------------------------------
+// Transaction Context
+// -----------------------------------------------------------------------------
+
+import {
+  PrismaTransactionContext,
+  type PrismaClientLike,
+} from '../../../../../../infrastructure/database/prisma/prisma-transaction.context';
 
 // -----------------------------------------------------------------------------
 // Aggregate
@@ -127,18 +189,65 @@ import {
 import {
   FinancialTransactionPrismaMapper,
   type FinancialTransactionWithRelations,
-} from '../../../persistence/prisma/mappers/financial-transaction-prisma.mapper';
+} from '../mappers/financial-transaction-prisma.mapper';
 
 // =============================================================================
 // Repository
 // =============================================================================
 
+/**
+ * Prisma infrastructure implementation of the Financial Transaction
+ * repository.
+ *
+ * The repository is deliberately transaction-context aware.
+ *
+ * It does not create transactions itself because Financial Transaction
+ * operations may participate in larger application workflows.
+ *
+ * The repository translates between:
+ *
+ *     FinancialTransactionAggregate
+ *              ↕
+ *     FinancialTransactionPrismaMapper
+ *              ↕
+ *     Prisma FinancialTransaction
+ *
+ * The aggregate owns its entry collection, so complete aggregate
+ * rehydration includes the transaction entries.
+ */
+@Injectable()
 export class PrismaFinancialTransactionRepository implements FinancialTransactionRepository {
   // ===========================================================================
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly prisma: PrismaService) {}
+  /**
+   * Resolves the Prisma client through the ambient transaction context.
+   *
+   * Inside UnitOfWork:
+   *
+   *     Prisma.TransactionClient
+   *
+   * Outside UnitOfWork:
+   *
+   *     PrismaService
+   */
+  public constructor(
+    private readonly transactionContext: PrismaTransactionContext,
+  ) {}
+
+  // ===========================================================================
+  // Current Prisma Client
+  // ===========================================================================
+
+  /**
+   * Returns the Prisma client appropriate for the current execution context.
+   *
+   * This is the transaction boundary for this repository.
+   */
+  private get prisma(): PrismaClientLike {
+    return this.transactionContext.getClient();
+  }
 
   // ===========================================================================
   // Prisma Enum Boundary
@@ -189,8 +298,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
    * └── entries[]
    *      └── account
    *
-   * The account relations are required because the domain uses opaque
-   * FinancialAccountReference value objects rather than Prisma foreign keys.
+   * The account relations are loaded because the domain uses opaque
+   * FinancialAccountReference value objects rather than Prisma foreign-key
+   * identifiers.
    */
   private readonly include = {
     sourceAccount: true,
@@ -213,155 +323,174 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
   // ===========================================================================
 
   /**
-   * Persists the complete Financial Transaction aggregate atomically.
+   * Persists the complete Financial Transaction aggregate.
    *
-   * The transaction root and all aggregate-owned entries are persisted inside
-   * one database transaction.
+   * No repository-owned transaction is created.
+   *
+   * When called inside PrismaUnitOfWork, the transaction root and all
+   * aggregate-owned entries participate in the caller's transaction.
+   *
+   * The persistence sequence is:
+   *
+   *     1. Resolve FinancialAccount references.
+   *     2. Map the aggregate into persistence structures.
+   *     3. Upsert the FinancialTransaction root.
+   *     4. Replace the aggregate-owned entry collection.
+   *
+   * The caller owns the transaction boundary.
    */
   public async save(aggregate: FinancialTransactionAggregate): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      // -----------------------------------------------------------------------
-      // Resolve every account reference required by the aggregate.
-      // -----------------------------------------------------------------------
+    if (aggregate === undefined) {
+      throw new Error('Financial Transaction aggregate is required.');
+    }
 
-      const accountIds = await this.resolveAggregateAccountIds(tx, aggregate);
+    // -------------------------------------------------------------------------
+    // Resolve opaque FinancialAccount references.
+    // -------------------------------------------------------------------------
 
-      // -----------------------------------------------------------------------
-      // Convert aggregate into persistence structures.
-      // -----------------------------------------------------------------------
+    const accountIds = await this.resolveAggregateAccountIds(aggregate);
 
-      const persistence = FinancialTransactionPrismaMapper.toPersistence(
-        aggregate,
-        accountIds,
-      );
+    // -------------------------------------------------------------------------
+    // Convert aggregate into persistence structures.
+    // -------------------------------------------------------------------------
 
-      // -----------------------------------------------------------------------
-      // Transaction Root
-      // -----------------------------------------------------------------------
+    const persistence = FinancialTransactionPrismaMapper.toPersistence(
+      aggregate,
+      accountIds,
+    );
 
-      await tx.financialTransaction.upsert({
-        where: {
-          id: persistence.transaction.id,
-        },
+    // -------------------------------------------------------------------------
+    // Financial Transaction Root
+    // -------------------------------------------------------------------------
 
-        create: {
-          id: persistence.transaction.id,
+    await this.prisma.financialTransaction.upsert({
+      where: {
+        id: persistence.transaction.id,
+      },
 
-          publicId: persistence.transaction.publicId,
+      create: {
+        id: persistence.transaction.id,
 
-          type: this.toPrismaFinancialTransactionType(
-            persistence.transaction.type,
-          ),
+        publicId: persistence.transaction.publicId,
 
-          status: this.toPrismaFinancialTransactionStatus(
-            persistence.transaction.status,
-          ),
+        type: this.toPrismaFinancialTransactionType(
+          persistence.transaction.type,
+        ),
 
-          sourceAccountId: persistence.transaction.sourceAccountId,
+        status: this.toPrismaFinancialTransactionStatus(
+          persistence.transaction.status,
+        ),
 
-          destinationAccountId: persistence.transaction.destinationAccountId,
+        sourceAccountId: persistence.transaction.sourceAccountId,
 
-          amount: persistence.transaction.amount,
+        destinationAccountId: persistence.transaction.destinationAccountId,
 
-          currency: persistence.transaction.currency,
+        amount: persistence.transaction.amount,
 
-          referenceType: persistence.transaction.referenceType,
+        currency: persistence.transaction.currency,
 
-          referencePublicId: persistence.transaction.referencePublicId,
+        referenceType: persistence.transaction.referenceType,
 
-          accountingJournalPublicId:
-            persistence.transaction.accountingJournalPublicId,
+        referencePublicId: persistence.transaction.referencePublicId,
 
-          completedAt: persistence.transaction.completedAt,
+        accountingJournalPublicId:
+          persistence.transaction.accountingJournalPublicId,
 
-          failedAt: persistence.transaction.failedAt,
+        completedAt: persistence.transaction.completedAt,
 
-          reversedAt: persistence.transaction.reversedAt,
+        failedAt: persistence.transaction.failedAt,
 
-          cancelledAt: persistence.transaction.cancelledAt,
+        reversedAt: persistence.transaction.reversedAt,
 
-          createdAt: persistence.transaction.createdAt,
+        cancelledAt: persistence.transaction.cancelledAt,
 
-          updatedAt: persistence.transaction.updatedAt,
-        },
+        createdAt: persistence.transaction.createdAt,
 
-        update: {
-          publicId: persistence.transaction.publicId,
+        updatedAt: persistence.transaction.updatedAt,
+      },
 
-          type: this.toPrismaFinancialTransactionType(
-            persistence.transaction.type,
-          ),
+      update: {
+        publicId: persistence.transaction.publicId,
 
-          status: this.toPrismaFinancialTransactionStatus(
-            persistence.transaction.status,
-          ),
+        type: this.toPrismaFinancialTransactionType(
+          persistence.transaction.type,
+        ),
 
-          sourceAccountId: persistence.transaction.sourceAccountId,
+        status: this.toPrismaFinancialTransactionStatus(
+          persistence.transaction.status,
+        ),
 
-          destinationAccountId: persistence.transaction.destinationAccountId,
+        sourceAccountId: persistence.transaction.sourceAccountId,
 
-          amount: persistence.transaction.amount,
+        destinationAccountId: persistence.transaction.destinationAccountId,
 
-          currency: persistence.transaction.currency,
+        amount: persistence.transaction.amount,
 
-          referenceType: persistence.transaction.referenceType,
+        currency: persistence.transaction.currency,
 
-          referencePublicId: persistence.transaction.referencePublicId,
+        referenceType: persistence.transaction.referenceType,
 
-          accountingJournalPublicId:
-            persistence.transaction.accountingJournalPublicId,
+        referencePublicId: persistence.transaction.referencePublicId,
 
-          completedAt: persistence.transaction.completedAt,
+        accountingJournalPublicId:
+          persistence.transaction.accountingJournalPublicId,
 
-          failedAt: persistence.transaction.failedAt,
+        completedAt: persistence.transaction.completedAt,
 
-          reversedAt: persistence.transaction.reversedAt,
+        failedAt: persistence.transaction.failedAt,
 
-          cancelledAt: persistence.transaction.cancelledAt,
+        reversedAt: persistence.transaction.reversedAt,
 
-          updatedAt: persistence.transaction.updatedAt,
-        },
-      });
+        cancelledAt: persistence.transaction.cancelledAt,
 
-      // -----------------------------------------------------------------------
-      // Aggregate-Owned Entries
-      // -----------------------------------------------------------------------
-      //
-      // The aggregate owns its complete entry collection.
-      //
-      // Entries that no longer belong to the aggregate are removed and the
-      // current aggregate entries are recreated atomically.
-      //
-      // -----------------------------------------------------------------------
-
-      await tx.financialTransactionEntry.deleteMany({
-        where: {
-          transactionId: persistence.transaction.id,
-        },
-      });
-
-      if (persistence.entries.length > 0) {
-        await tx.financialTransactionEntry.createMany({
-          data: persistence.entries.map((entry) => ({
-            id: entry.id,
-
-            publicId: entry.publicId,
-
-            transactionId: entry.transactionId,
-
-            accountId: entry.accountId,
-
-            type: this.toPrismaFinancialTransactionEntryType(entry.type),
-
-            balanceType: entry.balanceType,
-
-            amount: entry.amount,
-
-            createdAt: entry.createdAt,
-          })),
-        });
-      }
+        updatedAt: persistence.transaction.updatedAt,
+      },
     });
+
+    // -------------------------------------------------------------------------
+    // Aggregate-Owned Entries
+    // -------------------------------------------------------------------------
+    //
+    // FinancialTransactionEntry is not an aggregate root.
+    //
+    // The aggregate owns the complete entry collection.
+    //
+    // Therefore the repository does not expose independent entry persistence.
+    //
+    // Existing entries are replaced with the current aggregate state.
+    //
+    // When save() executes inside a UnitOfWork, both the deletion and creation
+    // participate in that same ambient database transaction.
+    //
+    // -------------------------------------------------------------------------
+
+    await this.prisma.financialTransactionEntry.deleteMany({
+      where: {
+        transactionId: persistence.transaction.id,
+      },
+    });
+
+    if (persistence.entries.length > 0) {
+      await this.prisma.financialTransactionEntry.createMany({
+        data: persistence.entries.map((entry) => ({
+          id: entry.id,
+
+          publicId: entry.publicId,
+
+          transactionId: entry.transactionId,
+
+          accountId: entry.accountId,
+
+          type: this.toPrismaFinancialTransactionEntryType(entry.type),
+
+          balanceType: entry.balanceType,
+
+          amount: entry.amount,
+
+          createdAt: entry.createdAt,
+        })),
+      });
+    }
   }
 
   // ===========================================================================
@@ -376,7 +505,7 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
   ): Promise<FinancialTransactionAggregate | null> {
     const record = await this.prisma.financialTransaction.findUnique({
       where: {
-        id: id.value,
+        id: id.toString(),
       },
 
       include: this.include,
@@ -410,13 +539,13 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
    * Determines whether a Financial Transaction exists by internal identity.
    */
   public async exists(id: UniqueEntityId): Promise<boolean> {
-    return (
-      (await this.prisma.financialTransaction.count({
-        where: {
-          id: id.value,
-        },
-      })) > 0
-    );
+    const count = await this.prisma.financialTransaction.count({
+      where: {
+        id: id.toString(),
+      },
+    });
+
+    return count > 0;
   }
 
   /**
@@ -425,19 +554,22 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
   public async existsByPublicId(
     publicId: FinancialTransactionPublicId,
   ): Promise<boolean> {
-    return (
-      (await this.prisma.financialTransaction.count({
-        where: {
-          publicId: publicId.value,
-        },
-      })) > 0
-    );
+    const count = await this.prisma.financialTransaction.count({
+      where: {
+        publicId: publicId.value,
+      },
+    });
+
+    return count > 0;
   }
 
   // ===========================================================================
   // Lifecycle Queries
   // ===========================================================================
 
+  /**
+   * Finds complete Financial Transaction aggregates by lifecycle status.
+   */
   public async findByStatus(
     status: FinancialTransactionStatus,
   ): Promise<FinancialTransactionAggregate[]> {
@@ -456,39 +588,57 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     return records.map((record) => this.toAggregate(record));
   }
 
+  /**
+   * Determines whether a transaction has the supplied lifecycle status.
+   */
   public async hasStatus(
     id: UniqueEntityId,
     status: FinancialTransactionStatus,
   ): Promise<boolean> {
-    return (
-      (await this.prisma.financialTransaction.count({
-        where: {
-          id: id.value,
+    const count = await this.prisma.financialTransaction.count({
+      where: {
+        id: id.toString(),
 
-          status: this.toPrismaFinancialTransactionStatus(status.value),
-        },
-      })) > 0
-    );
+        status: this.toPrismaFinancialTransactionStatus(status.value),
+      },
+    });
+
+    return count > 0;
   }
 
+  /**
+   * Finds pending transactions.
+   */
   public async findPending(): Promise<FinancialTransactionAggregate[]> {
-    return this.findByStatus(this.toFinancialTransactionStatus('PENDING'));
+    return this.findByStatus(FinancialTransactionStatus.create('PENDING'));
   }
 
+  /**
+   * Finds completed transactions.
+   */
   public async findCompleted(): Promise<FinancialTransactionAggregate[]> {
-    return this.findByStatus(this.toFinancialTransactionStatus('COMPLETED'));
+    return this.findByStatus(FinancialTransactionStatus.create('COMPLETED'));
   }
 
+  /**
+   * Finds failed transactions.
+   */
   public async findFailed(): Promise<FinancialTransactionAggregate[]> {
-    return this.findByStatus(this.toFinancialTransactionStatus('FAILED'));
+    return this.findByStatus(FinancialTransactionStatus.create('FAILED'));
   }
 
+  /**
+   * Finds cancelled transactions.
+   */
   public async findCancelled(): Promise<FinancialTransactionAggregate[]> {
-    return this.findByStatus(this.toFinancialTransactionStatus('CANCELLED'));
+    return this.findByStatus(FinancialTransactionStatus.create('CANCELLED'));
   }
 
+  /**
+   * Finds reversed transactions.
+   */
   public async findReversed(): Promise<FinancialTransactionAggregate[]> {
-    return this.findByStatus(this.toFinancialTransactionStatus('REVERSED'));
+    return this.findByStatus(FinancialTransactionStatus.create('REVERSED'));
   }
 
   /**
@@ -505,7 +655,12 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     const records = await this.prisma.financialTransaction.findMany({
       where: {
         status: {
-          in: ['COMPLETED', 'FAILED', 'REVERSED', 'CANCELLED'],
+          in: [
+            this.toPrismaFinancialTransactionStatus('COMPLETED'),
+            this.toPrismaFinancialTransactionStatus('FAILED'),
+            this.toPrismaFinancialTransactionStatus('REVERSED'),
+            this.toPrismaFinancialTransactionStatus('CANCELLED'),
+          ],
         },
       },
 
@@ -519,6 +674,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     return records.map((record) => this.toAggregate(record));
   }
 
+  /**
+   * Counts transactions by lifecycle status.
+   */
   public async countByStatus(
     status: FinancialTransactionStatus,
   ): Promise<number> {
@@ -529,6 +687,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     });
   }
 
+  /**
+   * Counts all Financial Transactions.
+   */
   public async count(): Promise<number> {
     return this.prisma.financialTransaction.count();
   }
@@ -537,6 +698,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
   // Transaction Classification
   // ===========================================================================
 
+  /**
+   * Finds transactions by transaction type.
+   */
   public async findByType(
     type: FinancialTransactionType,
   ): Promise<FinancialTransactionAggregate[]> {
@@ -555,6 +719,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     return records.map((record) => this.toAggregate(record));
   }
 
+  /**
+   * Finds transactions by type and lifecycle status.
+   */
   public async findByTypeAndStatus(
     type: FinancialTransactionType,
     status: FinancialTransactionStatus,
@@ -576,6 +743,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     return records.map((record) => this.toAggregate(record));
   }
 
+  /**
+   * Counts transactions by type.
+   */
   public async countByType(type: FinancialTransactionType): Promise<number> {
     return this.prisma.financialTransaction.count({
       where: {
@@ -584,6 +754,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     });
   }
 
+  /**
+   * Counts transactions by type and lifecycle status.
+   */
   public async countByTypeAndStatus(
     type: FinancialTransactionType,
     status: FinancialTransactionStatus,
@@ -601,6 +774,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
   // Currency Queries
   // ===========================================================================
 
+  /**
+   * Finds transactions using a currency.
+   */
   public async findByCurrency(
     currency: Currency,
   ): Promise<FinancialTransactionAggregate[]> {
@@ -619,6 +795,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     return records.map((record) => this.toAggregate(record));
   }
 
+  /**
+   * Finds transactions by currency and lifecycle status.
+   */
   public async findByCurrencyAndStatus(
     currency: Currency,
     status: FinancialTransactionStatus,
@@ -640,40 +819,55 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     return records.map((record) => this.toAggregate(record));
   }
 
+  /**
+   * Determines whether a transaction uses the supplied currency.
+   */
   public async usesCurrency(
     id: UniqueEntityId,
     currency: Currency,
   ): Promise<boolean> {
-    return (
-      (await this.prisma.financialTransaction.count({
-        where: {
-          id: id.value,
+    const count = await this.prisma.financialTransaction.count({
+      where: {
+        id: id.toString(),
 
-          currency: currency.value,
-        },
-      })) > 0
-    );
+        currency: currency.value,
+      },
+    });
+
+    return count > 0;
   }
 
+  /**
+   * Determines whether a public transaction uses the supplied currency.
+   */
   public async usesCurrencyByPublicId(
     publicId: FinancialTransactionPublicId,
     currency: Currency,
   ): Promise<boolean> {
-    return (
-      (await this.prisma.financialTransaction.count({
-        where: {
-          publicId: publicId.value,
+    const count = await this.prisma.financialTransaction.count({
+      where: {
+        publicId: publicId.value,
 
-          currency: currency.value,
-        },
-      })) > 0
-    );
+        currency: currency.value,
+      },
+    });
+
+    return count > 0;
   }
 
   // ===========================================================================
   // Account Reference Queries
   // ===========================================================================
 
+  /**
+   * Finds transactions involving an account in any transaction role.
+   *
+   * An account may appear as:
+   *
+   * - source account;
+   * - destination account;
+   * - entry account.
+   */
   public async findByAccount(
     account: FinancialAccountReference,
   ): Promise<FinancialTransactionAggregate[]> {
@@ -714,6 +908,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     return records.map((record) => this.toAggregate(record));
   }
 
+  /**
+   * Finds transactions where the supplied account is the source account.
+   */
   public async findBySourceAccount(
     account: FinancialAccountReference,
   ): Promise<FinancialTransactionAggregate[]> {
@@ -734,6 +931,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     return records.map((record) => this.toAggregate(record));
   }
 
+  /**
+   * Finds transactions where the supplied account is the destination account.
+   */
   public async findByDestinationAccount(
     account: FinancialAccountReference,
   ): Promise<FinancialTransactionAggregate[]> {
@@ -754,80 +954,89 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     return records.map((record) => this.toAggregate(record));
   }
 
+  /**
+   * Determines whether a transaction involves an account in any role.
+   */
   public async involvesAccount(
     id: UniqueEntityId,
     account: FinancialAccountReference,
   ): Promise<boolean> {
-    return (
-      (await this.prisma.financialTransaction.count({
-        where: {
-          id: id.value,
+    const count = await this.prisma.financialTransaction.count({
+      where: {
+        id: id.toString(),
 
-          OR: [
-            {
-              sourceAccount: {
-                publicId: account.publicId,
-              },
+        OR: [
+          {
+            sourceAccount: {
+              publicId: account.publicId,
             },
+          },
 
-            {
-              destinationAccount: {
-                publicId: account.publicId,
-              },
+          {
+            destinationAccount: {
+              publicId: account.publicId,
             },
+          },
 
-            {
-              entries: {
-                some: {
-                  account: {
-                    publicId: account.publicId,
-                  },
+          {
+            entries: {
+              some: {
+                account: {
+                  publicId: account.publicId,
                 },
               },
             },
-          ],
-        },
-      })) > 0
-    );
+          },
+        ],
+      },
+    });
+
+    return count > 0;
   }
 
+  /**
+   * Determines whether a public transaction involves an account.
+   */
   public async involvesAccountByPublicId(
     publicId: FinancialTransactionPublicId,
     account: FinancialAccountReference,
   ): Promise<boolean> {
-    return (
-      (await this.prisma.financialTransaction.count({
-        where: {
-          publicId: publicId.value,
+    const count = await this.prisma.financialTransaction.count({
+      where: {
+        publicId: publicId.value,
 
-          OR: [
-            {
-              sourceAccount: {
-                publicId: account.publicId,
-              },
+        OR: [
+          {
+            sourceAccount: {
+              publicId: account.publicId,
             },
+          },
 
-            {
-              destinationAccount: {
-                publicId: account.publicId,
-              },
+          {
+            destinationAccount: {
+              publicId: account.publicId,
             },
+          },
 
-            {
-              entries: {
-                some: {
-                  account: {
-                    publicId: account.publicId,
-                  },
+          {
+            entries: {
+              some: {
+                account: {
+                  publicId: account.publicId,
                 },
               },
             },
-          ],
-        },
-      })) > 0
-    );
+          },
+        ],
+      },
+    });
+
+    return count > 0;
   }
 
+  /**
+   * Counts transactions involving an account in any role.
+   */
   public async countByAccount(
     account: FinancialAccountReference,
   ): Promise<number> {
@@ -860,6 +1069,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     });
   }
 
+  /**
+   * Counts transactions where an account is the source account.
+   */
   public async countBySourceAccount(
     account: FinancialAccountReference,
   ): Promise<number> {
@@ -872,6 +1084,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     });
   }
 
+  /**
+   * Counts transactions where an account is the destination account.
+   */
   public async countByDestinationAccount(
     account: FinancialAccountReference,
   ): Promise<number> {
@@ -888,6 +1103,11 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
   // Business Reference Queries
   // ===========================================================================
 
+  /**
+   * Finds transactions associated with a business reference.
+   *
+   * Both reference fields are persisted as opaque identifiers.
+   */
   public async findByReference(
     reference: FinancialTransactionReference,
   ): Promise<FinancialTransactionAggregate[]> {
@@ -908,24 +1128,32 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     return records.map((record) => this.toAggregate(record));
   }
 
+  /**
+   * Determines whether any transaction exists for a business reference.
+   */
   public async existsByReference(
     reference: FinancialTransactionReference,
   ): Promise<boolean> {
-    return (
-      (await this.prisma.financialTransaction.count({
-        where: {
-          referenceType: reference.type,
+    const count = await this.prisma.financialTransaction.count({
+      where: {
+        referenceType: reference.type,
 
-          referencePublicId: reference.publicId,
-        },
-      })) > 0
-    );
+        referencePublicId: reference.publicId,
+      },
+    });
+
+    return count > 0;
   }
 
   // ===========================================================================
   // Accounting Reference Queries
   // ===========================================================================
 
+  /**
+   * Finds the transaction associated with an accounting journal.
+   *
+   * accountingJournalPublicId remains an opaque identifier.
+   */
   public async findByAccountingJournalPublicId(
     accountingJournalPublicId: string,
   ): Promise<FinancialTransactionAggregate | null> {
@@ -940,42 +1168,53 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     return record === null ? null : this.toAggregate(record);
   }
 
+  /**
+   * Determines whether a transaction has an accounting journal reference.
+   */
   public async hasAccountingJournal(id: UniqueEntityId): Promise<boolean> {
-    return (
-      (await this.prisma.financialTransaction.count({
-        where: {
-          id: id.value,
+    const count = await this.prisma.financialTransaction.count({
+      where: {
+        id: id.toString(),
 
-          accountingJournalPublicId: {
-            not: null,
-          },
+        accountingJournalPublicId: {
+          not: null,
         },
-      })) > 0
-    );
+      },
+    });
+
+    return count > 0;
   }
 
+  /**
+   * Determines whether a public transaction has an accounting journal
+   * reference.
+   */
   public async hasAccountingJournalByPublicId(
     publicId: FinancialTransactionPublicId,
   ): Promise<boolean> {
-    return (
-      (await this.prisma.financialTransaction.count({
-        where: {
-          publicId: publicId.value,
+    const count = await this.prisma.financialTransaction.count({
+      where: {
+        publicId: publicId.value,
 
-          accountingJournalPublicId: {
-            not: null,
-          },
+        accountingJournalPublicId: {
+          not: null,
         },
-      })) > 0
-    );
+      },
+    });
+
+    return count > 0;
   }
 
+  /**
+   * Finds completed transactions that have not yet received an accounting
+   * journal reference.
+   */
   public async findCompletedWithoutAccountingJournal(): Promise<
     FinancialTransactionAggregate[]
   > {
     const records = await this.prisma.financialTransaction.findMany({
       where: {
-        status: 'COMPLETED',
+        status: this.toPrismaFinancialTransactionStatus('COMPLETED'),
 
         accountingJournalPublicId: null,
       },
@@ -994,12 +1233,17 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
   // Entry Queries
   // ===========================================================================
 
+  /**
+   * Finds all aggregate-owned entries for a transaction.
+   *
+   * Entry currency is inherited from the owning transaction.
+   */
   public async findEntriesByTransactionId(
     transactionId: UniqueEntityId,
   ): Promise<FinancialTransactionEntryEntity[]> {
     const transaction = await this.prisma.financialTransaction.findUnique({
       where: {
-        id: transactionId.value,
+        id: transactionId.toString(),
       },
 
       select: {
@@ -1013,7 +1257,7 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
 
     const entries = await this.prisma.financialTransactionEntry.findMany({
       where: {
-        transactionId: transactionId.value,
+        transactionId: transactionId.toString(),
       },
 
       include: {
@@ -1033,6 +1277,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     );
   }
 
+  /**
+   * Finds all aggregate-owned entries using the transaction public identity.
+   */
   public async findEntriesByTransactionPublicId(
     transactionPublicId: FinancialTransactionPublicId,
   ): Promise<FinancialTransactionEntryEntity[]> {
@@ -1073,6 +1320,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     );
   }
 
+  /**
+   * Finds an aggregate-owned entry by public identity.
+   */
   public async findEntryByPublicId(
     entryPublicId: FinancialTransactionEntryPublicId,
   ): Promise<FinancialTransactionEntryEntity | null> {
@@ -1102,22 +1352,28 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     );
   }
 
+  /**
+   * Determines whether an entry exists by public identity.
+   */
   public async existsEntryByPublicId(
     entryPublicId: FinancialTransactionEntryPublicId,
   ): Promise<boolean> {
-    return (
-      (await this.prisma.financialTransactionEntry.count({
-        where: {
-          publicId: entryPublicId.value,
-        },
-      })) > 0
-    );
+    const count = await this.prisma.financialTransactionEntry.count({
+      where: {
+        publicId: entryPublicId.value,
+      },
+    });
+
+    return count > 0;
   }
 
+  /**
+   * Counts aggregate-owned entries for a transaction.
+   */
   public async countEntries(transactionId: UniqueEntityId): Promise<number> {
     return this.prisma.financialTransactionEntry.count({
       where: {
-        transactionId: transactionId.value,
+        transactionId: transactionId.toString(),
       },
     });
   }
@@ -1126,6 +1382,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
   // Entry Account Queries
   // ===========================================================================
 
+  /**
+   * Finds transaction entries belonging to an account.
+   */
   public async findEntriesByAccount(
     account: FinancialAccountReference,
   ): Promise<FinancialTransactionEntryEntity[]> {
@@ -1159,6 +1418,10 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     );
   }
 
+  /**
+   * Finds transaction entries belonging to an account and having a specific
+   * entry type.
+   */
   public async findEntriesByAccountAndType(
     account: FinancialAccountReference,
     type: FinancialTransactionEntryType,
@@ -1195,42 +1458,51 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     );
   }
 
+  /**
+   * Determines whether a transaction contains an entry for an account.
+   */
   public async hasEntryForAccount(
     transactionId: UniqueEntityId,
     account: FinancialAccountReference,
   ): Promise<boolean> {
-    return (
-      (await this.prisma.financialTransactionEntry.count({
-        where: {
-          transactionId: transactionId.value,
+    const count = await this.prisma.financialTransactionEntry.count({
+      where: {
+        transactionId: transactionId.toString(),
 
-          account: {
-            publicId: account.publicId,
-          },
+        account: {
+          publicId: account.publicId,
         },
-      })) > 0
-    );
+      },
+    });
+
+    return count > 0;
   }
 
+  /**
+   * Determines whether a public transaction contains an entry for an account.
+   */
   public async hasEntryForAccountByPublicId(
     transactionPublicId: FinancialTransactionPublicId,
     account: FinancialAccountReference,
   ): Promise<boolean> {
-    return (
-      (await this.prisma.financialTransactionEntry.count({
-        where: {
-          transaction: {
-            publicId: transactionPublicId.value,
-          },
-
-          account: {
-            publicId: account.publicId,
-          },
+    const count = await this.prisma.financialTransactionEntry.count({
+      where: {
+        transaction: {
+          publicId: transactionPublicId.value,
         },
-      })) > 0
-    );
+
+        account: {
+          publicId: account.publicId,
+        },
+      },
+    });
+
+    return count > 0;
   }
 
+  /**
+   * Counts entries belonging to an account.
+   */
   public async countEntriesByAccount(
     account: FinancialAccountReference,
   ): Promise<number> {
@@ -1243,6 +1515,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     });
   }
 
+  /**
+   * Counts entries belonging to an account with a specific type.
+   */
   public async countEntriesByAccountAndType(
     account: FinancialAccountReference,
     type: FinancialTransactionEntryType,
@@ -1262,48 +1537,63 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
   // Entry Direction Queries
   // ===========================================================================
 
+  /**
+   * Finds debit entries for a transaction.
+   */
   public async findDebitEntries(
     transactionId: UniqueEntityId,
   ): Promise<FinancialTransactionEntryEntity[]> {
     return this.findEntriesByTransactionIdAndType(
       transactionId,
-      this.toFinancialTransactionEntryType('DEBIT'),
+      FinancialTransactionEntryType.create('DEBIT'),
     );
   }
 
+  /**
+   * Finds credit entries for a transaction.
+   */
   public async findCreditEntries(
     transactionId: UniqueEntityId,
   ): Promise<FinancialTransactionEntryEntity[]> {
     return this.findEntriesByTransactionIdAndType(
       transactionId,
-      this.toFinancialTransactionEntryType('CREDIT'),
+      FinancialTransactionEntryType.create('CREDIT'),
     );
   }
 
+  /**
+   * Determines whether a transaction contains a debit entry.
+   */
   public async hasDebitEntry(transactionId: UniqueEntityId): Promise<boolean> {
-    return (
-      (await this.prisma.financialTransactionEntry.count({
-        where: {
-          transactionId: transactionId.value,
+    const count = await this.prisma.financialTransactionEntry.count({
+      where: {
+        transactionId: transactionId.toString(),
 
-          type: 'DEBIT',
-        },
-      })) > 0
-    );
+        type: this.toPrismaFinancialTransactionEntryType('DEBIT'),
+      },
+    });
+
+    return count > 0;
   }
 
+  /**
+   * Determines whether a transaction contains a credit entry.
+   */
   public async hasCreditEntry(transactionId: UniqueEntityId): Promise<boolean> {
-    return (
-      (await this.prisma.financialTransactionEntry.count({
-        where: {
-          transactionId: transactionId.value,
+    const count = await this.prisma.financialTransactionEntry.count({
+      where: {
+        transactionId: transactionId.toString(),
 
-          type: 'CREDIT',
-        },
-      })) > 0
-    );
+        type: this.toPrismaFinancialTransactionEntryType('CREDIT'),
+      },
+    });
+
+    return count > 0;
   }
 
+  /**
+   * Determines whether the transaction has both debit and credit entries.
+   */
   public async hasDoubleEntry(transactionId: UniqueEntityId): Promise<boolean> {
     const [debits, credits] = await Promise.all([
       this.hasDebitEntry(transactionId),
@@ -1317,22 +1607,37 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
   // Entry Balance Queries
   // ===========================================================================
 
+  /**
+   * Calculates the total debit amount for a transaction.
+   */
   public async calculateTotalDebits(
     transactionId: UniqueEntityId,
   ): Promise<Money> {
-    return this.calculateEntryTotal(transactionId, 'DEBIT');
+    return this.calculateEntryTotal(
+      transactionId,
+      this.toPrismaFinancialTransactionEntryType('DEBIT'),
+    );
   }
 
+  /**
+   * Calculates the total credit amount for a transaction.
+   */
   public async calculateTotalCredits(
     transactionId: UniqueEntityId,
   ): Promise<Money> {
-    return this.calculateEntryTotal(transactionId, 'CREDIT');
+    return this.calculateEntryTotal(
+      transactionId,
+      this.toPrismaFinancialTransactionEntryType('CREDIT'),
+    );
   }
 
+  /**
+   * Determines whether transaction debit and credit entries balance.
+   */
   public async isBalanced(transactionId: UniqueEntityId): Promise<boolean> {
     const transaction = await this.prisma.financialTransaction.findUnique({
       where: {
-        id: transactionId.value,
+        id: transactionId.toString(),
       },
 
       select: {
@@ -1347,9 +1652,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     const [debit, credit] = await Promise.all([
       this.prisma.financialTransactionEntry.aggregate({
         where: {
-          transactionId: transactionId.value,
+          transactionId: transactionId.toString(),
 
-          type: 'DEBIT',
+          type: this.toPrismaFinancialTransactionEntryType('DEBIT'),
         },
 
         _sum: {
@@ -1359,9 +1664,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
 
       this.prisma.financialTransactionEntry.aggregate({
         where: {
-          transactionId: transactionId.value,
+          transactionId: transactionId.toString(),
 
-          type: 'CREDIT',
+          type: this.toPrismaFinancialTransactionEntryType('CREDIT'),
         },
 
         _sum: {
@@ -1373,6 +1678,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     return (debit._sum.amount ?? 0) === (credit._sum.amount ?? 0);
   }
 
+  /**
+   * Determines whether a public transaction is balanced.
+   */
   public async isBalancedByPublicId(
     transactionPublicId: FinancialTransactionPublicId,
   ): Promise<boolean> {
@@ -1397,6 +1705,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
   // Transaction Amount Queries
   // ===========================================================================
 
+  /**
+   * Finds transactions with an exact monetary amount.
+   */
   public async findByAmount(
     amount: Money,
   ): Promise<FinancialTransactionAggregate[]> {
@@ -1417,6 +1728,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     return records.map((record) => this.toAggregate(record));
   }
 
+  /**
+   * Finds transactions by currency and exact monetary amount.
+   */
   public async findByCurrencyAndAmount(
     currency: Currency,
     amount: Money,
@@ -1442,12 +1756,15 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
   // Transaction Integrity Queries
   // ===========================================================================
 
+  /**
+   * Finds pending transactions that already contain entries.
+   */
   public async findPendingWithEntries(): Promise<
     FinancialTransactionAggregate[]
   > {
     const records = await this.prisma.financialTransaction.findMany({
       where: {
-        status: 'PENDING',
+        status: this.toPrismaFinancialTransactionStatus('PENDING'),
 
         entries: {
           some: {},
@@ -1464,12 +1781,15 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     return records.map((record) => this.toAggregate(record));
   }
 
+  /**
+   * Finds pending transactions that do not yet contain entries.
+   */
   public async findPendingWithoutEntries(): Promise<
     FinancialTransactionAggregate[]
   > {
     const records = await this.prisma.financialTransaction.findMany({
       where: {
-        status: 'PENDING',
+        status: this.toPrismaFinancialTransactionStatus('PENDING'),
 
         entries: {
           none: {},
@@ -1486,12 +1806,19 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     return records.map((record) => this.toAggregate(record));
   }
 
+  /**
+   * Finds completed transactions whose entries are not balanced.
+   *
+   * Prisma cannot directly compare the aggregate debit and credit sums in the
+   * same relational query, so the aggregate is rehydrated and validated in
+   * memory.
+   */
   public async findCompletedWithUnbalancedEntries(): Promise<
     FinancialTransactionAggregate[]
   > {
     const records = await this.prisma.financialTransaction.findMany({
       where: {
-        status: 'COMPLETED',
+        status: this.toPrismaFinancialTransactionStatus('COMPLETED'),
 
         entries: {
           some: {},
@@ -1510,12 +1837,16 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
       .filter((aggregate) => this.aggregateIsUnbalanced(aggregate));
   }
 
+  /**
+   * Finds completed transactions where entry totals do not match the
+   * transaction amount.
+   */
   public async findCompletedWithAmountMismatch(): Promise<
     FinancialTransactionAggregate[]
   > {
     const records = await this.prisma.financialTransaction.findMany({
       where: {
-        status: 'COMPLETED',
+        status: this.toPrismaFinancialTransactionStatus('COMPLETED'),
 
         entries: {
           some: {},
@@ -1544,9 +1875,6 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
    *
    * This condition is structurally impossible and therefore produces no
    * records.
-   *
-   * Promise.resolve() is used instead of async/await because there is no
-   * asynchronous work to perform.
    */
   public findWithEntryCurrencyMismatch(): Promise<
     FinancialTransactionAggregate[]
@@ -1560,6 +1888,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
 
   /**
    * Rehydrates the complete Financial Transaction aggregate.
+   *
+   * Prisma records are translated into domain objects exclusively through the
+   * FinancialTransactionPrismaMapper.
    */
   private toAggregate(
     record: FinancialTransactionWithRelations,
@@ -1572,16 +1903,18 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
   // ===========================================================================
 
   /**
-   * Converts all opaque domain FinancialAccountReference values into internal
-   * Prisma FinancialAccount IDs.
+   * Resolves all opaque FinancialAccountReference values contained by the
+   * aggregate into internal Prisma FinancialAccount IDs.
    *
    * No database access occurs inside the mapper.
    *
    * Database resolution therefore belongs at this infrastructure repository
    * boundary.
+   *
+   * The lookup uses the ambient Prisma client so account resolution participates
+   * in the caller's UnitOfWork transaction.
    */
   private async resolveAggregateAccountIds(
-    tx: Prisma.TransactionClient,
     aggregate: FinancialTransactionAggregate,
   ): Promise<Map<string, string>> {
     const publicIds = new Set<string>();
@@ -1614,7 +1947,7 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
       return new Map();
     }
 
-    const accounts = await tx.financialAccount.findMany({
+    const accounts = await this.prisma.financialAccount.findMany({
       where: {
         publicId: {
           in: [...publicIds],
@@ -1652,13 +1985,18 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
   // Entry Queries — Internal Helpers
   // ===========================================================================
 
+  /**
+   * Finds transaction entries by transaction identity and entry type.
+   *
+   * Entry currency is inherited from the owning transaction.
+   */
   private async findEntriesByTransactionIdAndType(
     transactionId: UniqueEntityId,
     type: FinancialTransactionEntryType,
   ): Promise<FinancialTransactionEntryEntity[]> {
     const transaction = await this.prisma.financialTransaction.findUnique({
       where: {
-        id: transactionId.value,
+        id: transactionId.toString(),
       },
 
       select: {
@@ -1672,7 +2010,7 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
 
     const entries = await this.prisma.financialTransactionEntry.findMany({
       where: {
-        transactionId: transactionId.value,
+        transactionId: transactionId.toString(),
 
         type: this.toPrismaFinancialTransactionEntryType(type.value),
       },
@@ -1698,13 +2036,18 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
   // Entry Amount Helpers
   // ===========================================================================
 
+  /**
+   * Calculates the total amount for a particular entry direction.
+   *
+   * Entry currency is inherited from the transaction.
+   */
   private async calculateEntryTotal(
     transactionId: UniqueEntityId,
     type: $Enums.FinancialTransactionEntryType,
   ): Promise<Money> {
     const transaction = await this.prisma.financialTransaction.findUnique({
       where: {
-        id: transactionId.value,
+        id: transactionId.toString(),
       },
 
       select: {
@@ -1714,13 +2057,13 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
 
     if (transaction === null) {
       throw new Error(
-        `Financial Transaction "${transactionId.value}" does not exist.`,
+        `Financial Transaction "${transactionId.toString()}" does not exist.`,
       );
     }
 
     const result = await this.prisma.financialTransactionEntry.aggregate({
       where: {
-        transactionId: transactionId.value,
+        transactionId: transactionId.toString(),
 
         type,
       },
@@ -1740,6 +2083,9 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
   // Aggregate Integrity Helpers
   // ===========================================================================
 
+  /**
+   * Determines whether aggregate debit and credit totals differ.
+   */
   private aggregateIsUnbalanced(
     aggregate: FinancialTransactionAggregate,
   ): boolean {
@@ -1754,6 +2100,10 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     return debits !== credits;
   }
 
+  /**
+   * Determines whether either debit or credit totals differ from the
+   * transaction amount.
+   */
   private aggregateHasAmountMismatch(
     aggregate: FinancialTransactionAggregate,
   ): boolean {
@@ -1769,20 +2119,10 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
 
     return debits !== transactionAmount || credits !== transactionAmount;
   }
-
-  // ===========================================================================
-  // Domain Value-Object Helpers
-  // ===========================================================================
-
-  private toFinancialTransactionStatus(
-    value: string,
-  ): FinancialTransactionStatus {
-    return FinancialTransactionStatus.create(value);
-  }
-
-  private toFinancialTransactionEntryType(
-    value: string,
-  ): FinancialTransactionEntryType {
-    return FinancialTransactionEntryType.create(value);
-  }
 }
+
+// -----------------------------------------------------------------------------
+// Default Export
+// -----------------------------------------------------------------------------
+
+export default PrismaFinancialTransactionRepository;

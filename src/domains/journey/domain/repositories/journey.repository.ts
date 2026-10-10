@@ -615,6 +615,8 @@ export interface JourneyRepository {
    */
   existsCapacity(journeyId: JourneyId): Promise<boolean>;
 
+  reserveCapacitySeats(journeyId: JourneyId, seats: number): Promise<void>;
+
   // ===========================================================================
   // Pricing
   // ===========================================================================

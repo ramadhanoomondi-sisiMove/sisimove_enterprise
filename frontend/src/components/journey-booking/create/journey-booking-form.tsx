@@ -1,7 +1,9 @@
-// src/features/journey-booking/components/create/journey-booking-form.tsx
-
 // -----------------------------------------------------------------------------
+// src/features/journey-booking/components/create/journey-booking-form.tsx
+// -----------------------------------------------------------------------------
+//
 // sisiMove — Journey Booking Form
+//
 // -----------------------------------------------------------------------------
 //
 // Journey Booking workflow orchestrator.
@@ -30,18 +32,31 @@
 //        |
 //        | POST /journey-bookings/:bookingPublicId/payment
 //        v
+//   Payment Record Created
+//        |
+//        v
 //   Step 5 — Review
 //        |
 //        | POST /journey-bookings/:bookingPublicId/confirm
+//        |
+//        | Atomic backend operation:
+//        |   - authorize payment
+//        |   - create financial hold
+//        |   - create financial transaction
+//        |   - authorize booking payment
+//        |   - confirm booking
+//        |   - reserve journey capacity
 //        v
 //   Confirmed Journey Booking
+//
+// -----------------------------------------------------------------------------
 //
 // Responsibilities:
 //
 // - Own booking workflow state.
 // - Own the current step.
 // - Create the Booking exactly once.
-// - Coordinate snapshot, pricing, payment, and confirmation mutations.
+// - Coordinate snapshot, pricing, payment, and atomic confirmation mutations.
 // - Pass presentation state into child components.
 //
 // Non-responsibilities:
@@ -52,24 +67,31 @@
 // - Performing authorization.
 // - Calling HTTP APIs directly.
 // - Implementing payment-provider logic.
+// - Performing payment authorization locally.
+//
+// The backend owns the atomic payment + confirmation operation.
 //
 // Mutation hooks remain the React-facing API boundary.
 // The backend JourneyBooking aggregate remains authoritative.
+//
 // -----------------------------------------------------------------------------
 
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { ErrorState } from "@/components/ui/error-state";
 import { cn } from "@/foundation/utils/cn";
 
+import { AUTHENTICATED_ROUTES } from "@/foundation/routing/authenticated-routes";
+
 import {
+  useConfirmJourneyBooking,
   useCreateJourneyBooking,
+  useCreateJourneyBookingPayment,
   useCreateJourneyBookingSnapshot,
   useSetJourneyBookingPricing,
-  useCreateJourneyBookingPayment,
-  useConfirmJourneyBooking,
 } from "@/features/journey-booking/hooks/mutations";
 
 import {
@@ -78,9 +100,7 @@ import {
   JourneyBookingProgress,
 } from "./journey-booking-progress";
 
-import {
-  JourneyBookingSeats,
-} from "./journey-booking-seats";
+import { JourneyBookingSeats } from "./journey-booking-seats";
 
 import {
   JourneyBookingSnapshot,
@@ -157,9 +177,7 @@ export interface JourneyBookingFormProps {
   /**
    * Called after the booking has been successfully confirmed.
    */
-  readonly onConfirmed: (
-    journeyBookingPublicId: string,
-  ) => void;
+  readonly onConfirmed: (journeyBookingPublicId: string) => void;
 
   /**
    * Optional cancellation callback owned by the route.
@@ -179,6 +197,8 @@ export function JourneyBookingForm({
   onCancel,
   className,
 }: JourneyBookingFormProps) {
+  const router = useRouter();
+
   // ---------------------------------------------------------------------------
   // Workflow state
   // ---------------------------------------------------------------------------
@@ -202,6 +222,23 @@ export function JourneyBookingForm({
   const [isSubmitting, setIsSubmitting] =
     useState(false);
 
+  // ---------------------------------------------------------------------------
+  // Payment state
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Public identity of the transaction created by the payment domain.
+   *
+   * The frontend deliberately does not generate this identifier.
+   *
+   * It is returned by the payment creation operation and is later supplied
+   * to the atomic booking confirmation operation.
+   */
+  const [
+    paymentTransactionPublicId,
+    setPaymentTransactionPublicId,
+  ] = useState<string | null>(null);
+
   const [error, setError] =
     useState<Error | null>(null);
 
@@ -221,6 +258,12 @@ export function JourneyBookingForm({
   const createPaymentMutation =
     useCreateJourneyBookingPayment();
 
+  /**
+   * Confirmation is now the atomic backend operation.
+   *
+   * It performs payment authorization, financial hold creation, booking
+   * confirmation, and journey capacity reservation inside one transaction.
+   */
   const confirmBookingMutation =
     useConfirmJourneyBooking();
 
@@ -242,6 +285,20 @@ export function JourneyBookingForm({
 
   const totalAmount =
     journey.pricePerSeat * seats;
+
+  /**
+   * The insufficient-funds response is a domain-level payment failure.
+   *
+   * We deliberately inspect the backend message rather than inventing a new
+   * frontend error code here, because the atomic confirmation mutation exposes
+   * the authoritative domain error.
+   */
+  const hasInsufficientFundsError =
+    error?.message
+      .toLowerCase()
+      .includes(
+        "insufficient available funds",
+      ) ?? false;
 
   // ---------------------------------------------------------------------------
   // Validation
@@ -272,6 +329,16 @@ export function JourneyBookingForm({
     }
 
     return journeyBookingPublicId;
+  }
+
+  function requirePaymentTransactionPublicId(): string {
+    if (!paymentTransactionPublicId) {
+      throw new Error(
+        "A payment transaction identifier is required before confirmation.",
+      );
+    }
+
+    return paymentTransactionPublicId;
   }
 
   // ---------------------------------------------------------------------------
@@ -320,10 +387,9 @@ export function JourneyBookingForm({
       journeyBookingPublicId: bookingPublicId,
       request: {
         originName: journey.originName,
-        destinationName: journey.destinationName,
+        destinationName:
+          journey.destinationName,
 
-        // The Journey corridor is the source of truth
-        // for the booking snapshot coordinates.
         originCoordinates: {
           latitude:
             journey.originCoordinates.latitude,
@@ -339,8 +405,10 @@ export function JourneyBookingForm({
         },
 
         departureAt: journey.departureAt,
+
         arrivalAt:
           journey.arrivalAt ?? undefined,
+
         timezone: journey.timezone,
 
         vehicleMake:
@@ -391,23 +459,81 @@ export function JourneyBookingForm({
     const bookingPublicId =
       requireBookingPublicId();
 
-    await createPaymentMutation.mutateAsync({
-      journeyBookingPublicId: bookingPublicId,
-      request: {
-        status: "PENDING",
-        amount: totalAmount,
-        currency: journey.currency,
-      },
-    });
+    /**
+     * Payment creation is intentionally idempotent at the form level.
+     *
+     * If the payment transaction has already been created, do not create
+     * another payment record. The existing transaction remains the payment
+     * transaction used by the final atomic confirmation.
+     */
+    if (paymentTransactionPublicId) {
+      setCurrentStep("review");
+      return;
+    }
+
+    const result =
+      await createPaymentMutation.mutateAsync({
+        journeyBookingPublicId: bookingPublicId,
+        request: {
+          status: "PENDING",
+          amount: totalAmount,
+          currency: journey.currency,
+        },
+      });
+
+    /**
+     * The Journey Booking payment model exposes the cross-domain transaction
+     * reference through:
+     *
+     *   result.payment.transactionPublicId
+     *
+     * The frontend does not generate this identifier.
+     */
+    const transactionPublicId =
+      result?.payment?.transactionPublicId?.trim();
+
+    if (!transactionPublicId) {
+      throw new Error(
+        "Payment creation succeeded but did not return a transaction public ID.",
+      );
+    }
+
+    setPaymentTransactionPublicId(
+      transactionPublicId,
+    );
+
+    /**
+     * Payment creation is complete.
+     *
+     * Payment authorization is intentionally NOT performed here.
+     *
+     * The final confirmation endpoint now performs authorization and booking
+     * confirmation atomically, preventing a successful payment hold from
+     * surviving a later capacity failure.
+     */
+    setCurrentStep("review");
   }
 
   // ---------------------------------------------------------------------------
-  // Step 5 — Confirm
+  // Wallet
+  // ---------------------------------------------------------------------------
+
+  function handleGoToWallet(): void {
+    router.push(
+      AUTHENTICATED_ROUTES.WALLET_TOP_UP,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Step 5 — Atomic Confirm
   // ---------------------------------------------------------------------------
 
   async function confirmBooking(): Promise<void> {
     const bookingPublicId =
       requireBookingPublicId();
+
+    const transactionPublicId =
+      requirePaymentTransactionPublicId();
 
     if (!reviewAccepted) {
       throw new Error(
@@ -415,10 +541,28 @@ export function JourneyBookingForm({
       );
     }
 
+    setError(null);
+
     await confirmBookingMutation.mutateAsync({
       journeyBookingPublicId: bookingPublicId,
+      request: {
+        transactionPublicId,
+      },
     });
 
+    /**
+     * The backend has now completed the complete atomic operation:
+     *
+     * - financial authorization;
+     * - financial hold;
+     * - financial transaction;
+     * - booking payment authorization;
+     * - booking confirmation;
+     * - journey capacity reservation.
+     *
+     * If any of those operations failed, the backend transaction would have
+     * rolled back and this callback would not be reached.
+     */
     onConfirmed(bookingPublicId);
   }
 
@@ -468,6 +612,16 @@ export function JourneyBookingForm({
     try {
       await persistCurrentStep();
 
+      /**
+       * Payment creation moves directly to Review.
+       *
+       * This is intentional because payment authorization now belongs to the
+       * atomic confirmation transaction rather than a separate API call.
+       */
+      if (currentStep === "payment") {
+        return;
+      }
+
       if (isLastStep) {
         return;
       }
@@ -496,6 +650,7 @@ export function JourneyBookingForm({
   function handleBack(): void {
     if (
       isSubmitting ||
+      confirmBookingMutation.isPending ||
       isFirstStep
     ) {
       return;
@@ -676,7 +831,8 @@ export function JourneyBookingForm({
               setReviewAccepted
             }
             disabled={
-              isSubmitting
+              isSubmitting ||
+              confirmBookingMutation.isPending
             }
           />
         );
@@ -700,10 +856,7 @@ export function JourneyBookingForm({
       )}
     >
       <div className="mx-auto w-full max-w-4xl">
-
-        {/* ----------------------------------------------------------------- */}
-        {/* Header                                                            */}
-        {/* ----------------------------------------------------------------- */}
+        {/* Header */}
 
         <header className="mb-6">
           <div className="mb-3 flex items-center gap-2">
@@ -745,9 +898,7 @@ export function JourneyBookingForm({
           </p>
         </header>
 
-        {/* ----------------------------------------------------------------- */}
-        {/* Progress                                                          */}
-        {/* ----------------------------------------------------------------- */}
+        {/* Progress */}
 
         <div className="mb-6 rounded-[var(--radius-2xl)] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-[var(--shadow-sm)] sm:p-6">
           <JourneyBookingProgress
@@ -756,9 +907,7 @@ export function JourneyBookingForm({
           />
         </div>
 
-        {/* ----------------------------------------------------------------- */}
-        {/* Error                                                             */}
-        {/* ----------------------------------------------------------------- */}
+        {/* Error */}
 
         {error !== null && (
           <div className="mb-6">
@@ -772,15 +921,51 @@ export function JourneyBookingForm({
                 onClick:
                   handleNext,
                 disabled:
-                  isSubmitting,
+                  isSubmitting ||
+                  confirmBookingMutation.isPending,
               }}
             />
+
+            {hasInsufficientFundsError && (
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={
+                    handleGoToWallet
+                  }
+                  disabled={
+                    isSubmitting ||
+                    confirmBookingMutation.isPending
+                  }
+                  className={cn(
+                    "inline-flex",
+                    "min-h-10",
+                    "items-center",
+                    "justify-center",
+                    "rounded-[var(--radius-md)]",
+                    "bg-[var(--brand)]",
+                    "px-4",
+                    "py-2",
+                    "text-sm",
+                    "font-semibold",
+                    "text-[var(--brand-foreground)]",
+                    "transition-colors",
+                    "hover:bg-[var(--brand-hover)]",
+                    "focus-visible:outline-2",
+                    "focus-visible:outline-[var(--brand)]",
+                    "focus-visible:outline-offset-2",
+                    "disabled:cursor-not-allowed",
+                    "disabled:opacity-60",
+                  )}
+                >
+                  Go to Wallet
+                </button>
+              </div>
+            )}
           </div>
         )}
 
-        {/* ----------------------------------------------------------------- */}
-        {/* Form                                                              */}
-        {/* ----------------------------------------------------------------- */}
+        {/* Form */}
 
         <section
           aria-label="Journey Booking form"
@@ -795,13 +980,10 @@ export function JourneyBookingForm({
             {renderCurrentStep()}
           </div>
 
-          {/* --------------------------------------------------------------- */}
-          {/* Actions                                                         */}
-          {/* --------------------------------------------------------------- */}
+          {/* Actions */}
 
           <div className="border-t border-[var(--border-subtle)] bg-[var(--background-subtle)] px-5 py-4 sm:px-8 sm:py-5 lg:px-10">
             <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-
               <div>
                 {isFirstStep ? (
                   onCancel ? (
@@ -811,7 +993,8 @@ export function JourneyBookingForm({
                         onCancel
                       }
                       disabled={
-                        isSubmitting
+                        isSubmitting ||
+                        confirmBookingMutation.isPending
                       }
                       className="inline-flex items-center justify-center rounded-[var(--radius-md)] px-4 py-2.5 text-sm font-semibold text-[var(--foreground-secondary)] transition-colors hover:bg-[var(--background-muted)] disabled:cursor-not-allowed disabled:opacity-50"
                     >
@@ -825,7 +1008,8 @@ export function JourneyBookingForm({
                       handleBack
                     }
                     disabled={
-                      isSubmitting
+                      isSubmitting ||
+                      confirmBookingMutation.isPending
                     }
                     className="inline-flex items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-sm font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--background-muted)] disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -834,10 +1018,6 @@ export function JourneyBookingForm({
                 )}
               </div>
 
-              {/* ----------------------------------------------------------- */}
-              {/* Step action                                                  */}
-              {/* ----------------------------------------------------------- */}
-
               <button
                 type="button"
                 onClick={() => {
@@ -845,6 +1025,7 @@ export function JourneyBookingForm({
                 }}
                 disabled={
                   isSubmitting ||
+                  confirmBookingMutation.isPending ||
                   (
                     currentStep ===
                       "seats" &&
@@ -884,9 +1065,7 @@ export function JourneyBookingForm({
           </div>
         </section>
 
-        {/* ----------------------------------------------------------------- */}
-        {/* Reassurance                                                       */}
-        {/* ----------------------------------------------------------------- */}
+        {/* Reassurance */}
 
         <div className="mt-5 flex items-center justify-center gap-2 text-center">
           <svg

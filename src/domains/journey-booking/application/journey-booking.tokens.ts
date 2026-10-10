@@ -13,6 +13,7 @@
 //   - Booking component assembly
 //   - Booking lifecycle
 //   - Payment lifecycle
+//   - Atomic payment + booking confirmation
 //
 // Query handlers are separated by responsibility:
 //
@@ -69,6 +70,24 @@ export const JOURNEY_BOOKING_TOKENS = {
     // -------------------------------------------------------------------------
 
     CONFIRM: Symbol('ConfirmJourneyBookingHandler'),
+
+    /**
+     * Atomically authorizes payment and confirms the Journey Booking.
+     *
+     * This handler owns the application workflow that coordinates:
+     *
+     *   Payment authorization
+     *        +
+     *   Financial reservation
+     *        +
+     *   Booking confirmation
+     *        +
+     *   Journey capacity reservation
+     *
+     * All participating persistence operations execute inside one
+     * PrismaUnitOfWork transaction.
+     */
+    CONFIRM_WITH_PAYMENT: Symbol('ConfirmJourneyBookingWithPaymentHandler'),
 
     CANCEL: Symbol('CancelJourneyBookingHandler'),
 

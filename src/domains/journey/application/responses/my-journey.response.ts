@@ -2,6 +2,10 @@
 // sisiMove — Authenticated My Journey Response
 // -----------------------------------------------------------------------------
 
+import type { JourneyBookingResponse } from '../../../journey-booking/presentation/rest/mappers/journey-booking-response.mapper';
+
+import type { JourneyBoardingResponse } from '../../../journey-boarding/presentation/rest/mappers/journey-boarding-response.mapper';
+
 export interface MyJourneyResponse {
   readonly publicId: string;
 
@@ -36,6 +40,27 @@ export interface MyJourneyResponse {
   readonly preferences: MyJourneyPreferencesResponse | null;
 
   readonly assets: readonly MyJourneyAssetResponse[];
+
+  /**
+   * All bookings associated with this Journey.
+   */
+  readonly bookings: readonly JourneyBookingResponse[];
+
+  /**
+   * Number of unread messages associated with this Journey
+   * for the authenticated member.
+   *
+   * Calculated by the application layer using the existing
+   * Messaging domain and repository infrastructure.
+   */
+  readonly unreadMessagesCount: number;
+
+  /**
+   * Physical boarding workflow, including participants and event history.
+   *
+   * Null when no Journey Boarding exists.
+   */
+  readonly boarding: JourneyBoardingResponse | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -101,12 +126,6 @@ export interface MyJourneyScheduleResponse {
 // -----------------------------------------------------------------------------
 // Vehicle Asset Reference
 // -----------------------------------------------------------------------------
-//
-// This is a resolved, browser-facing Asset representation.
-//
-// The Journey domain continues to own only assetPublicId.
-// The URL is composed at the application/read-model boundary.
-//
 
 export interface MyJourneyAssetReferenceResponse {
   readonly publicId: string;
@@ -131,17 +150,8 @@ export interface MyJourneyVehicleResponse {
 
   readonly registration: string | null;
 
-  /**
-   * Opaque reference to the Asset bounded context.
-   */
   readonly assetPublicId: string | null;
 
-  /**
-   * Resolved public representation of the vehicle Asset.
-   *
-   * Null when the vehicle has no Asset reference or the reference was not
-   * resolved.
-   */
   readonly asset: MyJourneyAssetReferenceResponse | null;
 }
 

@@ -7,16 +7,25 @@
 //
 // Dependency injection:
 //     JOURNEY_BOOKING_TOKENS.REPOSITORY
+//     JOURNEY_TOKENS.REPOSITORY
+//     PrismaUnitOfWork
 //
 // Application responsibilities:
 //
 // 1. Load the Journey Booking aggregate.
 // 2. Fail with JourneyBookingNotFoundException when it does not exist.
-// 3. Delegate confirmation to the aggregate.
-// 4. Persist the changed aggregate.
-// 5. Return the confirmed aggregate.
+// 3. Load the Journey aggregate associated with the booking.
+// 4. Delegate confirmation to the JourneyBookingAggregate.
+// 5. Reserve the confirmed booking seats on the Journey capacity.
+// 6. Persist the confirmed Journey Booking.
+// 7. Commit the booking confirmation and capacity reservation atomically.
 //
-// Confirmation lifecycle rules and invariants remain inside the aggregate.
+// Confirmation lifecycle rules remain inside the JourneyBookingAggregate.
+//
+// Journey capacity mutation is coordinated by the Journey repository.
+//
+// The PrismaUnitOfWork owns the transaction boundary.
+//
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
@@ -38,64 +47,51 @@ import type { CommandHandler } from '../../../../foundation/kernel/application/c
 import type { ConfirmJourneyBookingCommand } from '../commands/confirm-journey-booking.command';
 
 // -----------------------------------------------------------------------------
-// Aggregate
+// Journey Booking
 // -----------------------------------------------------------------------------
 
 import type { JourneyBookingAggregate } from '../../domain/aggregates/journey-booking.aggregate';
 
 // -----------------------------------------------------------------------------
-// Exceptions
+// Journey Booking Exceptions
 // -----------------------------------------------------------------------------
 
 import { JourneyBookingNotFoundException } from '../../domain/exceptions';
 
 // -----------------------------------------------------------------------------
-// Repository
+// Journey Booking Repository
 // -----------------------------------------------------------------------------
 
 import type { JourneyBookingRepository } from '../../domain/repositories/journey-booking.repository';
 
 // -----------------------------------------------------------------------------
-// Dependency Injection Tokens
+// Journey Booking Tokens
 // -----------------------------------------------------------------------------
 
 import { JOURNEY_BOOKING_TOKENS } from '../journey-booking.tokens';
 
 // -----------------------------------------------------------------------------
-// Handler
+// Journey Repository
 // -----------------------------------------------------------------------------
 
-/**
- * Handles confirmation of an existing Journey Booking.
- *
- * The handler is an application-layer orchestrator.
- *
- * It does NOT:
- *
- * - implement confirmation rules;
- * - decide whether the booking can be confirmed;
- * - mutate booking state directly;
- * - contain persistence logic;
- * - recreate aggregate invariants.
- *
- * Those responsibilities remain inside the JourneyBookingAggregate.
- *
- * The workflow is:
- *
- *     ConfirmJourneyBookingCommand
- *                ↓
- *     JourneyBookingRepository
- *                ↓
- *     JourneyBookingAggregate
- *                ↓
- *            confirm()
- *                ↓
- *     JourneyBookingRepository.save()
- *
- * The repository is resolved through:
- *
- *     JOURNEY_BOOKING_TOKENS.REPOSITORY
- */
+import type { JourneyRepository } from '../../../journey/domain/repositories/journey.repository';
+
+// -----------------------------------------------------------------------------
+// Journey Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_TOKENS } from '../../../journey/application/journey.tokens';
+
+// -----------------------------------------------------------------------------
+// Unit of Work
+// -----------------------------------------------------------------------------
+
+import { PrismaUnitOfWork } from '../../../../infrastructure/persistence/prisma-unit-of-work';
+
+// =============================================================================
+// Handler
+// =============================================================================
+
 @Injectable()
 export class ConfirmJourneyBookingHandler implements CommandHandler<
   ConfirmJourneyBookingCommand,
@@ -106,8 +102,25 @@ export class ConfirmJourneyBookingHandler implements CommandHandler<
   // ===========================================================================
 
   constructor(
+    // -------------------------------------------------------------------------
+    // Journey Booking
+    // -------------------------------------------------------------------------
+
     @Inject(JOURNEY_BOOKING_TOKENS.REPOSITORY)
     private readonly repository: JourneyBookingRepository,
+
+    // -------------------------------------------------------------------------
+    // Journey
+    // -------------------------------------------------------------------------
+
+    @Inject(JOURNEY_TOKENS.REPOSITORY)
+    private readonly journeyRepository: JourneyRepository,
+
+    // -------------------------------------------------------------------------
+    // Unit of Work
+    // -------------------------------------------------------------------------
+
+    private readonly unitOfWork: PrismaUnitOfWork,
   ) {}
 
   // ===========================================================================
@@ -117,59 +130,90 @@ export class ConfirmJourneyBookingHandler implements CommandHandler<
   public async execute(
     command: ConfirmJourneyBookingCommand,
   ): Promise<JourneyBookingAggregate> {
-    // -------------------------------------------------------------------------
-    // Load Aggregate
-    // -------------------------------------------------------------------------
-    //
-    // Resolve the complete Journey Booking aggregate through the repository.
-    //
+    return this.unitOfWork.execute(async () => {
+      // -----------------------------------------------------------------------
+      // Load Journey Booking
+      // -----------------------------------------------------------------------
 
-    const aggregate = await this.repository.findByPublicId(
-      command.journeyBookingPublicId,
-    );
-
-    // -------------------------------------------------------------------------
-    // Not Found
-    // -------------------------------------------------------------------------
-    //
-    // Confirmation cannot be applied when the booking does not exist.
-    //
-
-    if (aggregate === null) {
-      throw new JourneyBookingNotFoundException(
-        command.journeyBookingPublicId.value,
+      const booking = await this.repository.findByPublicId(
+        command.journeyBookingPublicId,
       );
-    }
 
-    // -------------------------------------------------------------------------
-    // Confirm
-    // -------------------------------------------------------------------------
-    //
-    // The aggregate owns the confirmation lifecycle and validates all
-    // confirmation invariants.
-    //
-    // The handler only supplies the command data.
-    //
+      // -----------------------------------------------------------------------
+      // Not Found
+      // -----------------------------------------------------------------------
 
-    aggregate.confirm(
-      command.correlationId,
-      command.causationId,
-      command.confirmedAt,
-    );
+      if (booking === null) {
+        throw new JourneyBookingNotFoundException(
+          command.journeyBookingPublicId.value,
+        );
+      }
 
-    // -------------------------------------------------------------------------
-    // Persistence
-    // -------------------------------------------------------------------------
-    //
-    // Persist the aggregate after the domain operation succeeds.
-    //
+      // -----------------------------------------------------------------------
+      // Load Journey
+      // -----------------------------------------------------------------------
+      //
+      // The booking stores the Journey public ID.
+      //
+      // Resolve the Journey inside the same transaction used by the booking
+      // confirmation and capacity reservation.
+      //
+      // -----------------------------------------------------------------------
 
-    await this.repository.save(aggregate);
+      const journey = await this.journeyRepository.findByPublicId(
+        booking.journeyPublicId,
+      );
 
-    // -------------------------------------------------------------------------
-    // Result
-    // -------------------------------------------------------------------------
+      if (journey === null) {
+        throw new Error(
+          `Journey was not found for public ID ${booking.journeyPublicId.value}.`,
+        );
+      }
 
-    return aggregate;
+      // -----------------------------------------------------------------------
+      // Confirm Journey Booking
+      // -----------------------------------------------------------------------
+      //
+      // The JourneyBookingAggregate owns the booking confirmation lifecycle.
+      //
+      // -----------------------------------------------------------------------
+
+      booking.confirm(
+        command.correlationId,
+        command.causationId,
+        command.confirmedAt,
+      );
+
+      // -----------------------------------------------------------------------
+      // Reserve Journey Capacity
+      // -----------------------------------------------------------------------
+      //
+      // Capacity is committed only when the booking becomes CONFIRMED.
+      //
+      // The Journey repository performs the capacity mutation through the
+      // transaction-scoped Prisma client.
+      //
+      // Because this operation is inside PrismaUnitOfWork, the booking
+      // confirmation and capacity reservation succeed or roll back together.
+      //
+      // -----------------------------------------------------------------------
+
+      await this.journeyRepository.reserveCapacitySeats(
+        journey.journeyId,
+        booking.seats.value,
+      );
+
+      // -----------------------------------------------------------------------
+      // Persist Journey Booking
+      // -----------------------------------------------------------------------
+
+      await this.repository.save(booking);
+
+      // -----------------------------------------------------------------------
+      // Return
+      // -----------------------------------------------------------------------
+
+      return booking;
+    });
   }
 }

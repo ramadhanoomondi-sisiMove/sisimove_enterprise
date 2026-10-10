@@ -11,18 +11,29 @@
 // Backend authorization:
 //   journey-booking:confirm
 //
-// Confirmation is a backend aggregate operation. The frontend does not
-// determine whether the booking has a valid snapshot, pricing, payment
-// information, or an allowable lifecycle state.
+// Confirmation is an atomic backend aggregate operation.
 //
-// The backend JourneyBookingAggregate is authoritative for all confirmation
-// invariants and lifecycle transitions.
+// The backend performs, inside one transaction:
+//
+//   1. Payment authorization.
+//   2. Financial account hold.
+//   3. Financial transaction creation.
+//   4. Journey Booking payment authorization.
+//   5. Journey Booking confirmation.
+//   6. Journey capacity reservation.
+//
+// If any operation fails, the backend rolls the entire transaction back.
+//
+// The frontend does not determine whether the booking can be confirmed.
+// The backend JourneyBookingAggregate and the financial/capacity domains
+// remain authoritative for all business invariants.
 //
 // Architectural responsibilities:
 //
-// - Define the HTTP contract for booking confirmation.
+// - Define the HTTP contract for atomic booking confirmation.
 // - Require the authenticated API boundary.
 // - Pass the booking public identifier safely as a URL path segment.
+// - Pass the payment transaction public identifier required by the backend.
 // - Forward optional command-correlation metadata.
 //
 // Non-responsibilities:
@@ -30,7 +41,9 @@
 // - Determining whether the booking can be confirmed.
 // - Validating payment completeness.
 // - Changing booking status locally.
-// - Payment processing.
+// - Performing payment authorization locally.
+// - Creating financial holds locally.
+// - Reserving journey capacity locally.
 // - Authentication/session management.
 // - React Query/cache management.
 // - UI presentation.
@@ -46,13 +59,24 @@ import type { JourneyBooking } from '../../models/journey-booking';
 // -----------------------------------------------------------------------------
 
 /**
- * Optional metadata accepted by the confirmation HTTP DTO.
+ * Input required by the atomic booking confirmation operation.
  *
- * The backend controller accepts ConfirmJourneyBookingDto. The exact command
- * metadata is kept optional because confirmation itself does not require
- * business input from the frontend.
+ * The transaction public identifier comes from the Journey Booking payment
+ * created earlier in the booking workflow.
+ *
+ * The frontend does not generate this identifier.
  */
 export interface ConfirmJourneyBookingRequest {
+  /**
+   * Public identifier of the payment transaction associated with the
+   * Journey Booking payment.
+   *
+   * This identifier is required because the backend atomic confirmation
+   * operation authorizes that payment and creates the corresponding
+   * financial hold inside the same transaction as booking confirmation.
+   */
+  transactionPublicId: string;
+
   /**
    * Optional correlation identifier for distributed/application tracing.
    */
@@ -69,7 +93,7 @@ export interface ConfirmJourneyBookingRequest {
 // -----------------------------------------------------------------------------
 
 /**
- * Response returned after booking confirmation.
+ * Response returned after atomic booking confirmation.
  *
  * The backend returns the updated JourneyBookingAggregate through the standard
  * JourneyBookingResponse mapper.
@@ -81,17 +105,20 @@ export type ConfirmJourneyBookingResponse = JourneyBooking;
 // -----------------------------------------------------------------------------
 
 /**
- * Confirm a Journey Booking.
+ * Confirm a Journey Booking atomically with payment authorization.
  *
- * Confirmation is a server-side state transition. The frontend should update
- * its cached representation from the returned booking rather than mutating
- * the booking status optimistically.
+ * The backend performs payment authorization, financial hold creation,
+ * booking confirmation, and journey capacity reservation inside one
+ * transaction.
+ *
+ * The frontend should update its cached representation from the returned
+ * booking rather than mutating the booking status optimistically.
  *
  * @param journeyBookingPublicId
  *   Public identifier of the Journey Booking.
  *
  * @param request
- *   Optional confirmation command metadata.
+ *   Payment transaction identifier and optional confirmation metadata.
  *
  * @returns
  *   The updated Journey Booking.
@@ -100,14 +127,17 @@ export type ConfirmJourneyBookingResponse = JourneyBooking;
  *   TypeError when the booking public identifier is empty.
  *
  * @throws
+ *   TypeError when the payment transaction public identifier is empty.
+ *
+ * @throws
  *   AuthenticationRequiredError when there is no authenticated session.
  *
  * @throws
- *   ApiError when the backend rejects the confirmation.
+ *   ApiError when the backend rejects the atomic confirmation.
  */
 export async function confirmJourneyBooking(
   journeyBookingPublicId: string,
-  request: ConfirmJourneyBookingRequest = {},
+  request: ConfirmJourneyBookingRequest,
 ): Promise<ConfirmJourneyBookingResponse> {
   const normalizedPublicId = journeyBookingPublicId.trim();
 
@@ -117,9 +147,19 @@ export async function confirmJourneyBooking(
     );
   }
 
+  const normalizedTransactionPublicId =
+    request.transactionPublicId.trim();
+
+  if (!normalizedTransactionPublicId) {
+    throw new TypeError(
+      'A payment transaction public identifier is required.',
+    );
+  }
+
   return authenticatedApiClient.post<ConfirmJourneyBookingResponse>(
     `/journey-bookings/${encodeURIComponent(normalizedPublicId)}/confirm`,
     {
+      transactionPublicId: normalizedTransactionPublicId,
       correlationId: request.correlationId,
       causationId: request.causationId,
     },

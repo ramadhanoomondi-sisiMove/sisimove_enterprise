@@ -1,19 +1,9 @@
+
+"use client";
+
 // -----------------------------------------------------------------------------
 // Path: src/features/journey/components/shared/JourneyActions.tsx
 // -----------------------------------------------------------------------------
-//
-// sisiMove — Journey Actions
-//
-// Fluid horizontal action group for Journey marketplace surfaces.
-//
-// Design:
-// - Actions remain horizontal at every viewport size.
-// - Button width, height, padding, typography and icons scale together.
-// - No mobile-only stacking.
-// - Designed for the dedicated JourneyCard footer.
-// -----------------------------------------------------------------------------
-
-"use client";
 
 import {
   ArrowRight,
@@ -82,124 +72,159 @@ export function JourneyActions({
     ? "px-[clamp(0.45rem,1vw,0.75rem)]"
     : "px-[clamp(0.55rem,1.15vw,0.9rem)]";
 
-  const actionGap =
-    "gap-[clamp(0.25rem,0.55vw,0.45rem)]";
+  const actionGap = "gap-[clamp(0.25rem,0.55vw,0.45rem)]";
 
   const actionText = isCompact
     ? "text-[clamp(0.48rem,0.75vw,0.66rem)]"
     : "text-[clamp(0.52rem,0.82vw,0.72rem)]";
 
-  const actionIcon =
-    "size-[clamp(0.58rem,0.95vw,0.76rem)]";
+  const actionIcon = "size-[clamp(0.58rem,0.95vw,0.76rem)]";
+
+  // Keep this as a string because cn() accepts individual class values,
+  // not an array of class strings.
+  const interactionClasses =
+    "transition-all duration-200 ease-out " +
+    "hover:-translate-y-0.5 hover:shadow-md " +
+    "active:translate-y-0 active:scale-[0.98] " +
+    "focus-visible:ring-2 " +
+    "focus-visible:ring-[var(--brand)] " +
+    "focus-visible:ring-offset-2 " +
+    "disabled:translate-y-0 disabled:scale-100 " +
+    "disabled:shadow-none";
 
   return (
     <div
       className={cn(
-        "flex",
-        "min-w-0",
-        "shrink-0",
-        "items-center",
-        "justify-end",
+        "flex min-w-0 shrink-0 items-center justify-end",
         actionGap,
         className,
       )}
     >
-      {/* ------------------------------------------------------------------- */}
-      {/* View                                                                */}
-      {/* ------------------------------------------------------------------- */}
+      {/* View Journey */}
 
       {onView && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          leadingIcon={
-            <ArrowRight
-              aria-hidden="true"
-              className={actionIcon}
-            />
+        <span
+          className="group/action relative inline-flex"
+          title={
+            viewDisabled
+              ? "Viewing this Journey is currently unavailable"
+              : "View Journey details"
           }
-          onClick={onView}
-          disabled={viewDisabled}
-          className={cn(
-            "w-auto",
-            "min-w-0",
-            "shrink-0",
-            actionHeight,
-            actionPadding,
-            actionText,
-            "leading-none",
-            "whitespace-nowrap",
-          )}
         >
-          {viewLabel}
-        </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            leadingIcon={
+              <ArrowRight
+                aria-hidden="true"
+                className={cn(
+                  actionIcon,
+                  "transition-transform duration-200",
+                  "group-hover/action:translate-x-0.5",
+                )}
+              />
+            }
+            onClick={onView}
+            disabled={viewDisabled}
+            className={cn(
+              "w-auto min-w-0 shrink-0",
+              actionHeight,
+              actionPadding,
+              actionText,
+              "leading-none whitespace-nowrap",
+              interactionClasses,
+            )}
+          >
+            {viewLabel}
+          </Button>
+        </span>
       )}
 
-      {/* ------------------------------------------------------------------- */}
-      {/* Share                                                               */}
-      {/* ------------------------------------------------------------------- */}
+      {/* Share */}
 
       {onShare && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          leadingIcon={
-            <Share2
-              aria-hidden="true"
-              className={actionIcon}
-            />
+        <span
+          className="group/action relative inline-flex"
+          title={
+            shareDisabled
+              ? "Sharing this Journey is currently unavailable"
+              : "Share this Journey with others"
           }
-          onClick={onShare}
-          disabled={shareDisabled}
-          className={cn(
-            "w-auto",
-            "min-w-0",
-            "shrink-0",
-            actionHeight,
-            actionPadding,
-            actionText,
-            "leading-none",
-            "whitespace-nowrap",
-          )}
         >
-          {shareLabel}
-        </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            leadingIcon={
+              <Share2
+                aria-hidden="true"
+                className={cn(
+                  actionIcon,
+                  "transition-transform duration-200",
+                  "group-hover/action:scale-110",
+                  "group-hover/action:-rotate-6",
+                )}
+              />
+            }
+            onClick={onShare}
+            disabled={shareDisabled}
+            className={cn(
+              "w-auto min-w-0 shrink-0",
+              actionHeight,
+              actionPadding,
+              actionText,
+              "leading-none whitespace-nowrap",
+              interactionClasses,
+            )}
+          >
+            {shareLabel}
+          </Button>
+        </span>
       )}
 
-      {/* ------------------------------------------------------------------- */}
-      {/* Book                                                                */}
-      {/* ------------------------------------------------------------------- */}
+      {/* Book Journey */}
 
       {onBook && (
-        <Button
-          type="button"
-          variant="primary"
-          size="sm"
-          leadingIcon={
-            <BookOpen
-              aria-hidden="true"
-              className={actionIcon}
-            />
+        <span
+          className="group/action relative inline-flex"
+          title={
+            isBooking
+              ? "Your booking is being processed"
+              : bookDisabled
+                ? "Booking this Journey is currently unavailable"
+                : "Reserve your seat on this Journey"
           }
-          onClick={onBook}
-          loading={isBooking}
-          disabled={bookDisabled || isBooking}
-          className={cn(
-            "w-auto",
-            "min-w-0",
-            "shrink-0",
-            actionHeight,
-            actionPadding,
-            actionText,
-            "font-semibold",
-            "leading-none",
-            "whitespace-nowrap",
-          )}
         >
-          {isBooking ? bookingLabel : bookLabel}
-        </Button>
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            leadingIcon={
+              <BookOpen
+                aria-hidden="true"
+                className={cn(
+                  actionIcon,
+                  "transition-transform duration-200",
+                  "group-hover/action:scale-110",
+                )}
+              />
+            }
+            onClick={onBook}
+            loading={isBooking}
+            disabled={bookDisabled || isBooking}
+            className={cn(
+              "w-auto min-w-0 shrink-0",
+              actionHeight,
+              actionPadding,
+              actionText,
+              "font-semibold leading-none whitespace-nowrap",
+              interactionClasses,
+            )}
+          >
+            {isBooking ? bookingLabel : bookLabel}
+          </Button>
+        </span>
       )}
     </div>
   );

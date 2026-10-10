@@ -3,12 +3,38 @@
 // -----------------------------------------------------------------------------
 // Journey Boarding — Create Command Handler
 // -----------------------------------------------------------------------------
+//
+// Responsibilities:
+// - Generate a Journey Boarding public identifier.
+// - Check whether the generated identifier already exists.
+// - Create the Journey Boarding entity in NOT_STARTED state.
+// - Create the Journey Boarding aggregate.
+// - Persist and return the aggregate.
+//
+// Architectural rules:
+// - Inject the repository through JOURNEY_BOARDING_TOKENS.REPOSITORY.
+// - Keep aggregate invariants and domain-event creation inside the aggregate.
+// - Keep persistence implementation details outside the handler.
+// - Do not create participants as part of this command.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
+
+// -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_BOARDING_TOKENS } from '../journey-boarding.tokens';
 
 // -----------------------------------------------------------------------------
 // Command
@@ -44,33 +70,14 @@ import {
 } from '../../domain/value-objects';
 
 // -----------------------------------------------------------------------------
+// Exceptions
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
-/**
- * Handles creation of a Journey Boarding aggregate.
- *
- * The command is expected to contain already validated domain value objects
- * for:
- *
- * - Journey reference
- * - Provider reference
- *
- * The handler is responsible for application-level orchestration:
- *
- * 1. Generate the Journey Boarding public identity.
- * 2. Ensure the generated identity does not already exist.
- * 3. Create the Journey Boarding entity in NOT_STARTED state.
- * 4. Create the Journey Boarding aggregate.
- * 5. Persist the aggregate.
- * 6. Return the created aggregate.
- *
- * JourneyBoardingAggregate.create() is responsible for recording the
- * JourneyBoardingCreatedEvent.
- *
- * Participants and boarding events are intentionally not created by this
- * command. They belong to their respective boarding workflows.
- */
+@Injectable()
 export class CreateJourneyBoardingHandler implements CommandHandler<
   CreateJourneyBoardingCommand,
   JourneyBoardingAggregate
@@ -79,7 +86,10 @@ export class CreateJourneyBoardingHandler implements CommandHandler<
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly repository: JourneyBoardingRepository) {}
+  public constructor(
+    @Inject(JOURNEY_BOARDING_TOKENS.REPOSITORY)
+    private readonly repository: JourneyBoardingRepository,
+  ) {}
 
   // ===========================================================================
   // Execute
@@ -103,6 +113,15 @@ export class CreateJourneyBoardingHandler implements CommandHandler<
     );
 
     if (alreadyExists) {
+      // -----------------------------------------------------------------------
+      // Duplicate Identity
+      // -----------------------------------------------------------------------
+      //
+      // This should be exceptionally rare when identifiers are generated
+      // correctly. Use a generic Error until a dedicated duplicate-identity
+      // domain exception is available in the domain exception contract.
+      // -----------------------------------------------------------------------
+
       throw new Error(
         `Journey boarding '${journeyBoardingPublicId.value}' already exists.`,
       );
@@ -111,35 +130,26 @@ export class CreateJourneyBoardingHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     // Journey Boarding Entity
     // -------------------------------------------------------------------------
+    //
+    // A newly created Journey Boarding starts in NOT_STARTED state.
+    // Opening the boarding lifecycle is a separate domain operation.
+    // -------------------------------------------------------------------------
 
-    /**
-     * A newly created Journey Boarding always starts in NOT_STARTED state.
-     *
-     * The lifecycle transition to BOARDING is performed by the
-     * OpenJourneyBoarding command.
-     */
     const journeyBoarding = JourneyBoardingEntity.create({
       publicId: journeyBoardingPublicId,
-
       journeyId: command.journeyId,
-
       providerPublicId: command.providerPublicId,
-
       status: JourneyBoardingStatus.notStarted(),
     });
 
     // -------------------------------------------------------------------------
     // Journey Boarding Aggregate
     // -------------------------------------------------------------------------
+    //
+    // The aggregate creates its JourneyBoardingCreatedEvent and associates
+    // it with the supplied correlation and causation identifiers.
+    // -------------------------------------------------------------------------
 
-    /**
-     * JourneyBoardingAggregate.create() records the
-     * JourneyBoardingCreatedEvent internally.
-     *
-     * Correlation and causation identifiers are passed through so the
-     * resulting domain event participates in the application's distributed
-     * tracing and causation chain.
-     */
     const aggregate = JourneyBoardingAggregate.create(
       journeyBoarding,
       command.correlationId,

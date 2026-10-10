@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 // Financial Account Hold Prisma Repository
 // -----------------------------------------------------------------------------
-//
+
 // Persistence implementation for the Financial Account Hold aggregate.
 //
 // Aggregate:
@@ -61,13 +61,45 @@
 //
 // - PrismaFinancialAccountHoldRepository
 //
+// Transaction boundary:
+//
+// This repository does NOT create its own Prisma transaction.
+//
+// The ambient PrismaTransactionContext determines the Prisma client:
+//
+//     UnitOfWork
+//         ↓
+//     PrismaTransactionContext
+//         ↓
+//     Prisma TransactionClient
+//
+// Outside a UnitOfWork:
+//
+//     PrismaTransactionContext
+//         ↓
+//     PrismaService
+//
+// Therefore, when this repository participates in an application workflow
+// wrapped by PrismaUnitOfWork, Financial Account Hold persistence participates
+// in the same atomic transaction as the other repositories involved in that
+// workflow.
+//
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
-// Prisma
+// NestJS
 // -----------------------------------------------------------------------------
 
-import type { Prisma, PrismaClient } from '@prisma/client';
+import { Injectable } from '@nestjs/common';
+
+// -----------------------------------------------------------------------------
+// Prisma Transaction Context
+// -----------------------------------------------------------------------------
+
+import {
+  PrismaTransactionContext,
+  type PrismaClientLike,
+} from '../../../../../../infrastructure/database/prisma/prisma-transaction.context';
 
 // -----------------------------------------------------------------------------
 // Repository Contract
@@ -120,12 +152,49 @@ import { FinancialAccountHoldException } from '../../../../domain/exceptions/fin
 // Repository
 // =============================================================================
 
+@Injectable()
 export class PrismaFinancialAccountHoldRepository implements FinancialAccountHoldRepository {
   // ===========================================================================
   // Constructor
   // ===========================================================================
 
-  public constructor(private readonly prisma: PrismaClient) {}
+  /**
+   * Resolves the Prisma client through the ambient transaction context.
+   *
+   * Inside a UnitOfWork:
+   *
+   *     Prisma.TransactionClient
+   *
+   * Outside a UnitOfWork:
+   *
+   *     PrismaService
+   *
+   * The repository therefore never owns the transaction boundary.
+   *
+   * The application layer / UnitOfWork decides whether the operation is
+   * transactional.
+   */
+  public constructor(
+    private readonly transactionContext: PrismaTransactionContext,
+  ) {}
+
+  // ===========================================================================
+  // Current Prisma Client
+  // ===========================================================================
+
+  /**
+   * Returns the Prisma client appropriate for the current execution context.
+   *
+   * Inside a UnitOfWork this is the transaction-scoped Prisma client.
+   *
+   * Outside a UnitOfWork it falls back to the application Prisma client.
+   *
+   * All repository persistence operations must use this accessor rather than
+   * injecting PrismaService directly.
+   */
+  private get prisma(): PrismaClientLike {
+    return this.transactionContext.getClient();
+  }
 
   // ===========================================================================
   // Create
@@ -134,85 +203,97 @@ export class PrismaFinancialAccountHoldRepository implements FinancialAccountHol
   /**
    * Persists a brand-new Financial Account Hold aggregate.
    *
-   * The owning Financial Account is resolved from its public identity.
+   * The owning Financial Account is represented inside the domain through its
+   * public identity. Prisma, however, stores the internal Financial Account
+   * primary key as the relational foreign key.
    *
-   * The Financial Account Hold aggregate contains one root entity, therefore
-   * creation consists of one FinancialAccountHold persistence record.
+   * Therefore:
    *
-   * The repository does not create or execute the transaction establishing
-   * the financial reservation.
+   *     FinancialAccountPublicId
+   *             ↓
+   *     FinancialAccount.id
+   *
+   * is resolved inside the infrastructure layer.
+   *
+   * No repository-owned Prisma transaction is created.
+   *
+   * If this method executes inside a PrismaUnitOfWork, the create operation
+   * participates in that UnitOfWork's transaction.
    */
   public async create(aggregate: FinancialAccountHoldAggregate): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      // -----------------------------------------------------------------------
-      // Resolve Owning Financial Account
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Validate Aggregate
+    // -------------------------------------------------------------------------
 
-      const accountId = await this.resolveAccountId(
-        tx,
-        aggregate.accountPublicId,
+    if (aggregate === undefined) {
+      throw new FinancialAccountHoldException(
+        'Financial Account Hold aggregate is required.',
       );
+    }
 
-      // -----------------------------------------------------------------------
-      // Map Aggregate
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Resolve Owning Financial Account
+    // -------------------------------------------------------------------------
 
-      const persistence =
-        FinancialAccountHoldPrismaMapper.aggregateToPersistence(aggregate);
+    const accountId = await this.resolveAccountId(aggregate.accountPublicId);
 
-      // -----------------------------------------------------------------------
-      // Validate Account Consistency
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Map Aggregate
+    // -------------------------------------------------------------------------
 
-      if (persistence.hold.accountId !== accountId) {
-        throw new FinancialAccountHoldException(
-          `Financial Account Hold "${aggregate.publicId.value}" contains an inconsistent Financial Account reference.`,
-        );
-      }
+    const persistence =
+      FinancialAccountHoldPrismaMapper.aggregateToPersistence(aggregate);
 
-      // -----------------------------------------------------------------------
-      // Create Hold
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Validate Account Consistency
+    // -------------------------------------------------------------------------
 
-      await tx.financialAccountHold.create({
-        data: {
-          id: persistence.hold.id,
+    if (persistence.hold.accountId !== accountId) {
+      throw new FinancialAccountHoldException(
+        `Financial Account Hold "${aggregate.publicId.value}" contains an inconsistent Financial Account reference.`,
+      );
+    }
 
-          publicId: persistence.hold.publicId,
+    // -------------------------------------------------------------------------
+    // Create Hold
+    // -------------------------------------------------------------------------
 
-          accountId,
+    await this.prisma.financialAccountHold.create({
+      data: {
+        id: persistence.hold.id,
 
-          amount: persistence.hold.amount,
+        publicId: persistence.hold.publicId,
 
-          currency: persistence.hold.currency,
+        accountId,
 
-          status: persistence.hold.status,
+        amount: persistence.hold.amount,
 
-          referenceType: persistence.hold.referenceType,
+        currency: persistence.hold.currency,
 
-          referencePublicId: persistence.hold.referencePublicId,
+        status: persistence.hold.status,
 
-          expiresAt: persistence.hold.expiresAt,
+        referenceType: persistence.hold.referenceType,
 
-          holdTransactionPublicId: persistence.hold.holdTransactionPublicId,
+        referencePublicId: persistence.hold.referencePublicId,
 
-          releaseTransactionPublicId:
-            persistence.hold.releaseTransactionPublicId,
+        expiresAt: persistence.hold.expiresAt,
 
-          captureTransactionPublicId:
-            persistence.hold.captureTransactionPublicId,
+        holdTransactionPublicId: persistence.hold.holdTransactionPublicId,
 
-          releasedAt: persistence.hold.releasedAt,
+        releaseTransactionPublicId: persistence.hold.releaseTransactionPublicId,
 
-          capturedAt: persistence.hold.capturedAt,
+        captureTransactionPublicId: persistence.hold.captureTransactionPublicId,
 
-          cancelledAt: persistence.hold.cancelledAt,
+        releasedAt: persistence.hold.releasedAt,
 
-          createdAt: persistence.hold.createdAt,
+        capturedAt: persistence.hold.capturedAt,
 
-          updatedAt: persistence.hold.updatedAt,
-        },
-      });
+        cancelledAt: persistence.hold.cancelledAt,
+
+        createdAt: persistence.hold.createdAt,
+
+        updatedAt: persistence.hold.updatedAt,
+      },
     });
   }
 
@@ -228,110 +309,128 @@ export class PrismaFinancialAccountHoldRepository implements FinancialAccountHol
    * are immutable.
    *
    * A Financial Account Hold cannot be moved between Financial Accounts.
+   *
+   * No repository-owned Prisma transaction is created.
+   *
+   * When called inside a UnitOfWork, the update participates in the caller's
+   * transaction.
    */
   public async save(aggregate: FinancialAccountHoldAggregate): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      // -----------------------------------------------------------------------
-      // Load Existing Record
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Validate Aggregate
+    // -------------------------------------------------------------------------
 
-      const existing = await tx.financialAccountHold.findUnique({
-        where: {
-          id: aggregate.id.toString(),
-        },
-
-        select: {
-          id: true,
-          publicId: true,
-          accountId: true,
-        },
-      });
-
-      // -----------------------------------------------------------------------
-      // Existence
-      // -----------------------------------------------------------------------
-
-      if (existing === null) {
-        throw new FinancialAccountHoldException(
-          `Financial Account Hold "${aggregate.publicId.value}" does not exist and cannot be updated.`,
-        );
-      }
-
-      // -----------------------------------------------------------------------
-      // Public Identity Stability
-      // -----------------------------------------------------------------------
-
-      if (existing.publicId !== aggregate.publicId.value) {
-        throw new FinancialAccountHoldException(
-          `Financial Account Hold internal identity "${aggregate.id.toString()}" is associated with a different public identity.`,
-        );
-      }
-
-      // -----------------------------------------------------------------------
-      // Resolve Account
-      // -----------------------------------------------------------------------
-
-      const accountId = await this.resolveAccountId(
-        tx,
-        aggregate.accountPublicId,
+    if (aggregate === undefined) {
+      throw new FinancialAccountHoldException(
+        'Financial Account Hold aggregate is required.',
       );
+    }
 
-      // -----------------------------------------------------------------------
-      // Account Ownership Stability
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Load Existing Record
+    // -------------------------------------------------------------------------
 
-      if (existing.accountId !== accountId) {
-        throw new FinancialAccountHoldException(
-          `Financial Account Hold "${aggregate.publicId.value}" cannot be moved to another Financial Account.`,
-        );
-      }
+    const existing = await this.prisma.financialAccountHold.findUnique({
+      where: {
+        id: aggregate.id.toString(),
+      },
 
-      // -----------------------------------------------------------------------
-      // Map Aggregate
-      // -----------------------------------------------------------------------
+      select: {
+        id: true,
+        publicId: true,
+        accountId: true,
+      },
+    });
 
-      const persistence =
-        FinancialAccountHoldPrismaMapper.aggregateToPersistence(aggregate);
+    // -------------------------------------------------------------------------
+    // Existence
+    // -------------------------------------------------------------------------
 
-      // -----------------------------------------------------------------------
-      // Update
-      // -----------------------------------------------------------------------
+    if (existing === null) {
+      throw new FinancialAccountHoldException(
+        `Financial Account Hold "${aggregate.publicId.value}" does not exist and cannot be updated.`,
+      );
+    }
 
-      await tx.financialAccountHold.update({
-        where: {
-          id: aggregate.id.toString(),
-        },
+    // -------------------------------------------------------------------------
+    // Public Identity Stability
+    // -------------------------------------------------------------------------
 
-        data: {
-          amount: persistence.hold.amount,
+    if (existing.publicId !== aggregate.publicId.value) {
+      throw new FinancialAccountHoldException(
+        `Financial Account Hold internal identity "${aggregate.id.toString()}" is associated with a different public identity.`,
+      );
+    }
 
-          currency: persistence.hold.currency,
+    // -------------------------------------------------------------------------
+    // Resolve Account
+    // -------------------------------------------------------------------------
 
-          status: persistence.hold.status,
+    const accountId = await this.resolveAccountId(aggregate.accountPublicId);
 
-          referenceType: persistence.hold.referenceType,
+    // -------------------------------------------------------------------------
+    // Account Ownership Stability
+    // -------------------------------------------------------------------------
 
-          referencePublicId: persistence.hold.referencePublicId,
+    if (existing.accountId !== accountId) {
+      throw new FinancialAccountHoldException(
+        `Financial Account Hold "${aggregate.publicId.value}" cannot be moved to another Financial Account.`,
+      );
+    }
 
-          expiresAt: persistence.hold.expiresAt,
+    // -------------------------------------------------------------------------
+    // Map Aggregate
+    // -------------------------------------------------------------------------
 
-          holdTransactionPublicId: persistence.hold.holdTransactionPublicId,
+    const persistence =
+      FinancialAccountHoldPrismaMapper.aggregateToPersistence(aggregate);
 
-          releaseTransactionPublicId:
-            persistence.hold.releaseTransactionPublicId,
+    // -------------------------------------------------------------------------
+    // Validate Persistence Account Consistency
+    // -------------------------------------------------------------------------
 
-          captureTransactionPublicId:
-            persistence.hold.captureTransactionPublicId,
+    if (persistence.hold.accountId !== accountId) {
+      throw new FinancialAccountHoldException(
+        `Financial Account Hold "${aggregate.publicId.value}" contains an inconsistent Financial Account reference.`,
+      );
+    }
 
-          releasedAt: persistence.hold.releasedAt,
+    // -------------------------------------------------------------------------
+    // Update
+    // -------------------------------------------------------------------------
 
-          capturedAt: persistence.hold.capturedAt,
+    await this.prisma.financialAccountHold.update({
+      where: {
+        id: aggregate.id.toString(),
+      },
 
-          cancelledAt: persistence.hold.cancelledAt,
+      data: {
+        amount: persistence.hold.amount,
 
-          updatedAt: persistence.hold.updatedAt,
-        },
-      });
+        currency: persistence.hold.currency,
+
+        status: persistence.hold.status,
+
+        referenceType: persistence.hold.referenceType,
+
+        referencePublicId: persistence.hold.referencePublicId,
+
+        expiresAt: persistence.hold.expiresAt,
+
+        holdTransactionPublicId: persistence.hold.holdTransactionPublicId,
+
+        releaseTransactionPublicId: persistence.hold.releaseTransactionPublicId,
+
+        captureTransactionPublicId: persistence.hold.captureTransactionPublicId,
+
+        releasedAt: persistence.hold.releasedAt,
+
+        capturedAt: persistence.hold.capturedAt,
+
+        cancelledAt: persistence.hold.cancelledAt,
+
+        updatedAt: persistence.hold.updatedAt,
+      },
     });
   }
 
@@ -353,6 +452,14 @@ export class PrismaFinancialAccountHoldRepository implements FinancialAccountHol
    *   -> CANCELLED
    */
   public delete(aggregate: FinancialAccountHoldAggregate): Promise<void> {
+    if (aggregate === undefined) {
+      return Promise.reject(
+        new FinancialAccountHoldException(
+          'Financial Account Hold aggregate is required.',
+        ),
+      );
+    }
+
     return Promise.reject(
       new FinancialAccountHoldException(
         `Financial Account Hold "${aggregate.publicId.value}" cannot be physically deleted.`,
@@ -391,7 +498,7 @@ export class PrismaFinancialAccountHoldRepository implements FinancialAccountHol
   public async findByAccountPublicId(
     accountPublicId: FinancialAccountPublicId,
   ): Promise<FinancialAccountHoldAggregate[]> {
-    const accountId = await this.resolveAccountId(this.prisma, accountPublicId);
+    const accountId = await this.resolveAccountId(accountPublicId);
 
     const records = await this.prisma.financialAccountHold.findMany({
       where: {
@@ -434,7 +541,7 @@ export class PrismaFinancialAccountHoldRepository implements FinancialAccountHol
   public async findTerminalByAccountPublicId(
     accountPublicId: FinancialAccountPublicId,
   ): Promise<FinancialAccountHoldAggregate[]> {
-    const accountId = await this.resolveAccountId(this.prisma, accountPublicId);
+    const accountId = await this.resolveAccountId(accountPublicId);
 
     const records = await this.prisma.financialAccountHold.findMany({
       where: {
@@ -469,7 +576,7 @@ export class PrismaFinancialAccountHoldRepository implements FinancialAccountHol
     accountPublicId: FinancialAccountPublicId,
     status: FinancialAccountHoldStatus,
   ): Promise<FinancialAccountHoldAggregate[]> {
-    const accountId = await this.resolveAccountId(this.prisma, accountPublicId);
+    const accountId = await this.resolveAccountId(accountPublicId);
 
     const records = await this.prisma.financialAccountHold.findMany({
       where: {
@@ -879,7 +986,7 @@ export class PrismaFinancialAccountHoldRepository implements FinancialAccountHol
     accountPublicId: FinancialAccountPublicId,
     transactionPublicId: string,
   ): Promise<FinancialAccountHoldAggregate | null> {
-    const accountId = await this.resolveAccountId(this.prisma, accountPublicId);
+    const accountId = await this.resolveAccountId(accountPublicId);
 
     const normalized = this.normalizeTransactionPublicId(
       transactionPublicId,
@@ -913,7 +1020,7 @@ export class PrismaFinancialAccountHoldRepository implements FinancialAccountHol
     accountPublicId: FinancialAccountPublicId,
     transactionPublicId: string,
   ): Promise<FinancialAccountHoldAggregate | null> {
-    const accountId = await this.resolveAccountId(this.prisma, accountPublicId);
+    const accountId = await this.resolveAccountId(accountPublicId);
 
     const normalized = this.normalizeTransactionPublicId(
       transactionPublicId,
@@ -947,7 +1054,7 @@ export class PrismaFinancialAccountHoldRepository implements FinancialAccountHol
     accountPublicId: FinancialAccountPublicId,
     transactionPublicId: string,
   ): Promise<FinancialAccountHoldAggregate | null> {
-    const accountId = await this.resolveAccountId(this.prisma, accountPublicId);
+    const accountId = await this.resolveAccountId(accountPublicId);
 
     const normalized = this.normalizeTransactionPublicId(
       transactionPublicId,
@@ -1285,7 +1392,7 @@ export class PrismaFinancialAccountHoldRepository implements FinancialAccountHol
   public async existsByAccountPublicId(
     accountPublicId: FinancialAccountPublicId,
   ): Promise<boolean> {
-    const accountId = await this.resolveAccountId(this.prisma, accountPublicId);
+    const accountId = await this.resolveAccountId(accountPublicId);
 
     const record = await this.prisma.financialAccountHold.findFirst({
       where: {
@@ -1307,7 +1414,7 @@ export class PrismaFinancialAccountHoldRepository implements FinancialAccountHol
   public async existsActiveByAccountPublicId(
     accountPublicId: FinancialAccountPublicId,
   ): Promise<boolean> {
-    const accountId = await this.resolveAccountId(this.prisma, accountPublicId);
+    const accountId = await this.resolveAccountId(accountPublicId);
 
     const record = await this.prisma.financialAccountHold.findFirst({
       where: {
@@ -1471,13 +1578,18 @@ export class PrismaFinancialAccountHoldRepository implements FinancialAccountHol
    * Resolves:
    *
    * FinancialAccountPublicId
-   *          ↓
+   *           ↓
    * FinancialAccount.id
    *
+   * The public identity remains the domain-level reference.
+   *
    * The internal database identity remains an infrastructure concern.
+   *
+   * Importantly, this lookup uses `this.prisma`, meaning that when the
+   * repository is executing inside a UnitOfWork, the account lookup occurs
+   * against the same transaction-scoped Prisma client.
    */
   private async resolveAccountId(
-    prisma: PrismaClient | Prisma.TransactionClient,
     accountPublicId: FinancialAccountPublicId,
   ): Promise<string> {
     const normalized = accountPublicId.value.trim();
@@ -1488,7 +1600,7 @@ export class PrismaFinancialAccountHoldRepository implements FinancialAccountHol
       );
     }
 
-    const account = await prisma.financialAccount.findUnique({
+    const account = await this.prisma.financialAccount.findUnique({
       where: {
         publicId: normalized,
       },
@@ -1525,6 +1637,10 @@ export class PrismaFinancialAccountHoldRepository implements FinancialAccountHol
 
   /**
    * Normalizes and validates transaction public identifiers.
+   *
+   * Transaction public IDs are cross-aggregate references. They remain plain
+   * strings at the persistence boundary because the Financial Account Hold
+   * repository does not own the Financial Transaction aggregate.
    */
   private normalizeTransactionPublicId(
     transactionPublicId: string,

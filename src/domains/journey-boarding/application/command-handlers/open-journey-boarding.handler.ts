@@ -3,12 +3,36 @@
 // -----------------------------------------------------------------------------
 // Journey Boarding — Open Command Handler
 // -----------------------------------------------------------------------------
+//
+// Responsibilities:
+// - Resolve the Journey Boarding aggregate by public identifier.
+// - Delegate the opening operation to the aggregate.
+// - Persist the updated aggregate.
+// - Return the updated aggregate.
+//
+// Architectural rules:
+// - Inject the repository through the centralized dependency-injection token.
+// - Keep lifecycle invariants inside the aggregate.
+// - Use a domain-specific exception when the aggregate cannot be found.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
+
+// -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_BOARDING_TOKENS } from '../journey-boarding.tokens';
 
 // -----------------------------------------------------------------------------
 // Command
@@ -35,28 +59,16 @@ import type { JourneyBoardingRepository } from '../../domain/repositories/journe
 import { JourneyBoardingPublicId } from '../../domain/value-objects/journey-boarding-public-id.vo';
 
 // -----------------------------------------------------------------------------
+// Exceptions
+// -----------------------------------------------------------------------------
+
+import { JourneyBoardingNotFoundException } from '../../domain/exceptions';
+
+// -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
-/**
- * Handles opening the boarding process for a Journey Boarding aggregate.
- *
- * Workflow:
- *
- * 1. Convert the supplied public identifier into the domain value object.
- * 2. Load the Journey Boarding aggregate.
- * 3. Fail when the aggregate does not exist.
- * 4. Invoke the aggregate's open() operation.
- * 5. Persist the updated aggregate.
- * 6. Return the updated aggregate.
- *
- * The aggregate owns all lifecycle invariants and is responsible for
- * recording JourneyBoardingOpenedEvent.
- *
- * Valid lifecycle transition:
- *
- * NOT_STARTED → BOARDING
- */
+@Injectable()
 export class OpenJourneyBoardingHandler implements CommandHandler<
   OpenJourneyBoardingCommand,
   JourneyBoardingAggregate
@@ -65,7 +77,10 @@ export class OpenJourneyBoardingHandler implements CommandHandler<
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly repository: JourneyBoardingRepository) {}
+  public constructor(
+    @Inject(JOURNEY_BOARDING_TOKENS.REPOSITORY)
+    private readonly repository: JourneyBoardingRepository,
+  ) {}
 
   // ===========================================================================
   // Execute
@@ -95,24 +110,20 @@ export class OpenJourneyBoardingHandler implements CommandHandler<
     // -------------------------------------------------------------------------
 
     if (aggregate === null) {
-      throw new Error(
-        `Journey boarding '${journeyBoardingPublicId.value}' was not found.`,
-      );
+      throw new JourneyBoardingNotFoundException(journeyBoardingPublicId.value);
     }
 
     // -------------------------------------------------------------------------
     // Open Boarding
     // -------------------------------------------------------------------------
+    //
+    // The aggregate owns lifecycle validation, rejects invalid transitions,
+    // updates its state and version, and records the boarding-opened event.
+    //
+    // Valid lifecycle transition:
+    // NOT_STARTED → BOARDING
+    // -------------------------------------------------------------------------
 
-    /**
-     * JourneyBoardingAggregate.open() is responsible for:
-     *
-     * - validating the current lifecycle state;
-     * - rejecting invalid transitions;
-     * - updating boardingStartedAt;
-     * - incrementing the aggregate version;
-     * - recording JourneyBoardingOpenedEvent.
-     */
     aggregate.open(
       command.correlationId,
       command.causationId,

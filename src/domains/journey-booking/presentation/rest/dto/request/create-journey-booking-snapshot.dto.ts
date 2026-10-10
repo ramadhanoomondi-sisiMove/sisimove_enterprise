@@ -11,19 +11,63 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 // -----------------------------------------------------------------------------
+// Transformation
+// -----------------------------------------------------------------------------
+
+import { Type } from 'class-transformer';
+
+// -----------------------------------------------------------------------------
 // Validation
 // -----------------------------------------------------------------------------
 
 import {
   IsInt,
   IsISO8601,
+  IsLatitude,
+  IsLongitude,
   IsOptional,
   IsString,
   Max,
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
+
+// -----------------------------------------------------------------------------
+// Coordinates DTO
+// -----------------------------------------------------------------------------
+
+/**
+ * REST transport DTO for geographical coordinates.
+ *
+ * This nested DTO exists so that class-validator can correctly whitelist
+ * and validate originCoordinates and destinationCoordinates when
+ * forbidNonWhitelisted is enabled globally.
+ */
+class JourneyBookingCoordinatesDto {
+  // ===========================================================================
+  // Latitude
+  // ===========================================================================
+
+  @ApiProperty({
+    description: 'Latitude of the location.',
+    example: -1.286389,
+  })
+  @IsLatitude()
+  latitude!: number;
+
+  // ===========================================================================
+  // Longitude
+  // ===========================================================================
+
+  @ApiProperty({
+    description: 'Longitude of the location.',
+    example: 36.817223,
+  })
+  @IsLongitude()
+  longitude!: number;
+}
 
 // -----------------------------------------------------------------------------
 // DTO
@@ -87,19 +131,17 @@ export class CreateJourneyBookingSnapshotDto {
   /**
    * Coordinates of the journey origin.
    *
-   * The value is transported as an object containing latitude and longitude.
+   * The nested DTO ensures that class-validator recognizes the object
+   * as a valid whitelisted property and validates its latitude and
+   * longitude values.
    */
   @ApiProperty({
     description: 'Geographical coordinates of the journey origin.',
-    example: {
-      latitude: -1.286389,
-      longitude: 36.817223,
-    },
+    type: JourneyBookingCoordinatesDto,
   })
-  originCoordinates!: {
-    latitude: number;
-    longitude: number;
-  };
+  @ValidateNested()
+  @Type(() => JourneyBookingCoordinatesDto)
+  originCoordinates!: JourneyBookingCoordinatesDto;
 
   // ===========================================================================
   // Destination Coordinates
@@ -108,19 +150,17 @@ export class CreateJourneyBookingSnapshotDto {
   /**
    * Coordinates of the journey destination.
    *
-   * The value is transported as an object containing latitude and longitude.
+   * The nested DTO ensures that class-validator recognizes the object
+   * as a valid whitelisted property and validates its latitude and
+   * longitude values.
    */
   @ApiProperty({
     description: 'Geographical coordinates of the journey destination.',
-    example: {
-      latitude: 0.282731,
-      longitude: 34.751865,
-    },
+    type: JourneyBookingCoordinatesDto,
   })
-  destinationCoordinates!: {
-    latitude: number;
-    longitude: number;
-  };
+  @ValidateNested()
+  @Type(() => JourneyBookingCoordinatesDto)
+  destinationCoordinates!: JourneyBookingCoordinatesDto;
 
   // ===========================================================================
   // Departure

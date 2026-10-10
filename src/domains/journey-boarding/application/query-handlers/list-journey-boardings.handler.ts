@@ -3,6 +3,12 @@
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
+
+// -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
@@ -13,6 +19,12 @@ import type { QueryHandler } from '../../../../foundation/kernel/application/que
 // -----------------------------------------------------------------------------
 
 import type { ListJourneyBoardingsQuery } from '../queries/list-journey-boardings.query';
+
+// -----------------------------------------------------------------------------
+// Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_BOARDING_TOKENS } from '../journey-boarding.tokens';
 
 // -----------------------------------------------------------------------------
 // Entity
@@ -35,7 +47,19 @@ import type { JourneyBoardingRepository } from '../../domain/repositories/journe
  *
  * This query intentionally returns root entities rather than aggregates,
  * matching the repository's read-side findJourneyBoardings() contract.
+ *
+ * Dependency injection:
+ *
+ * - Resolves the repository through JOURNEY_BOARDING_TOKENS.REPOSITORY.
+ * - Keeps the repository implementation in the infrastructure layer.
+ *
+ * Query behavior:
+ *
+ * - The query is currently parameterless.
+ * - The repository owns the retrieval of Journey Boarding root entities.
+ * - This handler does not rehydrate aggregates or apply write-side behavior.
  */
+@Injectable()
 export class ListJourneyBoardingsHandler implements QueryHandler<
   ListJourneyBoardingsQuery,
   JourneyBoardingEntity[]
@@ -44,7 +68,10 @@ export class ListJourneyBoardingsHandler implements QueryHandler<
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly repository: JourneyBoardingRepository) {}
+  public constructor(
+    @Inject(JOURNEY_BOARDING_TOKENS.REPOSITORY)
+    private readonly repository: JourneyBoardingRepository,
+  ) {}
 
   // ===========================================================================
   // Execute
@@ -55,6 +82,9 @@ export class ListJourneyBoardingsHandler implements QueryHandler<
   ): Promise<JourneyBoardingEntity[]> {
     // -------------------------------------------------------------------------
     // Query is intentionally parameterless.
+    //
+    // Explicitly consume the parameter to satisfy TypeScript configurations
+    // that flag unused parameters.
     // -------------------------------------------------------------------------
 
     void query;
@@ -66,3 +96,9 @@ export class ListJourneyBoardingsHandler implements QueryHandler<
     return this.repository.findJourneyBoardings();
   }
 }
+
+// -----------------------------------------------------------------------------
+// Default Export
+// -----------------------------------------------------------------------------
+
+export default ListJourneyBoardingsHandler;

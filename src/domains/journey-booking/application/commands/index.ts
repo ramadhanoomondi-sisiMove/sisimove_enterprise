@@ -26,6 +26,8 @@ export { CreateJourneyBookingPaymentCommand } from './create-journey-booking-pay
 
 export { ConfirmJourneyBookingCommand } from './confirm-journey-booking.command';
 
+export { ConfirmJourneyBookingWithPaymentCommand } from './confirm-journey-booking-with-payment.command';
+
 export { CancelJourneyBookingCommand } from './cancel-journey-booking.command';
 
 export { CompleteJourneyBookingCommand } from './complete-journey-booking.command';

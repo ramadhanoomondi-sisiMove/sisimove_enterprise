@@ -12,6 +12,7 @@
 
 // Support Case lifecycle
 export { CreateSupportCaseCommand } from './create-support-case.command';
+export { CreateJourneySupportCaseCommand } from './create-journey-support-case.command';
 export { AssignSupportCaseCommand } from './assign-support-case.command';
 export { UnassignSupportCaseCommand } from './unassign-support-case.command';
 export { ChangeSupportCasePriorityCommand } from './change-support-case-priority.command';
@@ -47,6 +48,7 @@ export { CreateSupportCaseResolutionCommand } from './create-support-case-resolu
 
 // Support Case lifecycle
 export { default as CreateSupportCase } from './create-support-case.command';
+export { default as CreateJourneySupportCase } from './create-journey-support-case.command';
 export { default as AssignSupportCase } from './assign-support-case.command';
 export { default as UnassignSupportCase } from './unassign-support-case.command';
 export { default as ChangeSupportCasePriority } from './change-support-case-priority.command';

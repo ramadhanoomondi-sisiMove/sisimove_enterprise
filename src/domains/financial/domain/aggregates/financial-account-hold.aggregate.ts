@@ -5,12 +5,14 @@
 // Aggregate root for a Financial Account Hold.
 //
 // Responsibilities:
+//
 // - Own the Financial Account Hold entity.
 // - Enforce Financial Account Hold aggregate invariants.
 // - Coordinate hold lifecycle transitions.
 // - Emit Financial Account Hold domain events.
 //
 // This aggregate does NOT:
+//
 // - Modify Financial Account balances.
 // - Create or execute Financial Transactions.
 // - Communicate with payment providers.
@@ -65,11 +67,8 @@ import type { FinancialAccountHoldEntity } from '../entities/financial-account-h
 // -----------------------------------------------------------------------------
 
 import { FinancialAccountHoldCreatedEvent } from '../events/financial-account-hold-created.event';
-
 import { FinancialAccountHoldReleasedEvent } from '../events/financial-account-hold-released.event';
-
 import { FinancialAccountHoldCapturedEvent } from '../events/financial-account-hold-captured.event';
-
 import { FinancialAccountHoldCancelledEvent } from '../events/financial-account-hold-cancelled.event';
 
 // -----------------------------------------------------------------------------
@@ -83,15 +82,10 @@ import { FinancialAccountHoldException } from '../exceptions';
 // -----------------------------------------------------------------------------
 
 import type { FinancialAccountHoldPublicId } from '../value-objects/financial-account-hold-public-id.vo';
-
 import type { FinancialAccountPublicId } from '../value-objects/financial-account-public-id.vo';
-
 import type { FinancialAccountHeldAmount } from '../value-objects/financial-account-held-amount.vo';
-
 import type { FinancialAccountHoldStatus } from '../value-objects/financial-account-hold-status.vo';
-
 import type { FinancialHoldReference } from '../value-objects/financial-hold-reference.vo';
-
 import type { FinancialHoldExpiry } from '../value-objects/financial-hold-expiry.vo';
 
 // -----------------------------------------------------------------------------
@@ -354,6 +348,21 @@ export class FinancialAccountHoldAggregate extends AggregateRoot<FinancialAccoun
    */
   public get holdTransactionPublicId(): string | undefined {
     return this.hold.holdTransactionPublicId;
+  }
+
+  /**
+   * Records the Financial Transaction that established the hold.
+   *
+   * The Financial Account Hold aggregate owns the relationship between
+   * the hold and the Financial Transaction that established it.
+   *
+   * This method does not create or execute the Financial Transaction.
+   *
+   * The entity owns the underlying validation, including preventing the
+   * hold transaction reference from being recorded more than once.
+   */
+  public setHoldTransactionPublicId(transactionPublicId: string): void {
+    this.hold.setHoldTransactionPublicId(transactionPublicId);
   }
 
   /**

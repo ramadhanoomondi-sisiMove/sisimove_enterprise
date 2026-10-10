@@ -1,139 +1,141 @@
 // -----------------------------------------------------------------------------
 // sisiMove — Journey Booking Card
 // -----------------------------------------------------------------------------
-//
-// Mobile-first, modern presentation of a Journey Booking.
-//
-// Responsibilities:
-// - Present the booking's historical route.
-// - Present booking status.
-// - Present departure information when the snapshot exists.
-// - Present reserved seats.
-// - Present historical pricing when available.
-// - Provide optional consumer-controlled actions.
-//
-// Non-responsibilities:
-// - Fetching Journey data.
-// - Reconstructing current Journey state.
-// - Performing booking lifecycle mutations.
-// - Navigating to booking detail.
-// - Recalculating pricing.
-//
-// IMPORTANT:
-//
-// The JourneyBooking snapshot is historical booking-owned data. The card must
-// not replace it with information fetched from the current Journey.
-//
-// -----------------------------------------------------------------------------
 
-import type { ReactNode } from 'react';
+"use client";
+
+import type { ReactNode } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import {
-  ArrowRight,
   CalendarDays,
   CreditCard,
-  MapPin,
-  ReceiptText,
   Route,
   Ticket,
-  Users,
-} from 'lucide-react';
+  UsersRound,
+} from "lucide-react";
 
-import { Card } from '@/components/ui';
-import type { JourneyBookingDetail } from '@/features/journey-booking/models';
+import { Card } from "@/components/ui";
+import {
+  JourneyGetSupportAction,
+  JourneyUnreadMessagesBadge,
+} from "@/components/journey/shared";
+import { formatCurrency } from "@/foundation/formatters/currency";
+import { AUTHENTICATED_ROUTES } from "@/foundation/routing";
+import { cn } from "@/foundation/utils/cn";
+import type { JourneyBookingDetail } from "@/features/journey-booking/models";
 
-import { JourneyBookingStatusBadge } from '../booking-status';
+import { JourneyBookingStatusBadge } from "../booking-status";
 
 // -----------------------------------------------------------------------------
 // Props
 // -----------------------------------------------------------------------------
 
+export interface JourneyBookingCardNavigation {
+  /** Authenticated messages inbox or journey-context messaging destination. */
+  readonly messagesHref: string;
+
+  /** Bookings associated with this Journey. */
+  readonly bookingsHref: string;
+
+  /** Participants associated with this Journey. */
+  readonly participantsHref: string;
+}
+
 export interface JourneyBookingCardProps {
-  booking: JourneyBookingDetail;
-
-  /**
-   * Optional consumer-controlled content rendered as the card footer.
-   */
-  actions?: ReactNode;
-
-  /**
-   * Optional additional content rendered below the booking summary.
-   */
-  children?: ReactNode;
-
-  className?: string;
+  readonly booking: JourneyBookingDetail;
+  readonly navigation: JourneyBookingCardNavigation;
+  readonly unreadMessagesCount?: number;
+  readonly actions?: ReactNode;
+  readonly children?: ReactNode;
+  readonly className?: string;
 }
 
 // -----------------------------------------------------------------------------
-// Journey Booking Card
+// Component
 // -----------------------------------------------------------------------------
 
 export function JourneyBookingCard({
   booking,
+  navigation,
+  unreadMessagesCount = 0,
   actions,
   children,
   className,
 }: JourneyBookingCardProps) {
+  const router = useRouter();
+
+  // Booking-owned historical data. Do not replace with current Journey data.
   const snapshot = booking.snapshot;
   const pricing = booking.pricing;
+  const payment = booking.payment;
+
+  const origin = snapshot?.originName ?? "Origin unavailable";
+  const destination =
+    snapshot?.destinationName ?? "Destination unavailable";
+
+  const departureAt = snapshot?.departureAt ?? null;
+
+  const departureLabel = departureAt
+    ? formatDateTime(departureAt)
+    : "Not available";
+
+  const totalLabel = pricing
+    ? formatCurrency(pricing.totalAmount, pricing.currency)
+    : "Not available";
+
+  const paymentLabel = payment
+    ? formatPaymentStatus(payment.status)
+    : "Not available";
 
   return (
     <Card
       padding="none"
-      className={[
-        'group overflow-hidden',
-        'rounded-[var(--radius-xl)]',
-        'border border-[var(--border)]',
-        'bg-[var(--surface)]',
-        'shadow-[var(--shadow-sm)]',
-        'transition-all duration-200 ease-out',
-        'hover:-translate-y-0.5',
-        'hover:shadow-[var(--shadow-md)]',
+      className={cn(
+        "group w-full min-w-0 overflow-hidden rounded-xl border",
+        "border-[var(--border)] bg-[var(--surface)]",
+        "shadow-[var(--shadow-md)] transition-all duration-200",
+        "hover:shadow-[var(--shadow-lg)]",
         className,
-      ]
-        .filter(Boolean)
-        .join(' ')}
+      )}
     >
-      {/* ------------------------------------------------------------------- */}
-      {/* Header                                                              */}
-      {/* ------------------------------------------------------------------- */}
-
-      <div className="px-4 pb-3 pt-4 sm:px-5 sm:pt-5">
-        <div className="flex min-w-0 items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <div
+      <article
+        aria-label={`Booking from ${origin} to ${destination}`}
+        className="min-w-0"
+      >
+        {/* Header */}
+        <header className="flex min-w-0 items-center justify-between gap-3 p-3 sm:px-4 sm:py-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span
               aria-hidden="true"
-              className={[
-                'flex h-10 w-10 shrink-0 items-center justify-center',
-                'rounded-[var(--radius-md)]',
-                'bg-[var(--brand-soft)]',
-                'text-[var(--brand)]',
-                'transition-transform duration-200',
-                'group-hover:scale-[1.03]',
-              ].join(' ')}
+              className={cn(
+                "flex size-9 shrink-0 items-center justify-center",
+                "rounded-lg bg-[var(--brand-soft)] text-[var(--brand)]",
+              )}
             >
-              <Ticket size={19} strokeWidth={1.8} />
-            </div>
+              <Ticket size={18} strokeWidth={1.8} />
+            </span>
 
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2">
-                <p className="text-sm font-semibold text-[var(--foreground)]">
+                <h3 className="text-sm font-semibold text-[var(--foreground)]">
                   Booking
-                </p>
+                </h3>
 
                 <span
                   aria-hidden="true"
-                  className="h-1 w-1 shrink-0 rounded-full bg-[var(--foreground-subtle)]"
+                  className="size-1 shrink-0 rounded-full bg-[var(--foreground-subtle)]"
                 />
 
-                <p className="truncate text-xs text-[var(--foreground-muted)]">
+                <span className="truncate text-xs text-[var(--foreground-muted)]">
                   #{booking.publicId.slice(-6)}
-                </p>
+                </span>
               </div>
 
               <p
-                className="mt-0.5 truncate font-mono text-[10px] text-[var(--foreground-subtle)]"
                 title={booking.publicId}
+                className="mt-0.5 truncate font-mono text-[10px] text-[var(--foreground-subtle)]"
               >
                 {booking.publicId}
               </p>
@@ -143,190 +145,215 @@ export function JourneyBookingCard({
           <div className="shrink-0">
             <JourneyBookingStatusBadge status={booking.status} />
           </div>
-        </div>
-      </div>
+        </header>
 
-      {/* ------------------------------------------------------------------- */}
-      {/* Route                                                               */}
-      {/* ------------------------------------------------------------------- */}
+        {/* Booking information */}
+        <div
+          className={cn(
+            "grid min-w-0 grid-cols-2",
+            "sm:grid-cols-[16%_29%_27%_28%]",
+          )}
+        >
+          {/* Departure */}
+          <section
+            aria-label="Booking departure"
+            className={cn(
+              "min-w-0 border-r border-b",
+              "border-[var(--border-subtle)] sm:border-b-0",
+              "p-2 sm:px-3 sm:py-3",
+            )}
+          >
+            <SectionLabel icon={<CalendarDays size={12} />}>
+              Departure
+            </SectionLabel>
 
-      {snapshot ? (
-        <BookingRoute snapshot={snapshot} />
-      ) : (
-        <div className="mx-4 rounded-[var(--radius-lg)] border border-dashed border-[var(--border)] bg-[var(--background-muted)] p-4 sm:mx-5">
-          <div className="flex items-start gap-3">
-            <span
-              aria-hidden="true"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface)] text-[var(--foreground-muted)]"
-            >
-              <Route size={16} strokeWidth={1.8} />
-            </span>
+            <p className="text-xs font-bold leading-snug text-[var(--foreground)] sm:text-sm">
+              {departureLabel}
+            </p>
 
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-[var(--foreground-muted)]">
-                Journey details unavailable
+            {departureAt && (
+              <time dateTime={departureAt} className="sr-only">
+                {departureLabel}
+              </time>
+            )}
+          </section>
+
+          {/* Historical route */}
+          <section
+            aria-label="Booked journey route"
+            className={cn(
+              "min-w-0 border-b border-[var(--border-subtle)]",
+              "sm:border-b-0",
+              "p-2 sm:px-3 sm:py-3",
+            )}
+          >
+            <SectionLabel icon={<Route size={12} />}>
+              Route
+            </SectionLabel>
+
+            <div className="flex min-w-0 flex-col gap-1">
+              <RoutePoint label="From" name={origin} />
+              <RoutePoint label="To" name={destination} />
+            </div>
+          </section>
+
+          {/* Seats and total */}
+          <section
+            aria-label="Booking seats and total"
+            className={cn(
+              "min-w-0 border-r border-[var(--border-subtle)]",
+              "sm:border-r-0 sm:border-l",
+              "p-2 sm:px-3 sm:py-3",
+            )}
+          >
+            <SectionLabel icon={<UsersRound size={12} />}>
+              Reservation
+            </SectionLabel>
+
+            <p className="text-sm font-bold text-[var(--foreground)]">
+              {booking.seats} {booking.seats === 1 ? "seat" : "seats"}
+            </p>
+
+            <div className="mt-2 border-t border-[var(--border-subtle)] pt-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--foreground-muted)]">
+                Total
               </p>
 
               <p
-                className="mt-1 truncate text-sm font-semibold text-[var(--foreground)]"
-                title={booking.journeyPublicId}
+                title={totalLabel}
+                className="mt-0.5 truncate text-sm font-bold text-[var(--foreground)]"
               >
-                Journey {booking.journeyPublicId}
+                {totalLabel}
               </p>
             </div>
-          </div>
-        </div>
-      )}
+          </section>
 
-      {/* ------------------------------------------------------------------- */}
-      {/* Booking Information                                                  */}
-      {/* ------------------------------------------------------------------- */}
+          {/* Payment */}
+          <section
+            aria-label="Booking payment"
+            className="min-w-0 p-2 sm:border-l sm:border-[var(--border-subtle)] sm:px-3 sm:py-3"
+          >
+            <SectionLabel icon={<CreditCard size={12} />}>
+              Payment
+            </SectionLabel>
 
-      <div className="px-4 py-4 sm:px-5 sm:py-5">
-        <div className="grid grid-cols-2 gap-2.5">
-          <BookingValue
-            label="Seats"
-            value={String(booking.seats)}
-            icon={<Users size={15} strokeWidth={1.8} />}
-          />
-
-          {snapshot?.departureAt && (
-            <BookingValue
-              label="Departure"
-              value={formatDateTime(snapshot.departureAt)}
-              icon={<CalendarDays size={15} strokeWidth={1.8} />}
-            />
-          )}
-
-          {pricing && (
-            <BookingValue
-              label="Total"
-              value={formatMoney(
-                pricing.totalAmount,
-                pricing.currency,
+            <p
+              className={cn(
+                "text-sm font-bold",
+                getPaymentValueClass(payment?.status),
               )}
-              icon={<ReceiptText size={15} strokeWidth={1.8} />}
-              emphasis
-            />
-          )}
+            >
+              {paymentLabel}
+            </p>
 
-          {booking.payment && (
-            <BookingValue
-              label="Payment"
-              value={formatPaymentStatus(booking.payment.status)}
-              icon={<CreditCard size={15} strokeWidth={1.8} />}
-              paymentStatus={booking.payment.status}
-            />
-          )}
+            <p className="mt-1 text-[10px] text-[var(--foreground-muted)]">
+              Payment status
+            </p>
+          </section>
         </div>
 
-        {children}
-      </div>
-
-      {/* ------------------------------------------------------------------- */}
-      {/* Actions                                                              */}
-      {/* ------------------------------------------------------------------- */}
-
-      {actions && (
-        <div className="border-t border-[var(--border-subtle)] bg-[var(--background-subtle)] px-4 py-3 sm:px-5">
-          <div className="flex w-full items-center justify-end gap-2">
-            {actions}
+        {/* Optional additional booking information */}
+        {children && (
+          <div className="border-t border-[var(--border-subtle)] p-3">
+            {children}
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Passenger actions */}
+        <footer className="border-t border-[var(--border)] bg-[var(--background-brand)] p-2 sm:px-3 sm:py-2.5">
+          <nav
+            aria-label="Booking actions"
+            className="flex min-w-0 flex-wrap items-center justify-between gap-2"
+          >
+            <JourneyUnreadMessagesBadge
+              count={Math.max(0, unreadMessagesCount)}
+              href={navigation.messagesHref}
+            />
+
+            <JourneyGetSupportAction
+              journeyPublicId={booking.journeyPublicId}
+              onGetSupport={(journeyPublicId) => {
+                router.push(
+                  AUTHENTICATED_ROUTES.JOURNEY_SUPPORT_NEW(
+                    journeyPublicId,
+                  ),
+                );
+              }}
+              className="min-h-9 px-3"
+            />
+
+            <BookingAction
+              href={navigation.bookingsHref}
+              icon={<Ticket size={15} />}
+              label="Bookings"
+            />
+
+            <BookingAction
+              href={navigation.participantsHref}
+              icon={<UsersRound size={15} />}
+              label="Participants"
+            />
+          </nav>
+
+          {actions && (
+            <div className="mt-2 flex flex-wrap items-center justify-end gap-2 border-t border-[var(--border-subtle)] pt-2">
+              {actions}
+            </div>
+          )}
+        </footer>
+      </article>
     </Card>
   );
 }
 
 // -----------------------------------------------------------------------------
-// Route
+// Shared presentation helpers
 // -----------------------------------------------------------------------------
 
-interface BookingRouteProps {
-  snapshot: NonNullable<JourneyBookingDetail['snapshot']>;
+interface SectionLabelProps {
+  readonly children: ReactNode;
+  readonly icon: ReactNode;
 }
 
-function BookingRoute({ snapshot }: BookingRouteProps) {
+function SectionLabel({ children, icon }: SectionLabelProps) {
   return (
     <div
-      aria-label={`Journey from ${snapshot.originName} to ${snapshot.destinationName}`}
-      className={[
-        'relative mx-4 overflow-hidden',
-        'rounded-[var(--radius-lg)]',
-        'border border-[var(--border-subtle)]',
-        'bg-[var(--background-brand)]',
-        'sm:mx-5',
-      ].join(' ')}
+      className={cn(
+        "mb-1.5 flex min-w-0 items-center gap-1",
+        "text-[10px] font-semibold uppercase tracking-wide",
+        "text-[var(--foreground-muted)]",
+      )}
     >
-      {/* Brand accent */}
-      <div
-        aria-hidden="true"
-        className="absolute inset-y-0 left-0 w-1 bg-[var(--brand)]"
-      />
+      <span aria-hidden="true" className="shrink-0">
+        {icon}
+      </span>
 
-      <div className="px-4 py-4 pl-5 sm:py-4.5">
-        <div className="flex min-w-0 items-center gap-3">
-          <RoutePoint
-            label="From"
-            name={snapshot.originName}
-            variant="origin"
-          />
-
-          <div
-            aria-hidden="true"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--foreground-subtle)]"
-          >
-            <ArrowRight size={15} strokeWidth={1.8} />
-          </div>
-
-          <RoutePoint
-            label="To"
-            name={snapshot.destinationName}
-            variant="destination"
-          />
-        </div>
-      </div>
+      <span className="truncate">{children}</span>
     </div>
   );
 }
 
-// -----------------------------------------------------------------------------
-// Route Point
-// -----------------------------------------------------------------------------
-
 interface RoutePointProps {
-  label: string;
-  name: string;
-  variant: 'origin' | 'destination';
+  readonly label: string;
+  readonly name: string;
 }
 
-function RoutePoint({
-  label,
-  name,
-  variant,
-}: RoutePointProps) {
+function RoutePoint({ label, name }: RoutePointProps) {
   return (
-    <div className="flex min-w-0 flex-1 items-start gap-2.5">
-      <MapPin
-        size={16}
-        strokeWidth={1.8}
-        className={[
-          'mt-0.5 shrink-0',
-          variant === 'origin'
-            ? 'text-[var(--brand)]'
-            : 'text-[var(--foreground-muted)]',
-        ].join(' ')}
+    <div className="flex min-w-0 items-start gap-1.5">
+      <span
         aria-hidden="true"
+        className="mt-1 size-1.5 shrink-0 rounded-full bg-[var(--brand)]"
       />
 
       <div className="min-w-0">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--foreground-muted)]">
+        <p className="text-[9px] font-semibold uppercase tracking-wide text-[var(--foreground-muted)]">
           {label}
         </p>
 
         <p
-          className="mt-0.5 truncate text-sm font-semibold leading-5 text-[var(--foreground)]"
           title={name}
+          className="truncate text-xs font-semibold leading-snug text-[var(--foreground)]"
         >
           {name}
         </p>
@@ -335,90 +362,39 @@ function RoutePoint({
   );
 }
 
-// -----------------------------------------------------------------------------
-// Booking Values
-// -----------------------------------------------------------------------------
-
-interface BookingValueProps {
-  label: string;
-  value: string;
-  icon: ReactNode;
-  emphasis?: boolean;
-  paymentStatus?: NonNullable<
-    JourneyBookingDetail['payment']
-  >['status'];
+interface BookingActionProps {
+  readonly href: string;
+  readonly icon: ReactNode;
+  readonly label: string;
 }
 
-function BookingValue({
-  label,
-  value,
+function BookingAction({
+  href,
   icon,
-  emphasis = false,
-  paymentStatus,
-}: BookingValueProps) {
-  const paymentClass = getPaymentValueClass(paymentStatus);
-
+  label,
+}: BookingActionProps) {
   return (
-    <div
-      className={[
-        'min-w-0 rounded-[var(--radius-md)]',
-        'border border-[var(--border-subtle)]',
-        'bg-[var(--background-subtle)]',
-        'px-3 py-3',
-      ].join(' ')}
+    <Link
+      href={href}
+      aria-label={label}
+      className={cn(
+        "inline-flex min-h-9 min-w-0 items-center justify-center gap-1.5",
+        "rounded-lg border border-[var(--border)]",
+        "bg-[var(--surface)] px-2 py-2",
+        "text-xs font-semibold text-[var(--foreground)]",
+        "transition-colors hover:border-[var(--brand)]",
+        "hover:bg-[var(--brand-soft)] hover:text-[var(--brand)]",
+        "focus-visible:outline-none focus-visible:ring-2",
+        "focus-visible:ring-[var(--brand)]",
+      )}
     >
-      <div className="flex min-w-0 items-center gap-2">
-        <span
-          aria-hidden="true"
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--surface)] text-[var(--foreground-muted)]"
-        >
-          {icon}
-        </span>
+      <span aria-hidden="true" className="shrink-0">
+        {icon}
+      </span>
 
-        <p className="truncate text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--foreground-muted)]">
-          {label}
-        </p>
-      </div>
-
-      <p
-        className={[
-          'mt-2 truncate',
-          emphasis
-            ? 'text-[15px] font-bold'
-            : 'text-sm font-semibold',
-          paymentClass || 'text-[var(--foreground)]',
-        ].join(' ')}
-        title={value}
-      >
-        {value}
-      </p>
-    </div>
+      <span className="truncate">{label}</span>
+    </Link>
   );
-}
-
-// -----------------------------------------------------------------------------
-// Payment Styling
-// -----------------------------------------------------------------------------
-
-function getPaymentValueClass(
-  status?: NonNullable<
-    JourneyBookingDetail['payment']
-  >['status'],
-): string {
-  switch (status) {
-    case 'CAPTURED':
-      return 'text-[var(--success)]';
-
-    case 'FAILED':
-      return 'text-[var(--danger)]';
-
-    case 'PENDING':
-    case 'AUTHORIZED':
-      return 'text-[var(--warning)]';
-
-    default:
-      return '';
-  }
 }
 
 // -----------------------------------------------------------------------------
@@ -432,57 +408,54 @@ function formatDateTime(value: string): string {
     return value;
   }
 
-  return new Intl.DateTimeFormat('en-KE', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
+  return new Intl.DateTimeFormat("en-KE", {
+    dateStyle: "medium",
+    timeStyle: "short",
   }).format(date);
 }
 
-/**
- * Pricing amounts are represented by the API in the smallest currency unit.
- *
- * This function performs display formatting only. It does not recalculate
- * booking pricing.
- */
-function formatMoney(
-  amount: number,
-  currency: string,
+type BookingPaymentStatus = NonNullable<
+  JourneyBookingDetail["payment"]
+>["status"];
+
+function getPaymentValueClass(
+  status?: BookingPaymentStatus,
 ): string {
-  try {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount / 100);
-  } catch {
-    return `${currency} ${(amount / 100).toFixed(2)}`;
+  switch (status) {
+    case "CAPTURED":
+      return "text-[var(--success)]";
+
+    case "FAILED":
+      return "text-[var(--danger)]";
+
+    case "PENDING":
+    case "AUTHORIZED":
+      return "text-[var(--warning)]";
+
+    default:
+      return "text-[var(--foreground)]";
   }
 }
 
-function formatPaymentStatus(
-  status: NonNullable<
-    JourneyBookingDetail['payment']
-  >['status'],
-): string {
+function formatPaymentStatus(status: BookingPaymentStatus): string {
   switch (status) {
-    case 'PENDING':
-      return 'Pending';
+    case "PENDING":
+      return "Pending";
 
-    case 'AUTHORIZED':
-      return 'Authorized';
+    case "AUTHORIZED":
+      return "Authorized";
 
-    case 'CAPTURED':
-      return 'Paid';
+    case "CAPTURED":
+      return "Paid";
 
-    case 'FAILED':
-      return 'Failed';
+    case "FAILED":
+      return "Failed";
 
-    case 'PARTIALLY_REFUNDED':
-      return 'Partially refunded';
+    case "PARTIALLY_REFUNDED":
+      return "Partially refunded";
 
-    case 'REFUNDED':
-      return 'Refunded';
+    case "REFUNDED":
+      return "Refunded";
 
     default:
       return status;

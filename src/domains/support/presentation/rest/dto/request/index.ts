@@ -90,3 +90,4 @@ export { default as AddSupportCaseEvidenceRequestDto } from './add-support-case-
 // -----------------------------------------------------------------------------
 
 export { default as CreateSupportCaseResolutionRequestDto } from './create-support-case-resolution.request.dto';
+export { CreateJourneySupportCaseRequestDto } from './create-journey-support-case-request.dto';

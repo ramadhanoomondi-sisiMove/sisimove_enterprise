@@ -1,3 +1,4 @@
+
 // -----------------------------------------------------------------------------
 // sisiMove — My Journey Model
 // -----------------------------------------------------------------------------
@@ -34,6 +35,9 @@ import type { JourneyPricing } from "./journey-pricing";
 import type { JourneyPreferences } from "./journey-preferences";
 import type { JourneyAsset } from "./journey-asset";
 
+import type { JourneyBooking } from "@/features/journey-booking";
+import type { JourneyBoarding } from "@/features/journey-boarding/models";
+
 // -----------------------------------------------------------------------------
 // My Journey
 // -----------------------------------------------------------------------------
@@ -45,6 +49,15 @@ export interface MyJourney {
    * Used by authenticated Journey management routes and mutation endpoints.
    */
   readonly publicId: string;
+
+  /**
+   * Number of unread incoming messages associated with this Journey.
+   *
+   * Supplied by the backend's authenticated My Journeys response.
+   * The frontend consumes this value rather than calculating unread messages
+   * from conversation or message data.
+   */
+  readonly unreadMessagesCount: number;
 
   /**
    * Current Journey lifecycle status.
@@ -118,6 +131,18 @@ export interface MyJourney {
    * Journey-owned asset associations.
    */
   readonly assets: readonly JourneyAsset[];
+
+  /**
+   * Bookings associated with this Journey.
+   */
+  readonly bookings: readonly JourneyBooking[];
+
+  /**
+   * Boarding information, including participants and historical events.
+   *
+   * Null when no boarding aggregate exists for this Journey.
+   */
+  readonly boarding: JourneyBoarding | null;
 
   /**
    * Creation timestamp.

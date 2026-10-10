@@ -26,6 +26,8 @@ export { CreateJourneyBookingPaymentHandler } from './create-journey-booking-pay
 
 export { ConfirmJourneyBookingHandler } from './confirm-journey-booking.handler';
 
+export { ConfirmJourneyBookingWithPaymentHandler } from './confirm-journey-booking-with-payment.handler';
+
 export { CancelJourneyBookingHandler } from './cancel-journey-booking.handler';
 
 export { CompleteJourneyBookingHandler } from './complete-journey-booking.handler';

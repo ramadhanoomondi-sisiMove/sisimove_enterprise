@@ -1,38 +1,8 @@
+
 'use client';
 
 // -----------------------------------------------------------------------------
 // sisiMove — My Journey Bookings Page
-// -----------------------------------------------------------------------------
-//
-// Authenticated booking-management surface.
-//
-// Responsibilities:
-// - Load the authenticated user's detailed Journey Bookings.
-// - Present bookings using the feature's JourneyBookingCard.
-// - Provide navigation from a booking summary to its detail surface.
-// - Present the empty state when the user has no bookings.
-//
-// Non-responsibilities:
-// - Fetching Journey data.
-// - Mapping API responses.
-// - Implementing booking lifecycle mutations.
-// - Reconstructing current Journey state.
-// - Recalculating booking pricing.
-// - Implementing loading/error boundaries.
-//
-// Data flow:
-//
-//   useMyJourneyBookings()
-//          |
-//          v
-//   JourneyBookingDetail[]
-//          |
-//          v
-//   JourneyBookingCard
-//
-// The page deliberately consumes the Journey Booking feature boundary rather
-// than reaching into individual API, mapper, or component implementation files.
-//
 // -----------------------------------------------------------------------------
 
 import Link from 'next/link';
@@ -41,10 +11,6 @@ import { JourneyBookingCard } from '@/components/journey-booking';
 import { AUTHENTICATED_ROUTES } from '@/foundation/routing';
 import { useMyJourneyBookings } from '@/features/journey-booking';
 
-// -----------------------------------------------------------------------------
-// Page
-// -----------------------------------------------------------------------------
-
 export default function MyBookingsPage() {
   const { data: bookings = [] } = useMyJourneyBookings();
 
@@ -52,10 +18,6 @@ export default function MyBookingsPage() {
     <main className="page-shell">
       <div className="page-container py-5 sm:py-8">
         <div className="mx-auto w-full max-w-5xl">
-          {/* ----------------------------------------------------------------- */}
-          {/* Page Header                                                       */}
-          {/* ----------------------------------------------------------------- */}
-
           <header className="mb-6 sm:mb-8">
             <div className="max-w-2xl">
               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--foreground-muted)]">
@@ -71,10 +33,6 @@ export default function MyBookingsPage() {
               </p>
             </div>
           </header>
-
-          {/* ----------------------------------------------------------------- */}
-          {/* Booking Collection                                                */}
-          {/* ----------------------------------------------------------------- */}
 
           {bookings.length === 0 ? (
             <EmptyBookings />
@@ -108,8 +66,15 @@ export default function MyBookingsPage() {
                   <JourneyBookingCard
                     key={booking.publicId}
                     booking={booking}
+                    navigation={{
+                      bookingsHref: AUTHENTICATED_ROUTES.BOOKING(
+                        booking.publicId,
+                      ),
+                      messagesHref: `/my-bookings/${booking.publicId}/messages`,
+                      participantsHref: `/my-bookings/${booking.publicId}/participants`,
+                    }}
                     actions={
-                      <div className="flex w-full sm:w-auto">
+                      <div className="flex w-full flex-wrap gap-2 sm:w-auto">
                         <Link
                           href={AUTHENTICATED_ROUTES.BOOKING(
                             booking.publicId,
@@ -147,10 +112,6 @@ export default function MyBookingsPage() {
     </main>
   );
 }
-
-// -----------------------------------------------------------------------------
-// Empty state
-// -----------------------------------------------------------------------------
 
 function EmptyBookings() {
   return (

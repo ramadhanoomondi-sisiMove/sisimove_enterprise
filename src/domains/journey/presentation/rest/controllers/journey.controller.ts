@@ -154,6 +154,8 @@ import {
 
 import type { PublicJourneyResponse } from '../../../application/query-handlers/journey/get-public-journeys.query-handler';
 
+import type { GetJourneysByProviderResult } from '../../../application/query-handlers/journey/get-journeys-by-provider.query-handler';
+
 // -----------------------------------------------------------------------------
 // Journey — Domain Aggregate
 // -----------------------------------------------------------------------------
@@ -220,6 +222,9 @@ import { MyJourneyMapper } from '../../../application/mappers/my-journey.mapper'
 
 import type { MyJourneyResponse } from '../../../application/responses/my-journey.response';
 
+import { JourneyBookingResponseMapper } from '../../../../journey-booking/presentation/rest/mappers/journey-booking-response.mapper';
+
+import { JourneyBoardingResponseMapper } from '../../../../journey-boarding/presentation/rest/mappers/journey-boarding-response.mapper';
 // -----------------------------------------------------------------------------
 // Journey — Domain Value Objects
 // -----------------------------------------------------------------------------
@@ -375,7 +380,7 @@ export class JourneyController {
     @Inject(JOURNEY_TOKENS.QUERY_HANDLERS.GET_BY_PROVIDER)
     private readonly getJourneysByProviderQueryHandler: QueryHandler<
       GetJourneysByProviderQuery,
-      readonly JourneyAggregate[]
+      GetJourneysByProviderResult[]
     >,
 
     @Inject(JOURNEY_TOKENS.QUERY_HANDLERS.GET_BY_PROVIDER_AND_STATUS)
@@ -642,31 +647,47 @@ export class JourneyController {
   @ApiOperation({
     summary: 'Get my journeys',
     description:
-      'Returns journeys belonging to the currently authenticated journey provider, including a consumer-facing vehicle Asset reference when available.',
+      'Returns journeys belonging to the currently authenticated journey provider, including bookings, boarding participants, boarding events, unread journey messages, and a consumer-facing vehicle Asset reference when available.',
   })
   @Get('me')
   @UseGuards(auth.JwtAuthGuard)
   public async getMyJourneys(
     @auth.CurrentIdentity() identity: auth.AuthenticatedIdentity,
   ): Promise<readonly MyJourneyResponse[]> {
-    const journeys = await this.getJourneysByProviderQueryHandler.execute(
+    const results = await this.getJourneysByProviderQueryHandler.execute(
       new GetJourneysByProviderQuery(identity.identityPublicId),
     );
 
     return Promise.all(
-      journeys.map(async (journey) => {
-        const assetPublicId = journey.vehicle?.assetPublicId;
+      results.map(
+        async ({ journey, bookings, boarding, unreadMessagesCount }) => {
+          const vehicleAssetPublicId = journey.vehicle?.assetPublicId;
 
-        if (assetPublicId === undefined || assetPublicId === null) {
-          return MyJourneyMapper.fromAggregate(journey);
-        }
+          const vehicleAsset =
+            vehicleAssetPublicId === undefined || vehicleAssetPublicId === null
+              ? null
+              : await this.resolveVehicleAssetReference(
+                  vehicleAssetPublicId.value,
+                );
 
-        const vehicleAsset = await this.resolveVehicleAssetReference(
-          assetPublicId.value,
-        );
+          const bookingResponses = JourneyBookingResponseMapper.fromEntities([
+            ...bookings,
+          ]);
 
-        return MyJourneyMapper.fromAggregate(journey, vehicleAsset);
-      }),
+          const boardingResponse =
+            boarding === null
+              ? null
+              : JourneyBoardingResponseMapper.toResponse(boarding);
+
+          return MyJourneyMapper.fromAggregate(
+            journey,
+            vehicleAsset,
+            bookingResponses,
+            boardingResponse,
+            unreadMessagesCount,
+          );
+        },
+      ),
     );
   }
 
@@ -730,9 +751,11 @@ export class JourneyController {
   public async getByProvider(
     @Param('providerPublicId') providerPublicId: string,
   ): Promise<readonly JourneyAggregate[]> {
-    return this.getJourneysByProviderQueryHandler.execute(
+    const results = await this.getJourneysByProviderQueryHandler.execute(
       new GetJourneysByProviderQuery(providerPublicId),
     );
+
+    return results.map((result) => result.journey);
   }
 
   // ===========================================================================

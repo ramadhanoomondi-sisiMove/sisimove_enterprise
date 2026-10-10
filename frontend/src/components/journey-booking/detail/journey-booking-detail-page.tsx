@@ -1,52 +1,39 @@
-// -----------------------------------------------------------------------------
-// Path: src/components/journey-booking/detail/journey-booking-detail-page.tsx
+"use client";
+
 // -----------------------------------------------------------------------------
 // sisiMove — Journey Booking Detail Page
 // -----------------------------------------------------------------------------
 //
-// Presentation surface for one persisted Journey Booking.
-//
-// Canonical route:
-//
-//   /bookings/[publicId]
-//
 // Responsibilities:
-// - Present the persisted Journey Booking.
-// - Present the booking-owned Journey snapshot.
-// - Present the booking-owned pricing snapshot.
-// - Present payment information when available.
-// - Present cancellation information when available.
+// - Present persisted booking information and historical snapshots.
+// - Present pricing, payment, and cancellation information.
 // - Present loading, error, and empty states.
-// - Provide navigation back to the authenticated booking collection.
+// - Provide journey-context messages and support actions.
+// - Provide booking and participant navigation.
 //
-// Non-responsibilities:
-// - Fetching data.
-// - Authentication.
-// - Authorization.
-// - Booking lifecycle decisions.
-// - Payment transitions.
-// - Cancellation mutations.
-// - Reconstructing current Journey information.
-//
-// The backend/API/query layers remain authoritative for booking state.
-//
+// Data fetching, authorization, and booking lifecycle decisions remain outside
+// this presentation component.
 // -----------------------------------------------------------------------------
 
-'use client';
-
-import Link from 'next/link';
-import type { ReactNode } from 'react';
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import type { ReactNode } from "react";
 
 import {
   ArrowLeft,
   CircleAlert,
   CircleHelp,
-} from 'lucide-react';
+} from "lucide-react";
 
 import {
   Card,
   Button,
-} from '@/components/ui';
+} from "@/components/ui";
+
+import {
+  JourneyGetSupportAction,
+  JourneyUnreadMessagesBadge,
+} from "@/components/journey/shared";
 
 import {
   JourneyBookingSummary,
@@ -54,49 +41,56 @@ import {
   JourneyBookingPricing,
   JourneyBookingPayment,
   JourneyBookingCancellation,
-} from '@/components/journey-booking';
+} from "@/components/journey-booking";
 
-import type { JourneyBookingDetail } from '@/features/journey-booking/models';
+import type { JourneyBookingDetail } from "@/features/journey-booking/models";
+import { AUTHENTICATED_ROUTES } from "@/foundation/routing";
 
 // -----------------------------------------------------------------------------
 // Types
 // -----------------------------------------------------------------------------
 
+export interface JourneyBookingDetailNavigation {
+  /** Journey-context messages destination. */
+  readonly messagesHref?: string;
+
+  /** Participants associated with this Journey. */
+  readonly participantsHref?: string;
+
+  /** Authenticated booking collection destination. */
+  readonly bookingsHref?: string;
+}
+
 export interface JourneyBookingDetailPageProps {
-  /**
-   * Public booking identifier resolved from the route.
-   */
+  /** Public booking identifier resolved from the route. */
   publicId?: string;
 
-  /**
-   * Persisted Journey Booking returned by the query layer.
-   */
+  /** Persisted booking returned by the query layer. */
   booking?: JourneyBookingDetail;
 
-  /**
-   * Initial query loading state.
-   */
+  /** Initial query loading state. */
   isLoading?: boolean;
 
-  /**
-   * Background refetch state.
-   */
+  /** Background refetch state. */
   isFetching?: boolean;
 
-  /**
-   * Query error, when loading failed.
-   */
+  /** Query error, when loading failed. */
   error?: Error | null;
 
-  /**
-   * Retry callback supplied by the route/query boundary.
-   */
+  /** Retry callback supplied by the query boundary. */
   onRetry?: () => void | Promise<unknown>;
 
-  /**
-   * Optional additional page content.
-   */
+  /** Optional additional page content. */
   children?: ReactNode;
+
+  /** Journey-context navigation destinations. */
+  navigation?: JourneyBookingDetailNavigation;
+
+  /** Unread messages supplied by the appropriate read model. */
+  unreadMessagesCount?: number;
+
+  /** Optional override for the journey support action. */
+  onGetSupport?: (journeyPublicId: string) => void;
 }
 
 // -----------------------------------------------------------------------------
@@ -111,18 +105,27 @@ export function JourneyBookingDetailPage({
   error = null,
   onRetry,
   children,
+  navigation,
+  unreadMessagesCount = 0,
+  onGetSupport,
 }: JourneyBookingDetailPageProps) {
-  // ---------------------------------------------------------------------------
-  // Loading
-  // ---------------------------------------------------------------------------
+  const router = useRouter();
+
+  // Use the same canonical support route as JourneyBookingCard.
+  const handleGetSupport = (journeyPublicId: string) => {
+    if (onGetSupport) {
+      onGetSupport(journeyPublicId);
+      return;
+    }
+
+    router.push(
+      AUTHENTICATED_ROUTES.JOURNEY_SUPPORT_NEW(journeyPublicId),
+    );
+  };
 
   if (isLoading) {
     return <JourneyBookingDetailLoading />;
   }
-
-  // ---------------------------------------------------------------------------
-  // Error
-  // ---------------------------------------------------------------------------
 
   if (error) {
     return (
@@ -134,44 +137,27 @@ export function JourneyBookingDetailPage({
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Missing booking
-  // ---------------------------------------------------------------------------
-
   if (!booking) {
-    return (
-      <JourneyBookingDetailEmpty
-        publicId={publicId}
-      />
-    );
+    return <JourneyBookingDetailEmpty publicId={publicId} />;
   }
-
-  // ---------------------------------------------------------------------------
-  // Detail
-  // ---------------------------------------------------------------------------
 
   return (
     <main className="page-shell">
       <div className="page-container py-5 sm:py-8 lg:py-10">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 sm:gap-8">
-          {/* ----------------------------------------------------------------- */}
-          {/* Page Header                                                       */}
-          {/* ----------------------------------------------------------------- */}
-
+          {/* Page header */}
           <header className="flex flex-col gap-5">
             <Link
-              href="/my-bookings"
+              href={navigation?.bookingsHref ?? "/my-bookings"}
               className={[
-                'group inline-flex w-fit items-center gap-2',
-                'text-sm font-medium',
-                'text-[var(--foreground-secondary)]',
-                'transition-colors',
-                'hover:text-[var(--brand)]',
-                'focus-visible:outline-none',
-                'focus-visible:ring-2',
-                'focus-visible:ring-[var(--brand)]',
-                'focus-visible:ring-offset-2',
-              ].join(' ')}
+                "group inline-flex w-fit items-center gap-2",
+                "text-sm font-medium",
+                "text-[var(--foreground-secondary)]",
+                "transition-colors hover:text-[var(--brand)]",
+                "focus-visible:outline-none focus-visible:ring-2",
+                "focus-visible:ring-[var(--brand)]",
+                "focus-visible:ring-offset-2",
+              ].join(" ")}
             >
               <ArrowLeft
                 size={16}
@@ -179,7 +165,6 @@ export function JourneyBookingDetailPage({
                 aria-hidden="true"
                 className="transition-transform duration-200 group-hover:-translate-x-0.5"
               />
-
               <span>My bookings</span>
             </Link>
 
@@ -214,27 +199,15 @@ export function JourneyBookingDetailPage({
             </div>
           </header>
 
-          {/* ----------------------------------------------------------------- */}
-          {/* Booking Summary                                                   */}
-          {/* ----------------------------------------------------------------- */}
-
+          {/* Booking summary */}
           <JourneyBookingSummary booking={booking} />
 
-          {/* ----------------------------------------------------------------- */}
-          {/* Main Booking Content                                              */}
-          {/* ----------------------------------------------------------------- */}
-
+          {/* Main booking content */}
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(300px,0.85fr)] lg:gap-6">
-            {/* =============================================================== */}
-            {/* Primary Column                                                   */}
-            {/* =============================================================== */}
-
+            {/* Primary column */}
             <div className="flex min-w-0 flex-col gap-5 lg:gap-6">
               {booking.snapshot && (
-                <Card
-                  padding="md"
-                  className="overflow-hidden"
-                >
+                <Card padding="md" className="overflow-hidden">
                   <JourneyBookingSnapshot
                     snapshot={booking.snapshot}
                   />
@@ -242,10 +215,7 @@ export function JourneyBookingDetailPage({
               )}
 
               {booking.pricing && (
-                <Card
-                  padding="md"
-                  className="overflow-hidden"
-                >
+                <Card padding="md" className="overflow-hidden">
                   <JourneyBookingPricing
                     pricing={booking.pricing}
                   />
@@ -253,10 +223,7 @@ export function JourneyBookingDetailPage({
               )}
 
               {booking.cancellation && (
-                <Card
-                  padding="md"
-                  className="overflow-hidden"
-                >
+                <Card padding="md" className="overflow-hidden">
                   <JourneyBookingCancellation
                     cancellation={booking.cancellation}
                   />
@@ -266,23 +233,22 @@ export function JourneyBookingDetailPage({
               {children}
             </div>
 
-            {/* =============================================================== */}
-            {/* Secondary Column                                                 */}
-            {/* =============================================================== */}
-
+            {/* Secondary column */}
             <aside className="flex min-w-0 flex-col gap-5 lg:gap-6">
               {booking.payment && (
-                <Card
-                  padding="md"
-                  className="overflow-hidden"
-                >
+                <Card padding="md" className="overflow-hidden">
                   <JourneyBookingPayment
                     payment={booking.payment}
                   />
                 </Card>
               )}
 
-              <BookingReferenceCard booking={booking} />
+              <BookingReferenceCard
+                booking={booking}
+                navigation={navigation}
+                unreadMessagesCount={unreadMessagesCount}
+                onGetSupport={handleGetSupport}
+              />
             </aside>
           </div>
         </div>
@@ -292,26 +258,33 @@ export function JourneyBookingDetailPage({
 }
 
 // -----------------------------------------------------------------------------
-// Booking Reference
+// Booking Reference and Journey Actions
 // -----------------------------------------------------------------------------
 
 interface BookingReferenceCardProps {
   booking: JourneyBookingDetail;
+  navigation?: JourneyBookingDetailNavigation;
+  unreadMessagesCount: number;
+  onGetSupport: (journeyPublicId: string) => void;
 }
 
 function BookingReferenceCard({
   booking,
+  navigation,
+  unreadMessagesCount,
+  onGetSupport,
 }: BookingReferenceCardProps) {
   return (
     <Card
       padding="md"
       className={[
-        'overflow-hidden',
-        'border-[var(--border-subtle)]',
-        'bg-[var(--background-brand)]',
-      ].join(' ')}
+        "overflow-hidden",
+        "border-[var(--border-subtle)]",
+        "bg-[var(--background-brand)]",
+      ].join(" ")}
     >
       <div className="flex flex-col gap-5">
+        {/* Booking reference */}
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--foreground-muted)]">
             Booking reference
@@ -325,6 +298,7 @@ function BookingReferenceCard({
           </p>
         </div>
 
+        {/* Booking information */}
         <div className="grid grid-cols-1 gap-3">
           <ReferenceValue
             label="Journey"
@@ -344,9 +318,46 @@ function BookingReferenceCard({
 
         <div className="border-t border-[var(--border-subtle)] pt-4">
           <p className="text-xs leading-5 text-[var(--foreground-muted)]">
-            Keep this booking reference available when contacting sisiMove
-            support about this booking.
+            Keep this booking reference available when contacting
+            sisiMove support about this booking.
           </p>
+        </div>
+
+        {/* Journey actions */}
+        <div className="flex flex-col gap-2 border-t border-[var(--border-subtle)] pt-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--foreground-muted)]">
+            Journey actions
+          </p>
+
+          {navigation?.messagesHref && (
+            <JourneyUnreadMessagesBadge
+              count={Math.max(0, unreadMessagesCount)}
+              href={navigation.messagesHref}
+              className="w-full"
+            />
+          )}
+
+          <JourneyGetSupportAction
+            journeyPublicId={booking.journeyPublicId}
+            onGetSupport={onGetSupport}
+            className="min-h-10 w-full justify-center"
+          />
+
+          <Link
+            href={navigation?.bookingsHref ?? "/my-bookings"}
+            className="inline-flex min-h-10 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-4 text-sm font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--background-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)] focus-visible:ring-offset-2"
+          >
+            My bookings
+          </Link>
+
+          {navigation?.participantsHref && (
+            <Link
+              href={navigation.participantsHref}
+              className="inline-flex min-h-10 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-4 text-sm font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--background-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)] focus-visible:ring-offset-2"
+            >
+              Participants
+            </Link>
+          )}
         </div>
       </div>
     </Card>
@@ -397,9 +408,7 @@ function JourneyBookingDetailLoading() {
         >
           <div className="flex flex-col gap-3">
             <div className="h-5 w-28 animate-pulse rounded bg-[var(--background-muted)]" />
-
             <div className="h-9 w-56 animate-pulse rounded bg-[var(--background-muted)]" />
-
             <div className="h-4 w-40 animate-pulse rounded bg-[var(--background-muted)]" />
           </div>
 
@@ -430,21 +439,19 @@ interface LoadingCardProps {
   className?: string;
 }
 
-function LoadingCard({
-  className,
-}: LoadingCardProps) {
+function LoadingCard({ className }: LoadingCardProps) {
   return (
     <div
       className={[
-        'animate-pulse',
-        'rounded-[var(--radius-xl)]',
-        'border',
-        'border-[var(--border-subtle)]',
-        'bg-[var(--surface)]',
-        className ?? '',
+        "animate-pulse",
+        "rounded-[var(--radius-xl)]",
+        "border",
+        "border-[var(--border-subtle)]",
+        "bg-[var(--surface)]",
+        className ?? "",
       ]
         .filter(Boolean)
-        .join(' ')}
+        .join(" ")}
     />
   );
 }
@@ -468,19 +475,13 @@ function JourneyBookingDetailError({
     <main className="page-shell">
       <div className="page-container py-5 sm:py-8 lg:py-10">
         <div className="mx-auto flex min-h-[60vh] w-full max-w-xl items-center justify-center">
-          <Card
-            padding="lg"
-            className="w-full"
-          >
+          <Card padding="lg" className="w-full">
             <div className="flex flex-col items-center gap-5 text-center">
               <div
                 aria-hidden="true"
                 className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--danger-soft)] text-[var(--danger)]"
               >
-                <CircleAlert
-                  size={22}
-                  strokeWidth={1.8}
-                />
+                <CircleAlert size={22} strokeWidth={1.8} />
               </div>
 
               <div>
@@ -503,7 +504,7 @@ function JourneyBookingDetailError({
                   </p>
                 )}
 
-                {process.env.NODE_ENV === 'development' &&
+                {process.env.NODE_ENV === "development" &&
                   error.message && (
                     <p className="mt-3 break-words text-xs text-[var(--danger)]">
                       {error.message}
@@ -554,19 +555,13 @@ function JourneyBookingDetailEmpty({
     <main className="page-shell">
       <div className="page-container py-5 sm:py-8 lg:py-10">
         <div className="mx-auto flex min-h-[60vh] w-full max-w-xl items-center justify-center">
-          <Card
-            padding="lg"
-            className="w-full"
-          >
+          <Card padding="lg" className="w-full">
             <div className="flex flex-col items-center gap-5 text-center">
               <div
                 aria-hidden="true"
                 className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--background-muted)] text-[var(--foreground-muted)]"
               >
-                <CircleHelp
-                  size={22}
-                  strokeWidth={1.8}
-                />
+                <CircleHelp size={22} strokeWidth={1.8} />
               </div>
 
               <div>

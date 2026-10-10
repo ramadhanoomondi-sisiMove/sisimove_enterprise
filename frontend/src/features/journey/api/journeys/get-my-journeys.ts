@@ -39,9 +39,7 @@
 // The authenticated API client owns authentication concerns.
 // -----------------------------------------------------------------------------
 
-import {
-  authenticatedApiClient,
-} from "@/features/authentication/http/authenticated-api-client";
+import { authenticatedApiClient } from "@/features/authentication/http/authenticated-api-client";
 
 import type { RequestOptions } from "@/foundation/http";
 
@@ -59,6 +57,9 @@ import type { MyJourney } from "../../models/my-journey";
  *   GET /journeys/me
  *
  * Authentication is supplied automatically by `authenticatedApiClient`.
+ *
+ * Each response includes the Journey projection, associated bookings,
+ * and nullable boarding information.
  */
 export async function getMyJourneys(
   options: RequestOptions = {},

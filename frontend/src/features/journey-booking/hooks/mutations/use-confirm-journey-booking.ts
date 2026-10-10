@@ -2,27 +2,32 @@
 // Journey Booking — Confirm Mutation Hook
 // -----------------------------------------------------------------------------
 //
-// React Query mutation hook for confirming a Journey Booking.
+// React Query mutation hook for atomically confirming a Journey Booking
+// together with its payment authorization.
 //
 // Responsibilities:
-// - expose the confirm-booking API operation to React components;
+// - expose the atomic confirm-booking API operation to React components;
 // - keep HTTP communication inside the API layer;
 // - map the returned transport representation into the application model;
 // - provide mutation state through React Query.
 //
-// The backend JourneyBooking aggregate remains authoritative for confirmation.
-// The frontend must not locally determine whether a booking can be confirmed.
-//
-// Confirmation may depend on backend-owned requirements such as:
+// The backend remains authoritative for:
 //
 // - booking lifecycle state;
 // - snapshot availability;
 // - pricing availability;
 // - payment information;
+// - financial authorization;
+// - financial holds;
+// - journey capacity;
 // - aggregate invariants.
 //
-// A successful response is therefore always treated as the authoritative
-// updated booking representation.
+// The frontend supplies only the payment transaction public identifier that
+// was returned when the Journey Booking payment was created.
+//
+// A successful response is always treated as the authoritative updated
+// booking representation.
+//
 // -----------------------------------------------------------------------------
 
 'use client';
@@ -33,25 +38,41 @@ import {
   confirmJourneyBooking,
   type ConfirmJourneyBookingRequest,
 } from '../../api';
+
 import {
   mapJourneyBooking,
   type JourneyBookingApiResponse,
 } from '../../mappers';
+
 import type { JourneyBooking } from '../../models';
 
+// -----------------------------------------------------------------------------
+// Mutation Variables
+// -----------------------------------------------------------------------------
+
 /**
- * Input required to confirm a Journey Booking.
+ * Input required to atomically confirm a Journey Booking.
  *
- * The booking public identifier is supplied separately because it identifies
- * the resource being mutated.
+ * The booking public identifier identifies the resource being mutated.
+ *
+ * The request contains the payment transaction public identifier that was
+ * created by the earlier Journey Booking payment step.
  */
 export interface ConfirmJourneyBookingVariables {
   journeyBookingPublicId: string;
-  request?: ConfirmJourneyBookingRequest;
+  request: ConfirmJourneyBookingRequest;
 }
 
+// -----------------------------------------------------------------------------
+// Mutation
+// -----------------------------------------------------------------------------
+
 /**
- * Confirms a Journey Booking through the backend aggregate.
+ * Atomically confirms a Journey Booking with payment authorization.
+ *
+ * The backend performs payment authorization and booking confirmation in
+ * one transaction so that a capacity failure cannot leave the passenger's
+ * funds held while the booking remains unconfirmed.
  */
 export function useConfirmJourneyBooking() {
   return useMutation<

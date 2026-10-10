@@ -58,7 +58,44 @@
 //
 // - PrismaFinancialSettlementRepository
 //
-// Important persistence rules:
+// -----------------------------------------------------------------------------
+// Transaction boundary
+// -----------------------------------------------------------------------------
+//
+// This repository does NOT create its own Prisma transaction.
+//
+// All persistence operations use PrismaTransactionContext.
+//
+// When called inside PrismaUnitOfWork:
+//
+//     this.prisma
+//         ↓
+//     PrismaTransactionContext
+//         ↓
+//     Prisma.TransactionClient
+//
+// When called outside a UnitOfWork:
+//
+//     this.prisma
+//         ↓
+//     PrismaTransactionContext
+//         ↓
+//     PrismaService
+//
+// Therefore:
+//
+// - this repository remains transaction-aware;
+// - callers can compose Settlement persistence with other repositories;
+// - multi-domain workflows can remain atomic;
+// - repository-owned transactions cannot accidentally commit independently.
+//
+// The Settlement aggregate itself is persisted through a sequence of database
+// operations. The application workflow that requires atomicity must execute
+// the repository call inside PrismaUnitOfWork.
+//
+// -----------------------------------------------------------------------------
+// Persistence rules
+// -----------------------------------------------------------------------------
 //
 // - Settlement allocations are persisted as child Allocation records.
 // - The Settlement root does not persist an allocatedAmount column.
@@ -66,7 +103,6 @@
 // - FinancialSettlementAllocationEntity stores the internal Financial Account
 //   identity, therefore accountId is persisted directly.
 // - Financial Account public-ID resolution does NOT belong to save().
-// - The complete Settlement aggregate is persisted atomically.
 // - Child allocations are deleted before child items.
 // - Child items are recreated from the mapper's persistence structures.
 // - Child allocations are recreated after their owning items exist.
@@ -74,10 +110,25 @@
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Injectable } from '@nestjs/common';
+
+// -----------------------------------------------------------------------------
+// Prisma Transaction Context
+// -----------------------------------------------------------------------------
+
+import {
+  PrismaTransactionContext,
+  type PrismaClientLike,
+} from '../../../../../../infrastructure/database/prisma/prisma-transaction.context';
+
+// -----------------------------------------------------------------------------
 // Prisma
 // -----------------------------------------------------------------------------
 
-import type { Prisma, PrismaClient } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 
 // -----------------------------------------------------------------------------
 // Repository Contract
@@ -159,22 +210,46 @@ type FinancialSettlementWithItems = Prisma.FinancialSettlementGetPayload<{
 // Repository
 // =============================================================================
 
+@Injectable()
 export class PrismaFinancialSettlementRepository implements FinancialSettlementRepository {
   // ===========================================================================
   // Constructor
   // ===========================================================================
 
-  public constructor(private readonly prisma: PrismaClient) {}
+  public constructor(
+    private readonly transactionContext: PrismaTransactionContext,
+  ) {}
+
+  // ===========================================================================
+  // Prisma Client
+  // ===========================================================================
+
+  /**
+   * Returns the ambient Prisma client.
+   *
+   * The returned client is transaction-scoped when the repository is being
+   * executed inside PrismaUnitOfWork.
+   */
+  private get prisma(): PrismaClientLike {
+    return this.transactionContext.getClient();
+  }
 
   // ===========================================================================
   // Save
   // ===========================================================================
 
   /**
-   * Persists the complete Financial Settlement aggregate atomically.
+   * Persists the complete Financial Settlement aggregate.
    *
-   * Existing child items and allocations are replaced by the aggregate's
-   * current state.
+   * IMPORTANT:
+   *
+   * This method deliberately does NOT create a repository-owned Prisma
+   * transaction.
+   *
+   * Atomicity belongs to the application UnitOfWork boundary.
+   *
+   * When called inside PrismaUnitOfWork, every operation below executes
+   * against the same ambient Prisma transaction.
    *
    * Persistence flow:
    *
@@ -191,9 +266,26 @@ export class PrismaFinancialSettlementRepository implements FinancialSettlementR
    * 11. Recreate items.
    * 12. Recreate allocations.
    *
+   * Existing child items and allocations are replaced by the aggregate's
+   * current state.
+   *
    * No financial behavior is executed here.
    */
   public async save(aggregate: FinancialSettlementAggregate): Promise<void> {
+    // -------------------------------------------------------------------------
+    // Aggregate Guard
+    // -------------------------------------------------------------------------
+
+    if (aggregate === undefined) {
+      throw new FinancialSettlementException(
+        'Financial Settlement aggregate is required.',
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Normalize Aggregate Identity
+    // -------------------------------------------------------------------------
+
     const settlementId = this.normalize(
       aggregate.id.toString(),
       'Financial Settlement internal ID',
@@ -204,218 +296,216 @@ export class PrismaFinancialSettlementRepository implements FinancialSettlementR
       'Financial Settlement public ID',
     );
 
-    await this.prisma.$transaction(async (tx) => {
-      // -----------------------------------------------------------------------
-      // Load Existing Settlement
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Load Existing Settlement
+    // -------------------------------------------------------------------------
 
-      const existing = await tx.financialSettlement.findUnique({
-        where: {
-          id: settlementId,
-        },
+    const existing = await this.prisma.financialSettlement.findUnique({
+      where: {
+        id: settlementId,
+      },
 
-        select: {
-          id: true,
-          publicId: true,
-          currency: true,
-        },
-      });
+      select: {
+        id: true,
+        publicId: true,
+        currency: true,
+      },
+    });
 
-      // -----------------------------------------------------------------------
-      // Existence
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Existence
+    // -------------------------------------------------------------------------
 
-      if (existing === null) {
-        throw new FinancialSettlementException(
-          `Financial Settlement "${settlementPublicId}" does not exist and cannot be updated.`,
-        );
-      }
+    if (existing === null) {
+      throw new FinancialSettlementException(
+        `Financial Settlement "${settlementPublicId}" does not exist and cannot be updated.`,
+      );
+    }
 
-      // -----------------------------------------------------------------------
-      // Internal Identity Stability
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Internal Identity Stability
+    // -------------------------------------------------------------------------
 
-      if (existing.id !== settlementId) {
-        throw new FinancialSettlementException(
-          `Financial Settlement internal identity "${settlementId}" is inconsistent.`,
-        );
-      }
+    if (existing.id !== settlementId) {
+      throw new FinancialSettlementException(
+        `Financial Settlement internal identity "${settlementId}" is inconsistent.`,
+      );
+    }
 
-      // -----------------------------------------------------------------------
-      // Public Identity Stability
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Public Identity Stability
+    // -------------------------------------------------------------------------
 
-      if (existing.publicId !== settlementPublicId) {
-        throw new FinancialSettlementException(
-          `Financial Settlement internal identity "${settlementId}" is associated with a different public identity.`,
-        );
-      }
+    if (existing.publicId !== settlementPublicId) {
+      throw new FinancialSettlementException(
+        `Financial Settlement internal identity "${settlementId}" is associated with a different public identity.`,
+      );
+    }
 
-      // -----------------------------------------------------------------------
-      // Currency Stability
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Currency Stability
+    // -------------------------------------------------------------------------
 
-      if (existing.currency !== aggregate.currency.value) {
-        throw new FinancialSettlementException(
-          `Financial Settlement "${settlementPublicId}" cannot change currency from "${existing.currency}" to "${aggregate.currency.value}".`,
-        );
-      }
+    if (existing.currency !== aggregate.currency.value) {
+      throw new FinancialSettlementException(
+        `Financial Settlement "${settlementPublicId}" cannot change currency from "${existing.currency}" to "${aggregate.currency.value}".`,
+      );
+    }
 
-      // -----------------------------------------------------------------------
-      // Aggregate → Persistence
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Aggregate → Persistence
+    // -------------------------------------------------------------------------
 
-      const persistence =
-        FinancialSettlementPrismaMapper.toPersistence(aggregate);
+    const persistence =
+      FinancialSettlementPrismaMapper.toPersistence(aggregate);
 
-      // -----------------------------------------------------------------------
-      // Root Identity Consistency
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Root Identity Consistency
+    // -------------------------------------------------------------------------
 
-      if (persistence.settlement.id !== settlementId) {
-        throw new FinancialSettlementException(
-          'Financial Settlement persistence identity does not match the aggregate identity.',
-        );
-      }
+    if (persistence.settlement.id !== settlementId) {
+      throw new FinancialSettlementException(
+        'Financial Settlement persistence identity does not match the aggregate identity.',
+      );
+    }
 
-      if (persistence.settlement.publicId !== settlementPublicId) {
-        throw new FinancialSettlementException(
-          'Financial Settlement persistence public identity does not match the aggregate public identity.',
-        );
-      }
+    if (persistence.settlement.publicId !== settlementPublicId) {
+      throw new FinancialSettlementException(
+        'Financial Settlement persistence public identity does not match the aggregate public identity.',
+      );
+    }
 
-      // -----------------------------------------------------------------------
-      // Currency Consistency
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Currency Consistency
+    // -------------------------------------------------------------------------
 
-      if (persistence.settlement.currency !== existing.currency) {
-        throw new FinancialSettlementException(
-          `Financial Settlement "${settlementPublicId}" persistence currency cannot change from "${existing.currency}" to "${persistence.settlement.currency}".`,
-        );
-      }
+    if (persistence.settlement.currency !== existing.currency) {
+      throw new FinancialSettlementException(
+        `Financial Settlement "${settlementPublicId}" persistence currency cannot change from "${existing.currency}" to "${persistence.settlement.currency}".`,
+      );
+    }
 
-      // -----------------------------------------------------------------------
-      // Update Settlement Root
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Update Settlement Root
+    // -------------------------------------------------------------------------
 
-      await tx.financialSettlement.update({
-        where: {
-          id: settlementId,
-        },
+    await this.prisma.financialSettlement.update({
+      where: {
+        id: settlementId,
+      },
 
-        data: {
-          status: persistence.settlement.status,
+      data: {
+        status: persistence.settlement.status,
 
-          currency: persistence.settlement.currency,
+        currency: persistence.settlement.currency,
 
-          totalAmount: persistence.settlement.totalAmount,
+        totalAmount: persistence.settlement.totalAmount,
 
-          startedAt: persistence.settlement.startedAt,
+        startedAt: persistence.settlement.startedAt,
 
-          completedAt: persistence.settlement.completedAt,
+        completedAt: persistence.settlement.completedAt,
 
-          failedAt: persistence.settlement.failedAt,
+        failedAt: persistence.settlement.failedAt,
 
-          cancelledAt: persistence.settlement.cancelledAt,
+        cancelledAt: persistence.settlement.cancelledAt,
 
-          updatedAt: persistence.settlement.updatedAt,
-        },
-      });
+        updatedAt: persistence.settlement.updatedAt,
+      },
+    });
 
-      // -----------------------------------------------------------------------
-      // Delete Existing Allocations
-      // -----------------------------------------------------------------------
-      //
-      // FinancialSettlement
-      // └── FinancialSettlementItem
-      //     └── FinancialSettlementAllocation
-      //
-      // Allocation children must be deleted before their owning items.
-      //
+    // -------------------------------------------------------------------------
+    // Delete Existing Allocations
+    // -------------------------------------------------------------------------
+    //
+    // FinancialSettlement
+    // └── FinancialSettlementItem
+    //     └── FinancialSettlementAllocation
+    //
+    // Allocation children must be deleted before their owning items.
+    //
 
-      await tx.financialSettlementAllocation.deleteMany({
-        where: {
-          settlementItem: {
-            settlementId,
-          },
-        },
-      });
-
-      // -----------------------------------------------------------------------
-      // Delete Existing Items
-      // -----------------------------------------------------------------------
-
-      await tx.financialSettlementItem.deleteMany({
-        where: {
+    await this.prisma.financialSettlementAllocation.deleteMany({
+      where: {
+        settlementItem: {
           settlementId,
         },
-      });
-
-      // -----------------------------------------------------------------------
-      // Recreate Settlement Items
-      // -----------------------------------------------------------------------
-
-      if (persistence.items.length > 0) {
-        await tx.financialSettlementItem.createMany({
-          data: persistence.items.map((item) => ({
-            id: item.id,
-
-            publicId: item.publicId,
-
-            settlementId: item.settlementId,
-
-            referenceType: item.referenceType,
-
-            referencePublicId: item.referencePublicId,
-
-            amount: item.amount,
-
-            currency: item.currency,
-
-            status: item.status,
-
-            createdAt: item.createdAt,
-
-            updatedAt: item.updatedAt,
-          })),
-        });
-      }
-
-      // -----------------------------------------------------------------------
-      // Recreate Settlement Allocations
-      // -----------------------------------------------------------------------
-      //
-      // accountId is already the Financial Account's internal persistence ID.
-      //
-      // No FinancialAccount lookup is performed here.
-      //
-
-      if (persistence.allocations.length > 0) {
-        await tx.financialSettlementAllocation.createMany({
-          data: persistence.allocations.map((allocation) => ({
-            id: allocation.id,
-
-            publicId: allocation.publicId,
-
-            settlementItemId: allocation.settlementItemId,
-
-            accountId: allocation.accountId,
-
-            type: allocation.type,
-
-            amount: allocation.amount,
-
-            currency: allocation.currency,
-
-            transactionPublicId: allocation.transactionPublicId,
-
-            createdAt: allocation.createdAt,
-
-            updatedAt: allocation.updatedAt,
-          })),
-        });
-      }
+      },
     });
+
+    // -------------------------------------------------------------------------
+    // Delete Existing Items
+    // -------------------------------------------------------------------------
+
+    await this.prisma.financialSettlementItem.deleteMany({
+      where: {
+        settlementId,
+      },
+    });
+
+    // -------------------------------------------------------------------------
+    // Recreate Settlement Items
+    // -------------------------------------------------------------------------
+
+    if (persistence.items.length > 0) {
+      await this.prisma.financialSettlementItem.createMany({
+        data: persistence.items.map((item) => ({
+          id: item.id,
+
+          publicId: item.publicId,
+
+          settlementId: item.settlementId,
+
+          referenceType: item.referenceType,
+
+          referencePublicId: item.referencePublicId,
+
+          amount: item.amount,
+
+          currency: item.currency,
+
+          status: item.status,
+
+          createdAt: item.createdAt,
+
+          updatedAt: item.updatedAt,
+        })),
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // Recreate Settlement Allocations
+    // -------------------------------------------------------------------------
+    //
+    // accountId is already the Financial Account's internal persistence ID.
+    //
+    // No FinancialAccount lookup is performed here.
+    //
+
+    if (persistence.allocations.length > 0) {
+      await this.prisma.financialSettlementAllocation.createMany({
+        data: persistence.allocations.map((allocation) => ({
+          id: allocation.id,
+
+          publicId: allocation.publicId,
+
+          settlementItemId: allocation.settlementItemId,
+
+          accountId: allocation.accountId,
+
+          type: allocation.type,
+
+          amount: allocation.amount,
+
+          currency: allocation.currency,
+
+          transactionPublicId: allocation.transactionPublicId,
+
+          createdAt: allocation.createdAt,
+
+          updatedAt: allocation.updatedAt,
+        })),
+      });
+    }
   }
 
   // ===========================================================================
@@ -783,7 +873,7 @@ export class PrismaFinancialSettlementRepository implements FinancialSettlementR
   public async findByAccountPublicId(
     accountPublicId: FinancialAccountPublicId,
   ): Promise<FinancialSettlementAggregate[]> {
-    const accountId = await this.resolveAccountId(this.prisma, accountPublicId);
+    const accountId = await this.resolveAccountId(accountPublicId);
 
     return this.findMany({
       items: {
@@ -805,7 +895,7 @@ export class PrismaFinancialSettlementRepository implements FinancialSettlementR
   public async findActiveByAccountPublicId(
     accountPublicId: FinancialAccountPublicId,
   ): Promise<FinancialSettlementAggregate[]> {
-    const accountId = await this.resolveAccountId(this.prisma, accountPublicId);
+    const accountId = await this.resolveAccountId(accountPublicId);
 
     return this.findMany({
       status: {
@@ -832,7 +922,7 @@ export class PrismaFinancialSettlementRepository implements FinancialSettlementR
     accountPublicId: FinancialAccountPublicId,
     status: FinancialSettlementStatus,
   ): Promise<FinancialSettlementAggregate[]> {
-    const accountId = await this.resolveAccountId(this.prisma, accountPublicId);
+    const accountId = await this.resolveAccountId(accountPublicId);
 
     return this.findMany({
       status: status.value,
@@ -1263,7 +1353,7 @@ export class PrismaFinancialSettlementRepository implements FinancialSettlementR
   public async existsByAccountPublicId(
     accountPublicId: FinancialAccountPublicId,
   ): Promise<boolean> {
-    const accountId = await this.resolveAccountId(this.prisma, accountPublicId);
+    const accountId = await this.resolveAccountId(accountPublicId);
 
     const record = await this.prisma.financialSettlement.findFirst({
       where: {
@@ -1293,7 +1383,7 @@ export class PrismaFinancialSettlementRepository implements FinancialSettlementR
   public async existsActiveByAccountPublicId(
     accountPublicId: FinancialAccountPublicId,
   ): Promise<boolean> {
-    const accountId = await this.resolveAccountId(this.prisma, accountPublicId);
+    const accountId = await this.resolveAccountId(accountPublicId);
 
     const record = await this.prisma.financialSettlement.findFirst({
       where: {
@@ -1328,7 +1418,7 @@ export class PrismaFinancialSettlementRepository implements FinancialSettlementR
     accountPublicId: FinancialAccountPublicId,
     status: FinancialSettlementStatus,
   ): Promise<boolean> {
-    const accountId = await this.resolveAccountId(this.prisma, accountPublicId);
+    const accountId = await this.resolveAccountId(accountPublicId);
 
     const record = await this.prisma.financialSettlement.findFirst({
       where: {
@@ -1472,8 +1562,8 @@ export class PrismaFinancialSettlementRepository implements FinancialSettlementR
   /**
    * Centralizes the mapper boundary.
    *
-   * The explicit payload assertion is safe because aggregateInclude()
-   * guarantees exactly this persistence graph.
+   * The explicit payload type guarantees that the complete Settlement graph
+   * expected by the mapper is available.
    */
   private toDomain(
     record: FinancialSettlementWithItems,
@@ -1496,9 +1586,12 @@ export class PrismaFinancialSettlementRepository implements FinancialSettlementR
    * Account public identity.
    *
    * It is intentionally NOT used by save().
+   *
+   * The lookup uses the ambient Prisma client so that, when this repository
+   * method is called inside PrismaUnitOfWork, the account lookup participates
+   * in the same transaction.
    */
   private async resolveAccountId(
-    prisma: PrismaClient | Prisma.TransactionClient,
     accountPublicId: FinancialAccountPublicId,
   ): Promise<string> {
     const normalized = this.normalize(
@@ -1506,7 +1599,7 @@ export class PrismaFinancialSettlementRepository implements FinancialSettlementR
       'Financial Account public ID',
     );
 
-    const account = await prisma.financialAccount.findUnique({
+    const account = await this.prisma.financialAccount.findUnique({
       where: {
         publicId: normalized,
       },
@@ -1565,3 +1658,5 @@ export class PrismaFinancialSettlementRepository implements FinancialSettlementR
     }
   }
 }
+
+export default PrismaFinancialSettlementRepository;

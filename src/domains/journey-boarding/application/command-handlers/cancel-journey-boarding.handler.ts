@@ -1,12 +1,39 @@
+// src/domains/journey-boarding/application/command-handlers/cancel-journey-boarding.handler.ts
+
 // -----------------------------------------------------------------------------
 // Journey Boarding — Cancel Command Handler
 // -----------------------------------------------------------------------------
+//
+// Responsibilities:
+// - Resolve the Journey Boarding aggregate by public identifier.
+// - Delegate cancellation to the aggregate.
+// - Persist the updated aggregate.
+// - Return the updated aggregate.
+//
+// Architectural rules:
+// - Inject dependencies through centralized dependency-injection tokens.
+// - Keep cancellation rules and lifecycle invariants inside the aggregate.
+// - Use domain-specific exceptions for missing aggregates.
+// - Keep persistence implementation details outside the handler.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
+
+// -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_BOARDING_TOKENS } from '../journey-boarding.tokens';
 
 // -----------------------------------------------------------------------------
 // Command
@@ -27,22 +54,16 @@ import type { JourneyBoardingAggregate } from '../../domain/aggregates/journey-b
 import type { JourneyBoardingRepository } from '../../domain/repositories/journey-boarding.repository';
 
 // -----------------------------------------------------------------------------
+// Exceptions
+// -----------------------------------------------------------------------------
+
+import { JourneyBoardingNotFoundException } from '../../domain/exceptions';
+
+// -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
-/**
- * Handles cancellation of a Journey Boarding aggregate.
- *
- * Workflow:
- *
- * 1. Locate the Journey Boarding aggregate by public identifier.
- * 2. Execute the aggregate cancellation operation.
- * 3. Persist the updated aggregate.
- * 4. Return the updated aggregate.
- *
- * The aggregate remains responsible for determining whether cancellation
- * is currently permitted.
- */
+@Injectable()
 export class CancelJourneyBoardingHandler implements CommandHandler<
   CancelJourneyBoardingCommand,
   JourneyBoardingAggregate
@@ -51,7 +72,10 @@ export class CancelJourneyBoardingHandler implements CommandHandler<
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly repository: JourneyBoardingRepository) {}
+  public constructor(
+    @Inject(JOURNEY_BOARDING_TOKENS.REPOSITORY)
+    private readonly repository: JourneyBoardingRepository,
+  ) {}
 
   // ===========================================================================
   // Execute
@@ -69,13 +93,17 @@ export class CancelJourneyBoardingHandler implements CommandHandler<
     );
 
     if (aggregate === null) {
-      throw new Error(
-        `Journey Boarding '${command.journeyBoardingPublicId.value}' was not found.`,
+      throw new JourneyBoardingNotFoundException(
+        command.journeyBoardingPublicId.value,
       );
     }
 
     // -------------------------------------------------------------------------
     // Cancel Boarding
+    // -------------------------------------------------------------------------
+    //
+    // The aggregate determines whether cancellation is permitted, applies the
+    // lifecycle transition, updates its state, and records the domain event.
     // -------------------------------------------------------------------------
 
     aggregate.cancel(

@@ -10,14 +10,11 @@
 //   POST /api/v1/journey-bookings/:journeyBookingPublicId/payment/authorize
 //
 // Backend authorization:
-//   journey-booking:payment:authorize
+//   booking:manage
 //
-// Payment processing remains outside the Journey Booking domain. This endpoint
-// records/advances the payment state associated with the booking through the
-// JourneyBookingAggregate.
-//
-// The frontend must not infer that authorization means capture, settlement,
-// or successful completion of the Journey Booking.
+// Payment processing remains outside the Journey Booking domain. The backend
+// authorizes the payment by coordinating the JourneyBooking aggregate with the
+// Financial domain.
 //
 // Architectural responsibilities:
 //
@@ -32,7 +29,7 @@
 //
 // - Processing the actual payment.
 // - Selecting a payment provider.
-// - Creating a financial transaction.
+// - Creating the financial transaction locally.
 // - Determining whether authorization is permitted.
 // - Changing payment status locally.
 // - Completing or confirming the booking locally.
@@ -54,8 +51,8 @@ import type { JourneyBooking } from '../../models/journey-booking';
  * Request payload accepted by the Journey Booking payment authorization
  * endpoint.
  *
- * The transaction public identifier is an opaque reference to the external
- * Financial/Transaction domain.
+ * The transaction public identifier is an opaque reference supplied by the
+ * payment workflow.
  */
 export interface AuthorizeJourneyBookingPaymentRequest {
   /**
@@ -90,8 +87,8 @@ export interface AuthorizeJourneyBookingPaymentRequest {
 /**
  * Response returned after payment authorization.
  *
- * The backend returns the updated JourneyBookingAggregate through the standard
- * JourneyBookingResponse mapper.
+ * The backend returns the updated Journey Booking representation through the
+ * standard JourneyBookingResponse mapper.
  */
 export type AuthorizeJourneyBookingPaymentResponse =
   JourneyBooking;
@@ -104,8 +101,10 @@ export type AuthorizeJourneyBookingPaymentResponse =
  * Authorize payment associated with a Journey Booking.
  *
  * Authorization is a payment-state transition and does not imply that the
- * payment has been captured. Consumers should inspect the returned booking's
- * payment status rather than assuming a successful capture.
+ * payment has been captured or settled.
+ *
+ * Consumers should inspect the returned booking payment state rather than
+ * assuming that authorization means successful capture or completion.
  *
  * @param journeyBookingPublicId
  *   Public identifier of the Journey Booking.
@@ -129,11 +128,19 @@ export async function authorizeJourneyBookingPayment(
   journeyBookingPublicId: string,
   request: AuthorizeJourneyBookingPaymentRequest,
 ): Promise<AuthorizeJourneyBookingPaymentResponse> {
+  // ---------------------------------------------------------------------------
+  // Normalize required identifiers
+  // ---------------------------------------------------------------------------
+
   const normalizedBookingPublicId =
     journeyBookingPublicId.trim();
 
   const normalizedTransactionPublicId =
     request.transactionPublicId.trim();
+
+  // ---------------------------------------------------------------------------
+  // Validate required identifiers
+  // ---------------------------------------------------------------------------
 
   if (!normalizedBookingPublicId) {
     throw new TypeError(
@@ -147,13 +154,30 @@ export async function authorizeJourneyBookingPayment(
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Normalize optional command metadata
+  // ---------------------------------------------------------------------------
+
+  const normalizedCorrelationId =
+    request.correlationId?.trim() || undefined;
+
+  const normalizedCausationId =
+    request.causationId?.trim() || undefined;
+
+  const normalizedAuthorizedAt =
+    request.authorizedAt?.trim() || undefined;
+
+  // ---------------------------------------------------------------------------
+  // Authorize payment
+  // ---------------------------------------------------------------------------
+
   return authenticatedApiClient.post<AuthorizeJourneyBookingPaymentResponse>(
     `/journey-bookings/${encodeURIComponent(normalizedBookingPublicId)}/payment/authorize`,
     {
       transactionPublicId: normalizedTransactionPublicId,
-      correlationId: request.correlationId,
-      causationId: request.causationId,
-      authorizedAt: request.authorizedAt,
+      correlationId: normalizedCorrelationId,
+      causationId: normalizedCausationId,
+      authorizedAt: normalizedAuthorizedAt,
     },
   );
 }

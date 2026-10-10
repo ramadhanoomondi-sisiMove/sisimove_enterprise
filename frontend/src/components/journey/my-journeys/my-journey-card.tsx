@@ -1,50 +1,37 @@
+
+"use client";
+
 // -----------------------------------------------------------------------------
-// Path: src/features/journey/components/my-journey-card.tsx
-// -----------------------------------------------------------------------------
-//
 // sisiMove — My Journey Card
+// -----------------------------------------------------------------------------
 //
 // Authenticated presentation of one owner's Journey.
 //
 // Design contract:
 // - Consumes only the MyJourney read model.
-// - Mirrors the public JourneyCard marketplace composition.
-// - One horizontal composition at every viewport size.
-// - Compact proportional authenticated Journey surface.
-// - All major visual dimensions scale together through clamp().
-// - Route remains the primary visual anchor.
-// - Journey status is visible without dominating the card.
-// - Vehicle image is a primary marketplace visual.
-// - Vehicle image owns the available vehicle column space.
-// - Vehicle summary remains as a compact one-line footer beneath the image.
-// - Vehicle image is resolved only from the supplied MyJourney vehicle asset.
-// - Price is the commercial anchor.
-// - Price receives enough proportional width to remain visible as the card
-//   becomes narrower.
-// - Capacity is an immediate availability signal.
-// - Footer remains compact and horizontal.
-// - Active Journeys retain the authenticated Manage entry point.
-// - CANCELLED Journeys remain visible in My Journeys.
-// - CANCELLED Journeys are presented as terminal/read-only Journey records.
-// - CANCELLED Journeys expose no View or Manage navigation action.
-// - Progressively assembled Draft Journeys remain safe to render.
-// - No Journey fetching.
-// - No Journey mutations.
-// - No lifecycle transition logic.
-// - No capability inference.
-// - No Journey editing.
+// - Mobile-first, compact presentation.
+// - Two-column layout on mobile; four-column layout on larger screens.
+// - Journey route and status remain visible.
+// - Vehicle image uses only the supplied vehicle asset.
+// - Price and capacity remain visible.
+// - Journeys with bookings receive a subtle success treatment.
+// - Booking and Boarding summaries navigate to journey-specific routes.
+// - Footer unread message badge links to the authenticated messaging inbox.
+// - Footer Get support action opens support for the selected Journey.
+// - Cancelled Journeys remain visible as historical records.
+// - Cancelled Journeys expose no navigation actions.
+// - No Journey fetching, mutations, or lifecycle inference.
 // - No Asset URL construction.
-//
-// Shared Journey presentation components remain responsible for
-// Journey-specific visual details.
 //
 // -----------------------------------------------------------------------------
 
-"use client";
+// Imports
+// -----------------------------------------------------------------------------
 
 import Image from "next/image";
-import { Clock3, UsersRound } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Clock3, UsersRound } from "lucide-react";
 
 import { Card } from "@/components/ui";
 import { formatTime } from "@/foundation/formatters";
@@ -54,12 +41,16 @@ import { cn } from "@/foundation/utils/cn";
 import type { MyJourney } from "@/features/journey/models/my-journey";
 
 import {
+  JourneyBoardingSummary,
+  JourneyBookingsSummary,
   JourneyCapacitySummary,
   JourneyDate,
+  JourneyGetSupportAction,
   JourneyPrice,
   JourneyRoute,
   JourneyStatusBadge,
   JourneyVehicleSummary,
+  JourneyUnreadMessagesBadge,
 } from "@/components/journey/shared";
 
 // -----------------------------------------------------------------------------
@@ -92,6 +83,7 @@ export function MyJourneyCard({
   className,
   emphasis = "compact",
 }: MyJourneyCardProps) {
+  const router = useRouter();
   const isCompact = emphasis === "compact";
 
   const route = journey.route;
@@ -101,30 +93,17 @@ export function MyJourneyCard({
   const pricing = journey.pricing;
 
   // ---------------------------------------------------------------------------
-  // Terminal presentation
-  //
-  // CANCELLED is a persisted terminal status supplied by the backend.
-  //
-  // The card does not decide what that status means operationally. It only
-  // uses the status to provide appropriate presentation.
-  //
-  // CANCELLED Journeys remain visible as historical records but expose no
-  // navigation action from this card.
-  //
-  // No mutation, transition, or capability decision is made here.
+  // Presentation state
   // ---------------------------------------------------------------------------
 
   const isCancelled = journey.status === "CANCELLED";
+  const hasBookings = journey.bookings.length > 0;
 
   // ---------------------------------------------------------------------------
   // Vehicle asset
-  //
-  // The MyJourney projection already contains the resolved public asset
-  // reference. The card never constructs an Asset URL.
   // ---------------------------------------------------------------------------
 
-  const vehicleImageUrl =
-    vehicle?.asset?.url?.trim() || null;
+  const vehicleImageUrl = vehicle?.asset?.url?.trim() || null;
 
   const vehicleLabel = vehicle
     ? [vehicle.make, vehicle.model]
@@ -137,62 +116,44 @@ export function MyJourneyCard({
   // Schedule
   // ---------------------------------------------------------------------------
 
-  const departureAt =
-    schedule?.departureAt ?? null;
-
-  const arrivalAt =
-    schedule?.arrivalAt ?? null;
+  const departureAt = schedule?.departureAt ?? null;
+  const arrivalAt = schedule?.arrivalAt ?? null;
 
   const departureTime =
-    departureAt !== null
-      ? formatTime(departureAt)
-      : null;
+    departureAt !== null ? formatTime(departureAt) : null;
 
   const arrivalTime =
-    arrivalAt !== null
-      ? formatTime(arrivalAt)
-      : null;
+    arrivalAt !== null ? formatTime(arrivalAt) : null;
 
   // ---------------------------------------------------------------------------
   // Route
   // ---------------------------------------------------------------------------
 
-  const routeOrigin =
-    route?.origin.name ?? "Origin not set";
-
-  const routeDestination =
-    route?.destination.name ?? "Destination not set";
-
-  const waypointCount =
-    route?.waypoints.length ?? 0;
+  const routeOrigin = route?.origin.name ?? "Origin not set";
+  const routeDestination = route?.destination.name ?? "Destination not set";
+  const waypointCount = route?.waypoints.length ?? 0;
 
   // ---------------------------------------------------------------------------
   // Responsive sizing
-  //
-  // These values intentionally mirror JourneyCard.
-  //
-  // The card remains one horizontal composition. Rather than introducing a
-  // mobile-only layout, typography, spacing, icons and visual containers
-  // progressively scale together.
   // ---------------------------------------------------------------------------
 
-  const horizontalPadding = isCompact
-    ? "px-[clamp(0.48rem,1.05vw,0.95rem)]"
-    : "px-[clamp(0.58rem,1.2vw,1.1rem)]";
-
-  const verticalPadding = isCompact
-    ? "py-[clamp(0.45rem,0.9vw,0.8rem)]"
-    : "py-[clamp(0.58rem,1.1vw,1rem)]";
+  const sectionPadding = isCompact
+    ? "p-2 sm:px-[clamp(0.45rem,1vw,0.85rem)] sm:py-[clamp(0.4rem,0.8vw,0.7rem)]"
+    : "p-2.5 sm:px-[clamp(0.55rem,1.1vw,1rem)] sm:py-[clamp(0.5rem,1vw,0.9rem)]";
 
   const sectionLabel = cn(
-    "mb-[clamp(0.2rem,0.45vw,0.4rem)]",
-    "text-[clamp(0.34rem,0.52vw,0.5rem)]",
+    "mb-1",
+    "text-[0.625rem] sm:text-[clamp(0.48rem,0.62vw,0.62rem)]",
     "font-semibold",
     "uppercase",
-    "tracking-[0.08em]",
-    "leading-none",
+    "tracking-[0.06em]",
+    "leading-tight",
     "text-[var(--foreground-muted)]",
   );
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
     <Card
@@ -201,16 +162,17 @@ export function MyJourneyCard({
         "w-full",
         "min-w-0",
         "overflow-hidden",
-        "rounded-[clamp(0.58rem,0.95vw,0.9rem)]",
+        "rounded-xl",
         "border",
-        "border-[var(--border)]",
-        "bg-[var(--surface)]",
-        "shadow-[var(--shadow-md)]",
         "transition-all",
         "duration-200",
-        "hover:-translate-y-px",
-        "hover:border-[var(--border-strong)]",
+        hasBookings && !isCancelled
+          ? "border-green-200 bg-green-50/20 shadow-[var(--shadow-lg)]"
+          : "border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-md)]",
         "hover:shadow-[var(--shadow-lg)]",
+        hasBookings && !isCancelled
+          ? "hover:border-green-300"
+          : "hover:border-[var(--border-strong)]",
         className,
       )}
     >
@@ -224,30 +186,26 @@ export function MyJourneyCard({
           routeDestination,
         ].join(" ")}
       >
-        {/* -------------------------------------------------------------------
-            Marketplace-style body
+        {/* -----------------------------------------------------------------
+            Main journey details
 
+            Mobile:  Schedule | Route
+                     Vehicle  | Price / Capacity
+
+            Larger screens:
             Schedule | Route / Status | Vehicle | Price / Capacity
-
-            Proportions deliberately match JourneyCard:
-
-                16% | 29% | 35% | 20%
-
-            Price therefore gets a little more room while the vehicle remains
-            the dominant visual column.
-            ------------------------------------------------------------------- */}
+        ----------------------------------------------------------------- */}
 
         <div
           className={cn(
             "grid",
             "w-full",
             "min-w-0",
-            "grid-cols-[16%_29%_35%_20%]",
+            "grid-cols-2",
+            "sm:grid-cols-[16%_29%_35%_20%]",
           )}
         >
-          {/* -----------------------------------------------------------------
-              Schedule
-              ----------------------------------------------------------------- */}
+          {/* Schedule */}
 
           <section
             aria-label="Journey departure"
@@ -256,9 +214,10 @@ export function MyJourneyCard({
               "min-w-0",
               "items-center",
               "border-r",
+              "border-b",
               "border-[var(--border-subtle)]",
-              horizontalPadding,
-              verticalPadding,
+              "sm:border-b-0",
+              sectionPadding,
             )}
           >
             <div className="w-full min-w-0">
@@ -267,37 +226,35 @@ export function MyJourneyCard({
                   "flex",
                   "min-w-0",
                   "items-center",
-                  "justify-center",
-                  "gap-[clamp(0.14rem,0.3vw,0.28rem)]",
+                  "gap-1",
+                  "sm:justify-center",
                   sectionLabel,
                 )}
               >
                 <Clock3
                   aria-hidden="true"
-                  className="size-[clamp(0.44rem,0.7vw,0.65rem)] shrink-0 text-[var(--brand)]"
+                  className="size-3 shrink-0 text-[var(--brand)] sm:size-[clamp(0.55rem,0.7vw,0.7rem)]"
                 />
 
-                <span className="truncate">
-                  Departure
-                </span>
+                <span className="truncate">Departure</span>
               </div>
 
               {schedule ? (
-                <div className="min-w-0 text-center">
+                <div className="min-w-0 sm:text-center">
                   <JourneyDate
                     schedule={schedule}
-                    className="mx-auto w-full"
+                    className="w-full sm:mx-auto"
                   />
 
                   {departureAt !== null ? (
                     <div
                       className={cn(
-                        "mt-[clamp(0.28rem,0.6vw,0.55rem)]",
+                        "mt-1.5",
                         "flex",
                         "min-w-0",
                         "items-center",
-                        "justify-center",
-                        "gap-[clamp(0.15rem,0.35vw,0.35rem)]",
+                        "gap-1",
+                        "sm:justify-center",
                       )}
                     >
                       <time
@@ -305,9 +262,9 @@ export function MyJourneyCard({
                         className={cn(
                           "min-w-0",
                           "truncate",
-                          "text-[clamp(0.56rem,0.88vw,0.82rem)]",
+                          "text-xs sm:text-[clamp(0.62rem,0.88vw,0.82rem)]",
                           "font-extrabold",
-                          "leading-none",
+                          "leading-tight",
                           "tracking-tight",
                           "text-[var(--foreground)]",
                         )}
@@ -319,7 +276,7 @@ export function MyJourneyCard({
                         <>
                           <span
                             aria-hidden="true"
-                            className="shrink-0 text-[clamp(0.4rem,0.6vw,0.58rem)] text-[var(--foreground-subtle)]"
+                            className="shrink-0 text-xs text-[var(--foreground-subtle)]"
                           >
                             →
                           </span>
@@ -329,9 +286,9 @@ export function MyJourneyCard({
                             className={cn(
                               "min-w-0",
                               "truncate",
-                              "text-[clamp(0.46rem,0.72vw,0.68rem)]",
+                              "text-[0.625rem] sm:text-[clamp(0.52rem,0.72vw,0.68rem)]",
                               "font-semibold",
-                              "leading-none",
+                              "leading-tight",
                               "text-[var(--foreground-secondary)]",
                             )}
                           >
@@ -344,15 +301,13 @@ export function MyJourneyCard({
 
                   <span
                     className={cn(
-                      "mt-[clamp(0.16rem,0.35vw,0.3rem)]",
+                      "mt-1",
                       "block",
-                      "max-w-full",
                       "truncate",
-                      "text-[clamp(0.3rem,0.48vw,0.48rem)]",
+                      "text-[0.5625rem] sm:text-[clamp(0.42rem,0.48vw,0.5rem)]",
                       "font-semibold",
                       "uppercase",
-                      "tracking-[0.07em]",
-                      "leading-none",
+                      "tracking-wide",
                       "text-[var(--foreground-muted)]",
                     )}
                   >
@@ -360,23 +315,14 @@ export function MyJourneyCard({
                   </span>
                 </div>
               ) : (
-                <p
-                  className={cn(
-                    "text-center",
-                    "text-[clamp(0.42rem,0.65vw,0.62rem)]",
-                    "leading-tight",
-                    "text-[var(--foreground-subtle)]",
-                  )}
-                >
+                <p className="text-xs leading-tight text-[var(--foreground-muted)]">
                   Departure not set
                 </p>
               )}
             </div>
           </section>
 
-          {/* -----------------------------------------------------------------
-              Route + Status
-              ----------------------------------------------------------------- */}
+          {/* Route and status */}
 
           <section
             aria-label="Journey route and status"
@@ -384,25 +330,17 @@ export function MyJourneyCard({
               "flex",
               "min-w-0",
               "items-center",
-              "justify-center",
-              horizontalPadding,
-              verticalPadding,
+              "border-b",
+              "border-[var(--border-subtle)]",
+              "sm:border-b-0",
+              sectionPadding,
             )}
           >
             <div className="w-full min-w-0">
-              <div className={sectionLabel}>
-                Route
-              </div>
+              <div className={sectionLabel}>Route</div>
 
               {route ? (
-                <div
-                  className={cn(
-                    "mx-auto",
-                    "w-full",
-                    "max-w-[clamp(9rem,21vw,18rem)]",
-                    "min-w-0",
-                  )}
-                >
+                <div className="mx-auto w-full min-w-0 sm:max-w-[clamp(9rem,21vw,18rem)]">
                   <JourneyRoute
                     route={route}
                     showWaypoints={false}
@@ -415,106 +353,62 @@ export function MyJourneyCard({
                     "border",
                     "border-[var(--border-subtle)]",
                     "bg-[var(--background-subtle)]",
-                    "px-[clamp(0.45rem,0.8vw,0.75rem)]",
-                    "py-[clamp(0.4rem,0.7vw,0.6rem)]",
-                    "text-center",
-                    "text-[clamp(0.42rem,0.65vw,0.62rem)]",
+                    "p-2",
+                    "text-xs",
                     "leading-tight",
                     "text-[var(--foreground-muted)]",
                   )}
                 >
-                  Journey route not yet completed
+                  Route not completed
                 </div>
               )}
 
-              {/* Status */}
+              {/* Journey status only. Unread messages are displayed below. */}
 
-              <div
-                className={cn(
-                  "mt-[clamp(0.35rem,0.7vw,0.65rem)]",
-                  "flex",
-                  "min-w-0",
-                  "items-center",
-                  "justify-center",
-                  "border-t",
-                  "border-[var(--border-subtle)]",
-                  "pt-[clamp(0.28rem,0.52vw,0.5rem)]",
-                )}
-              >
-                <JourneyStatusBadge
-                  status={journey.status}
-                />
+              <div className="mt-2 flex min-w-0 flex-wrap items-center justify-start gap-2 sm:justify-center">
+                <JourneyStatusBadge status={journey.status} />
               </div>
 
               {waypointCount > 0 ? (
-                <div
-                  className={cn(
-                    "mt-[clamp(0.16rem,0.3vw,0.3rem)]",
-                    "flex",
-                    "min-w-0",
-                    "items-center",
-                    "justify-center",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "min-w-0",
-                      "truncate",
-                      "text-[clamp(0.3rem,0.46vw,0.46rem)]",
-                      "leading-none",
-                      "text-[var(--foreground-muted)]",
-                    )}
-                  >
-                    {waypointCount}{" "}
-                    {waypointCount === 1
-                      ? "waypoint"
-                      : "waypoints"}
-                  </span>
-                </div>
+                <p className="mt-1 truncate text-[0.625rem] text-[var(--foreground-muted)] sm:text-center">
+                  {waypointCount}{" "}
+                  {waypointCount === 1 ? "waypoint" : "waypoints"}
+                </p>
               ) : null}
             </div>
           </section>
 
-          {/* -----------------------------------------------------------------
-              Vehicle
-
-              Image owns the available vehicle column width.
-              Summary remains directly beneath it as a compact footer.
-              ----------------------------------------------------------------- */}
+          {/* Vehicle */}
 
           <section
             aria-label="Journey vehicle"
             className={cn(
               "min-w-0",
-              "border-l",
+              "border-r",
               "border-[var(--border-subtle)]",
-              horizontalPadding,
-              verticalPadding,
+              "sm:border-r-0",
+              "sm:border-l",
+              "sm:border-[var(--border-subtle)]",
+              sectionPadding,
             )}
           >
             <div className="flex min-w-0 flex-col">
-              <div className={sectionLabel}>
-                Vehicle
-              </div>
+              <div className={sectionLabel}>Vehicle</div>
 
               {vehicle ? (
                 <>
-                  {/* -----------------------------------------------------------
-                      Primary vehicle image
-                      ----------------------------------------------------------- */}
-
                   <div
                     className={cn(
                       "relative",
-                      "aspect-[16/9]",
+                      "aspect-[16/8]",
+                      "sm:aspect-[16/9]",
                       "w-full",
                       "min-w-0",
                       "overflow-hidden",
-                      "rounded-[clamp(0.5rem,0.9vw,0.85rem)]",
+                      "rounded-lg",
                       "border",
                       "border-[var(--border)]",
                       "bg-[var(--background-subtle)]",
-                      "shadow-[var(--shadow-sm)]",
                     )}
                   >
                     {vehicleImageUrl ? (
@@ -522,76 +416,44 @@ export function MyJourneyCard({
                         src={vehicleImageUrl}
                         alt={vehicleLabel}
                         fill
-                        sizes="(max-width: 640px) 220px, (max-width: 1024px) 320px, 420px"
+                        sizes="(max-width: 639px) 45vw, (max-width: 1024px) 30vw, 420px"
                         className="object-cover"
                         unoptimized
                       />
                     ) : (
-                      <div
-                        className={cn(
-                          "flex",
-                          "size-full",
-                          "flex-col",
-                          "items-center",
-                          "justify-center",
-                          "gap-[clamp(0.25rem,0.5vw,0.4rem)]",
-                          "bg-[var(--brand-soft)]",
-                        )}
-                      >
+                      <div className="flex size-full flex-col items-center justify-center gap-1 bg-[var(--brand-soft)]">
                         <span
                           aria-hidden="true"
-                          className="text-[clamp(1.5rem,3.5vw,3rem)]"
+                          className="text-2xl sm:text-3xl"
                         >
                           🚙
                         </span>
 
-                        <span
-                          className={cn(
-                            "text-[clamp(0.3rem,0.5vw,0.5rem)]",
-                            "font-semibold",
-                            "uppercase",
-                            "tracking-[0.06em]",
-                            "text-[var(--foreground-muted)]",
-                          )}
-                        >
+                        <span className="text-[0.5625rem] font-semibold uppercase tracking-wide text-[var(--foreground-muted)]">
                           No photo
                         </span>
                       </div>
                     )}
                   </div>
 
-                  {/* -----------------------------------------------------------
-                      Vehicle summary footer
-                      ----------------------------------------------------------- */}
-
-                  <div
-                    className={cn(
-                      "min-w-0",
-                      "border-t",
-                      "border-[var(--border-subtle)]",
-                      "pt-[clamp(0.3rem,0.58vw,0.55rem)]",
-                    )}
-                  >
-                    <JourneyVehicleSummary
-                      vehicle={vehicle}
-                    />
+                  <div className="mt-1.5 min-w-0 border-t border-[var(--border-subtle)] pt-1.5">
+                    <JourneyVehicleSummary vehicle={vehicle} />
                   </div>
                 </>
               ) : (
                 <div
                   className={cn(
                     "flex",
-                    "min-h-[clamp(5rem,8vw,8rem)]",
+                    "min-h-16",
                     "items-center",
                     "justify-center",
-                    "rounded-[var(--radius-md)]",
+                    "rounded-lg",
                     "border",
                     "border-[var(--border-subtle)]",
                     "bg-[var(--background-subtle)]",
-                    "px-[clamp(0.45rem,0.8vw,0.75rem)]",
-                    "py-[clamp(0.4rem,0.7vw,0.6rem)]",
+                    "p-2",
                     "text-center",
-                    "text-[clamp(0.42rem,0.65vw,0.62rem)]",
+                    "text-xs",
                     "text-[var(--foreground-muted)]",
                   )}
                 >
@@ -601,14 +463,7 @@ export function MyJourneyCard({
             </div>
           </section>
 
-          {/* -----------------------------------------------------------------
-              Price + Capacity
-
-              Price receives 20% of the body width.
-
-              This keeps the commercial anchor visible as the complete card
-              scales down.
-              ----------------------------------------------------------------- */}
+          {/* Price and capacity */}
 
           <section
             aria-label="Journey price and availability"
@@ -616,101 +471,49 @@ export function MyJourneyCard({
               "flex",
               "min-w-0",
               "items-center",
-              "border-l",
-              "border-[var(--border-subtle)]",
-              horizontalPadding,
-              verticalPadding,
+              "sm:border-l",
+              "sm:border-[var(--border-subtle)]",
+              sectionPadding,
             )}
           >
             <div className="w-full min-w-0">
-              <div className={sectionLabel}>
-                Price
-              </div>
+              <div className={sectionLabel}>Price</div>
 
               {pricing ? (
                 <div className="min-w-0 overflow-hidden">
                   <JourneyPrice
                     pricing={pricing}
-                    className={cn(
-                      "min-w-0",
-                      "max-w-full",
-                      "gap-[clamp(0.22rem,0.5vw,0.45rem)]",
-                    )}
+                    className="min-w-0 max-w-full gap-1"
                   />
                 </div>
               ) : (
-                <span
-                  className={cn(
-                    "block",
-                    "min-w-0",
-                    "truncate",
-                    "text-[clamp(0.5rem,0.75vw,0.7rem)]",
-                    "text-[var(--foreground-muted)]",
-                  )}
-                >
+                <span className="block truncate text-xs text-[var(--foreground-muted)]">
                   Price not set
                 </span>
               )}
 
               {capacity ? (
-                <div
-                  className={cn(
-                    "mt-[clamp(0.3rem,0.62vw,0.55rem)]",
-                    "border-t",
-                    "border-[var(--border-subtle)]",
-                    "pt-[clamp(0.28rem,0.52vw,0.48rem)]",
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "flex",
-                      "min-w-0",
-                      "items-center",
-                      "gap-[clamp(0.18rem,0.35vw,0.35rem)]",
-                    )}
-                  >
+                <div className="mt-2 border-t border-[var(--border-subtle)] pt-2">
+                  <div className="flex min-w-0 items-center gap-1">
                     <UsersRound
                       aria-hidden="true"
-                      className="size-[clamp(0.5rem,0.78vw,0.72rem)] shrink-0 text-[var(--brand)]"
+                      className="size-3 shrink-0 text-[var(--brand)]"
                     />
 
-                    <span
-                      className={cn(
-                        "min-w-0",
-                        "truncate",
-                        "text-[clamp(0.4rem,0.62vw,0.58rem)]",
-                        "font-semibold",
-                        "leading-tight",
-                        "text-[var(--foreground)]",
-                      )}
-                    >
+                    <span className="min-w-0 text-xs font-semibold leading-tight text-[var(--foreground)]">
                       {capacity.availableSeats}{" "}
-                      {capacity.availableSeats === 1
-                        ? "seat"
-                        : "seats"}{" "}
+                      {capacity.availableSeats === 1 ? "seat" : "seats"}{" "}
                       available
                     </span>
                   </div>
 
                   <JourneyCapacitySummary
                     capacity={capacity}
-                    className={cn(
-                      "mt-[clamp(0.12rem,0.26vw,0.25rem)]",
-                      "gap-x-[clamp(0.18rem,0.35vw,0.35rem)]",
-                    )}
+                    className="mt-1 gap-x-1"
                   />
                 </div>
               ) : (
-                <div
-                  className={cn(
-                    "mt-[clamp(0.3rem,0.62vw,0.55rem)]",
-                    "border-t",
-                    "border-[var(--border-subtle)]",
-                    "pt-[clamp(0.28rem,0.52vw,0.48rem)]",
-                    "text-[clamp(0.4rem,0.62vw,0.58rem)]",
-                    "text-[var(--foreground-muted)]",
-                  )}
-                >
+                <div className="mt-2 border-t border-[var(--border-subtle)] pt-2 text-xs text-[var(--foreground-muted)]">
                   Seats not set
                 </div>
               )}
@@ -718,12 +521,75 @@ export function MyJourneyCard({
           </section>
         </div>
 
-        {/* -------------------------------------------------------------------
+        {/* -----------------------------------------------------------------
+            Booking and boarding summaries
+        ----------------------------------------------------------------- */}
+
+        <div
+          className={cn(
+            "grid",
+            "grid-cols-2",
+            "gap-2",
+            "border-t",
+            "border-[var(--border)]",
+            hasBookings && !isCancelled
+              ? "bg-green-50/50"
+              : "bg-[var(--surface)]",
+            "p-2 sm:gap-3 sm:px-3 sm:py-2.5",
+          )}
+        >
+          {!isCancelled ? (
+            <Link
+              href={AUTHENTICATED_ROUTES.JOURNEY_BOOKINGS(
+                journey.publicId,
+              )}
+              aria-label={`View bookings for journey from ${routeOrigin} to ${routeDestination}`}
+              className={cn(
+                "block",
+                "min-w-0",
+                "rounded-lg",
+                "transition-colors",
+                "hover:bg-[var(--background-subtle)]",
+                "focus-visible:outline-none",
+                "focus-visible:ring-2",
+                "focus-visible:ring-[var(--brand)]",
+              )}
+            >
+              <JourneyBookingsSummary bookings={journey.bookings} />
+            </Link>
+          ) : (
+            <JourneyBookingsSummary bookings={journey.bookings} />
+          )}
+
+          {!isCancelled ? (
+            <Link
+              href={AUTHENTICATED_ROUTES.JOURNEY_BOARDING(
+                journey.publicId,
+              )}
+              aria-label={`Open boarding for journey from ${routeOrigin} to ${routeDestination}`}
+              className={cn(
+                "block",
+                "min-w-0",
+                "rounded-lg",
+                "transition-colors",
+                "hover:bg-[var(--background-subtle)]",
+                "focus-visible:outline-none",
+                "focus-visible:ring-2",
+                "focus-visible:ring-[var(--brand)]",
+              )}
+            >
+              <JourneyBoardingSummary boarding={journey.boarding} />
+            </Link>
+          ) : (
+            <JourneyBoardingSummary boarding={journey.boarding} />
+          )}
+        </div>
+
+        {/* -----------------------------------------------------------------
             Footer
 
-            CANCELLED Journeys intentionally have no navigation action.
-            They remain visible as historical records only.
-            ------------------------------------------------------------------- */}
+            Cancelled Journeys intentionally have no navigation actions.
+        ----------------------------------------------------------------- */}
 
         <footer
           className={cn(
@@ -731,30 +597,23 @@ export function MyJourneyCard({
             "min-w-0",
             "items-center",
             "justify-between",
-            "gap-[clamp(0.35rem,0.8vw,0.75rem)]",
+            "gap-2",
             "border-t",
             "border-[var(--border)]",
             "bg-[var(--background-brand)]",
-            "px-[clamp(0.48rem,1.05vw,0.95rem)]",
-            "py-[clamp(0.28rem,0.55vw,0.48rem)]",
+            "px-2.5",
+            "py-2",
+            "sm:px-3",
           )}
         >
           {/* Route context */}
 
           <div className="min-w-0 flex-1">
-            <div
-              className={cn(
-                "flex",
-                "min-w-0",
-                "items-center",
-                "gap-[clamp(0.16rem,0.35vw,0.35rem)]",
-                "overflow-hidden",
-              )}
-            >
+            <div className="flex min-w-0 items-center gap-1 overflow-hidden">
               <span
                 aria-hidden="true"
                 className={cn(
-                  "size-[clamp(0.24rem,0.4vw,0.36rem)]",
+                  "size-1.5",
                   "shrink-0",
                   "rounded-full",
                   route
@@ -767,9 +626,8 @@ export function MyJourneyCard({
                 className={cn(
                   "min-w-0",
                   "truncate",
-                  "text-[clamp(0.36rem,0.56vw,0.54rem)]",
+                  "text-[0.625rem] sm:text-xs",
                   "font-semibold",
-                  "leading-none",
                   route
                     ? "text-[var(--success)]"
                     : "text-[var(--foreground-muted)]",
@@ -780,7 +638,7 @@ export function MyJourneyCard({
 
               <span
                 aria-hidden="true"
-                className="shrink-0 text-[clamp(0.4rem,0.6vw,0.58rem)] text-[var(--foreground-subtle)]"
+                className="shrink-0 text-xs text-[var(--foreground-subtle)]"
               >
                 →
               </span>
@@ -788,7 +646,7 @@ export function MyJourneyCard({
               <span
                 aria-hidden="true"
                 className={cn(
-                  "size-[clamp(0.24rem,0.4vw,0.36rem)]",
+                  "size-1.5",
                   "shrink-0",
                   "rounded-full",
                   route
@@ -801,9 +659,8 @@ export function MyJourneyCard({
                 className={cn(
                   "min-w-0",
                   "truncate",
-                  "text-[clamp(0.36rem,0.56vw,0.54rem)]",
+                  "text-[0.625rem] sm:text-xs",
                   "font-semibold",
-                  "leading-none",
                   route
                     ? "text-[var(--danger)]"
                     : "text-[var(--foreground-muted)]",
@@ -814,10 +671,27 @@ export function MyJourneyCard({
             </div>
           </div>
 
-          {/* Management / navigation */}
+          {/* Footer actions: support, messages and management */}
 
           {!isCancelled ? (
-            <div className="min-w-0 shrink-0">
+            <div className="flex min-w-0 shrink-0 items-center gap-1 sm:gap-2">
+              <JourneyGetSupportAction
+                journeyPublicId={journey.publicId}
+                onGetSupport={(journeyPublicId) => {
+                  router.push(
+                    AUTHENTICATED_ROUTES.JOURNEY_SUPPORT_NEW(
+                      journeyPublicId,
+                    ),
+                  );
+                }}
+                className="min-h-8 px-2 py-1 text-[0.6875rem] sm:px-3"
+              />
+
+              <JourneyUnreadMessagesBadge
+                count={journey.unreadMessagesCount}
+                href={AUTHENTICATED_ROUTES.MESSAGES}
+              />
+
               <Link
                 href={AUTHENTICATED_ROUTES.MY_JOURNEY(
                   journey.publicId,
@@ -825,17 +699,17 @@ export function MyJourneyCard({
                 aria-label="Manage Journey"
                 className={cn(
                   "inline-flex",
-                  "min-h-[clamp(1.8rem,2.7vw,2.25rem)]",
+                  "min-h-8",
                   "shrink-0",
                   "items-center",
                   "justify-center",
-                  "rounded-[var(--radius-md)]",
+                  "rounded-lg",
                   "border",
                   "border-[var(--border)]",
                   "bg-[var(--surface)]",
-                  "px-[clamp(0.55rem,1vw,0.75rem)]",
-                  "py-[clamp(0.3rem,0.5vw,0.4rem)]",
-                  "text-[clamp(0.52rem,0.7vw,0.75rem)]",
+                  "px-3",
+                  "py-1.5",
+                  "text-xs",
                   "font-semibold",
                   "text-[var(--foreground)]",
                   "transition-colors",

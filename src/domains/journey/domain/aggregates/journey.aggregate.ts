@@ -244,7 +244,7 @@ export class JourneyAggregate extends AggregateRoot<JourneyEntity> {
    * identifier is the stable domain-facing identity of the Journey.
    */
   public get journeyId(): JourneyId {
-    return new JourneyId(this.publicId.value);
+    return new JourneyId(this.id.toString());
   }
 
   // ===========================================================================

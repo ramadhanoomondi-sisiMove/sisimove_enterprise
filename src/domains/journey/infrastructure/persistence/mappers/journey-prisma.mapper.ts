@@ -289,7 +289,6 @@ export class JourneyPrismaMapper {
     return JourneyEntity.rehydrate(
       {
         publicId: new JourneyPublicId(record.publicId),
-
         providerPublicId: new JourneyProviderPublicId(record.providerPublicId),
 
         status: new JourneyStatusValueObject(toJourneyStatus(record.status)),

@@ -1,12 +1,38 @@
+// src/domains/journey-boarding/application/command-handlers/withdraw-participant.handler.ts
+
 // -----------------------------------------------------------------------------
 // Journey Boarding — Withdraw Participant Command Handler
 // -----------------------------------------------------------------------------
+//
+// Responsibilities:
+// - Resolve the Journey Boarding aggregate by public identifier.
+// - Delegate participant withdrawal to the aggregate.
+// - Persist the updated aggregate.
+// - Return the updated aggregate.
+//
+// Architectural rules:
+// - Inject the repository through the centralized dependency-injection token.
+// - Keep participant lifecycle invariants inside the aggregate.
+// - Use a domain-specific exception when the aggregate cannot be found.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
+
+// -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_BOARDING_TOKENS } from '../journey-boarding.tokens';
 
 // -----------------------------------------------------------------------------
 // Command
@@ -27,22 +53,16 @@ import type { JourneyBoardingAggregate } from '../../domain/aggregates/journey-b
 import type { JourneyBoardingRepository } from '../../domain/repositories/journey-boarding.repository';
 
 // -----------------------------------------------------------------------------
+// Exceptions
+// -----------------------------------------------------------------------------
+
+import { JourneyBoardingNotFoundException } from '../../domain/exceptions';
+
+// -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
-/**
- * Handles withdrawal of a participant from a Journey Boarding.
- *
- * Workflow:
- *
- * 1. Locate the Journey Boarding aggregate by public identifier.
- * 2. Execute the aggregate withdrawal operation.
- * 3. Persist the updated aggregate.
- * 4. Return the updated aggregate.
- *
- * The aggregate owns all participant lifecycle invariants and records the
- * corresponding domain event.
- */
+@Injectable()
 export class WithdrawParticipantHandler implements CommandHandler<
   WithdrawParticipantCommand,
   JourneyBoardingAggregate
@@ -51,7 +71,10 @@ export class WithdrawParticipantHandler implements CommandHandler<
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly repository: JourneyBoardingRepository) {}
+  public constructor(
+    @Inject(JOURNEY_BOARDING_TOKENS.REPOSITORY)
+    private readonly repository: JourneyBoardingRepository,
+  ) {}
 
   // ===========================================================================
   // Execute
@@ -69,13 +92,18 @@ export class WithdrawParticipantHandler implements CommandHandler<
     );
 
     if (aggregate === null) {
-      throw new Error(
-        `Journey Boarding '${command.journeyBoardingPublicId.value}' was not found.`,
+      throw new JourneyBoardingNotFoundException(
+        command.journeyBoardingPublicId.value,
       );
     }
 
     // -------------------------------------------------------------------------
     // Withdraw Participant
+    // -------------------------------------------------------------------------
+    //
+    // The aggregate determines whether withdrawal is permitted, applies the
+    // participant lifecycle transition, and records the corresponding domain
+    // event.
     // -------------------------------------------------------------------------
 
     aggregate.withdrawParticipant(

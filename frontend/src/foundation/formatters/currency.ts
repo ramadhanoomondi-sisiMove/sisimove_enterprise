@@ -1,4 +1,26 @@
-//founsation/formatters/currency.ts
+//frontend/src/foundation/formatters/currency.ts
+// -----------------------------------------------------------------------------
+// sisiMove — Currency Formatters
+// -----------------------------------------------------------------------------
+//
+// Shared financial presentation formatters.
+//
+// Current sisiMove financial amounts are represented as integer KES amounts
+// throughout the financial backend.
+//
+// Example:
+//
+//     10000 → KES 10,000.00
+//      2000 → KES 2,000.00
+//
+// These functions perform presentation formatting only.
+// They do not calculate, convert, or mutate financial values.
+//
+// -----------------------------------------------------------------------------
+
+// =============================================================================
+// Format Currency
+// =============================================================================
 
 export function formatCurrency(
   amount: number,
@@ -7,24 +29,33 @@ export function formatCurrency(
   return new Intl.NumberFormat('en-KE', {
     style: 'currency',
     currency,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(amount);
 }
+
+// =============================================================================
+// Format Currency Amount
+// =============================================================================
+//
+// Kept as a compatibility alias for existing callers.
+//
+// Despite the historical name "formatCurrencyMinorUnits", the current
+// financial backend represents amounts as integer KES amounts rather than
+// minor units.
+//
+// Example:
+//
+//     10000 → KES 10,000.00
+//      2000 → KES 2,000.00
+//
+// No division or currency conversion is performed.
+//
+// =============================================================================
 
 export function formatCurrencyMinorUnits(
   amount: number,
   currency = 'KES',
 ): string {
-  const formatter = new Intl.NumberFormat('en-KE', {
-    style: 'currency',
-    currency,
-  });
-
-  const fractionDigits =
-    formatter.resolvedOptions().maximumFractionDigits ?? 0;
-
-  const majorUnitAmount =
-    amount / 10 ** fractionDigits;
-
-  return formatter.format(majorUnitAmount);
+  return formatCurrency(amount, currency);
 }

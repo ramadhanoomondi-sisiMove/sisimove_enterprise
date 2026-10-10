@@ -13,3 +13,4 @@ export * from './use-send-support-case-message';
 export * from './use-edit-support-case-message';
 export * from './use-delete-support-case-message';
 export * from './use-add-support-case-evidence';
+export * from './use-create-journey-support-case';

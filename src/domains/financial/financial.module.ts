@@ -21,7 +21,8 @@
 // - infrastructure repository providers;
 // - application command handlers;
 // - application query handlers;
-// - dependency-injection tokens.
+// - dependency-injection tokens;
+// - platform financial account provisioning.
 //
 // Domain behavior remains inside aggregate roots.
 //
@@ -90,6 +91,12 @@ import {
   FINANCIAL_SETTLEMENT_TOKENS,
   FINANCIAL_DISBURSEMENT_TOKENS,
 } from './application';
+
+// -----------------------------------------------------------------------------
+// Application — Services
+// -----------------------------------------------------------------------------
+
+import { PlatformFinancialAccountsProvisioner } from './application/services/platform-financial-accounts-provisioner';
 
 // -----------------------------------------------------------------------------
 // Application — Command Handlers
@@ -267,6 +274,12 @@ import {
     ...FINANCIAL_PAYMENT_METHOD_PROVIDERS,
     ...FINANCIAL_SETTLEMENT_PROVIDERS,
     ...FINANCIAL_DISBURSEMENT_PROVIDERS,
+
+    // =========================================================================
+    // Application — System Financial Account Provisioning
+    // =========================================================================
+
+    PlatformFinancialAccountsProvisioner,
 
     // =========================================================================
     // Financial Account

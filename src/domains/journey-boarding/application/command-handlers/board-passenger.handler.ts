@@ -3,12 +3,37 @@
 // -----------------------------------------------------------------------------
 // Journey Boarding — Board Passenger Command Handler
 // -----------------------------------------------------------------------------
+//
+// Responsibilities:
+// - Resolve the Journey Boarding aggregate by its public identifier.
+// - Delegate passenger boarding to the aggregate.
+// - Persist the updated aggregate through the repository.
+// - Return the updated aggregate.
+//
+// Architectural rules:
+// - Repository dependencies are injected through centralized DI tokens.
+// - The handler does not depend on a concrete persistence implementation.
+// - Participant and lifecycle invariants remain inside the aggregate.
+// - The handler does not recreate domain validation.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
+
+// -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_BOARDING_TOKENS } from '../journey-boarding.tokens';
 
 // -----------------------------------------------------------------------------
 // Command
@@ -38,19 +63,7 @@ import { JourneyBoardingNotFoundException } from '../../domain/exceptions';
 // Handler
 // -----------------------------------------------------------------------------
 
-/**
- * Handles physical boarding of a passenger.
- *
- * Workflow:
- *
- * 1. Resolve the Journey Boarding aggregate by public ID.
- * 2. Fail when the aggregate does not exist.
- * 3. Delegate passenger boarding to the aggregate.
- * 4. Persist the mutated aggregate.
- * 5. Return the updated aggregate.
- *
- * All participant and lifecycle invariants remain inside the aggregate.
- */
+@Injectable()
 export class BoardPassengerHandler implements CommandHandler<
   BoardPassengerCommand,
   JourneyBoardingAggregate
@@ -59,7 +72,10 @@ export class BoardPassengerHandler implements CommandHandler<
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly repository: JourneyBoardingRepository) {}
+  public constructor(
+    @Inject(JOURNEY_BOARDING_TOKENS.REPOSITORY)
+    private readonly repository: JourneyBoardingRepository,
+  ) {}
 
   // ===========================================================================
   // Execute
@@ -84,6 +100,10 @@ export class BoardPassengerHandler implements CommandHandler<
 
     // -------------------------------------------------------------------------
     // Domain Operation
+    // -------------------------------------------------------------------------
+    //
+    // The aggregate validates whether this participant can be boarded and
+    // records the corresponding domain event.
     // -------------------------------------------------------------------------
 
     aggregate.boardPassenger(

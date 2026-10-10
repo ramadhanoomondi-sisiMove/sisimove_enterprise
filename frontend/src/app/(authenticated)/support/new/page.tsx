@@ -1,3 +1,4 @@
+
 'use client';
 
 // -----------------------------------------------------------------------------
@@ -7,28 +8,19 @@
 // Route:
 //   /support/new
 //
+// Supported contexts:
+//   /support/new
+//   /support/new?referenceType=BOOKING&referencePublicId=<public-id>
+//   /support/new?journeyPublicId=<journey-public-id>
+//
 // Responsibilities:
 // - compose the member-facing SupportCaseNew feature component;
-// - resolve the authenticated member identity required by the support API;
-// - preserve optional contextual support references from the URL.
+// - preserve existing contextual support references;
+// - pass an optional Journey public ID to the support form.
 //
-// Non-responsibilities:
-// - fetching Support cases;
-// - implementing Support case creation;
-// - validating Support case fields;
-// - resolving referenced Journey / Booking / Payment / Wallet data;
-// - managing Support mutations.
-//
-// Architectural boundary:
-//
-// The Support feature owns Support-case behavior. This route only supplies the
-// authenticated requester identity and optional contextual reference values.
-//
-// Contextual links may arrive as:
-//   /support/new?referenceType=BOOKING&referencePublicId=<opaque-public-id>
-//
-// The reference remains opaque to Support. SupportCaseNew displays it as
-// context rather than independently loading the referenced domain.
+// The backend resolves the authenticated requester identity.
+// Journey-specific support uses:
+//   POST /support-cases/journeys/:journeyPublicId
 //
 // -----------------------------------------------------------------------------
 
@@ -41,9 +33,18 @@ import { AUTHENTICATED_ROUTES } from '@/foundation/routing';
 export default function NewSupportCasePage() {
   const searchParams = useSearchParams();
 
-  const { data: identity, isLoading, isError } = useCurrentIdentity();
+  const {
+    data: identity,
+    isLoading,
+    isError,
+  } = useCurrentIdentity();
 
-  const referenceType = searchParams.get('referenceType') ?? undefined;
+  const journeyPublicId =
+    searchParams.get('journeyPublicId')?.trim() || undefined;
+
+  const referenceType =
+    searchParams.get('referenceType') ?? undefined;
+
   const referencePublicId =
     searchParams.get('referencePublicId') ?? undefined;
 
@@ -90,9 +91,9 @@ export default function NewSupportCasePage() {
           requesterPublicId={identity.publicId}
           initialReferenceType={referenceType}
           initialReferencePublicId={referencePublicId}
+          initialJourneyPublicId={journeyPublicId}
         />
       </div>
     </main>
   );
 }
-

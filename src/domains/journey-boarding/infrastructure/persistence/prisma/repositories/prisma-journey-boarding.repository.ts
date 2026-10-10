@@ -11,11 +11,20 @@
 // - Boarding event history queries
 // - Existence/count queries
 //
-// The repository implements the complete JourneyBoardingRepository contract.
-// Cross-aggregate queries intentionally use only their corresponding public
-// identifiers.
+// Architectural rules:
+// - Uses PrismaTransactionContext for ambient transaction participation.
+// - Does not create independent Prisma transactions.
+// - Uses public identifiers for cross-aggregate references.
+// - Keeps Prisma persistence models inside infrastructure.
+// - Preserves existing boarding event history during aggregate saves.
 //
 // -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Prisma
@@ -24,11 +33,14 @@
 import type { $Enums } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 
+import {
+  PrismaTransactionContext,
+  type PrismaClientLike,
+} from '../../../../../../infrastructure/database/prisma/prisma-transaction.context';
+
 // -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
-
-import type { PrismaService } from '../../../../../../infrastructure/database/prisma/prisma.service';
 
 import { UniqueEntityId } from '../../../../../../foundation/kernel/domain/unique-entity-id';
 
@@ -96,11 +108,8 @@ import {
 // Journey Boarding has no dedicated domain ID value object.
 // Its Entity exposes UniqueEntityId through Entity.id.
 //
-// This alias therefore resolves to:
-//
-// UniqueEntityId
-//
-// and keeps the repository contract aligned with the frozen foundation kernel.
+// This alias therefore resolves to UniqueEntityId and keeps the repository
+// contract aligned with the foundation kernel.
 // -----------------------------------------------------------------------------
 
 type JourneyBoardingId = UniqueEntityId;
@@ -109,12 +118,29 @@ type JourneyBoardingId = UniqueEntityId;
 // Repository
 // =============================================================================
 
+@Injectable()
 export class PrismaJourneyBoardingRepository implements JourneyBoardingRepository {
   // ===========================================================================
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly transactionContext: PrismaTransactionContext) {}
+
+  // ===========================================================================
+  // Ambient Prisma Client
+  // ===========================================================================
+  //
+  // All repository operations use the Prisma client supplied by the active
+  // transaction context.
+  //
+  // The repository must not create its own $transaction because that could
+  // separate these persistence operations from the surrounding application
+  // use case and its unit of work.
+  // ---------------------------------------------------------------------------
+
+  private get prisma(): PrismaClientLike {
+    return this.transactionContext.getClient();
+  }
 
   // ===========================================================================
   // Prisma Enum Boundary
@@ -160,70 +186,99 @@ export class PrismaJourneyBoardingRepository implements JourneyBoardingRepositor
   public async save(aggregate: JourneyBoardingAggregate): Promise<void> {
     const persistence = JourneyBoardingPrismaMapper.toPersistence(aggregate);
 
-    await this.prisma.$transaction(async (tx) => {
-      const journeyBoardingId = persistence.journeyBoarding.id;
+    // Use the ambient transaction client. Do not start a nested transaction.
+    const tx = this.prisma;
 
-      // -----------------------------------------------------------------------
-      // Root
-      // -----------------------------------------------------------------------
+    const root = persistence.journeyBoarding;
+    const journeyBoardingId = root.id;
 
-      await tx.journeyBoarding.upsert({
-        where: {
-          id: journeyBoardingId,
-        },
+    // -------------------------------------------------------------------------
+    // Root
+    // -------------------------------------------------------------------------
 
-        create: {
-          id: persistence.journeyBoarding.id,
-          publicId: persistence.journeyBoarding.publicId,
-          journeyId: persistence.journeyBoarding.journeyId,
-          providerPublicId: persistence.journeyBoarding.providerPublicId,
+    await tx.journeyBoarding.upsert({
+      where: {
+        id: journeyBoardingId,
+      },
 
-          status: this.toPrismaJourneyBoardingStatus(
-            persistence.journeyBoarding.status,
-          ),
+      create: {
+        id: root.id,
+        publicId: root.publicId,
+        journeyId: root.journeyId,
+        providerPublicId: root.providerPublicId,
 
-          boardingStartedAt: persistence.journeyBoarding.boardingStartedAt,
-          journeyStartedAt: persistence.journeyBoarding.journeyStartedAt,
-          cancelledAt: persistence.journeyBoarding.cancelledAt,
+        status: this.toPrismaJourneyBoardingStatus(root.status),
 
-          version: persistence.journeyBoarding.version,
+        boardingStartedAt: root.boardingStartedAt,
+        journeyStartedAt: root.journeyStartedAt,
+        cancelledAt: root.cancelledAt,
 
-          createdAt: persistence.journeyBoarding.createdAt,
-          updatedAt: persistence.journeyBoarding.updatedAt,
-        },
+        version: root.version,
 
-        update: {
-          publicId: persistence.journeyBoarding.publicId,
-          journeyId: persistence.journeyBoarding.journeyId,
-          providerPublicId: persistence.journeyBoarding.providerPublicId,
+        createdAt: root.createdAt,
+        updatedAt: root.updatedAt,
+      },
 
-          status: this.toPrismaJourneyBoardingStatus(
-            persistence.journeyBoarding.status,
-          ),
+      update: {
+        publicId: root.publicId,
+        journeyId: root.journeyId,
+        providerPublicId: root.providerPublicId,
 
-          boardingStartedAt: persistence.journeyBoarding.boardingStartedAt,
-          journeyStartedAt: persistence.journeyBoarding.journeyStartedAt,
-          cancelledAt: persistence.journeyBoarding.cancelledAt,
+        status: this.toPrismaJourneyBoardingStatus(root.status),
 
-          version: persistence.journeyBoarding.version,
+        boardingStartedAt: root.boardingStartedAt,
+        journeyStartedAt: root.journeyStartedAt,
+        cancelledAt: root.cancelledAt,
 
-          updatedAt: persistence.journeyBoarding.updatedAt,
-        },
-      });
+        version: root.version,
 
-      // -----------------------------------------------------------------------
-      // Participants
-      // -----------------------------------------------------------------------
+        updatedAt: root.updatedAt,
+      },
+    });
 
+    // -------------------------------------------------------------------------
+    // Participants
+    // -------------------------------------------------------------------------
+    //
+    // Synchronize participant records by their internal IDs.
+    //
+    // This avoids deleting and recreating every participant on each save,
+    // preserving the database identity of participants that already exist.
+    //
+    // Records belonging to this boarding but absent from the aggregate are
+    // deleted so persistence reflects the aggregate's current participant set.
+    //
+    // These operations participate in the same ambient transaction as the
+    // aggregate root when the caller uses PrismaUnitOfWork.
+    // -------------------------------------------------------------------------
+
+    const participants = persistence.participants;
+
+    if (participants.length === 0) {
       await tx.journeyBoardingParticipant.deleteMany({
         where: {
           boardingId: journeyBoardingId,
         },
       });
+    } else {
+      const participantIds = participants.map((participant) => participant.id);
 
-      if (persistence.participants.length > 0) {
-        await tx.journeyBoardingParticipant.createMany({
-          data: persistence.participants.map((participant) => ({
+      await tx.journeyBoardingParticipant.deleteMany({
+        where: {
+          boardingId: journeyBoardingId,
+          id: {
+            notIn: participantIds,
+          },
+        },
+      });
+
+      for (const participant of participants) {
+        await tx.journeyBoardingParticipant.upsert({
+          where: {
+            id: participant.id,
+          },
+
+          create: {
             id: participant.id,
             publicId: participant.publicId,
             boardingId: participant.boardingId,
@@ -245,46 +300,85 @@ export class PrismaJourneyBoardingRepository implements JourneyBoardingRepositor
 
             createdAt: participant.createdAt,
             updatedAt: participant.updatedAt,
-          })),
+          },
+
+          update: {
+            publicId: participant.publicId,
+            boardingId: participant.boardingId,
+
+            memberPublicId: participant.memberPublicId,
+            bookingPublicId: participant.bookingPublicId,
+
+            role: this.toPrismaJourneyBoardingParticipantRole(participant.role),
+
+            status: this.toPrismaJourneyBoardingParticipantStatus(
+              participant.status,
+            ),
+
+            expectedAt: participant.expectedAt,
+            boardedAt: participant.boardedAt,
+            withdrawnAt: participant.withdrawnAt,
+            noShowAt: participant.noShowAt,
+            removedAt: participant.removedAt,
+
+            updatedAt: participant.updatedAt,
+          },
         });
       }
+    }
 
-      // -----------------------------------------------------------------------
-      // Events
-      // -----------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Events
+    // -------------------------------------------------------------------------
+    //
+    // Boarding events represent historical occurrences.
+    //
+    // Never delete and recreate the entire event collection as part of an
+    // ordinary aggregate save. Doing so would undermine event identity and
+    // could damage references to previously persisted events.
+    //
+    // New events are inserted. Existing events are left unchanged because
+    // historical event records should be immutable.
+    // -------------------------------------------------------------------------
 
-      await tx.journeyBoardingEvent.deleteMany({
+    for (const event of persistence.events) {
+      await tx.journeyBoardingEvent.upsert({
         where: {
-          boardingId: journeyBoardingId,
+          id: event.id,
+        },
+
+        create: {
+          id: event.id,
+          publicId: event.publicId,
+          boardingId: event.boardingId,
+
+          type: this.toPrismaJourneyBoardingEventType(event.type),
+
+          memberPublicId: event.memberPublicId,
+          bookingPublicId: event.bookingPublicId,
+          actorPublicId: event.actorPublicId,
+
+          occurredAt: event.occurredAt,
+
+          // Prisma distinguishes SQL NULL from JSON null for nullable JSON.
+          // Preserve the existing convention for JSON null values.
+          metadata:
+            event.metadata === null || event.metadata === undefined
+              ? Prisma.JsonNull
+              : event.metadata,
+
+          createdAt: event.createdAt,
+        },
+
+        update: {
+          // Deliberately do not modify an existing historical event.
+          //
+          // This no-op update allows an existing event to remain unchanged
+          // when the mapper returns the complete aggregate event collection.
+          id: event.id,
         },
       });
-
-      if (persistence.events.length > 0) {
-        await tx.journeyBoardingEvent.createMany({
-          data: persistence.events.map((event) => ({
-            id: event.id,
-            publicId: event.publicId,
-            boardingId: event.boardingId,
-
-            type: this.toPrismaJourneyBoardingEventType(event.type),
-
-            memberPublicId: event.memberPublicId,
-            bookingPublicId: event.bookingPublicId,
-            actorPublicId: event.actorPublicId,
-
-            occurredAt: event.occurredAt,
-
-            // Prisma nullable JSON fields cannot receive JavaScript null.
-            metadata:
-              event.metadata === null || event.metadata === undefined
-                ? Prisma.JsonNull
-                : event.metadata,
-
-            createdAt: event.createdAt,
-          })),
-        });
-      }
-    });
+    }
   }
 
   // ===========================================================================
@@ -512,24 +606,29 @@ export class PrismaJourneyBoardingRepository implements JourneyBoardingRepositor
   // ===========================================================================
 
   public async delete(id: JourneyBoardingId): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      await tx.journeyBoardingEvent.deleteMany({
-        where: {
-          boardingId: id.value,
-        },
-      });
+    const tx = this.prisma;
 
-      await tx.journeyBoardingParticipant.deleteMany({
-        where: {
-          boardingId: id.value,
-        },
-      });
+    // Explicitly remove child records for schemas without cascading deletes.
+    //
+    // The caller must execute this method through PrismaUnitOfWork if all
+    // deletions must be atomic.
 
-      await tx.journeyBoarding.delete({
-        where: {
-          id: id.value,
-        },
-      });
+    await tx.journeyBoardingEvent.deleteMany({
+      where: {
+        boardingId: id.value,
+      },
+    });
+
+    await tx.journeyBoardingParticipant.deleteMany({
+      where: {
+        boardingId: id.value,
+      },
+    });
+
+    await tx.journeyBoarding.delete({
+      where: {
+        id: id.value,
+      },
     });
   }
 

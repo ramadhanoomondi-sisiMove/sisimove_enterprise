@@ -73,12 +73,10 @@ export class FindJourneyBookingsByJourneyHandler implements QueryHandler<
   public async execute(
     query: FindJourneyBookingsByJourneyQuery,
   ): Promise<JourneyBookingEntity[]> {
-    // -------------------------------------------------------------------------
-    // Lookup
-    // -------------------------------------------------------------------------
-
-    return this.repository.findJourneyBookingsByJourneyPublicId(
+    const bookings = await this.repository.findJourneyBookingsByJourneyPublicId(
       query.journeyPublicId,
     );
+
+    return bookings;
   }
 }

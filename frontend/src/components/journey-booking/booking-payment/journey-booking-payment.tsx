@@ -239,10 +239,11 @@ function PaymentRow({
 // -----------------------------------------------------------------------------
 
 /**
- * Formats an integer amount stored in the smallest currency unit.
+ * Formats the monetary amount supplied by the API for display.
  *
- * This is presentation formatting only. No payment or pricing calculation is
- * performed by the component.
+ * The API model already provides the monetary amount in the currency's
+ * normal major unit. No payment or pricing calculation is performed here;
+ * this is display formatting only.
  */
 function formatMoney(
   amount: number,
@@ -254,9 +255,9 @@ function formatMoney(
       currency,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(amount / 100);
+    }).format(amount);
   } catch {
-    return `${currency} ${(amount / 100).toFixed(2)}`;
+    return `${currency} ${amount.toFixed(2)}`;
   }
 }
 

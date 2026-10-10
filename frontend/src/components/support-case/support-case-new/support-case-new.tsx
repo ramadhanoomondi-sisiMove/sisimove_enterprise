@@ -1,33 +1,21 @@
+
 'use client';
 
 // -----------------------------------------------------------------------------
 // sisiMove — New Support Case
 // -----------------------------------------------------------------------------
 //
-// Member-facing Support Case creation form.
+// Supports both general Support Cases and Journey-specific Support Cases.
 //
-// Responsibilities:
-// - collect the member-visible case information;
-// - accept an authenticated requesterPublicId supplied by the application;
-// - submit the current backend create-case contract;
-// - support optional contextual reference information;
-// - redirect to the newly created case after successful creation.
+// General:
+//   useCreateSupportCase()
 //
-// Non-responsibilities:
-// - selecting an arbitrary requester identity;
-// - managing SupportCaseAggregate lifecycle directly;
-// - assigning support agents;
-// - creating participants, notes, messages, evidence, or resolutions;
-// - fetching referenced domain entities.
+// Journey-specific:
+//   useCreateJourneySupportCase()
+//   POST /support-cases/journeys/:journeyPublicId
 //
-// requesterPublicId is deliberately supplied as a prop. The member must never
-// type or select another identity. The page/container is responsible for
-// obtaining the authenticated identity from the application's identity boundary.
-//
-// Reference values are initialized directly from the incoming props.
-// They are intentionally not synchronized through useEffect because doing so
-// would create unnecessary cascading renders and would also overwrite member
-// edits whenever the parent re-renders with the same prop values.
+// Journey reference metadata and requester identity are resolved by the backend
+// for Journey-specific requests.
 // -----------------------------------------------------------------------------
 
 import { useState, type FormEvent } from 'react';
@@ -35,26 +23,40 @@ import { useRouter } from 'next/navigation';
 
 import { Badge, Button, Card, Input } from '@/components/ui';
 
-import { useCreateSupportCase } from '@/features/support-case/hooks';
-import type { SupportCaseCategory } from '@/features/support-case/models';
+import {
+  useCreateSupportCase,
+  useCreateJourneySupportCase,
+} from '@/features/support-case/hooks';
+
+import type {
+  SupportCaseCategory,
+  SupportCasePriority,
+} from '@/features/support-case/models';
+
 import {
   SUPPORT_CASE_CATEGORIES,
-} from '@/features/support-case/models';
-import type { SupportCasePriority } from '@/features/support-case/models';
-import {
   SUPPORT_CASE_PRIORITIES,
 } from '@/features/support-case/models';
+
+// =============================================================================
+// Props
+// =============================================================================
 
 export interface SupportCaseNewProps {
   readonly requesterPublicId: string;
   readonly initialReferenceType?: string;
   readonly initialReferencePublicId?: string;
+  readonly initialJourneyPublicId?: string;
   readonly className?: string;
   readonly onCreated?: (supportCasePublicId: string) => void;
 }
 
 const MAX_SUBJECT_LENGTH = 160;
 const MAX_DESCRIPTION_LENGTH = 5000;
+
+// =============================================================================
+// Helpers
+// =============================================================================
 
 function formatLabel(value: string): string {
   return value
@@ -72,15 +74,25 @@ function getErrorMessage(error: unknown): string {
   return 'We could not create your support case. Please try again.';
 }
 
+// =============================================================================
+// Component
+// =============================================================================
+
 export function SupportCaseNew({
   requesterPublicId,
   initialReferenceType,
   initialReferencePublicId,
+  initialJourneyPublicId,
   className,
   onCreated,
 }: SupportCaseNewProps) {
   const router = useRouter();
+
   const createSupportCase = useCreateSupportCase();
+  const createJourneySupportCase = useCreateJourneySupportCase();
+
+  const journeyPublicId = initialJourneyPublicId?.trim() || undefined;
+  const isJourneySupport = Boolean(journeyPublicId);
 
   const [priority, setPriority] =
     useState<SupportCasePriority>('NORMAL');
@@ -89,24 +101,8 @@ export function SupportCaseNew({
     useState<SupportCaseCategory>('OTHER');
 
   const [subject, setSubject] = useState('');
-
   const [description, setDescription] = useState('');
 
-  // ---------------------------------------------------------------------------
-  // Contextual reference state
-  // ---------------------------------------------------------------------------
-  //
-  // These values are initialized once from the contextual props.
-  //
-  // We intentionally do not use an effect to synchronize them:
-  //
-  //     useEffect(() => {
-  //       setReferenceType(initialReferenceType ?? '');
-  //     }, [initialReferenceType]);
-  //
-  // That pattern causes a synchronous state update after render and is not
-  // necessary for this form. It can also unexpectedly overwrite user edits.
-  //
   const [referenceType, setReferenceType] = useState(
     initialReferenceType ?? '',
   );
@@ -117,7 +113,13 @@ export function SupportCaseNew({
 
   const [formError, setFormError] = useState<string | null>(null);
 
-  const isSubmitting = createSupportCase.isPending;
+  const isSubmitting =
+    createSupportCase.isPending ||
+    createJourneySupportCase.isPending;
+
+  // ---------------------------------------------------------------------------
+  // Submission
+  // ---------------------------------------------------------------------------
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -128,23 +130,15 @@ export function SupportCaseNew({
     const trimmedReferenceType = referenceType.trim();
     const trimmedReferencePublicId = referencePublicId.trim();
 
-    // -------------------------------------------------------------------------
-    // Requester identity
-    // -------------------------------------------------------------------------
-    //
-    // The requester is supplied by the authenticated application context.
-    // It is never entered by the member.
-    //
+    // Requester identity is supplied by the authenticated application context.
+    // Journey-specific API requests do not send this value in their body.
+
     if (!requesterPublicId) {
       setFormError(
         'Your account could not be identified. Please refresh and try again.',
       );
       return;
     }
-
-    // -------------------------------------------------------------------------
-    // Subject validation
-    // -------------------------------------------------------------------------
 
     if (!trimmedSubject) {
       setFormError('Please enter a subject.');
@@ -158,10 +152,6 @@ export function SupportCaseNew({
       return;
     }
 
-    // -------------------------------------------------------------------------
-    // Description validation
-    // -------------------------------------------------------------------------
-
     if (trimmedDescription.length > MAX_DESCRIPTION_LENGTH) {
       setFormError(
         `Description must be ${MAX_DESCRIPTION_LENGTH} characters or fewer.`,
@@ -169,16 +159,13 @@ export function SupportCaseNew({
       return;
     }
 
-    // -------------------------------------------------------------------------
-    // Reference validation
-    // -------------------------------------------------------------------------
-    //
-    // A contextual reference consists of both values. We do not attempt to
-    // interpret or validate the referenced domain here.
-    //
+    // Journey-specific support gets its reference from the endpoint.
+    // General support continues to validate optional reference fields.
+
     if (
-      (trimmedReferenceType && !trimmedReferencePublicId) ||
-      (!trimmedReferenceType && trimmedReferencePublicId)
+      !isJourneySupport &&
+      ((trimmedReferenceType && !trimmedReferencePublicId) ||
+        (!trimmedReferenceType && trimmedReferencePublicId))
     ) {
       setFormError(
         'Reference type and reference ID must be provided together.',
@@ -187,25 +174,33 @@ export function SupportCaseNew({
     }
 
     try {
-      const createdCase = await createSupportCase.mutateAsync({
-        requesterPublicId,
-        priority,
-        category,
-        subject: trimmedSubject,
-
-        ...(trimmedDescription
-          ? {
-              description: trimmedDescription,
-            }
-          : {}),
-
-        ...(trimmedReferenceType && trimmedReferencePublicId
-          ? {
-              referenceType: trimmedReferenceType,
-              referencePublicId: trimmedReferencePublicId,
-            }
-          : {}),
-      });
+      const createdCase = isJourneySupport
+        ? await createJourneySupportCase.mutateAsync({
+            journeyPublicId: journeyPublicId!,
+            request: {
+              priority,
+              category,
+              subject: trimmedSubject,
+              ...(trimmedDescription
+                ? { description: trimmedDescription }
+                : {}),
+            },
+          })
+        : await createSupportCase.mutateAsync({
+            requesterPublicId,
+            priority,
+            category,
+            subject: trimmedSubject,
+            ...(trimmedDescription
+              ? { description: trimmedDescription }
+              : {}),
+            ...(trimmedReferenceType && trimmedReferencePublicId
+              ? {
+                  referenceType: trimmedReferenceType,
+                  referencePublicId: trimmedReferencePublicId,
+                }
+              : {}),
+          });
 
       onCreated?.(createdCase.publicId);
 
@@ -216,6 +211,10 @@ export function SupportCaseNew({
       setFormError(getErrorMessage(error));
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
     <Card
@@ -228,9 +227,7 @@ export function SupportCaseNew({
         noValidate
         className="space-y-6"
       >
-        {/* ------------------------------------------------------------------ */}
-        {/* Header                                                             */}
-        {/* ------------------------------------------------------------------ */}
+        {/* Header */}
 
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -241,17 +238,43 @@ export function SupportCaseNew({
             <Badge variant="brand" size="sm">
               New case
             </Badge>
+
+            {isJourneySupport && (
+              <Badge variant="outline" size="sm">
+                Journey support
+              </Badge>
+            )}
           </div>
 
           <p className="mt-1 text-sm leading-6 text-slate-600">
-            Tell us what you need help with and include any relevant
-            details.
+            {isJourneySupport
+              ? 'Tell us what you need help with regarding this Journey.'
+              : 'Tell us what you need help with and include any relevant details.'}
           </p>
         </div>
 
-        {/* ------------------------------------------------------------------ */}
-        {/* Classification                                                     */}
-        {/* ------------------------------------------------------------------ */}
+        {/* Journey context */}
+
+        {isJourneySupport && (
+          <section
+            aria-label="Journey support context"
+            className="rounded-lg border border-blue-100 bg-blue-50 p-3"
+          >
+            <p className="text-xs font-medium text-blue-900">
+              Related Journey
+            </p>
+
+            <p className="mt-1 break-all text-xs leading-5 text-blue-800">
+              {journeyPublicId}
+            </p>
+
+            <p className="mt-1 text-xs leading-5 text-blue-800">
+              Your support case will be linked to this Journey automatically.
+            </p>
+          </section>
+        )}
+
+        {/* Classification */}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
@@ -297,23 +320,23 @@ export function SupportCaseNew({
           </label>
         </div>
 
-        {/* ------------------------------------------------------------------ */}
-        {/* Subject                                                            */}
-        {/* ------------------------------------------------------------------ */}
+        {/* Subject */}
 
         <Input
           label="Subject"
           value={subject}
           onChange={(event) => setSubject(event.target.value)}
-          placeholder="What do you need help with?"
+          placeholder={
+            isJourneySupport
+              ? 'What do you need help with on this Journey?'
+              : 'What do you need help with?'
+          }
           maxLength={MAX_SUBJECT_LENGTH}
           disabled={isSubmitting}
           fullWidth
         />
 
-        {/* ------------------------------------------------------------------ */}
-        {/* Description                                                        */}
-        {/* ------------------------------------------------------------------ */}
+        {/* Description */}
 
         <div>
           <label
@@ -339,63 +362,60 @@ export function SupportCaseNew({
           </p>
         </div>
 
-        {/* ------------------------------------------------------------------ */}
-        {/* Contextual reference                                               */}
-        {/* ------------------------------------------------------------------ */}
- 
-        {(initialReferenceType || initialReferencePublicId) && (
-          <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
-            <p className="text-xs font-medium text-blue-900">
-              Related reference
-            </p>
+        {/* Contextual reference for general support */}
 
-            <p className="mt-1 break-all text-xs leading-5 text-blue-800">
-              {initialReferenceType ?? 'Reference'}:{' '}
-              {initialReferencePublicId ?? 'Unavailable'}
-            </p>
-          </div>
-        )}
+        {!isJourneySupport &&
+          (initialReferenceType || initialReferencePublicId) && (
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
+              <p className="text-xs font-medium text-blue-900">
+                Related reference
+              </p>
 
-        {!initialReferenceType && !initialReferencePublicId && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Input
-              label="Reference type"
-              value={referenceType}
-              onChange={(event) => setReferenceType(event.target.value)}
-              placeholder="Optional"
-              disabled={isSubmitting}
-              fullWidth
-            />
+              <p className="mt-1 break-all text-xs leading-5 text-blue-800">
+                {initialReferenceType ?? 'Reference'}:{' '}
+                {initialReferencePublicId ?? 'Unavailable'}
+              </p>
+            </div>
+          )}
 
-            <Input
-              label="Reference ID"
-              value={referencePublicId}
-              onChange={(event) =>
-                setReferencePublicId(event.target.value)
-              }
-              placeholder="Optional"
-              disabled={isSubmitting}
-              fullWidth
-            />
-          </div>
-        )}
+        {!isJourneySupport &&
+          !initialReferenceType &&
+          !initialReferencePublicId && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Input
+                label="Reference type"
+                value={referenceType}
+                onChange={(event) => setReferenceType(event.target.value)}
+                placeholder="Optional"
+                disabled={isSubmitting}
+                fullWidth
+              />
 
-        {/* ------------------------------------------------------------------ */}
-        {/* Error                                                              */}
-        {/* ------------------------------------------------------------------ */}
+              <Input
+                label="Reference ID"
+                value={referencePublicId}
+                onChange={(event) =>
+                  setReferencePublicId(event.target.value)
+                }
+                placeholder="Optional"
+                disabled={isSubmitting}
+                fullWidth
+              />
+            </div>
+          )}
 
-        {formError ? (
+        {/* Error */}
+
+        {formError && (
           <div
             role="alert"
             className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700"
           >
             {formError}
           </div>
-        ) : null}
+        )}
 
-        {/* ------------------------------------------------------------------ */}
-        {/* Actions                                                            */}
-        {/* ------------------------------------------------------------------ */}
+        {/* Actions */}
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button
@@ -411,13 +431,14 @@ export function SupportCaseNew({
             type="submit"
             variant="primary"
             loading={isSubmitting}
-            disabled={!requesterPublicId}
+            disabled={!requesterPublicId || isSubmitting}
           >
-            Create support case
+            {isSubmitting
+              ? 'Creating case…'
+              : 'Create support case'}
           </Button>
         </div>
       </form>
     </Card>
   );
 }
-

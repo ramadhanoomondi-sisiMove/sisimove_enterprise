@@ -11,7 +11,10 @@ import type { Prisma, $Enums } from '@prisma/client';
 // Foundation
 // -----------------------------------------------------------------------------
 
-import { PrismaService } from '../../../../../infrastructure/database/prisma/prisma.service';
+import {
+  PrismaTransactionContext,
+  type PrismaClientLike,
+} from '../../../../../infrastructure/database/prisma/prisma-transaction.context';
 
 // -----------------------------------------------------------------------------
 // Aggregate
@@ -83,9 +86,48 @@ import {
 // Repository
 // =============================================================================
 
+/**
+ * Prisma persistence implementation for the Journey aggregate.
+ *
+ * Transaction boundary:
+ *
+ * This repository deliberately does NOT create its own Prisma transaction.
+ *
+ * All database access is resolved through PrismaTransactionContext so that
+ * the repository automatically participates in the ambient transaction when
+ * the application layer executes the operation through PrismaUnitOfWork.
+ *
+ * This is important for Journey workflows that coordinate multiple persistence
+ * operations, such as booking confirmation, capacity reservation, journey
+ * lifecycle changes, and other cross-domain workflows.
+ *
+ * Outside an ambient UnitOfWork transaction, PrismaTransactionContext falls
+ * back to the normal Prisma client.
+ */
 @Injectable()
 export class PrismaJourneyRepository implements JourneyRepository {
-  public constructor(private readonly prisma: PrismaService) {}
+  public constructor(
+    private readonly transactionContext: PrismaTransactionContext,
+  ) {}
+
+  // ===========================================================================
+  // Ambient Prisma Client
+  // ===========================================================================
+
+  /**
+   * Resolve the Prisma client currently active for this execution context.
+   *
+   * When a PrismaUnitOfWork is active, this returns its transaction-scoped
+   * Prisma client.
+   *
+   * Otherwise it returns the application's normal Prisma client.
+   *
+   * Repositories therefore remain transaction-agnostic and never own the
+   * transaction boundary themselves.
+   */
+  private get prisma(): PrismaClientLike {
+    return this.transactionContext.getClient();
+  }
 
   // ===========================================================================
   // Prisma Enum Boundary
@@ -192,387 +234,416 @@ export class PrismaJourneyRepository implements JourneyRepository {
   // Aggregate Persistence
   // ===========================================================================
 
+  /**
+   * Persist the complete Journey aggregate.
+   *
+   * IMPORTANT:
+   *
+   * This method intentionally does not call `$transaction()`.
+   *
+   * The application layer owns the transaction boundary through
+   * PrismaUnitOfWork. Every operation below therefore uses `this.prisma`,
+   * which resolves to the current transaction-scoped client when one exists.
+   *
+   * The aggregate is persisted as a complete graph:
+   *
+   *   Journey
+   *     ├── Corridor
+   *     │     └── Waypoints
+   *     ├── Schedule
+   *     ├── Vehicle
+   *     ├── Capacity
+   *     ├── Pricing
+   *     ├── Preferences
+   *     └── Assets
+   *
+   * Child collections that are aggregate-owned are replaced from the
+   * aggregate state so the database representation remains synchronized with
+   * the rehydrated domain aggregate.
+   */
   public async save(aggregate: JourneyAggregate): Promise<void> {
+    if (aggregate === undefined) {
+      throw new Error('Journey aggregate is required.');
+    }
+
     const persistence = JourneyPrismaMapper.toPersistence(aggregate);
 
-    await this.prisma.$transaction(async (tx) => {
-      const journeyId = persistence.journey.id;
+    const journeyId = persistence.journey.id;
 
-      // -----------------------------------------------------------------------
-      // Journey
-      // -----------------------------------------------------------------------
+    // =========================================================================
+    // Journey
+    // =========================================================================
 
-      await tx.journey.upsert({
+    await this.prisma.journey.upsert({
+      where: {
+        id: journeyId,
+      },
+
+      create: {
+        id: persistence.journey.id,
+        publicId: persistence.journey.publicId,
+        providerPublicId: persistence.journey.providerPublicId,
+
+        status: this.toPrismaJourneyStatus(persistence.journey.status),
+
+        publishedAt: persistence.journey.publishedAt,
+        startedAt: persistence.journey.startedAt,
+        completionRequestedAt: persistence.journey.completionRequestedAt,
+        completedAt: persistence.journey.completedAt,
+        cancelledAt: persistence.journey.cancelledAt,
+        expiredAt: persistence.journey.expiredAt,
+
+        version: persistence.journey.version,
+
+        createdAt: persistence.journey.createdAt,
+        updatedAt: persistence.journey.updatedAt,
+
+        vehicleId: null,
+      },
+
+      update: {
+        publicId: persistence.journey.publicId,
+        providerPublicId: persistence.journey.providerPublicId,
+
+        status: this.toPrismaJourneyStatus(persistence.journey.status),
+
+        publishedAt: persistence.journey.publishedAt,
+        startedAt: persistence.journey.startedAt,
+        completionRequestedAt: persistence.journey.completionRequestedAt,
+        completedAt: persistence.journey.completedAt,
+        cancelledAt: persistence.journey.cancelledAt,
+        expiredAt: persistence.journey.expiredAt,
+
+        version: persistence.journey.version,
+        updatedAt: persistence.journey.updatedAt,
+      },
+    });
+
+    // =========================================================================
+    // Corridor
+    // =========================================================================
+
+    if (persistence.corridor !== undefined) {
+      const corridor = persistence.corridor;
+
+      await this.prisma.journeyCorridor.upsert({
         where: {
-          id: journeyId,
+          journeyId,
         },
 
         create: {
-          id: persistence.journey.id,
-          publicId: persistence.journey.publicId,
-          providerPublicId: persistence.journey.providerPublicId,
+          id: corridor.id,
+          publicId: corridor.publicId,
 
-          status: this.toPrismaJourneyStatus(persistence.journey.status),
+          journeyId: corridor.journeyId,
 
-          publishedAt: persistence.journey.publishedAt,
-          startedAt: persistence.journey.startedAt,
-          completionRequestedAt: persistence.journey.completionRequestedAt,
-          completedAt: persistence.journey.completedAt,
-          cancelledAt: persistence.journey.cancelledAt,
-          expiredAt: persistence.journey.expiredAt,
+          originName: corridor.originName,
+          destinationName: corridor.destinationName,
 
-          version: persistence.journey.version,
+          originLatitude: corridor.originLatitude,
+          originLongitude: corridor.originLongitude,
 
-          createdAt: persistence.journey.createdAt,
-          updatedAt: persistence.journey.updatedAt,
+          destinationLatitude: corridor.destinationLatitude,
+          destinationLongitude: corridor.destinationLongitude,
 
-          vehicleId: null,
+          corridorKey: corridor.corridorKey,
+
+          createdAt: corridor.createdAt,
+          updatedAt: corridor.updatedAt,
         },
 
         update: {
-          publicId: persistence.journey.publicId,
-          providerPublicId: persistence.journey.providerPublicId,
+          publicId: corridor.publicId,
 
-          status: this.toPrismaJourneyStatus(persistence.journey.status),
+          originName: corridor.originName,
+          destinationName: corridor.destinationName,
 
-          publishedAt: persistence.journey.publishedAt,
-          startedAt: persistence.journey.startedAt,
-          completionRequestedAt: persistence.journey.completionRequestedAt,
-          completedAt: persistence.journey.completedAt,
-          cancelledAt: persistence.journey.cancelledAt,
-          expiredAt: persistence.journey.expiredAt,
+          originLatitude: corridor.originLatitude,
+          originLongitude: corridor.originLongitude,
 
-          version: persistence.journey.version,
-          updatedAt: persistence.journey.updatedAt,
+          destinationLatitude: corridor.destinationLatitude,
+          destinationLongitude: corridor.destinationLongitude,
+
+          corridorKey: corridor.corridorKey,
+
+          updatedAt: corridor.updatedAt,
         },
       });
 
       // -----------------------------------------------------------------------
-      // Corridor
+      // Replace waypoint set
       // -----------------------------------------------------------------------
 
-      if (persistence.corridor !== undefined) {
-        const corridor = persistence.corridor;
+      await this.prisma.journeyWaypoint.deleteMany({
+        where: {
+          corridorId: corridor.id,
+        },
+      });
 
-        await tx.journeyCorridor.upsert({
-          where: {
-            journeyId,
-          },
+      const waypoints = aggregate.waypoints;
 
-          create: {
-            id: corridor.id,
-            publicId: corridor.publicId,
+      if (waypoints.length > 0) {
+        await this.prisma.journeyWaypoint.createMany({
+          data: waypoints.map((waypoint) => ({
+            id: waypoint.id.toString(),
+            publicId: waypoint.publicId.value,
 
-            journeyId: corridor.journeyId,
-
-            originName: corridor.originName,
-            destinationName: corridor.destinationName,
-
-            originLatitude: corridor.originLatitude,
-            originLongitude: corridor.originLongitude,
-
-            destinationLatitude: corridor.destinationLatitude,
-            destinationLongitude: corridor.destinationLongitude,
-
-            corridorKey: corridor.corridorKey,
-
-            createdAt: corridor.createdAt,
-            updatedAt: corridor.updatedAt,
-          },
-
-          update: {
-            publicId: corridor.publicId,
-
-            originName: corridor.originName,
-            destinationName: corridor.destinationName,
-
-            originLatitude: corridor.originLatitude,
-            originLongitude: corridor.originLongitude,
-
-            destinationLatitude: corridor.destinationLatitude,
-            destinationLongitude: corridor.destinationLongitude,
-
-            corridorKey: corridor.corridorKey,
-
-            updatedAt: corridor.updatedAt,
-          },
-        });
-
-        // ---------------------------------------------------------------------
-        // Replace waypoint set
-        // ---------------------------------------------------------------------
-
-        await tx.journeyWaypoint.deleteMany({
-          where: {
             corridorId: corridor.id,
-          },
-        });
 
-        const waypoints = aggregate.waypoints;
+            type: this.toPrismaJourneyWaypointType(waypoint.type.value),
 
-        if (waypoints.length > 0) {
-          await tx.journeyWaypoint.createMany({
-            data: waypoints.map((waypoint) => ({
-              id: waypoint.id.toString(),
-              publicId: waypoint.publicId.value,
+            sequence: waypoint.sequence.value,
 
-              corridorId: corridor.id,
+            name: waypoint.name.value,
 
-              type: this.toPrismaJourneyWaypointType(waypoint.type.value),
+            latitude: waypoint.latitude.value,
+            longitude: waypoint.longitude.value,
 
-              sequence: waypoint.sequence.value,
+            pickupAllowed: waypoint.pickupAllowed,
+            dropoffAllowed: waypoint.dropoffAllowed,
 
-              name: waypoint.name.value,
-
-              latitude: waypoint.latitude.value,
-              longitude: waypoint.longitude.value,
-
-              pickupAllowed: waypoint.pickupAllowed,
-              dropoffAllowed: waypoint.dropoffAllowed,
-
-              createdAt: waypoint.createdAt,
-              updatedAt: waypoint.updatedAt,
-            })),
-          });
-        }
-      } else {
-        await tx.journeyCorridor.deleteMany({
-          where: {
-            journeyId,
-          },
+            createdAt: waypoint.createdAt,
+            updatedAt: waypoint.updatedAt,
+          })),
         });
       }
-
-      // -----------------------------------------------------------------------
-      // Schedule
-      // -----------------------------------------------------------------------
-
-      if (persistence.schedule !== undefined) {
-        await tx.journeySchedule.upsert({
-          where: {
-            journeyId,
-          },
-
-          create: persistence.schedule,
-
-          update: {
-            publicId: persistence.schedule.publicId,
-
-            departureAt: persistence.schedule.departureAt,
-            arrivalAt: persistence.schedule.arrivalAt,
-
-            timezone: persistence.schedule.timezone,
-
-            updatedAt: persistence.schedule.updatedAt,
-          },
-        });
-      } else {
-        await tx.journeySchedule.deleteMany({
-          where: {
-            journeyId,
-          },
-        });
-      }
-
-      // -----------------------------------------------------------------------
-      // Vehicle
-      // -----------------------------------------------------------------------
-
-      if (persistence.vehicle !== undefined) {
-        await tx.journeyVehicle.upsert({
-          where: {
-            id: persistence.vehicle.id,
-          },
-
-          create: persistence.vehicle,
-
-          update: {
-            publicId: persistence.vehicle.publicId,
-
-            make: persistence.vehicle.make,
-            model: persistence.vehicle.model,
-
-            year: persistence.vehicle.year,
-            color: persistence.vehicle.color,
-            registration: persistence.vehicle.registration,
-
-            assetPublicId: persistence.vehicle.assetPublicId,
-
-            updatedAt: persistence.vehicle.updatedAt,
-          },
-        });
-
-        await tx.journey.update({
-          where: {
-            id: journeyId,
-          },
-
-          data: {
-            vehicleId: persistence.vehicle.id,
-          },
-        });
-      } else {
-        await tx.journey.update({
-          where: {
-            id: journeyId,
-          },
-
-          data: {
-            vehicleId: null,
-          },
-        });
-      }
-
-      // -----------------------------------------------------------------------
-      // Capacity
-      // -----------------------------------------------------------------------
-
-      if (persistence.capacity !== undefined) {
-        await tx.journeyCapacity.upsert({
-          where: {
-            journeyId,
-          },
-
-          create: persistence.capacity,
-
-          update: {
-            publicId: persistence.capacity.publicId,
-
-            totalSeats: persistence.capacity.totalSeats,
-            bookedSeats: persistence.capacity.bookedSeats,
-
-            updatedAt: persistence.capacity.updatedAt,
-          },
-        });
-      } else {
-        await tx.journeyCapacity.deleteMany({
-          where: {
-            journeyId,
-          },
-        });
-      }
-
-      // -----------------------------------------------------------------------
-      // Pricing
-      // -----------------------------------------------------------------------
-
-      if (persistence.pricing !== undefined) {
-        await tx.journeyPricing.upsert({
-          where: {
-            journeyId,
-          },
-
-          create: persistence.pricing,
-
-          update: {
-            publicId: persistence.pricing.publicId,
-
-            amount: persistence.pricing.amount,
-            currency: persistence.pricing.currency,
-
-            updatedAt: persistence.pricing.updatedAt,
-          },
-        });
-      } else {
-        await tx.journeyPricing.deleteMany({
-          where: {
-            journeyId,
-          },
-        });
-      }
-
-      // -----------------------------------------------------------------------
-      // Preferences
-      // -----------------------------------------------------------------------
-
-      if (persistence.preferences !== undefined) {
-        await tx.journeyPreferences.upsert({
-          where: {
-            journeyId,
-          },
-
-          create: {
-            ...persistence.preferences,
-
-            smoking: this.toPrismaJourneySmokingPolicy(
-              persistence.preferences.smoking,
-            ),
-
-            pets: this.toPrismaJourneyPetsPolicy(persistence.preferences.pets),
-
-            luggage: this.toPrismaJourneyLuggagePolicy(
-              persistence.preferences.luggage,
-            ),
-
-            conversation: this.toPrismaJourneyConversationPreference(
-              persistence.preferences.conversation,
-            ),
-
-            music: this.toPrismaJourneyMusicPreference(
-              persistence.preferences.music,
-            ),
-          },
-
-          update: {
-            publicId: persistence.preferences.publicId,
-
-            smoking: this.toPrismaJourneySmokingPolicy(
-              persistence.preferences.smoking,
-            ),
-
-            pets: this.toPrismaJourneyPetsPolicy(persistence.preferences.pets),
-
-            luggage: this.toPrismaJourneyLuggagePolicy(
-              persistence.preferences.luggage,
-            ),
-
-            conversation: this.toPrismaJourneyConversationPreference(
-              persistence.preferences.conversation,
-            ),
-
-            music: this.toPrismaJourneyMusicPreference(
-              persistence.preferences.music,
-            ),
-
-            updatedAt: persistence.preferences.updatedAt,
-          },
-        });
-      } else {
-        await tx.journeyPreferences.deleteMany({
-          where: {
-            journeyId,
-          },
-        });
-      }
-
-      // -----------------------------------------------------------------------
-      // Assets
-      // -----------------------------------------------------------------------
-
-      await tx.journeyAsset.deleteMany({
+    } else {
+      await this.prisma.journeyCorridor.deleteMany({
         where: {
           journeyId,
         },
       });
+    }
 
-      if (persistence.assets.length > 0) {
-        await tx.journeyAsset.createMany({
-          data: persistence.assets.map((asset) => ({
-            id: asset.id,
-            publicId: asset.publicId,
-            journeyId: asset.journeyId,
-            assetPublicId: asset.assetPublicId,
+    // =========================================================================
+    // Schedule
+    // =========================================================================
 
-            type: this.toPrismaJourneyAssetType(asset.type),
+    if (persistence.schedule !== undefined) {
+      await this.prisma.journeySchedule.upsert({
+        where: {
+          journeyId,
+        },
 
-            sortOrder: asset.sortOrder,
+        create: persistence.schedule,
 
-            createdAt: asset.createdAt,
-            updatedAt: asset.updatedAt,
-          })),
-        });
-      }
+        update: {
+          publicId: persistence.schedule.publicId,
+
+          departureAt: persistence.schedule.departureAt,
+          arrivalAt: persistence.schedule.arrivalAt,
+
+          timezone: persistence.schedule.timezone,
+
+          updatedAt: persistence.schedule.updatedAt,
+        },
+      });
+    } else {
+      await this.prisma.journeySchedule.deleteMany({
+        where: {
+          journeyId,
+        },
+      });
+    }
+
+    // =========================================================================
+    // Vehicle
+    // =========================================================================
+
+    if (persistence.vehicle !== undefined) {
+      await this.prisma.journeyVehicle.upsert({
+        where: {
+          id: persistence.vehicle.id,
+        },
+
+        create: persistence.vehicle,
+
+        update: {
+          publicId: persistence.vehicle.publicId,
+
+          make: persistence.vehicle.make,
+          model: persistence.vehicle.model,
+
+          year: persistence.vehicle.year,
+          color: persistence.vehicle.color,
+          registration: persistence.vehicle.registration,
+
+          assetPublicId: persistence.vehicle.assetPublicId,
+
+          updatedAt: persistence.vehicle.updatedAt,
+        },
+      });
+
+      await this.prisma.journey.update({
+        where: {
+          id: journeyId,
+        },
+
+        data: {
+          vehicleId: persistence.vehicle.id,
+        },
+      });
+    } else {
+      await this.prisma.journey.update({
+        where: {
+          id: journeyId,
+        },
+
+        data: {
+          vehicleId: null,
+        },
+      });
+    }
+
+    // =========================================================================
+    // Capacity
+    // =========================================================================
+
+    if (persistence.capacity !== undefined) {
+      await this.prisma.journeyCapacity.upsert({
+        where: {
+          journeyId,
+        },
+
+        create: persistence.capacity,
+
+        update: {
+          publicId: persistence.capacity.publicId,
+
+          totalSeats: persistence.capacity.totalSeats,
+          bookedSeats: persistence.capacity.bookedSeats,
+
+          updatedAt: persistence.capacity.updatedAt,
+        },
+      });
+    } else {
+      await this.prisma.journeyCapacity.deleteMany({
+        where: {
+          journeyId,
+        },
+      });
+    }
+
+    // =========================================================================
+    // Pricing
+    // =========================================================================
+
+    if (persistence.pricing !== undefined) {
+      await this.prisma.journeyPricing.upsert({
+        where: {
+          journeyId,
+        },
+
+        create: persistence.pricing,
+
+        update: {
+          publicId: persistence.pricing.publicId,
+
+          amount: persistence.pricing.amount,
+          currency: persistence.pricing.currency,
+
+          updatedAt: persistence.pricing.updatedAt,
+        },
+      });
+    } else {
+      await this.prisma.journeyPricing.deleteMany({
+        where: {
+          journeyId,
+        },
+      });
+    }
+
+    // =========================================================================
+    // Preferences
+    // =========================================================================
+
+    if (persistence.preferences !== undefined) {
+      await this.prisma.journeyPreferences.upsert({
+        where: {
+          journeyId,
+        },
+
+        create: {
+          ...persistence.preferences,
+
+          smoking: this.toPrismaJourneySmokingPolicy(
+            persistence.preferences.smoking,
+          ),
+
+          pets: this.toPrismaJourneyPetsPolicy(persistence.preferences.pets),
+
+          luggage: this.toPrismaJourneyLuggagePolicy(
+            persistence.preferences.luggage,
+          ),
+
+          conversation: this.toPrismaJourneyConversationPreference(
+            persistence.preferences.conversation,
+          ),
+
+          music: this.toPrismaJourneyMusicPreference(
+            persistence.preferences.music,
+          ),
+        },
+
+        update: {
+          publicId: persistence.preferences.publicId,
+
+          smoking: this.toPrismaJourneySmokingPolicy(
+            persistence.preferences.smoking,
+          ),
+
+          pets: this.toPrismaJourneyPetsPolicy(persistence.preferences.pets),
+
+          luggage: this.toPrismaJourneyLuggagePolicy(
+            persistence.preferences.luggage,
+          ),
+
+          conversation: this.toPrismaJourneyConversationPreference(
+            persistence.preferences.conversation,
+          ),
+
+          music: this.toPrismaJourneyMusicPreference(
+            persistence.preferences.music,
+          ),
+
+          updatedAt: persistence.preferences.updatedAt,
+        },
+      });
+    } else {
+      await this.prisma.journeyPreferences.deleteMany({
+        where: {
+          journeyId,
+        },
+      });
+    }
+
+    // =========================================================================
+    // Assets
+    // =========================================================================
+
+    await this.prisma.journeyAsset.deleteMany({
+      where: {
+        journeyId,
+      },
     });
+
+    if (persistence.assets.length > 0) {
+      await this.prisma.journeyAsset.createMany({
+        data: persistence.assets.map((asset) => ({
+          id: asset.id,
+          publicId: asset.publicId,
+          journeyId: asset.journeyId,
+          assetPublicId: asset.assetPublicId,
+
+          type: this.toPrismaJourneyAssetType(asset.type),
+
+          sortOrder: asset.sortOrder,
+
+          createdAt: asset.createdAt,
+          updatedAt: asset.updatedAt,
+        })),
+      });
+    }
   }
 
   // ===========================================================================
@@ -1193,6 +1264,77 @@ export class PrismaJourneyRepository implements JourneyRepository {
     return count > 0;
   }
 
+  /**
+   * Reserve seats against the Journey's operational capacity.
+   *
+   * This method intentionally uses the ambient Prisma client. When called from
+   * a booking confirmation UnitOfWork, the reads and conditional updates
+   * participate in that same transaction.
+   *
+   * Optimistic concurrency is used:
+   *
+   * 1. Read the current booked seat count.
+   * 2. Verify sufficient seats remain.
+   * 3. Update only if bookedSeats is still unchanged.
+   * 4. Retry if another transaction changed the row concurrently.
+   */
+  public async reserveCapacitySeats(
+    journeyId: JourneyId,
+    seats: number,
+  ): Promise<void> {
+    if (!Number.isInteger(seats) || seats <= 0) {
+      throw new Error(
+        'The number of seats to reserve must be a positive integer.',
+      );
+    }
+
+    const maxAttempts = 5;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const capacity = await this.prisma.journeyCapacity.findUnique({
+        where: {
+          journeyId: journeyId.value,
+        },
+      });
+
+      if (capacity === null) {
+        throw new Error(
+          `Journey capacity was not found for Journey ${journeyId.value}.`,
+        );
+      }
+
+      const availableSeats = capacity.totalSeats - capacity.bookedSeats;
+
+      if (seats > availableSeats) {
+        throw new Error(
+          `Insufficient Journey capacity. Requested ${seats} seat(s), ` +
+            `but only ${availableSeats} seat(s) are available.`,
+        );
+      }
+
+      const result = await this.prisma.journeyCapacity.updateMany({
+        where: {
+          journeyId: journeyId.value,
+          bookedSeats: capacity.bookedSeats,
+        },
+        data: {
+          bookedSeats: {
+            increment: seats,
+          },
+          updatedAt: new Date(),
+        },
+      });
+
+      if (result.count === 1) {
+        return;
+      }
+    }
+
+    throw new Error(
+      'Journey capacity changed concurrently. Please retry the booking confirmation.',
+    );
+  }
+
   // ===========================================================================
   // Pricing
   // ===========================================================================
@@ -1568,19 +1710,6 @@ export class PrismaJourneyRepository implements JourneyRepository {
 
     // -------------------------------------------------------------------------
     // Optional price-range filter
-    // -------------------------------------------------------------------------
-    //
-    // Pricing is a one-to-one Journey component, so the filter is expressed
-    // through the related JourneyPricing record.
-    //
-    // Inclusive boundaries:
-    //
-    //   minPrice -> amount >= minPrice
-    //   maxPrice -> amount <= maxPrice
-    //
-    // The repository does not invent a default price range.
-    // Omitted boundaries remain unrestricted.
-    //
     // -------------------------------------------------------------------------
 
     const minPrice = filters.minPrice;

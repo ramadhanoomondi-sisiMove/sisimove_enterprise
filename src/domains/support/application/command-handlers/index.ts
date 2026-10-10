@@ -8,6 +8,7 @@
 //
 // Support Case lifecycle:
 // - CreateSupportCaseHandler
+// - CreateJourneySupportCaseHandler
 // - AssignSupportCaseHandler
 // - UnassignSupportCaseHandler
 // - ChangeSupportCasePriorityHandler
@@ -42,7 +43,9 @@
 //
 // -----------------------------------------------------------------------------
 
+// Support Case lifecycle
 export { CreateSupportCaseHandler } from './create-support-case.handler';
+export { CreateJourneySupportCaseHandler } from './create-journey-support-case.handler';
 export { AssignSupportCaseHandler } from './assign-support-case.handler';
 export { UnassignSupportCaseHandler } from './unassign-support-case.handler';
 export { ChangeSupportCasePriorityHandler } from './change-support-case-priority.handler';
@@ -54,15 +57,20 @@ export { ResolveSupportCaseHandler } from './resolve-support-case.handler';
 export { CloseSupportCaseHandler } from './close-support-case.handler';
 export { CancelSupportCaseHandler } from './cancel-support-case.handler';
 
+// Support Case participants
 export { AddSupportCaseParticipantHandler } from './add-support-case-participant.handler';
 export { RemoveSupportCaseParticipantHandler } from './remove-support-case-participant.handler';
 
+// Support Case messages
 export { AddSupportCaseMessageHandler } from './add-support-case-message.handler';
 export { EditSupportCaseMessageHandler } from './edit-support-case-message.handler';
 export { DeleteSupportCaseMessageHandler } from './delete-support-case-message.handler';
 
+// Support Case notes
 export { AddSupportCaseNoteHandler } from './add-support-case-note.handler';
 
+// Support Case evidence
 export { AddSupportCaseEvidenceHandler } from './add-support-case-evidence.handler';
 
+// Support Case resolution
 export { CreateSupportCaseResolutionHandler } from './create-support-case-resolution.handler';

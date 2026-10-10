@@ -24,12 +24,20 @@ import { useCallback, useEffect, useState } from "react";
 import { getMyJourneys } from "../../api/journeys/get-my-journeys";
 import type { MyJourney } from "../../models/my-journey";
 
+// -----------------------------------------------------------------------------
+// Result
+// -----------------------------------------------------------------------------
+
 export interface UseMyJourneysResult {
   readonly journeys: MyJourney[];
   readonly isLoading: boolean;
   readonly error: Error | null;
   readonly refetch: () => Promise<void>;
 }
+
+// -----------------------------------------------------------------------------
+// Hook
+// -----------------------------------------------------------------------------
 
 export function useMyJourneys(): UseMyJourneysResult {
   const [journeys, setJourneys] = useState<MyJourney[]>([]);
@@ -44,7 +52,7 @@ export function useMyJourneys(): UseMyJourneysResult {
       const result = await getMyJourneys();
 
       setJourneys(result);
-    } catch (cause) {
+    } catch (cause: unknown) {
       const nextError =
         cause instanceof Error
           ? cause
@@ -57,14 +65,40 @@ export function useMyJourneys(): UseMyJourneysResult {
   }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadJourneys();
-    }, 0);
+    let active = true;
+
+    const load = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const result = await getMyJourneys();
+
+        if (active) {
+          setJourneys(result);
+        }
+      } catch (cause: unknown) {
+        if (active) {
+          const nextError =
+            cause instanceof Error
+              ? cause
+              : new Error("Failed to load your journeys.");
+
+          setError(nextError);
+        }
+      } finally {
+        if (active) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void load();
 
     return () => {
-      window.clearTimeout(timer);
+      active = false;
     };
-  }, [loadJourneys]);
+  }, []);
 
   return {
     journeys,

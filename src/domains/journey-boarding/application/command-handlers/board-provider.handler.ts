@@ -3,12 +3,37 @@
 // -----------------------------------------------------------------------------
 // Journey Boarding — Board Provider Command Handler
 // -----------------------------------------------------------------------------
+//
+// Responsibilities:
+// - Resolve the Journey Boarding aggregate by public identifier.
+// - Delegate provider boarding to the aggregate.
+// - Persist the updated aggregate.
+// - Return the updated aggregate.
+//
+// Architectural rules:
+// - Inject the repository through the centralized dependency-injection token.
+// - Keep provider-boarding invariants inside the aggregate.
+// - Keep persistence implementation details outside the application handler.
+// - Use a domain-specific exception when the aggregate cannot be found.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
+
+// -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_BOARDING_TOKENS } from '../journey-boarding.tokens';
 
 // -----------------------------------------------------------------------------
 // Command
@@ -35,29 +60,16 @@ import type { JourneyBoardingRepository } from '../../domain/repositories/journe
 import { JourneyBoardingPublicId } from '../../domain/value-objects/journey-boarding-public-id.vo';
 
 // -----------------------------------------------------------------------------
+// Exceptions
+// -----------------------------------------------------------------------------
+
+import { JourneyBoardingNotFoundException } from '../../domain/exceptions';
+
+// -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
-/**
- * Handles boarding of the provider participating in a Journey Boarding
- * process.
- *
- * Workflow:
- *
- * 1. Convert the supplied public identifier into the domain value object.
- * 2. Load the Journey Boarding aggregate.
- * 3. Fail when the aggregate does not exist.
- * 4. Invoke the aggregate's boardProvider() operation.
- * 5. Persist the updated aggregate.
- * 6. Return the updated aggregate.
- *
- * The aggregate owns all provider-boarding invariants and is responsible for
- * recording JourneyBoardingProviderBoardedEvent.
- *
- * Participant lifecycle transition:
- *
- * EXPECTED → BOARDED
- */
+@Injectable()
 export class BoardProviderHandler implements CommandHandler<
   BoardProviderCommand,
   JourneyBoardingAggregate
@@ -66,7 +78,10 @@ export class BoardProviderHandler implements CommandHandler<
   // Constructor
   // ===========================================================================
 
-  constructor(private readonly repository: JourneyBoardingRepository) {}
+  public constructor(
+    @Inject(JOURNEY_BOARDING_TOKENS.REPOSITORY)
+    private readonly repository: JourneyBoardingRepository,
+  ) {}
 
   // ===========================================================================
   // Execute
@@ -96,28 +111,23 @@ export class BoardProviderHandler implements CommandHandler<
     // -------------------------------------------------------------------------
 
     if (aggregate === null) {
-      throw new Error(
-        `Journey boarding '${journeyBoardingPublicId.value}' was not found.`,
-      );
+      throw new JourneyBoardingNotFoundException(journeyBoardingPublicId.value);
     }
 
     // -------------------------------------------------------------------------
     // Board Provider
     // -------------------------------------------------------------------------
+    //
+    // The aggregate owns provider-boarding invariants and is responsible for:
+    //
+    // - validating the boarding lifecycle;
+    // - resolving and validating the provider participant;
+    // - validating the participant's current status;
+    // - transitioning EXPECTED → BOARDED;
+    // - updating aggregate state and version;
+    // - recording the provider-boarded domain event.
+    // -------------------------------------------------------------------------
 
-    /**
-     * JourneyBoardingAggregate.boardProvider() is responsible for:
-     *
-     * - validating that participant modification is allowed;
-     * - validating that the boarding lifecycle is BOARDING;
-     * - resolving the provider participant;
-     * - validating the provider participant identity;
-     * - validating the participant status;
-     * - transitioning EXPECTED → BOARDED;
-     * - touching the aggregate timestamp;
-     * - incrementing the aggregate version;
-     * - recording JourneyBoardingProviderBoardedEvent.
-     */
     aggregate.boardProvider(
       command.correlationId,
       command.causationId,

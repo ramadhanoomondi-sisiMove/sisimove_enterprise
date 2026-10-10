@@ -193,18 +193,17 @@ function PricingRow({
 // -----------------------------------------------------------------------------
 
 /**
- * Formats a monetary amount using the frontend's integer monetary convention.
+ * Formats the monetary amount supplied by the API for display.
  *
- * The API model stores the smallest currency unit. For currencies such as KES
- * this means the value is divided by 100 for display.
- *
- * No pricing calculation is performed here; this is display formatting only.
+ * The API model already provides the monetary amount in the currency's
+ * normal major unit. No pricing calculation or unit conversion is performed
+ * here; this is display formatting only.
  */
 function formatMoney(
   amount: number,
   currency: string,
 ): string {
-  return formatCurrency(amount / 100, currency);
+  return formatCurrency(amount, currency);
 }
 
 function formatSignedMoney(

@@ -72,8 +72,8 @@ import {
     // -------------------------------------------------------------------------
     // Identity
     //
-    // Provides authentication and authorization infrastructure required by the
-    // Journey Boarding REST presentation boundary.
+    // Provides identity-related dependencies required by the Journey Boarding
+    // presentation and application layers.
     // -------------------------------------------------------------------------
 
     IdentityModule,
@@ -81,7 +81,12 @@ import {
     // -------------------------------------------------------------------------
     // Prisma
     //
-    // Provides the Prisma client required by Journey Boarding persistence.
+    // Provides the shared Prisma infrastructure used by the Journey Boarding
+    // persistence providers.
+    //
+    // Repositories using PrismaTransactionContext must continue to use the
+    // ambient transaction client when one is available. They must not open
+    // independent transactions that bypass the caller's unit of work.
     // -------------------------------------------------------------------------
 
     PrismaModule,
@@ -99,7 +104,10 @@ import {
 
   providers: [
     // -------------------------------------------------------------------------
-    // Infrastructure
+    // Infrastructure Providers
+    //
+    // Includes the Journey Boarding repository implementation and its
+    // associated infrastructure dependencies.
     // -------------------------------------------------------------------------
 
     ...JOURNEY_BOARDING_PROVIDERS,
@@ -198,17 +206,20 @@ import {
   // Exports
   // ===========================================================================
   //
-  // Keep the module boundary narrow.
+  // Export the repository contract token, not the concrete Prisma repository.
   //
-  // Command and query handlers are consumed internally by the controller and
-  // therefore remain private to this module.
+  // JourneyModule can import JourneyBoardingModule and inject the repository
+  // through JOURNEY_BOARDING_TOKENS.REPOSITORY without depending directly on
+  // Journey Boarding's persistence implementation.
   //
-  // The repository token is exported so other bounded contexts can integrate
-  // with Journey Boarding through its application contract rather than directly
-  // depending on Prisma persistence.
+  // Command and query handlers remain private because the controller resolves
+  // them within this module.
   // ===========================================================================
 
-  exports: [JOURNEY_BOARDING_TOKENS.REPOSITORY],
+  exports: [
+    JOURNEY_BOARDING_TOKENS.REPOSITORY,
+    JOURNEY_BOARDING_TOKENS.QUERY_HANDLERS.GET_BY_JOURNEY,
+  ],
 })
 export class JourneyBoardingModule {}
 

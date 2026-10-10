@@ -1,129 +1,264 @@
 // src/domains/journey/application/handlers/journey/publish-journey.handler.ts
 
 // -----------------------------------------------------------------------------
-// sisiMove — Publish Journey Command Handler
+// NestJS
 // -----------------------------------------------------------------------------
-//
-// Application-layer command handler responsible for publishing a Journey
-// aggregate.
-//
-// Responsibilities:
-// - convert the primitive Journey public identifier into its domain Value
-//   Object;
-// - resolve the Journey aggregate;
-// - delegate publication to the Journey aggregate;
-// - persist the resulting aggregate state.
-//
-// Architectural rules:
-// - Commands remain primitive application messages.
-// - Domain Value Objects are created inside the application handler at the
-//   application-to-domain boundary.
-// - Publication is a Journey aggregate lifecycle operation.
-// - Domain invariants remain inside Journey.publish(...).
-// - The handler performs orchestration only.
-// - Repository dependencies are resolved through the application token.
-// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
-import { Inject, Injectable } from '@nestjs/common';
-
 import type { CommandHandler } from '../../../../../foundation/kernel/application/command-handler';
 
 // -----------------------------------------------------------------------------
-// Command
+// Transaction
+// -----------------------------------------------------------------------------
+
+import { PrismaUnitOfWork } from '../../../../../infrastructure/persistence/prisma-unit-of-work';
+
+// -----------------------------------------------------------------------------
+// Journey — Command
 // -----------------------------------------------------------------------------
 
 import type { PublishJourneyCommand } from '../../commands/journey/publish-journey.command';
 
 // -----------------------------------------------------------------------------
-// Exceptions
+// Journey — Domain
 // -----------------------------------------------------------------------------
 
 import { JourneyNotFoundException } from '../../../domain/exceptions';
 
-// -----------------------------------------------------------------------------
-// Repository
-// -----------------------------------------------------------------------------
-
 import type { JourneyRepository } from '../../../domain/repositories/journey.repository';
-
-// -----------------------------------------------------------------------------
-// Value Objects
-// -----------------------------------------------------------------------------
 
 import { JourneyPublicId } from '../../../domain/value-objects/journey-public-id.vo';
 
+import { JOURNEY_TOKENS } from '../../journey.tokens';
+
 // -----------------------------------------------------------------------------
-// Application Tokens
+// Journey Boarding — Aggregate
 // -----------------------------------------------------------------------------
 
-import { JOURNEY_TOKENS } from '../../journey.tokens';
+import { JourneyBoardingAggregate } from '../../../../journey-boarding/domain/aggregates/journey-boarding.aggregate';
+
+// -----------------------------------------------------------------------------
+// Journey Boarding — Entities
+// -----------------------------------------------------------------------------
+
+import { JourneyBoardingEntity } from '../../../../journey-boarding/domain/entities/journey-boarding.entity';
+
+import { JourneyBoardingParticipantEntity } from '../../../../journey-boarding/domain/entities/journey-boarding-participant.entity';
+
+// -----------------------------------------------------------------------------
+// Journey Boarding — Repository
+// -----------------------------------------------------------------------------
+
+import type { JourneyBoardingRepository } from '../../../../journey-boarding/domain/repositories/journey-boarding.repository';
+
+import { JOURNEY_BOARDING_TOKENS } from '../../../../journey-boarding/application/journey-boarding.tokens';
+
+// -----------------------------------------------------------------------------
+// Journey Boarding — Value Objects
+// -----------------------------------------------------------------------------
+
+import { JourneyBoardingJourneyId } from '../../../../journey-boarding/domain/value-objects/journey-boarding-journey-id.vo';
+
+import { JourneyBoardingPublicId } from '../../../../journey-boarding/domain/value-objects/journey-boarding-public-id.vo';
+
+import { JourneyBoardingProviderPublicId } from '../../../../journey-boarding/domain/value-objects/journey-boarding-provider-public-id.vo';
+
+import { JourneyBoardingParticipantPublicId } from '../../../../journey-boarding/domain/value-objects/journey-boarding-participant-public-id.vo';
+
+import { JourneyBoardingMemberPublicId } from '../../../../journey-boarding/domain/value-objects/journey-boarding-member-public-id.vo';
+
+import { JourneyBoardingParticipantRole } from '../../../../journey-boarding/domain/value-objects/journey-boarding-participant-role.vo';
+
+import { JourneyBoardingParticipantStatus } from '../../../../journey-boarding/domain/value-objects/journey-boarding-participant-status.vo';
+
+import { JourneyBoardingStatus } from '../../../../journey-boarding/domain/value-objects/journey-boarding-status.vo';
 
 // -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
+/**
+ * Publishes a Journey and initializes its physical boarding workflow.
+ *
+ * Transactional workflow:
+ *
+ * 1. Load the Journey.
+ * 2. Publish the Journey.
+ * 3. Create a Journey Boarding aggregate.
+ * 4. Create and attach the provider participant in EXPECTED status.
+ * 5. Open boarding: NOT_STARTED -> BOARDING.
+ * 6. Board the provider: EXPECTED -> BOARDED.
+ * 7. Persist the Journey and Journey Boarding aggregate.
+ *
+ * All repository operations must use the transaction-scoped Prisma client
+ * supplied by PrismaTransactionContext.
+ *
+ * If any operation fails, the Prisma transaction rolls back.
+ */
 @Injectable()
 export class PublishJourneyHandler implements CommandHandler<
   PublishJourneyCommand,
   void
 > {
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Constructor
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public constructor(
     @Inject(JOURNEY_TOKENS.REPOSITORY)
-    private readonly repository: JourneyRepository,
+    private readonly journeyRepository: JourneyRepository,
+
+    @Inject(JOURNEY_BOARDING_TOKENS.REPOSITORY)
+    private readonly journeyBoardingRepository: JourneyBoardingRepository,
+
+    private readonly unitOfWork: PrismaUnitOfWork,
   ) {}
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Execute
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public async execute(command: PublishJourneyCommand): Promise<void> {
-    // -------------------------------------------------------------------------
-    // Resolve Journey Public ID
-    //
-    // Commands intentionally remain primitive.
-    //
-    // The application handler is therefore responsible for converting the
-    // primitive command value into the domain Value Object before crossing
-    // into the domain layer.
-    // -------------------------------------------------------------------------
+    await this.unitOfWork.execute(async () => {
+      // -----------------------------------------------------------------------
+      // 1. Load Journey
+      // -----------------------------------------------------------------------
 
-    const journeyPublicId = new JourneyPublicId(command.journeyPublicId);
+      const journeyPublicId = new JourneyPublicId(command.journeyPublicId);
 
-    // -------------------------------------------------------------------------
-    // Resolve Journey Aggregate
-    // -------------------------------------------------------------------------
+      const journey =
+        await this.journeyRepository.findByPublicId(journeyPublicId);
 
-    const aggregate = await this.repository.findByPublicId(journeyPublicId);
+      if (journey === null) {
+        throw new JourneyNotFoundException();
+      }
 
-    if (aggregate === null) {
-      throw new JourneyNotFoundException();
-    }
+      // -----------------------------------------------------------------------
+      // 2. Publish Journey
+      // -----------------------------------------------------------------------
 
-    // -------------------------------------------------------------------------
-    // Domain Mutation
-    //
-    // The Journey aggregate owns the publication transition and all associated
-    // business invariants.
-    // -------------------------------------------------------------------------
+      const publishedAt = command.publishedAt ?? new Date();
 
-    aggregate.publish(
-      command.correlationId,
-      command.causationId,
-      command.publishedAt ?? new Date(),
-    );
+      journey.publish(command.correlationId, command.causationId, publishedAt);
 
-    // -------------------------------------------------------------------------
-    // Persist Aggregate
-    // -------------------------------------------------------------------------
+      await this.journeyRepository.save(journey);
 
-    await this.repository.save(aggregate);
+      // -----------------------------------------------------------------------
+      // 3. Prepare Boarding Identity
+      // -----------------------------------------------------------------------
+
+      const boardingPublicId = new JourneyBoardingPublicId();
+
+      const boardingAlreadyExists =
+        await this.journeyBoardingRepository.existsByPublicId(boardingPublicId);
+
+      if (boardingAlreadyExists) {
+        throw new Error(
+          `Journey boarding '${boardingPublicId.value}' already exists.`,
+        );
+      }
+
+      const boardingJourneyId = JourneyBoardingJourneyId.create(
+        journey.id.toString(),
+      );
+
+      const boardingProviderPublicId = new JourneyBoardingProviderPublicId(
+        journey.providerPublicId.value,
+      );
+
+      // -----------------------------------------------------------------------
+      // 4. Create Boarding Entity and Aggregate
+      // -----------------------------------------------------------------------
+
+      const boardingEntity = JourneyBoardingEntity.create({
+        publicId: boardingPublicId,
+        journeyId: boardingJourneyId,
+        providerPublicId: boardingProviderPublicId,
+        status: JourneyBoardingStatus.notStarted(),
+      });
+
+      const boardingAggregate = JourneyBoardingAggregate.create(
+        boardingEntity,
+        command.correlationId,
+        command.causationId,
+      );
+
+      // -----------------------------------------------------------------------
+      // 5. Create Provider Participant
+      // -----------------------------------------------------------------------
+
+      /**
+       * A provider is a participant in the physical boarding workflow even
+       * though the provider does not have a passenger booking.
+       *
+       * The participant must reference the Journey Boarding public ID.
+       * It must not reference the Journey public ID.
+       *
+       * JourneyBoardingParticipantEntity defaults to EXPECTED, but the status
+       * is supplied explicitly to make the initial lifecycle state clear.
+       */
+      const providerParticipant = JourneyBoardingParticipantEntity.create({
+        publicId: new JourneyBoardingParticipantPublicId(),
+        boardingId: boardingPublicId,
+        memberPublicId: new JourneyBoardingMemberPublicId(
+          journey.providerPublicId.value,
+        ),
+        role: JourneyBoardingParticipantRole.provider(),
+        status: JourneyBoardingParticipantStatus.expected(),
+        expectedAt: publishedAt,
+      });
+
+      boardingAggregate.addParticipant(providerParticipant);
+
+      // -----------------------------------------------------------------------
+      // 6. Open Boarding
+      // -----------------------------------------------------------------------
+
+      /**
+       * Opening boarding requires the provider participant to exist.
+       *
+       * The aggregate records the boarding-opened domain event and validates
+       * the NOT_STARTED -> BOARDING lifecycle transition.
+       */
+      boardingAggregate.open(
+        command.correlationId,
+        command.causationId,
+        publishedAt,
+      );
+
+      // -----------------------------------------------------------------------
+      // 7. Board Provider
+      // -----------------------------------------------------------------------
+
+      /**
+       * The provider can now transition from EXPECTED to BOARDED because:
+       *
+       * - the aggregate is in BOARDING status;
+       * - the provider participant has been attached;
+       * - the participant's member identity matches the provider identity.
+       */
+      boardingAggregate.boardProvider(
+        command.correlationId,
+        command.causationId,
+        publishedAt,
+      );
+
+      // -----------------------------------------------------------------------
+      // 8. Persist Completed Boarding Setup
+      // -----------------------------------------------------------------------
+
+      /**
+       * Persist the aggregate after all participant and lifecycle changes.
+       *
+       * The repository must persist the boarding entity, provider participant,
+       * and applicable boarding event history consistently.
+       */
+      await this.journeyBoardingRepository.save(boardingAggregate);
+    });
   }
 }

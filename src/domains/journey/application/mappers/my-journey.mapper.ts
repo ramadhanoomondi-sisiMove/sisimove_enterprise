@@ -14,6 +14,10 @@ import type { JourneyPricingEntity } from '../../domain/entities/journey-pricing
 import type { JourneyPreferencesEntity } from '../../domain/entities/journey-preferences.entity';
 import type { JourneyAssetEntity } from '../../domain/entities/journey-asset.entity';
 
+import type { JourneyBookingResponse } from '../../../journey-booking/presentation/rest/mappers/journey-booking-response.mapper';
+
+import type { JourneyBoardingResponse } from '../../../journey-boarding/presentation/rest/mappers/journey-boarding-response.mapper';
+
 import type {
   MyJourneyResponse,
   MyJourneyRouteResponse,
@@ -35,6 +39,9 @@ export class MyJourneyMapper {
   public static fromAggregate(
     aggregate: JourneyAggregate,
     vehicleAsset: MyJourneyAssetReferenceResponse | null = null,
+    bookings: readonly JourneyBookingResponse[] = [],
+    boarding: JourneyBoardingResponse | null = null,
+    unreadMessagesCount = 0,
   ): MyJourneyResponse {
     return {
       publicId: aggregate.journey.publicId.value,
@@ -82,6 +89,12 @@ export class MyJourneyMapper {
         : null,
 
       assets: aggregate.assets.map((asset) => this.fromAssetEntity(asset)),
+
+      bookings,
+
+      unreadMessagesCount,
+
+      boarding,
     };
   }
 

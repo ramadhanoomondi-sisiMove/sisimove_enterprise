@@ -276,6 +276,19 @@ export class MessagingConversationPrismaMapper {
         ? undefined
         : new Date(record.closedAt.getTime());
 
+    if (
+      record.lastMessageAt !== null &&
+      record.lastMessageAt.getTime() < record.createdAt.getTime()
+    ) {
+      console.error('[Messaging] Conversation timestamp invariant failed', {
+        conversationPublicId: record.publicId,
+        journeyPublicId: record.journeyPublicId,
+        createdAt: record.createdAt.toISOString(),
+        lastMessageAt: record.lastMessageAt.toISOString(),
+        updatedAt: record.updatedAt.toISOString(),
+      });
+    }
+
     return MessagingConversationEntity.rehydrate(
       {
         type: MessagingConversationType.create(record.type),

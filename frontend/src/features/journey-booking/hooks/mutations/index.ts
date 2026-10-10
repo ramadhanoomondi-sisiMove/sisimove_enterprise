@@ -24,6 +24,7 @@
 //
 // Payment:
 // - Create Payment
+// - Authorize Payment
 //
 // The backend JourneyBooking aggregate remains authoritative for invariants,
 // validation, state transitions, timestamps, versioning, and domain events.
@@ -83,3 +84,9 @@ export {
   useCreateJourneyBookingPayment,
   type CreateJourneyBookingPaymentVariables,
 } from './use-create-journey-booking-payment';
+
+export {
+  useAuthorizeJourneyBookingPayment,
+  type AuthorizeJourneyBookingPaymentVariables,
+  type UseAuthorizeJourneyBookingPaymentOptions,
+} from './use-authorize-journey-booking-payment';

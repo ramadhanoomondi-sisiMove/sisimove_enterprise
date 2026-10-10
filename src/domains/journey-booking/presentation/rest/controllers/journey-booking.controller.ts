@@ -54,7 +54,7 @@ import {
   CancelJourneyBookingCommand,
   CaptureJourneyBookingPaymentCommand,
   CompleteJourneyBookingCommand,
-  ConfirmJourneyBookingCommand,
+  ConfirmJourneyBookingWithPaymentCommand,
   CreateJourneyBookingCommand,
   CreateJourneyBookingPaymentCommand,
   CreateJourneyBookingSnapshotCommand,
@@ -175,9 +175,21 @@ export class JourneyBookingController {
       JourneyBookingAggregate
     >,
 
-    @Inject(JOURNEY_BOOKING_TOKENS.COMMAND_HANDLERS.CONFIRM)
-    private readonly confirmJourneyBookingHandler: CommandHandler<
-      ConfirmJourneyBookingCommand,
+    // -------------------------------------------------------------------------
+    // Atomic Payment + Booking Confirmation
+    //
+    // This is the production confirmation workflow.
+    //
+    // Payment authorization, financial hold creation, booking authorization,
+    // booking confirmation, and journey capacity reservation are executed
+    // inside ONE application transaction.
+    //
+    // If any step fails, the complete transaction is rolled back.
+    // -------------------------------------------------------------------------
+
+    @Inject(JOURNEY_BOOKING_TOKENS.COMMAND_HANDLERS.CONFIRM_WITH_PAYMENT)
+    private readonly confirmJourneyBookingWithPaymentHandler: CommandHandler<
+      ConfirmJourneyBookingWithPaymentCommand,
       JourneyBookingAggregate
     >,
 
@@ -202,6 +214,14 @@ export class JourneyBookingController {
     // =========================================================================
     // Payment Command Handlers
     // =========================================================================
+
+    // -------------------------------------------------------------------------
+    // Standalone payment authorization remains available for payment workflows
+    // that intentionally authorize payment without confirming the booking.
+    //
+    // The normal booking confirmation flow MUST use
+    // confirmJourneyBookingWithPaymentHandler above.
+    // -------------------------------------------------------------------------
 
     @Inject(JOURNEY_BOOKING_TOKENS.COMMAND_HANDLERS.AUTHORIZE_PAYMENT)
     private readonly authorizeJourneyBookingPaymentHandler: CommandHandler<
@@ -254,6 +274,7 @@ export class JourneyBookingController {
       CreateJourneyBookingPaymentCommand,
       JourneyBookingAggregate
     >,
+
     // =========================================================================
     // Journey Booking Query Handlers
     // =========================================================================
@@ -550,6 +571,7 @@ export class JourneyBookingController {
    * Returns the authenticated passenger's detailed booking view.
    *
    * Passenger identity is derived exclusively from the authenticated JWT.
+   *
    * The application query handler enforces booking ownership and composes
    * the historical booking data with Journey, Traveller, and Trust details.
    */
@@ -655,8 +677,6 @@ export class JourneyBookingController {
     return JourneyBookingResponseMapper.toResponse(booking);
   }
 
-  // src/domains/journey-booking/presentation/http/controllers/journey-booking.controller.ts
-
   // ===========================================================================
   // BOOKING COMPONENT COMMANDS
   // ===========================================================================
@@ -678,7 +698,7 @@ export class JourneyBookingController {
     description: 'Public ID of the Journey Booking.',
   })
   @Post(':journeyBookingPublicId/snapshot')
-  @auth.RequirePermissions('booking:manage')
+  @auth.RequirePermissions('booking:create')
   public async createSnapshot(
     @Param('journeyBookingPublicId') journeyBookingPublicId: string,
     @Body() dto: CreateJourneyBookingSnapshotDto,
@@ -743,7 +763,7 @@ export class JourneyBookingController {
     description: 'Public ID of the Journey Booking.',
   })
   @Post(':journeyBookingPublicId/pricing')
-  @auth.RequirePermissions('booking:manage')
+  @auth.RequirePermissions('booking:create')
   public async setPricing(
     @Param('journeyBookingPublicId') journeyBookingPublicId: string,
     @Body() dto: SetJourneyBookingPricingDto,
@@ -798,7 +818,7 @@ export class JourneyBookingController {
     description: 'Public ID of the Journey Booking.',
   })
   @Post(':journeyBookingPublicId/payment')
-  @auth.RequirePermissions('booking:manage')
+  @auth.RequirePermissions('booking:create')
   public async createPayment(
     @Param('journeyBookingPublicId') journeyBookingPublicId: string,
     @Body() dto: CreateJourneyBookingPaymentDto,
@@ -817,7 +837,7 @@ export class JourneyBookingController {
 
         dto.transactionPublicId !== undefined
           ? new JourneyBookingTransactionPublicId(dto.transactionPublicId)
-          : undefined,
+          : new JourneyBookingTransactionPublicId(),
 
         dto.causationId,
       ),
@@ -825,14 +845,16 @@ export class JourneyBookingController {
 
     return JourneyBookingResponseMapper.toResponse(booking);
   }
+
   // ---------------------------------------------------------------------------
-  // Confirm
+  // Confirm — Atomic Payment + Booking Confirmation
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Confirm journey booking',
-    description: 'Confirms an eligible journey booking.',
+    summary: 'Confirm journey booking with payment',
+    description:
+      'Authorizes the booking payment, creates the financial hold, confirms the booking, and reserves journey capacity inside one atomic transaction. If any step fails, all changes are rolled back.',
   })
   @ApiParam({
     name: 'journeyBookingPublicId',
@@ -841,14 +863,23 @@ export class JourneyBookingController {
     description: 'Public ID of the Journey Booking.',
   })
   @Post(':journeyBookingPublicId/confirm')
-  @auth.RequirePermissions('booking:manage')
+  @auth.RequirePermissions('booking:create')
   public async confirm(
     @Param('journeyBookingPublicId') journeyBookingPublicId: string,
+    @Body() dto: AuthorizeJourneyBookingPaymentDto,
   ): Promise<JourneyBookingResponse> {
-    const booking = await this.confirmJourneyBookingHandler.execute(
-      new ConfirmJourneyBookingCommand(
+    const booking = await this.confirmJourneyBookingWithPaymentHandler.execute(
+      new ConfirmJourneyBookingWithPaymentCommand(
         new JourneyBookingPublicId(journeyBookingPublicId),
+
+        new JourneyBookingTransactionPublicId(dto.transactionPublicId),
+
         randomUUID(),
+
+        undefined,
+
+        undefined,
+
         undefined,
       ),
     );
@@ -973,7 +1004,7 @@ export class JourneyBookingController {
   @ApiOperation({
     summary: 'Authorize journey booking payment',
     description:
-      'Authorizes payment for a journey booking using the supplied transaction reference.',
+      'Authorizes payment for a journey booking using the supplied transaction reference without confirming the booking.',
   })
   @ApiParam({
     name: 'journeyBookingPublicId',
@@ -982,7 +1013,7 @@ export class JourneyBookingController {
     description: 'Public ID of the Journey Booking.',
   })
   @Post(':journeyBookingPublicId/payment/authorize')
-  @auth.RequirePermissions('booking:manage')
+  @auth.RequirePermissions('booking:create')
   public async authorizePayment(
     @Param('journeyBookingPublicId') journeyBookingPublicId: string,
     @Body() dto: AuthorizeJourneyBookingPaymentDto,
