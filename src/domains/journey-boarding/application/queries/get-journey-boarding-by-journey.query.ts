@@ -2,21 +2,8 @@
 // Journey Boarding — Get By Journey Query
 // -----------------------------------------------------------------------------
 
-// -----------------------------------------------------------------------------
-// Foundation
-// -----------------------------------------------------------------------------
-
 import { Query } from '../../../../foundation/kernel/application/query';
-
-// -----------------------------------------------------------------------------
-// Domain Value Objects
-// -----------------------------------------------------------------------------
-
-import type { JourneyBoardingJourneyId } from '../../domain/value-objects';
-
-// -----------------------------------------------------------------------------
-// Query
-// -----------------------------------------------------------------------------
+import type { JourneyPublicId } from '../../../journey/domain/value-objects';
 
 /**
  * Retrieves the Journey Boarding associated with a Journey.
@@ -28,7 +15,7 @@ export class GetJourneyBoardingByJourneyQuery extends Query {
     /**
      * Public identifier of the Journey whose boarding process is requested.
      */
-    public readonly journeyId: JourneyBoardingJourneyId,
+    public readonly journeyId: JourneyPublicId,
   ) {
     super();
   }

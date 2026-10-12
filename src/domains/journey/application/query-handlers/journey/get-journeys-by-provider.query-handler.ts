@@ -1,3 +1,7 @@
+// -----------------------------------------------------------------------------
+// Journey — Get Journeys By Provider Query Handler
+// -----------------------------------------------------------------------------
+
 import { Inject, Injectable } from '@nestjs/common';
 
 import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
@@ -7,6 +11,7 @@ import type { GetJourneysByProviderQuery } from '../../queries/journey/get-journ
 import type { JourneyAggregate } from '../../../domain/aggregates/journey.aggregate';
 import type { JourneyRepository } from '../../../domain/repositories/journey.repository';
 import { JourneyProviderPublicId } from '../../../domain/value-objects/journey-provider-public-id.vo';
+import { JourneyPublicId } from '../../../domain/value-objects/journey-public-id.vo';
 import { JOURNEY_TOKENS } from '../../journey.tokens';
 
 import type { JourneyBookingEntity } from '../../../../journey-booking/domain/entities/journey-booking.entity';
@@ -17,7 +22,6 @@ import { JourneyPublicId as BookingJourneyPublicId } from '../../../../journey-b
 import type { JourneyBoardingAggregate } from '../../../../journey-boarding/domain/aggregates/journey-boarding.aggregate';
 import { GetJourneyBoardingByJourneyQuery } from '../../../../journey-boarding/application/queries/get-journey-boarding-by-journey.query';
 import { JOURNEY_BOARDING_TOKENS } from '../../../../journey-boarding/application/journey-boarding.tokens';
-import { JourneyBoardingJourneyId } from '../../../../journey-boarding/domain/value-objects/journey-boarding-journey-id.vo';
 import { JourneyBoardingNotFoundException } from '../../../../journey-boarding/domain/exceptions';
 
 import type { MessagingConversationAggregate } from '../../../../messaging/domain/aggregates/messaging-conversation.aggregate';
@@ -87,23 +91,22 @@ export class GetJourneysByProviderQueryHandler implements QueryHandler<
 
     return Promise.all(
       journeys.map(async (journey) => {
+        const journeyPublicId = journey.journey.publicId.value;
+
         const bookingJourneyPublicId = new BookingJourneyPublicId(
-          journey.journey.publicId.value,
+          journeyPublicId,
         );
 
-        const messagingJourneyPublicId = MessagingJourneyPublicId.create(
-          journey.journey.publicId.value,
-        );
+        const messagingJourneyPublicId =
+          MessagingJourneyPublicId.create(journeyPublicId);
 
-        const boardingJourneyId = JourneyBoardingJourneyId.create(
-          journey.aggregateId.toString(),
-        );
+        const boardingJourneyPublicId = new JourneyPublicId(journeyPublicId);
 
         const [bookings, boarding, conversations] = await Promise.all([
           this.findJourneyBookingsByJourneyHandler.execute(
             new FindJourneyBookingsByJourneyQuery(bookingJourneyPublicId),
           ),
-          this.getBoardingOrNull(boardingJourneyId),
+          this.getBoardingOrNull(boardingJourneyPublicId),
           this.getMessagingConversationByJourneyHandler.execute(
             new GetMessagingConversationByJourneyQuery(
               messagingJourneyPublicId,
@@ -159,7 +162,7 @@ export class GetJourneysByProviderQueryHandler implements QueryHandler<
   }
 
   private async getBoardingOrNull(
-    journeyId: JourneyBoardingJourneyId,
+    journeyId: JourneyPublicId,
   ): Promise<JourneyBoardingAggregate | null> {
     try {
       return await this.getJourneyBoardingByJourneyHandler.execute(

@@ -1,8 +1,16 @@
-// src/domains/journey-boarding/presentation/rest/mappers/journey-boarding-response.mapper.ts
-
-// -----------------------------------------------------------------------------
-// Journey Boarding — REST Response Mapper
-// -----------------------------------------------------------------------------
+/**
+ * Path:
+ * src/domains/journey-boarding/presentation/rest/mappers/journey-boarding-response.mapper.ts
+ *
+ * sisiMove — Journey Boarding REST Response Mapper
+ *
+ * Architectural rules:
+ * - The domain stores the Journey's internal database ID.
+ * - REST responses expose the Journey's public ID as `journeyId`.
+ * - The mapper never accesses repositories or performs database queries.
+ * - Callers must supply the resolved public Journey ID.
+ * - Missing public-ID mappings fail explicitly rather than leaking internal IDs.
+ */
 
 // -----------------------------------------------------------------------------
 // Domain
@@ -23,138 +31,65 @@ import type { JourneyBoardingEventEntity } from '../../../domain/entities/journe
 /**
  * REST representation of a Journey Boarding aggregate.
  *
- * Domain value objects are converted to primitives at the presentation
- * boundary. Domain entities and UniqueEntityId instances are never exposed
- * directly through the HTTP response.
+ * `journeyId` is the public identifier of the associated Journey.
  */
 export interface JourneyBoardingResponse {
-  // ===========================================================================
-  // Identity
-  // ===========================================================================
-
   publicId: string;
-
   journeyId: string;
-
   providerPublicId: string;
-
-  // ===========================================================================
-  // Lifecycle
-  // ===========================================================================
 
   status: string;
 
   boardingStartedAt: Date | undefined;
-
   journeyStartedAt: Date | undefined;
-
   cancelledAt: Date | undefined;
 
   version: number;
 
-  // ===========================================================================
-  // Participants
-  // ===========================================================================
-
   participants: JourneyBoardingParticipantResponse[];
-
-  // ===========================================================================
-  // Events
-  // ===========================================================================
-
   events: JourneyBoardingEventResponse[];
 
-  // ===========================================================================
-  // Audit
-  // ===========================================================================
-
   createdAt: Date;
-
   updatedAt: Date;
 }
-
-// -----------------------------------------------------------------------------
-// Participant Response
-// -----------------------------------------------------------------------------
 
 /**
  * REST representation of a Journey Boarding participant.
  */
 export interface JourneyBoardingParticipantResponse {
-  // ===========================================================================
-  // Identity
-  // ===========================================================================
-
   publicId: string;
-
   boardingId: string;
-
   memberPublicId: string;
-
   bookingPublicId: string | undefined;
 
-  // ===========================================================================
-  // Boarding
-  // ===========================================================================
-
   role: string;
-
   status: string;
 
   expectedAt: Date;
-
   boardedAt: Date | undefined;
-
   withdrawnAt: Date | undefined;
-
   noShowAt: Date | undefined;
-
   removedAt: Date | undefined;
 
-  // ===========================================================================
-  // Audit
-  // ===========================================================================
-
   createdAt: Date;
-
   updatedAt: Date;
 }
-
-// -----------------------------------------------------------------------------
-// Event Response
-// -----------------------------------------------------------------------------
 
 /**
  * REST representation of a historical Journey Boarding event.
  */
 export interface JourneyBoardingEventResponse {
-  // ===========================================================================
-  // Identity
-  // ===========================================================================
-
   publicId: string;
-
   boardingId: string;
-
-  // ===========================================================================
-  // Event
-  // ===========================================================================
 
   type: string;
 
   memberPublicId: string | undefined;
-
   bookingPublicId: string | undefined;
-
   actorPublicId: string | undefined;
 
   occurredAt: Date;
-
   metadata: Record<string, unknown> | undefined;
-
-  // ===========================================================================
-  // Audit
-  // ===========================================================================
 
   createdAt: Date;
 }
@@ -163,31 +98,6 @@ export interface JourneyBoardingEventResponse {
 // Mapper
 // -----------------------------------------------------------------------------
 
-/**
- * Maps Journey Boarding domain objects into REST response objects.
- *
- * IMPORTANT:
- *
- * `JourneyBoardingEntity` owns only the root boarding state.
- *
- * Participants and historical boarding events belong to
- * `JourneyBoardingAggregate`, not `JourneyBoardingEntity`.
- *
- * Therefore:
- *
- *     aggregate.participants
- *     aggregate.events
- *
- * must be used when mapping a complete aggregate.
- *
- * Do NOT attempt:
- *
- *     boarding.participants
- *     boarding.events
- *
- * because those properties intentionally do not exist on
- * JourneyBoardingEntity.
- */
 export class JourneyBoardingResponseMapper {
   // ===========================================================================
   // Aggregate
@@ -196,14 +106,16 @@ export class JourneyBoardingResponseMapper {
   /**
    * Maps a fully rehydrated Journey Boarding aggregate.
    *
-   * This is the preferred mapper for detail responses because it preserves
-   * the complete aggregate-owned participant and event collections.
+   * `journeyPublicId` must be resolved by the application/query layer.
+   * Do not pass the internal Journey database ID here.
    */
   public static toResponse(
     aggregate: JourneyBoardingAggregate,
+    journeyPublicId: string,
   ): JourneyBoardingResponse {
     return this.fromEntity(
       aggregate.journeyBoarding,
+      journeyPublicId,
       aggregate.participants,
       aggregate.events,
     );
@@ -214,62 +126,39 @@ export class JourneyBoardingResponseMapper {
   // ===========================================================================
 
   /**
-   * Maps the Journey Boarding root entity.
+   * Maps the boarding root entity and its separately supplied child collections.
    *
-   * Participants and events are supplied separately because they are owned
-   * by the aggregate rather than by JourneyBoardingEntity.
-   *
-   * The defaults allow callers that only have the root entity to safely map
-   * the root without pretending that the entity itself owns child collections.
+   * The public Journey ID is mandatory because JourneyBoardingEntity stores
+   * only the internal Journey database ID.
    */
   public static fromEntity(
     boarding: JourneyBoardingEntity,
+    journeyPublicId: string,
     participants: readonly JourneyBoardingParticipantEntity[] = [],
     events: readonly JourneyBoardingEventEntity[] = [],
   ): JourneyBoardingResponse {
+    const normalizedJourneyPublicId =
+      this.requireJourneyPublicId(journeyPublicId);
+
     return {
-      // -----------------------------------------------------------------------
       // Identity
-      // -----------------------------------------------------------------------
-
       publicId: boarding.publicId.value,
-
-      journeyId: boarding.journeyId.value,
-
+      journeyId: normalizedJourneyPublicId,
       providerPublicId: boarding.providerPublicId.value,
 
-      // -----------------------------------------------------------------------
       // Lifecycle
-      // -----------------------------------------------------------------------
-
       status: boarding.status.value,
-
       boardingStartedAt: boarding.boardingStartedAt,
-
       journeyStartedAt: boarding.journeyStartedAt,
-
       cancelledAt: boarding.cancelledAt,
-
       version: boarding.version,
 
-      // -----------------------------------------------------------------------
-      // Participants
-      // -----------------------------------------------------------------------
-
+      // Aggregate-owned children
       participants: this.mapParticipants(participants),
-
-      // -----------------------------------------------------------------------
-      // Events
-      // -----------------------------------------------------------------------
-
       events: this.mapEvents(events),
 
-      // -----------------------------------------------------------------------
       // Audit
-      // -----------------------------------------------------------------------
-
       createdAt: boarding.createdAt,
-
       updatedAt: boarding.updatedAt,
     };
   }
@@ -279,15 +168,30 @@ export class JourneyBoardingResponseMapper {
   // ===========================================================================
 
   /**
-   * Maps a collection of Journey Boarding aggregates.
+   * Maps a collection of rehydrated aggregates.
    *
-   * Use this when the repository/application layer returns fully rehydrated
-   * aggregates.
+   * `journeyPublicIds` is keyed by the internal Journey ID stored in each
+   * boarding entity. Its values must be the corresponding public Journey IDs.
+   *
+   * Example:
+   * new Map([
+   *   ['internal-journey-id-1', 'JNY-ABC123'],
+   * ])
    */
   public static fromAggregates(
     aggregates: readonly JourneyBoardingAggregate[],
+    journeyPublicIds: ReadonlyMap<string, string>,
   ): JourneyBoardingResponse[] {
-    return aggregates.map((aggregate) => this.toResponse(aggregate));
+    return aggregates.map((aggregate) => {
+      const internalJourneyId = aggregate.journeyBoarding.journeyId.value;
+
+      const journeyPublicId = this.getJourneyPublicId(
+        journeyPublicIds,
+        internalJourneyId,
+      );
+
+      return this.toResponse(aggregate, journeyPublicId);
+    });
   }
 
   // ===========================================================================
@@ -295,125 +199,129 @@ export class JourneyBoardingResponseMapper {
   // ===========================================================================
 
   /**
-   * Maps a collection of Journey Boarding root entities.
+   * Maps boarding root entities when the caller has resolved their Journey
+   * public IDs.
    *
-   * Since root entities do not contain participants/events, those collections
-   * will be empty unless child collections are mapped through `fromEntity`
-   * individually.
+   * Participants and events are empty because this method receives root
+   * entities only.
    */
   public static fromEntities(
     boardings: readonly JourneyBoardingEntity[],
+    journeyPublicIds: ReadonlyMap<string, string>,
   ): JourneyBoardingResponse[] {
-    return boardings.map((boarding) => this.fromEntity(boarding));
+    return boardings.map((boarding) => {
+      const internalJourneyId = boarding.journeyId.value;
+
+      const journeyPublicId = this.getJourneyPublicId(
+        journeyPublicIds,
+        internalJourneyId,
+      );
+
+      return this.fromEntity(boarding, journeyPublicId);
+    });
   }
 
   // ===========================================================================
-  // Aggregate Child Collections
+  // Journey Public-ID Resolution
   // ===========================================================================
 
-  /**
-   * Maps aggregate-owned participants.
-   */
+  private static getJourneyPublicId(
+    journeyPublicIds: ReadonlyMap<string, string>,
+    internalJourneyId: string,
+  ): string {
+    const journeyPublicId = journeyPublicIds.get(internalJourneyId);
+
+    if (journeyPublicId === undefined) {
+      throw new Error(
+        `Missing public Journey ID mapping for internal Journey ID: ${internalJourneyId}`,
+      );
+    }
+
+    return this.requireJourneyPublicId(journeyPublicId);
+  }
+
+  private static requireJourneyPublicId(journeyPublicId: string): string {
+    const normalized = journeyPublicId.trim();
+
+    if (!normalized) {
+      throw new Error(
+        'Journey public ID is required to create a Journey Boarding response.',
+      );
+    }
+
+    return normalized;
+  }
+
+  // ===========================================================================
+  // Participants
+  // ===========================================================================
+
   private static mapParticipants(
     participants: readonly JourneyBoardingParticipantEntity[],
   ): JourneyBoardingParticipantResponse[] {
     return participants.map((participant) => this.mapParticipant(participant));
   }
 
-  /**
-   * Maps a single Journey Boarding participant.
-   */
   private static mapParticipant(
     participant: JourneyBoardingParticipantEntity,
   ): JourneyBoardingParticipantResponse {
     return {
-      // -----------------------------------------------------------------------
-      // Identity
-      // -----------------------------------------------------------------------
-
       publicId: participant.publicId.value,
-
       boardingId: participant.boardingId.value,
-
       memberPublicId: participant.memberPublicId.value,
-
       bookingPublicId: participant.bookingPublicId?.value,
 
-      // -----------------------------------------------------------------------
-      // Boarding
-      // -----------------------------------------------------------------------
-
       role: participant.role.value,
-
       status: participant.status.value,
 
       expectedAt: participant.expectedAt,
-
       boardedAt: participant.boardedAt,
-
       withdrawnAt: participant.withdrawnAt,
-
       noShowAt: participant.noShowAt,
-
       removedAt: participant.removedAt,
 
-      // -----------------------------------------------------------------------
-      // Audit
-      // -----------------------------------------------------------------------
-
       createdAt: participant.createdAt,
-
       updatedAt: participant.updatedAt,
     };
   }
 
+  /**
+   * Maps participant entities into their public REST response contract.
+   *
+   * Used by the dedicated participants endpoint so internal entity
+   * properties and value-object structures are never exposed over HTTP.
+   */
+  public static participantsToResponse(
+    participants: readonly JourneyBoardingParticipantEntity[],
+  ): JourneyBoardingParticipantResponse[] {
+    return this.mapParticipants(participants);
+  }
+
   // ===========================================================================
-  // Aggregate Event History
+  // Events
   // ===========================================================================
 
-  /**
-   * Maps aggregate-owned historical events.
-   */
   private static mapEvents(
     events: readonly JourneyBoardingEventEntity[],
   ): JourneyBoardingEventResponse[] {
     return events.map((event) => this.mapEvent(event));
   }
 
-  /**
-   * Maps a single Journey Boarding historical event.
-   */
   private static mapEvent(
     event: JourneyBoardingEventEntity,
   ): JourneyBoardingEventResponse {
     return {
-      // -----------------------------------------------------------------------
-      // Identity
-      // -----------------------------------------------------------------------
-
       publicId: event.publicId.value,
-
       boardingId: event.boardingId.value,
-
-      // -----------------------------------------------------------------------
-      // Event
-      // -----------------------------------------------------------------------
 
       type: event.type.value,
 
       memberPublicId: event.memberPublicId?.value,
-
       bookingPublicId: event.bookingPublicId?.value,
-
       actorPublicId: event.actorPublicId?.value,
 
       occurredAt: event.occurredAt,
-
       metadata: event.metadata,
-
-      // -----------------------------------------------------------------------
-      // Audit
-      // -----------------------------------------------------------------------
 
       createdAt: event.createdAt,
     };

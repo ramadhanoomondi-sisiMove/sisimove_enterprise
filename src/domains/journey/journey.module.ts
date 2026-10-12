@@ -180,7 +180,7 @@ import {
     // for its own aggregate, persistence, and participant invariants.
     // =========================================================================
 
-    JourneyBoardingModule,
+    forwardRef(() => JourneyBoardingModule),
 
     forwardRef(() => JourneyBookingModule),
 

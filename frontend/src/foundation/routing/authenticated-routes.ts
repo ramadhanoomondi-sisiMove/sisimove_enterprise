@@ -165,6 +165,12 @@ export const AUTHENTICATED_ROUTES = {
   BOOKING: (bookingPublicId: string) =>
     `/bookings/${encodeURIComponent(bookingPublicId)}`,
 
+  /**
+   * Participants associated with a specific booking.
+   */
+  BOOKING_PARTICIPANTS: (bookingPublicId: string) =>
+    `/my-bookings/${encodeURIComponent(bookingPublicId)}/participants`,
+
   // ===========================================================================
   // Verification
   // ===========================================================================
@@ -287,7 +293,6 @@ export const AUTHENTICATED_ROUTES = {
   SUPPORT_CASE: (supportCasePublicId: string) =>
     `/support/cases/${encodeURIComponent(supportCasePublicId)}`,
 
-  
   /**
    * Create a Support Case associated with a specific Journey.
    *
@@ -296,7 +301,6 @@ export const AUTHENTICATED_ROUTES = {
    */
   JOURNEY_SUPPORT_NEW: (journeyPublicId: string) =>
     `/support/new?journeyPublicId=${encodeURIComponent(journeyPublicId)}`,
-
 
   // ===========================================================================
   // Settings

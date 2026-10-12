@@ -4,10 +4,6 @@
 // Journey Booking — Detail REST Response Mapper
 // -----------------------------------------------------------------------------
 
-// -----------------------------------------------------------------------------
-// Application Response
-// -----------------------------------------------------------------------------
-
 import type { JourneyBookingDetailResponse } from '../../../application/responses/journey-booking-detail.response';
 
 // -----------------------------------------------------------------------------
@@ -17,13 +13,18 @@ import type { JourneyBookingDetailResponse } from '../../../application/response
 /**
  * Maps the application Journey Booking detail response to the REST boundary.
  *
- * The application query handler has already composed:
+ * The application query handler composes:
  *
- * - Journey
+ * - Booking detail
+ * - Journey detail
  * - Provider Traveller profile
  * - Provider Trust profile
+ * - Journey activity summary
  *
- * This mapper intentionally performs no additional queries or domain logic.
+ * This mapper performs no additional queries or domain logic.
+ *
+ * Activity counts are supplied by the application query handler and are
+ * passed through unchanged.
  */
 export class JourneyBookingDetailResponseMapper {
   // ===========================================================================
@@ -33,7 +34,10 @@ export class JourneyBookingDetailResponseMapper {
   public static toResponse(
     response: JourneyBookingDetailResponse,
   ): JourneyBookingDetailResponse {
-    return response;
+    return {
+      booking: response.booking,
+      activitySummary: response.activitySummary,
+    };
   }
 }
 

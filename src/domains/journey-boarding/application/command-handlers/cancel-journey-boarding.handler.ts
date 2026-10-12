@@ -8,56 +8,44 @@
 // - Resolve the Journey Boarding aggregate by public identifier.
 // - Delegate cancellation to the aggregate.
 // - Persist the updated aggregate.
-// - Return the updated aggregate.
+// - Resolve the associated Journey's public identifier.
+// - Return the updated aggregate together with the Journey public ID.
 //
 // Architectural rules:
 // - Inject dependencies through centralized dependency-injection tokens.
 // - Keep cancellation rules and lifecycle invariants inside the aggregate.
 // - Use domain-specific exceptions for missing aggregates.
 // - Keep persistence implementation details outside the handler.
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// NestJS
+// - Use internal Journey IDs only for repository lookups.
+// - Return the Journey public ID for REST response mapping.
 // -----------------------------------------------------------------------------
 
 import { Inject, Injectable } from '@nestjs/common';
 
-// -----------------------------------------------------------------------------
-// Foundation
-// -----------------------------------------------------------------------------
-
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 
-// -----------------------------------------------------------------------------
-// Dependency Injection Tokens
-// -----------------------------------------------------------------------------
-
 import { JOURNEY_BOARDING_TOKENS } from '../journey-boarding.tokens';
-
-// -----------------------------------------------------------------------------
-// Command
-// -----------------------------------------------------------------------------
+import { JOURNEY_TOKENS } from '../../../journey/application/journey.tokens';
 
 import type { CancelJourneyBoardingCommand } from '../commands/cancel-journey-boarding.command';
 
-// -----------------------------------------------------------------------------
-// Aggregate
-// -----------------------------------------------------------------------------
-
 import type { JourneyBoardingAggregate } from '../../domain/aggregates/journey-boarding.aggregate';
 
-// -----------------------------------------------------------------------------
-// Repository
-// -----------------------------------------------------------------------------
-
 import type { JourneyBoardingRepository } from '../../domain/repositories/journey-boarding.repository';
+import type { JourneyRepository } from '../../../journey/domain/repositories/journey.repository';
 
-// -----------------------------------------------------------------------------
-// Exceptions
-// -----------------------------------------------------------------------------
+import { JourneyId } from '../../../journey/domain/value-objects/journey-id.vo';
 
 import { JourneyBoardingNotFoundException } from '../../domain/exceptions';
+
+// -----------------------------------------------------------------------------
+// Result
+// -----------------------------------------------------------------------------
+
+export interface CancelJourneyBoardingResult {
+  aggregate: JourneyBoardingAggregate;
+  journeyPublicId: string;
+}
 
 // -----------------------------------------------------------------------------
 // Handler
@@ -66,28 +54,19 @@ import { JourneyBoardingNotFoundException } from '../../domain/exceptions';
 @Injectable()
 export class CancelJourneyBoardingHandler implements CommandHandler<
   CancelJourneyBoardingCommand,
-  JourneyBoardingAggregate
+  CancelJourneyBoardingResult
 > {
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
   public constructor(
     @Inject(JOURNEY_BOARDING_TOKENS.REPOSITORY)
     private readonly repository: JourneyBoardingRepository,
-  ) {}
 
-  // ===========================================================================
-  // Execute
-  // ===========================================================================
+    @Inject(JOURNEY_TOKENS.REPOSITORY)
+    private readonly journeyRepository: JourneyRepository,
+  ) {}
 
   public async execute(
     command: CancelJourneyBoardingCommand,
-  ): Promise<JourneyBoardingAggregate> {
-    // -------------------------------------------------------------------------
-    // Resolve Aggregate
-    // -------------------------------------------------------------------------
-
+  ): Promise<CancelJourneyBoardingResult> {
     const aggregate = await this.repository.findByPublicId(
       command.journeyBoardingPublicId,
     );
@@ -98,14 +77,6 @@ export class CancelJourneyBoardingHandler implements CommandHandler<
       );
     }
 
-    // -------------------------------------------------------------------------
-    // Cancel Boarding
-    // -------------------------------------------------------------------------
-    //
-    // The aggregate determines whether cancellation is permitted, applies the
-    // lifecycle transition, updates its state, and records the domain event.
-    // -------------------------------------------------------------------------
-
     aggregate.cancel(
       command.correlationId,
       command.causationId,
@@ -113,16 +84,23 @@ export class CancelJourneyBoardingHandler implements CommandHandler<
       command.actorPublicId,
     );
 
-    // -------------------------------------------------------------------------
-    // Persistence
-    // -------------------------------------------------------------------------
-
     await this.repository.save(aggregate);
 
-    // -------------------------------------------------------------------------
-    // Result
-    // -------------------------------------------------------------------------
+    const journey = await this.journeyRepository.findJourneyById(
+      new JourneyId(aggregate.journeyBoarding.journeyId.value),
+    );
 
-    return aggregate;
+    if (journey === null) {
+      throw new Error(
+        `Journey not found for boarding ${aggregate.journeyBoarding.publicId.value}.`,
+      );
+    }
+
+    return {
+      aggregate,
+      journeyPublicId: journey.publicId.value,
+    };
   }
 }
+
+export default CancelJourneyBoardingHandler;

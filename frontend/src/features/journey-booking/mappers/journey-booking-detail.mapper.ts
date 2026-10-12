@@ -14,6 +14,7 @@
 // -----------------------------------------------------------------------------
 
 import type {
+  JourneyBookingActivitySummary,
   JourneyBookingDetail,
   JourneyBookingDetailCancellation,
   JourneyBookingDetailJourney,
@@ -56,6 +57,7 @@ import {
  */
 export interface JourneyBookingDetailApiResponse {
   booking: JourneyBookingDetailApiBookingResponse;
+  activitySummary: JourneyBookingActivitySummary | null;
 }
 
 interface JourneyBookingDetailApiBookingResponse {
@@ -756,5 +758,6 @@ export function mapJourneyBookingDetail(
 
   return {
     booking: mapBooking(response.booking),
+    activitySummary: response.activitySummary,
   };
 }

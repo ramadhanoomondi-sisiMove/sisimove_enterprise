@@ -1,31 +1,20 @@
 // -----------------------------------------------------------------------------
-
 // Journey Booking — Get Detail Query Handler
-
 // -----------------------------------------------------------------------------
 
 import { Inject, Injectable } from '@nestjs/common';
 
 import type { QueryHandler } from '../../../../foundation/kernel/application/query-handler';
 
-// -----------------------------------------------------------------------------
-// Query
-// -----------------------------------------------------------------------------
-
 import type { GetJourneyBookingDetailQuery } from '../queries/get-journey-booking-detail.query';
-
-// -----------------------------------------------------------------------------
-// Domain
-// -----------------------------------------------------------------------------
+import { FindJourneyBookingsByJourneyQuery } from '../queries/find-journey-bookings-by-journey.query';
 
 import type { JourneyBookingAggregate } from '../../domain/aggregates/journey-booking.aggregate';
 import type { JourneyBookingRepository } from '../../domain/repositories/journey-booking.repository';
-
-// -----------------------------------------------------------------------------
-// Response
-// -----------------------------------------------------------------------------
+import type { JourneyBookingEntity } from '../../domain/entities/journey-booking.entity';
 
 import type {
+  JourneyBookingActivitySummary,
   JourneyBookingDetail,
   JourneyBookingDetailCancellation,
   JourneyBookingDetailJourney,
@@ -36,31 +25,15 @@ import type {
   JourneyBookingDetailSnapshot,
 } from '../responses/journey-booking-detail.response';
 
-// -----------------------------------------------------------------------------
-// Exceptions
-// -----------------------------------------------------------------------------
-
 import {
   JourneyBookingInvalidPassengerException,
   JourneyBookingNotFoundException,
 } from '../../domain/exceptions';
 
-// -----------------------------------------------------------------------------
-// Tokens
-// -----------------------------------------------------------------------------
-
 import { JOURNEY_BOOKING_TOKENS } from '../journey-booking.tokens';
-
-// -----------------------------------------------------------------------------
-// Journey bounded context
-// -----------------------------------------------------------------------------
 
 import { GetJourneyQuery } from '../../../journey/application/queries/journey';
 import { GetJourneyQueryHandler } from '../../../journey/application/query-handlers/journey';
-
-// -----------------------------------------------------------------------------
-// Traveller Profile bounded context
-// -----------------------------------------------------------------------------
 
 import { GetPublicTravellerByMemberQuery } from '../../../social/application/queries/get-public-traveller-by-member.query';
 
@@ -71,10 +44,6 @@ import {
 
 import { TRAVELLER_PROFILE_TOKENS } from '../../../social/application/traveller-profile.tokens';
 
-// -----------------------------------------------------------------------------
-// Trust Profile bounded context
-// -----------------------------------------------------------------------------
-
 import { GetPublicTrustProfileByMemberQuery } from '../../../trust/application/queries/trust-profile/get-public-trust-profile-by-member.query';
 
 import {
@@ -84,11 +53,37 @@ import {
 
 import { TRUST_PROFILE_TOKENS } from '../../../trust/application/trust-profile.tokens';
 
+import { MemberPublicId } from '../../../social/domain/value-objects/member-public-id.vo';
+
+import {
+  JourneyPublicId as BookingJourneyPublicId,
+  JourneyPublicId,
+} from '../../domain/value-objects/journey-public-id.vo';
+
 // -----------------------------------------------------------------------------
-// Domain Value Objects
+// Journey Boarding
 // -----------------------------------------------------------------------------
 
-import { MemberPublicId } from '../../../social/domain/value-objects/member-public-id.vo';
+import type { JourneyBoardingAggregate } from '../../../journey-boarding/domain/aggregates/journey-boarding.aggregate';
+
+import { GetJourneyBoardingByJourneyQuery } from '../../../journey-boarding/application/queries/get-journey-boarding-by-journey.query';
+
+import { JOURNEY_BOARDING_TOKENS } from '../../../journey-boarding/application/journey-boarding.tokens';
+
+import { JourneyBoardingNotFoundException } from '../../../journey-boarding/domain/exceptions';
+
+// -----------------------------------------------------------------------------
+// Messaging
+// -----------------------------------------------------------------------------
+
+import { MessagingMemberPublicId } from '../../../messaging/domain/value-objects/messaging-member-public-id.vo';
+import { MessagingJourneyPublicId } from '../../../messaging/domain/value-objects/messaging-journey-public-id.vo';
+
+import GetMessagingConversationByJourneyQuery from '../../../messaging/application/queries/get-messaging-conversation-by-journey.query';
+
+import type { MessagingConversationAggregate } from '../../../messaging/domain/aggregates/messaging-conversation.aggregate';
+
+import { MESSAGING_TOKENS } from '../../../messaging/application/messaging.tokens';
 
 // =============================================================================
 // Handler
@@ -112,6 +107,26 @@ export class GetJourneyBookingDetailQueryHandler implements QueryHandler<
 
     @Inject(TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_PUBLIC_BY_MEMBER_PUBLIC_ID)
     private readonly getPublicTrustProfileByMemberQueryHandler: GetPublicTrustProfileByMemberQueryHandler,
+
+    @Inject(JOURNEY_BOOKING_TOKENS.QUERY_HANDLERS.FIND_BY_JOURNEY)
+    private readonly findJourneyBookingsByJourneyHandler: QueryHandler<
+      FindJourneyBookingsByJourneyQuery,
+      JourneyBookingEntity[]
+    >,
+
+    @Inject(JOURNEY_BOARDING_TOKENS.QUERY_HANDLERS.GET_BY_JOURNEY)
+    private readonly getJourneyBoardingByJourneyHandler: QueryHandler<
+      GetJourneyBoardingByJourneyQuery,
+      JourneyBoardingAggregate
+    >,
+
+    @Inject(
+      MESSAGING_TOKENS.QUERY_HANDLERS.GET_MESSAGING_CONVERSATION_BY_JOURNEY,
+    )
+    private readonly getMessagingConversationByJourneyHandler: QueryHandler<
+      GetMessagingConversationByJourneyQuery,
+      MessagingConversationAggregate[]
+    >,
   ) {}
 
   // ===========================================================================
@@ -136,7 +151,7 @@ export class GetJourneyBookingDetailQueryHandler implements QueryHandler<
     }
 
     // -------------------------------------------------------------------------
-    // Ownership
+    // Phase 2 — Verify passenger ownership
     // -------------------------------------------------------------------------
 
     if (!aggregate.belongsToPassenger(query.passengerPublicId)) {
@@ -146,7 +161,7 @@ export class GetJourneyBookingDetailQueryHandler implements QueryHandler<
     }
 
     // -------------------------------------------------------------------------
-    // Phase 2 — Resolve Journey
+    // Phase 3 — Resolve journey
     // -------------------------------------------------------------------------
 
     const journey = await this.getJourneyQueryHandler.execute(
@@ -154,11 +169,10 @@ export class GetJourneyBookingDetailQueryHandler implements QueryHandler<
     );
 
     // -------------------------------------------------------------------------
-    // Phase 3 — Resolve public Journey provider
+    // Phase 4 — Resolve provider profiles
     // -------------------------------------------------------------------------
 
     const providerPublicId = journey.providerPublicId.value;
-
     const memberPublicId = new MemberPublicId(providerPublicId);
 
     const [traveller, trust] = await Promise.all([
@@ -172,16 +186,167 @@ export class GetJourneyBookingDetailQueryHandler implements QueryHandler<
     ]);
 
     // -------------------------------------------------------------------------
+    // Phase 5 — Resolve journey activity
+    // -------------------------------------------------------------------------
+
+    const activitySummary = await this.getActivitySummary(
+      aggregate,
+      journey,
+      query.passengerPublicId.value,
+    );
+
+    // -------------------------------------------------------------------------
     // Compose response
     // -------------------------------------------------------------------------
 
     return {
       booking: this.toBookingDetail(aggregate, journey, traveller, trust),
+      activitySummary,
     };
   }
 
   // ===========================================================================
-  // Booking
+  // Activity Summary
+  // ===========================================================================
+
+  private async getActivitySummary(
+    aggregate: JourneyBookingAggregate,
+    journey: Awaited<ReturnType<GetJourneyQueryHandler['execute']>>,
+    passengerPublicId: string,
+  ): Promise<JourneyBookingActivitySummary | null> {
+    const booking = aggregate.journeyBooking;
+
+    // Only provide live activity information for confirmed bookings.
+    // Terminal journey outcomes remain distinct and retain their booking detail.
+    const terminalJourneyStatuses = new Set([
+      'COMPLETED',
+      'CANCELLED',
+      'EXPIRED',
+    ]);
+
+    if (
+      booking.status.value !== 'CONFIRMED' ||
+      terminalJourneyStatuses.has(journey.status.value)
+    ) {
+      return null;
+    }
+
+    const bookingJourneyPublicId = new BookingJourneyPublicId(
+      booking.journeyPublicId.value,
+    );
+
+    const messagingJourneyPublicId = MessagingJourneyPublicId.create(
+      booking.journeyPublicId.value,
+    );
+
+    const boardingJourneyPublicId = new JourneyPublicId(
+      booking.journeyPublicId.value,
+    );
+
+    const memberPublicId = MessagingMemberPublicId.create(passengerPublicId);
+
+    const [bookings, boarding, conversations] = await Promise.all([
+      this.findJourneyBookingsByJourneyHandler.execute(
+        new FindJourneyBookingsByJourneyQuery(bookingJourneyPublicId),
+      ),
+
+      this.getBoardingOrNull(boardingJourneyPublicId),
+
+      this.getMessagingConversationByJourneyHandler.execute(
+        new GetMessagingConversationByJourneyQuery(messagingJourneyPublicId),
+      ),
+    ]);
+
+    return {
+      associatedBookingsCount: bookings.length,
+      participantsCount: boarding?.participantCount ?? 0,
+      messagesCount: this.countVisibleMessages(conversations),
+      unreadMessagesCount: this.countUnreadMessages(
+        conversations,
+        memberPublicId,
+      ),
+    };
+  }
+
+  // ===========================================================================
+  // Boarding
+  // ===========================================================================
+
+  private async getBoardingOrNull(
+    journeyPublicId: JourneyPublicId,
+  ): Promise<JourneyBoardingAggregate | null> {
+    try {
+      return await this.getJourneyBoardingByJourneyHandler.execute(
+        new GetJourneyBoardingByJourneyQuery(journeyPublicId),
+      );
+    } catch (error: unknown) {
+      if (error instanceof JourneyBoardingNotFoundException) {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
+  // ===========================================================================
+  // Messages
+  // ===========================================================================
+
+  private countVisibleMessages(
+    conversations: readonly MessagingConversationAggregate[],
+  ): number {
+    let count = 0;
+
+    for (const conversation of conversations) {
+      for (const message of conversation.messages) {
+        if (message.isDeleted() || message.isModerated()) {
+          continue;
+        }
+
+        count += 1;
+      }
+    }
+
+    return count;
+  }
+
+  private countUnreadMessages(
+    conversations: readonly MessagingConversationAggregate[],
+    memberPublicId: MessagingMemberPublicId,
+  ): number {
+    let unreadCount = 0;
+
+    for (const conversation of conversations) {
+      const participant =
+        conversation.findParticipantByMemberPublicId(memberPublicId);
+
+      if (!participant || !participant.canReadMessages()) {
+        continue;
+      }
+
+      const lastReadAt = participant.lastReadAt;
+
+      for (const message of conversation.messages) {
+        // Messages sent by the current passenger are not unread for them.
+        if (message.senderPublicId.value === memberPublicId.value) {
+          continue;
+        }
+
+        if (message.isDeleted() || message.isModerated()) {
+          continue;
+        }
+
+        if (!lastReadAt || message.sentAt.getTime() > lastReadAt.getTime()) {
+          unreadCount += 1;
+        }
+      }
+    }
+
+    return unreadCount;
+  }
+
+  // ===========================================================================
+  // Booking Detail Mapping
   // ===========================================================================
 
   private toBookingDetail(
@@ -220,7 +385,7 @@ export class GetJourneyBookingDetailQueryHandler implements QueryHandler<
   }
 
   // ===========================================================================
-  // Journey
+  // Journey Detail Mapping
   // ===========================================================================
 
   private toJourneyDetail(
@@ -248,7 +413,7 @@ export class GetJourneyBookingDetailQueryHandler implements QueryHandler<
   }
 
   // ===========================================================================
-  // Provider
+  // Provider Detail Mapping
   // ===========================================================================
 
   private toProviderDetail(
@@ -290,7 +455,7 @@ export class GetJourneyBookingDetailQueryHandler implements QueryHandler<
   }
 
   // ===========================================================================
-  // Snapshot
+  // Snapshot Mapping
   // ===========================================================================
 
   private toSnapshot(
@@ -332,7 +497,7 @@ export class GetJourneyBookingDetailQueryHandler implements QueryHandler<
   }
 
   // ===========================================================================
-  // Pricing
+  // Pricing Mapping
   // ===========================================================================
 
   private toPricing(
@@ -359,7 +524,7 @@ export class GetJourneyBookingDetailQueryHandler implements QueryHandler<
   }
 
   // ===========================================================================
-  // Payment
+  // Payment Mapping
   // ===========================================================================
 
   private toPayment(
@@ -391,7 +556,7 @@ export class GetJourneyBookingDetailQueryHandler implements QueryHandler<
   }
 
   // ===========================================================================
-  // Cancellation
+  // Cancellation Mapping
   // ===========================================================================
 
   private toCancellation(
@@ -405,11 +570,8 @@ export class GetJourneyBookingDetailQueryHandler implements QueryHandler<
       publicId: cancellation.publicId.value,
 
       reason: cancellation.reason.value,
-
       cancelledByPublicId: cancellation.cancelledByPublicId?.value ?? null,
-
       reasonDescription: cancellation.reasonDescription?.value ?? null,
-
       cancelledAt: cancellation.cancelledAt,
 
       createdAt: cancellation.createdAt,

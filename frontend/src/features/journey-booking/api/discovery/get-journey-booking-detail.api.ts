@@ -1,3 +1,4 @@
+
 // -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
@@ -19,9 +20,8 @@ import type {
 /**
  * Response returned by the Journey Booking detail endpoint.
  *
- * The API response is already aligned with the feature detail model.
- * The mapper layer remains responsible for converting transport data into
- * feature-specific application/view models when the representations diverge.
+ * Includes the detailed booking and the backend-provided Journey activity
+ * summary. No client-side activity calculations are performed here.
  */
 export type GetJourneyBookingDetailResponse =
   JourneyBookingDetailResponse;
@@ -34,7 +34,7 @@ export type GetJourneyBookingDetailResponse =
  * Fetches a Journey Booking by its public identifier.
  *
  * @param journeyBookingPublicId - Public identifier of the booking.
- * @returns The detailed Journey Booking response.
+ * @returns Booking details and the associated activity summary.
  */
 export async function getJourneyBookingDetail(
   journeyBookingPublicId: string,

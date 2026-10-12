@@ -1,17 +1,3 @@
-// -----------------------------------------------------------------------------
-// sisiMove — My Journey Mapper
-// -----------------------------------------------------------------------------
-//
-// Maps the authenticated MyJourneyResponse projection into the frontend
-// MyJourney model.
-//
-// Unlike the public Journey projection, this projection contains the owner's
-// Journey lifecycle state and timestamps.
-//
-// Null component projections remain null. The frontend must not fabricate
-// missing components or infer that a Journey is ready for publication.
-//
-// -----------------------------------------------------------------------------
 
 import type { MyJourney } from "../models/my-journey";
 import type { JourneyStatus } from "../models/journey-status";
@@ -37,9 +23,15 @@ import type { JourneyPreferencesResponse } from "./journey-preferences.mapper";
 import { JourneyAssetMapper } from "./journey-asset.mapper";
 import type { JourneyAssetResponse } from "./journey-asset.mapper";
 
+import type { JourneyBooking } from "@/features/journey-booking";
+import type { JourneyBoarding } from "@/features/journey-boarding/models";
+
 export interface MyJourneyResponse {
   readonly publicId: string;
   readonly status: string;
+
+  readonly unreadMessagesCount: number;
+
   readonly publishedAt: string | null;
   readonly startedAt: string | null;
   readonly completionRequestedAt: string | null;
@@ -55,6 +47,9 @@ export interface MyJourneyResponse {
   readonly preferences: JourneyPreferencesResponse | null;
   readonly assets: readonly JourneyAssetResponse[];
 
+  readonly bookings: readonly JourneyBooking[];
+  readonly boarding: JourneyBoarding | null;
+
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -64,6 +59,8 @@ export const MyJourneyMapper = {
     return {
       publicId: response.publicId,
       status: response.status as JourneyStatus,
+
+      unreadMessagesCount: response.unreadMessagesCount,
 
       publishedAt: response.publishedAt,
       startedAt: response.startedAt,
@@ -97,6 +94,9 @@ export const MyJourneyMapper = {
         : null,
 
       assets: JourneyAssetMapper.fromResponses(response.assets),
+
+      bookings: response.bookings,
+      boarding: response.boarding,
 
       createdAt: response.createdAt,
       updatedAt: response.updatedAt,

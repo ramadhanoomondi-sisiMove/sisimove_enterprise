@@ -1,3 +1,4 @@
+
 // frontend/src/features/journey-booking/models/journey-booking-detail.ts
 
 // -----------------------------------------------------------------------------
@@ -7,22 +8,16 @@
 // Frontend application model for Journey Booking detail and booking-list
 // surfaces.
 //
-// This model mirrors the stable application response exposed by the backend.
-// It intentionally does not reproduce backend domain entities or value
-// objects.
-//
-// The JourneyBookingDetail model is the canonical booking representation
-// consumed by presentation components that require the complete booking
-// snapshot, pricing, payment, cancellation, and optional journey context.
+// The backend response is authoritative for booking state and journey activity.
+// This model represents the REST response without reproducing backend domain
+// entities, value objects, or lifecycle behavior.
 //
 // IMPORTANT:
 //
-// `journey` is nullable because a booking may reference a Journey that is no
-// longer available in the current application state.
-//
-// `snapshot` is also nullable, but when present it remains the authoritative
-// historical representation of the Journey at booking time.
-//
+// - `journey` is nullable because a Journey may no longer be available.
+// - `snapshot` preserves the historical Journey data captured at booking time.
+// - `activitySummary` is returned alongside `booking` by the detail endpoint.
+// - The frontend consumes activity counts rather than calculating them.
 // -----------------------------------------------------------------------------
 
 import type { JourneyBookingCancellationReason } from './journey-booking-cancellation-reason';
@@ -30,21 +25,43 @@ import type { JourneyBookingPaymentStatus } from './journey-booking-payment-stat
 import type { JourneyBookingStatus } from './journey-booking-status';
 
 // -----------------------------------------------------------------------------
+// Journey Booking Detail — Activity Summary
+// -----------------------------------------------------------------------------
+
+/**
+ * Backend-provided activity counts for the Journey associated with a booking.
+ *
+ * These counts are computed by the backend application query handler.
+ */
+export interface JourneyBookingActivitySummary {
+  /**
+   * Number of bookings associated with the same Journey.
+   */
+  readonly associatedBookingsCount: number;
+
+  /**
+   * Number of participants associated with Journey Boarding.
+   */
+  readonly participantsCount: number;
+
+  /**
+   * Number of visible messages associated with the Journey.
+   */
+  readonly messagesCount: number;
+
+  /**
+   * Number of unread incoming messages for the authenticated passenger.
+   */
+  readonly unreadMessagesCount: number;
+}
+
+// -----------------------------------------------------------------------------
 // Journey Booking Detail — Snapshot
 // -----------------------------------------------------------------------------
 
 export interface JourneyBookingDetailSnapshot {
-  /**
-   * Historical snapshot identifier.
-   */
   readonly publicId: string;
 
-  /**
-   * Historical Journey route.
-   *
-   * These values belong to the booking snapshot and must not be replaced
-   * with current Journey values.
-   */
   readonly originName: string;
   readonly destinationName: string;
 
@@ -63,9 +80,6 @@ export interface JourneyBookingDetailSnapshot {
 
   readonly timezone: string;
 
-  /**
-   * Historical vehicle information.
-   */
   readonly vehicleMake: string | null;
   readonly vehicleModel: string | null;
   readonly vehicleYear: number | null;
@@ -228,19 +242,8 @@ export interface JourneyBookingDetailJourney {
 // -----------------------------------------------------------------------------
 
 export interface JourneyBookingDetail {
-  /**
-   * Public booking identifier.
-   */
   readonly publicId: string;
-
-  /**
-   * References the Journey associated with this booking.
-   */
   readonly journeyPublicId: string;
-
-  /**
-   * Passenger associated with the booking.
-   */
   readonly passengerPublicId: string;
 
   readonly status: JourneyBookingStatus;
@@ -257,31 +260,16 @@ export interface JourneyBookingDetail {
 
   /**
    * Current Journey context.
-   *
-   * This is intentionally nullable.
    */
   readonly journey: JourneyBookingDetailJourney | null;
 
   /**
    * Historical Journey snapshot captured when the booking was created.
-   *
-   * Booking presentation should prefer this data over the current Journey.
    */
   readonly snapshot: JourneyBookingDetailSnapshot | null;
 
-  /**
-   * Historical booking pricing.
-   */
   readonly pricing: JourneyBookingDetailPricing | null;
-
-  /**
-   * Booking payment information.
-   */
   readonly payment: JourneyBookingDetailPayment | null;
-
-  /**
-   * Cancellation information, when applicable.
-   */
   readonly cancellation: JourneyBookingDetailCancellation | null;
 
   readonly version: number;
@@ -294,22 +282,26 @@ export interface JourneyBookingDetail {
 // API Response — Detail
 // -----------------------------------------------------------------------------
 
+/**
+ * Matches the backend JourneyBookingDetailResponse.
+ *
+ * `activitySummary` is a sibling of `booking`, not a property nested inside it.
+ */
 export interface JourneyBookingDetailResponse {
   readonly booking: JourneyBookingDetail;
+  readonly activitySummary: JourneyBookingActivitySummary | null;
 }
 
 // -----------------------------------------------------------------------------
 // API Response — Collection
 // -----------------------------------------------------------------------------
-//
-// The booking-list endpoint should return the same complete booking shape when
-// JourneyBookingCard consumes JourneyBookingDetail.
-//
-// Keeping a dedicated collection response makes the API boundary explicit
-// without introducing a second incompatible booking model.
-//
-// -----------------------------------------------------------------------------
 
+/**
+ * Collection response for booking-list surfaces.
+ *
+ * Activity summaries are optional at the collection-item level because the
+ * backend collection handler may expose a different response contract.
+ */
 export interface JourneyBookingDetailCollectionResponse {
   readonly bookings: readonly JourneyBookingDetail[];
 }

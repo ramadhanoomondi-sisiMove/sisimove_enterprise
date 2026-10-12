@@ -1,31 +1,5 @@
-// -----------------------------------------------------------------------------
-// sisiMove — useBoardPassenger
-// -----------------------------------------------------------------------------
-//
-// Responsibilities:
-// - Execute the passenger boarding operation.
-// - Manage mutation state through the application's query layer.
-// - Map the HTTP response into the frontend JourneyBoarding model.
-//
-// Architectural rules:
-// - The hook owns mutation orchestration only.
-// - HTTP execution remains inside the API adapter.
-// - Authentication remains inside AuthenticatedApiClient.
-// - Response mapping remains inside the mapper.
-// - No domain/business rules belong here.
-// - The backend aggregate remains authoritative for participant transitions.
-// - Public identifiers remain opaque strings.
-// -----------------------------------------------------------------------------
 
-// -----------------------------------------------------------------------------
-// React Query
-// -----------------------------------------------------------------------------
-
-import { useMutation } from '@tanstack/react-query';
-
-// -----------------------------------------------------------------------------
-// API
-// -----------------------------------------------------------------------------
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import {
   boardPassenger,
@@ -33,48 +7,24 @@ import {
   type BoardPassengerRequest,
 } from '../../api';
 
-// -----------------------------------------------------------------------------
-// Model
-// -----------------------------------------------------------------------------
-
 import type { JourneyBoarding } from '../../models';
-
-// -----------------------------------------------------------------------------
-// Mapper
-// -----------------------------------------------------------------------------
-
 import { journeyBoardingMapper } from '../../mappers';
-
-// -----------------------------------------------------------------------------
-// Variables
-// -----------------------------------------------------------------------------
 
 export interface BoardPassengerVariables {
   params: BoardPassengerParams;
   request?: BoardPassengerRequest;
 }
 
-// -----------------------------------------------------------------------------
-// Hook
-// -----------------------------------------------------------------------------
-
-/**
- * Boards a passenger participating in the Journey Boarding.
- *
- * The mutation returns the frontend JourneyBoarding model rather than the
- * raw HTTP transport response.
- */
 export function useBoardPassenger() {
+  const queryClient = useQueryClient();
+
   return useMutation<
     JourneyBoarding,
     Error,
     BoardPassengerVariables
   >({
     mutationFn: async ({ params, request }) => {
-      const response = await boardPassenger(
-        params,
-        request,
-      );
+      const response = await boardPassenger(params, request);
 
       return journeyBoardingMapper.toModel({
         publicId: response.publicId,
@@ -89,6 +39,16 @@ export function useBoardPassenger() {
         events: response.events,
         createdAt: response.createdAt,
         updatedAt: response.updatedAt,
+      });
+    },
+
+    onSuccess: async (boarding) => {
+      await queryClient.invalidateQueries({
+        queryKey: [
+          'journey-boardings',
+          'journey',
+          boarding.journeyId,
+        ],
       });
     },
   });

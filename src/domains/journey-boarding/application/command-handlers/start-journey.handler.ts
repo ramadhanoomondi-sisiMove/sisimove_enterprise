@@ -5,58 +5,46 @@
 // -----------------------------------------------------------------------------
 //
 // Responsibilities:
-// - Resolve the Journey Boarding aggregate by public identifier.
+// - Resolve the Journey Boarding aggregate by its public identifier.
 // - Delegate journey commencement to the aggregate.
 // - Persist the updated aggregate.
-// - Return the updated aggregate.
+// - Resolve the associated Journey's public identifier.
+// - Return the updated aggregate together with the Journey public ID.
 //
 // Architectural rules:
-// - Inject the repository through the centralized dependency-injection token.
-// - Keep journey-start and boarding lifecycle invariants inside the aggregate.
-// - Use a domain-specific exception when the aggregate cannot be found.
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// NestJS
+// - Repository dependencies are injected through centralized DI tokens.
+// - The handler does not depend on concrete persistence implementations.
+// - Journey-start and boarding lifecycle invariants remain inside the aggregate.
+// - Internal Journey IDs are used only for repository lookups.
+// - Public Journey IDs are returned for REST response mapping.
 // -----------------------------------------------------------------------------
 
 import { Inject, Injectable } from '@nestjs/common';
 
-// -----------------------------------------------------------------------------
-// Foundation
-// -----------------------------------------------------------------------------
-
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 
-// -----------------------------------------------------------------------------
-// Dependency Injection Tokens
-// -----------------------------------------------------------------------------
-
 import { JOURNEY_BOARDING_TOKENS } from '../journey-boarding.tokens';
-
-// -----------------------------------------------------------------------------
-// Command
-// -----------------------------------------------------------------------------
+import { JOURNEY_TOKENS } from '../../../journey/application/journey.tokens';
 
 import type { StartJourneyCommand } from '../commands/start-journey.command';
 
-// -----------------------------------------------------------------------------
-// Aggregate
-// -----------------------------------------------------------------------------
-
 import type { JourneyBoardingAggregate } from '../../domain/aggregates/journey-boarding.aggregate';
 
-// -----------------------------------------------------------------------------
-// Repository
-// -----------------------------------------------------------------------------
-
 import type { JourneyBoardingRepository } from '../../domain/repositories/journey-boarding.repository';
+import type { JourneyRepository } from '../../../journey/domain/repositories/journey.repository';
 
-// -----------------------------------------------------------------------------
-// Exceptions
-// -----------------------------------------------------------------------------
+import { JourneyId } from '../../../journey/domain/value-objects/journey-id.vo';
 
 import { JourneyBoardingNotFoundException } from '../../domain/exceptions';
+
+// -----------------------------------------------------------------------------
+// Result
+// -----------------------------------------------------------------------------
+
+export interface StartJourneyResult {
+  aggregate: JourneyBoardingAggregate;
+  journeyPublicId: string;
+}
 
 // -----------------------------------------------------------------------------
 // Handler
@@ -65,27 +53,22 @@ import { JourneyBoardingNotFoundException } from '../../domain/exceptions';
 @Injectable()
 export class StartJourneyHandler implements CommandHandler<
   StartJourneyCommand,
-  JourneyBoardingAggregate
+  StartJourneyResult
 > {
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
   public constructor(
     @Inject(JOURNEY_BOARDING_TOKENS.REPOSITORY)
     private readonly repository: JourneyBoardingRepository,
-  ) {}
 
-  // ===========================================================================
-  // Execute
-  // ===========================================================================
+    @Inject(JOURNEY_TOKENS.REPOSITORY)
+    private readonly journeyRepository: JourneyRepository,
+  ) {}
 
   public async execute(
     command: StartJourneyCommand,
-  ): Promise<JourneyBoardingAggregate> {
-    // -------------------------------------------------------------------------
-    // Resolve Aggregate
-    // -------------------------------------------------------------------------
+  ): Promise<StartJourneyResult> {
+    // -----------------------------------------------------------------------
+    // Aggregate Lookup
+    // -----------------------------------------------------------------------
 
     const aggregate = await this.repository.findByPublicId(
       command.journeyBoardingPublicId,
@@ -97,14 +80,9 @@ export class StartJourneyHandler implements CommandHandler<
       );
     }
 
-    // -------------------------------------------------------------------------
-    // Start Journey
-    // -------------------------------------------------------------------------
-    //
-    // The aggregate validates the boarding lifecycle and provider status,
-    // applies the journey-start transition, updates its state and version,
-    // and records the corresponding domain event.
-    // -------------------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // Domain Operation
+    // -----------------------------------------------------------------------
 
     aggregate.startJourney(
       command.correlationId,
@@ -112,16 +90,35 @@ export class StartJourneyHandler implements CommandHandler<
       command.journeyStartedAt,
     );
 
-    // -------------------------------------------------------------------------
+    // -----------------------------------------------------------------------
     // Persistence
-    // -------------------------------------------------------------------------
+    // -----------------------------------------------------------------------
 
     await this.repository.save(aggregate);
 
-    // -------------------------------------------------------------------------
-    // Result
-    // -------------------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // Resolve Journey Public ID
+    // -----------------------------------------------------------------------
 
-    return aggregate;
+    const journey = await this.journeyRepository.findJourneyById(
+      new JourneyId(aggregate.journeyBoarding.journeyId.value),
+    );
+
+    if (journey === null) {
+      throw new Error(
+        `Journey not found for boarding ${aggregate.journeyBoarding.publicId.value}.`,
+      );
+    }
+
+    // -----------------------------------------------------------------------
+    // Result
+    // -----------------------------------------------------------------------
+
+    return {
+      aggregate,
+      journeyPublicId: journey.publicId.value,
+    };
   }
 }
+
+export default StartJourneyHandler;

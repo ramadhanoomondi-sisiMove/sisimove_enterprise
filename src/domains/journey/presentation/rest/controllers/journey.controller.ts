@@ -677,7 +677,10 @@ export class JourneyController {
           const boardingResponse =
             boarding === null
               ? null
-              : JourneyBoardingResponseMapper.toResponse(boarding);
+              : JourneyBoardingResponseMapper.toResponse(
+                  boarding,
+                  journey.publicId.value,
+                );
 
           return MyJourneyMapper.fromAggregate(
             journey,

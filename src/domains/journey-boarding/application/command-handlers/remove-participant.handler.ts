@@ -8,55 +8,43 @@
 // - Resolve the Journey Boarding aggregate by public identifier.
 // - Delegate participant removal to the aggregate.
 // - Persist the updated aggregate.
-// - Return the updated aggregate.
+// - Resolve the associated Journey's public identifier.
+// - Return the aggregate together with the Journey public ID.
 //
 // Architectural rules:
-// - Inject the repository through the centralized dependency-injection token.
+// - Inject repositories through centralized dependency-injection tokens.
 // - Keep participant lifecycle invariants inside the aggregate.
 // - Use a domain-specific exception when the aggregate cannot be found.
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// NestJS
+// - Use the internal Journey ID for repository lookup.
+// - Return the Journey public ID for REST response mapping.
 // -----------------------------------------------------------------------------
 
 import { Inject, Injectable } from '@nestjs/common';
 
-// -----------------------------------------------------------------------------
-// Foundation
-// -----------------------------------------------------------------------------
-
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 
-// -----------------------------------------------------------------------------
-// Dependency Injection Tokens
-// -----------------------------------------------------------------------------
-
 import { JOURNEY_BOARDING_TOKENS } from '../journey-boarding.tokens';
-
-// -----------------------------------------------------------------------------
-// Command
-// -----------------------------------------------------------------------------
+import { JOURNEY_TOKENS } from '../../../journey/application/journey.tokens';
 
 import type { RemoveParticipantCommand } from '../commands/remove-participant.command';
 
-// -----------------------------------------------------------------------------
-// Aggregate
-// -----------------------------------------------------------------------------
-
 import type { JourneyBoardingAggregate } from '../../domain/aggregates/journey-boarding.aggregate';
 
-// -----------------------------------------------------------------------------
-// Repository
-// -----------------------------------------------------------------------------
-
 import type { JourneyBoardingRepository } from '../../domain/repositories/journey-boarding.repository';
+import type { JourneyRepository } from '../../../journey/domain/repositories/journey.repository';
 
-// -----------------------------------------------------------------------------
-// Exceptions
-// -----------------------------------------------------------------------------
+import { JourneyId } from '../../../journey/domain/value-objects/journey-id.vo';
 
 import { JourneyBoardingNotFoundException } from '../../domain/exceptions';
+
+// -----------------------------------------------------------------------------
+// Result
+// -----------------------------------------------------------------------------
+
+export interface RemoveParticipantResult {
+  aggregate: JourneyBoardingAggregate;
+  journeyPublicId: string;
+}
 
 // -----------------------------------------------------------------------------
 // Handler
@@ -65,28 +53,19 @@ import { JourneyBoardingNotFoundException } from '../../domain/exceptions';
 @Injectable()
 export class RemoveParticipantHandler implements CommandHandler<
   RemoveParticipantCommand,
-  JourneyBoardingAggregate
+  RemoveParticipantResult
 > {
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
   public constructor(
     @Inject(JOURNEY_BOARDING_TOKENS.REPOSITORY)
     private readonly repository: JourneyBoardingRepository,
-  ) {}
 
-  // ===========================================================================
-  // Execute
-  // ===========================================================================
+    @Inject(JOURNEY_TOKENS.REPOSITORY)
+    private readonly journeyRepository: JourneyRepository,
+  ) {}
 
   public async execute(
     command: RemoveParticipantCommand,
-  ): Promise<JourneyBoardingAggregate> {
-    // -------------------------------------------------------------------------
-    // Resolve Aggregate
-    // -------------------------------------------------------------------------
-
+  ): Promise<RemoveParticipantResult> {
     const aggregate = await this.repository.findByPublicId(
       command.journeyBoardingPublicId,
     );
@@ -97,15 +76,6 @@ export class RemoveParticipantHandler implements CommandHandler<
       );
     }
 
-    // -------------------------------------------------------------------------
-    // Remove Participant
-    // -------------------------------------------------------------------------
-    //
-    // The aggregate validates whether removal is permitted, applies the
-    // participant lifecycle changes, and records the corresponding domain
-    // event.
-    // -------------------------------------------------------------------------
-
     aggregate.removeParticipant(
       command.participantPublicId,
       command.correlationId,
@@ -114,16 +84,23 @@ export class RemoveParticipantHandler implements CommandHandler<
       command.actorPublicId,
     );
 
-    // -------------------------------------------------------------------------
-    // Persistence
-    // -------------------------------------------------------------------------
-
     await this.repository.save(aggregate);
 
-    // -------------------------------------------------------------------------
-    // Result
-    // -------------------------------------------------------------------------
+    const journey = await this.journeyRepository.findJourneyById(
+      new JourneyId(aggregate.journeyBoarding.journeyId.value),
+    );
 
-    return aggregate;
+    if (journey === null) {
+      throw new Error(
+        `Journey not found for boarding ${aggregate.journeyBoarding.publicId.value}.`,
+      );
+    }
+
+    return {
+      aggregate,
+      journeyPublicId: journey.publicId.value,
+    };
   }
 }
+
+export default RemoveParticipantHandler;

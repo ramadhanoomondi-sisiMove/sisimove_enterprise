@@ -13,7 +13,7 @@ import { JourneyModule } from '../journey/journey.module';
 import { JourneyBoardingModule } from '../journey-boarding/journey-boarding.module';
 import { SocialModule } from '../social/social.module';
 import { TrustModule } from '../trust/trust.module';
-
+import { MessagingModule } from '../messaging/messaging.module';
 // -----------------------------------------------------------------------------
 // Infrastructure
 // -----------------------------------------------------------------------------
@@ -133,6 +133,7 @@ import {
 
     FinancialModule,
 
+    MessagingModule,
     // -------------------------------------------------------------------------
     // Prisma
     //

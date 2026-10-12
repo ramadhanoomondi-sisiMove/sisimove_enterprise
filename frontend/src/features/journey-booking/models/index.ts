@@ -1,3 +1,4 @@
+//src/features/journey-booking/models/index.ts
 // -----------------------------------------------------------------------------
 // Journey Booking — Model Barrel
 // -----------------------------------------------------------------------------
@@ -37,6 +38,7 @@ export type {
   JourneyBookingDetailProviderTrustBadgeAsset,
   JourneyBookingDetailResponse,
   JourneyBookingDetailSnapshot,
+  JourneyBookingActivitySummary,
 } from './journey-booking-detail';
 
 export type {

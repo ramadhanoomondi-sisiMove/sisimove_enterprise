@@ -1,4 +1,4 @@
-// src/domains/journey-boarding/models/index.ts
+// src/features/journey-boarding/models/index.ts
 
 // ============================================================
 // sisiMove — Journey Boarding Models

@@ -1,25 +1,58 @@
-// -----------------------------------------------------------------------------
-// Journey Booking Model
-// -----------------------------------------------------------------------------
-//
-// Frontend/application representation of a Journey Booking aggregate.
-//
-// The backend JourneyBookingAggregate is the authoritative owner of booking
-// lifecycle behavior, invariants, and state transitions.
-//
-// This frontend model is intentionally a transport/application representation.
-// It does not reproduce the backend aggregate, domain methods, value objects,
-// or lifecycle logic.
-//
-// Cross-domain references such as journeyPublicId and passengerPublicId remain
-// opaque public identifiers.
-// -----------------------------------------------------------------------------
+
+ // -----------------------------------------------------------------------------
+ // Journey Booking Model
+ // -----------------------------------------------------------------------------
+ //
+ // Frontend/application representation of a Journey Booking aggregate.
+ //
+ // The backend JourneyBookingAggregate is the authoritative owner of booking
+ // lifecycle behavior, invariants, and state transitions.
+ //
+ // This frontend model is intentionally a transport/application representation.
+ // It does not reproduce the backend aggregate, domain methods, value objects,
+ // or lifecycle logic.
+ //
+ // Cross-domain references such as journeyPublicId and passengerPublicId remain
+ // opaque public identifiers.
+ // -----------------------------------------------------------------------------
 
 import type { JourneyBookingCancellation } from './journey-booking-cancellation';
 import type { JourneyBookingPayment } from './journey-booking-payment';
 import type { JourneyBookingPricing } from './journey-booking-pricing';
 import type { JourneyBookingSnapshot } from './journey-booking-snapshot';
 import type { JourneyBookingStatus } from './journey-booking-status';
+
+// -----------------------------------------------------------------------------
+// Activity Summary
+// -----------------------------------------------------------------------------
+
+/**
+ * Backend-provided activity counts associated with a Journey Booking.
+ *
+ * Messaging and participant information belongs to the Journey context.
+ * The frontend consumes these values and does not calculate them locally.
+ */
+export interface JourneyBookingActivitySummary {
+  /**
+   * Number of bookings associated with the same Journey.
+   */
+  associatedBookingsCount: number;
+
+  /**
+   * Number of participants associated with the Journey Boarding.
+   */
+  participantsCount: number;
+
+  /**
+   * Number of visible messages associated with the Journey.
+   */
+  messagesCount: number;
+
+  /**
+   * Number of unread incoming messages for the authenticated passenger.
+   */
+  unreadMessagesCount: number;
+}
 
 // -----------------------------------------------------------------------------
 // Model
@@ -83,6 +116,21 @@ export interface JourneyBooking {
    * Cancellation information when the booking has been cancelled.
    */
   cancellation?: JourneyBookingCancellation;
+
+  /**
+   * Activity summary supplied by the backend for this booking's Journey.
+   *
+   * Null when the backend does not provide an activity summary.
+   */
+  activitySummary?: JourneyBookingActivitySummary | null;
+
+  /**
+   * Number of unread incoming messages associated with this Journey.
+   *
+   * Convenience accessor for UI consumers that need only the unread count.
+   * When present, this should agree with activitySummary.unreadMessagesCount.
+   */
+  unreadMessagesCount?: number;
 
   /**
    * Timestamp at which the booking was confirmed.

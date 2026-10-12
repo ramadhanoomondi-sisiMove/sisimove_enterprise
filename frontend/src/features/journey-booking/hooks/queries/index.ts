@@ -1,3 +1,4 @@
+//src/features/journey-booking/hooks/queries/index.ts
 // -----------------------------------------------------------------------------
 // Journey Booking — Query Hooks Barrel
 // -----------------------------------------------------------------------------
@@ -30,3 +31,26 @@ export {
   useJourneyBookingsByStatus,
   type UseJourneyBookingsByStatusOptions,
 } from './use-journey-bookings-by-status';
+
+export {
+  useJourneyBookingByTransaction,
+  type UseJourneyBookingByTransactionOptions,
+} from './use-journey-booking-by-transaction';
+
+
+export {
+  useJourneyBookingsByJourneyAndPassenger,
+  type UseJourneyBookingsByJourneyAndPassengerOptions,
+} from './use-journey-bookings-by-journey-and-passenger';
+
+
+export {
+  useJourneyBookingsByJourney,
+  type UseJourneyBookingsByJourneyOptions,
+} from './use-journey-bookings-by-journey';
+
+
+export {
+  useJourneyBookingsByPassenger,
+  type UseJourneyBookingsByPassengerOptions,
+} from './use-journey-bookings-by-passenger';

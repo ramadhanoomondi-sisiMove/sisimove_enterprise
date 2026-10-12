@@ -1,10 +1,9 @@
 // -----------------------------------------------------------------------------
 // Permission Action
 // -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
+//
 // Foundation
-// -----------------------------------------------------------------------------
+//
 
 import { ValueObject } from '../../../../foundation/kernel/domain/value-object';
 
@@ -35,6 +34,9 @@ interface PermissionActionProps {
  *   MANAGE
  *   APPROVE
  *   REJECT
+ *   BOARD_PROVIDER
+ *   BOARD-PROVIDER
+ *   CONFIRM-PASSENGER
  */
 export class PermissionAction extends ValueObject<PermissionActionProps> {
   // ---------------------------------------------------------------------------
@@ -95,12 +97,19 @@ export class PermissionAction extends ValueObject<PermissionActionProps> {
    * Allowed:
    * - uppercase letters;
    * - numbers;
-   * - underscores.
+   * - underscores;
+   * - hyphens.
    *
    * The action must begin and end with an alphanumeric character.
+   *
+   * Examples:
+   * - READ
+   * - BOARD_PROVIDER
+   * - BOARD-PROVIDER
+   * - CONFIRM-PASSENGER
    */
   public static isValid(value: string): boolean {
-    return /^[A-Z0-9](?:[A-Z0-9_]*[A-Z0-9])?$/.test(value);
+    return /^[A-Z0-9](?:[A-Z0-9_-]*[A-Z0-9])?$/.test(value);
   }
 
   // ---------------------------------------------------------------------------

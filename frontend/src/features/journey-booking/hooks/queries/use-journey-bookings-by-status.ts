@@ -1,22 +1,21 @@
-// -----------------------------------------------------------------------------
-// Journey Booking — Status Query Hook
-// -----------------------------------------------------------------------------
-//
-// React Query hook for loading Journey Bookings by lifecycle status.
-//
-// This query is primarily useful for authenticated management workflows where
-// a UI needs to inspect a particular booking state. The backend remains
-// authoritative for the status and for determining which bookings are returned.
-//
-// Responsibilities:
-// - invoke the status-based Journey Booking API operation;
-// - map transport responses into frontend models;
-// - provide a stable query key containing the requested status.
-//
-// This hook does not derive, filter, or transition booking statuses locally.
-// -----------------------------------------------------------------------------
 
 'use client';
+
+// -----------------------------------------------------------------------------
+// SisiMove — Journey Bookings by Status Query Hook
+// -----------------------------------------------------------------------------
+//
+// React Query hook for retrieving Journey Bookings by lifecycle status.
+//
+// Responsibilities:
+// - invoke the status-based discovery API;
+// - map transport responses into frontend JourneyBooking models;
+// - provide a stable query key containing the requested status;
+// - support conditional execution.
+//
+// This hook does not derive, filter, or transition booking statuses locally.
+// The backend remains authoritative for booking data.
+// -----------------------------------------------------------------------------
 
 import { useQuery } from '@tanstack/react-query';
 
@@ -27,9 +26,9 @@ import {
   mapJourneyBookings,
   type JourneyBookingApiResponse,
 } from '../../mappers';
-import {
-  type JourneyBooking,
-  type JourneyBookingStatus,
+import type {
+  JourneyBooking,
+  JourneyBookingStatus,
 } from '../../models';
 
 const JOURNEY_BOOKINGS_BY_STATUS_QUERY_KEY =
@@ -51,27 +50,32 @@ export function useJourneyBookingsByStatus(
   status: JourneyBookingStatus | undefined,
   options: UseJourneyBookingsByStatusOptions = {},
 ) {
+  const normalizedStatus = status?.trim() ?? '';
+
   return useQuery<JourneyBooking[], Error>({
     queryKey: [
       JOURNEY_BOOKINGS_BY_STATUS_QUERY_KEY,
-      status ?? null,
+      normalizedStatus || null,
     ],
+
     queryFn: async () => {
-      if (!status) {
+      if (!normalizedStatus) {
         throw new TypeError(
           'Journey Booking status is required.',
         );
       }
 
-      const response =
-        await findJourneyBookingsByStatus(status);
+      const response = await findJourneyBookingsByStatus(
+        normalizedStatus as JourneyBookingStatus,
+      );
 
       return mapJourneyBookings(
         response as JourneyBookingApiResponse[],
       );
     },
+
     enabled:
       options.enabled !== false &&
-      status !== undefined,
+      normalizedStatus.length > 0,
   });
 }

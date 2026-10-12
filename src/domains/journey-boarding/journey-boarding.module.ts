@@ -1,6 +1,7 @@
 // src/domains/journey-boarding/journey-boarding.module.ts
 
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
+import { JourneyModule } from '../journey/journey.module';
 
 // -----------------------------------------------------------------------------
 // Domain Dependencies
@@ -68,29 +69,7 @@ import {
   // Imports
   // ===========================================================================
 
-  imports: [
-    // -------------------------------------------------------------------------
-    // Identity
-    //
-    // Provides identity-related dependencies required by the Journey Boarding
-    // presentation and application layers.
-    // -------------------------------------------------------------------------
-
-    IdentityModule,
-
-    // -------------------------------------------------------------------------
-    // Prisma
-    //
-    // Provides the shared Prisma infrastructure used by the Journey Boarding
-    // persistence providers.
-    //
-    // Repositories using PrismaTransactionContext must continue to use the
-    // ambient transaction client when one is available. They must not open
-    // independent transactions that bypass the caller's unit of work.
-    // -------------------------------------------------------------------------
-
-    PrismaModule,
-  ],
+  imports: [IdentityModule, PrismaModule, forwardRef(() => JourneyModule)],
 
   // ===========================================================================
   // Controllers

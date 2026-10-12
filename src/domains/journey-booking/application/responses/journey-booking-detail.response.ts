@@ -1,6 +1,6 @@
-// -----------------------------------------------------------------------------
-// Journey Booking — Detail Response
-// -----------------------------------------------------------------------------
+/* -----------------------------------------------------------------------------
+ * Journey Booking — Detail Response
+ * -------------------------------------------------------------------------- */
 
 // =============================================================================
 // Booking Detail Snapshot
@@ -184,9 +184,40 @@ export interface JourneyBookingDetail {
 }
 
 // =============================================================================
+// Journey Booking Activity Summary
+// =============================================================================
+
+export interface JourneyBookingActivitySummary {
+  /**
+   * Total bookings associated with the journey.
+   */
+  readonly associatedBookingsCount: number;
+
+  /**
+   * Total participants recorded in the Journey Boarding aggregate.
+   */
+  readonly participantsCount: number;
+
+  /**
+   * Total visible messages across the journey's conversations.
+   */
+  readonly messagesCount: number;
+
+  /**
+   * Unread messages for the authenticated passenger.
+   */
+  readonly unreadMessagesCount: number;
+}
+
+// =============================================================================
 // Journey Booking Detail Response
 // =============================================================================
 
 export interface JourneyBookingDetailResponse {
   readonly booking: JourneyBookingDetail;
+
+  /**
+   * Null when the activity summary is not applicable.
+   */
+  readonly activitySummary: JourneyBookingActivitySummary | null;
 }

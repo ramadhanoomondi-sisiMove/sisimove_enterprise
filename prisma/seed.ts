@@ -101,7 +101,7 @@ async function main(): Promise<void> {
   return value;
 }
 
-  // ===========================================================================
+// ===========================================================================
 // 1. ROLES
 // ===========================================================================
 
@@ -202,9 +202,23 @@ const permissionDefinitions = [
   ['booking', 'cancel'],
   ['booking', 'manage'],
 
-  // Boarding
+  // Boarding — read and lifecycle operations
   ['boarding', 'read'],
+  ['boarding', 'create'],
+  ['boarding', 'open'],
+  ['boarding', 'start'],
+  ['boarding', 'cancel'],
   ['boarding', 'manage'],
+
+  // Boarding — provider and passenger operations
+  ['boarding', 'board-provider'],
+  ['boarding', 'board-passenger'],
+  ['boarding', 'confirm-passenger'],
+  ['boarding', 'passenger-no-show'],
+
+  // Boarding — participant lifecycle
+  ['boarding', 'participant-withdraw'],
+  ['boarding', 'participant-remove'],
 
   // Verification
   ['verification', 'read'],
@@ -249,16 +263,9 @@ const permissions: Record<
 > = {};
 
 for (const [resource, action] of permissionDefinitions) {
-  // Canonical sisiMove permission format:
-  //
-  //     resource:action
-  //
-  // Examples:
-  //     journey:create
-  //     journey:read
-  //     journey:update
-  //     verification:submit
-  //
+  // Canonical permission format: resource:action
+  // Example: boarding:confirm-passenger
+
   const code = `${resource}:${action}`;
 
   const permission = await prisma.permission.upsert({
@@ -295,6 +302,10 @@ for (const [resource, action] of permissionDefinitions) {
 
 console.log('[3/12] Seeding role permissions...');
 
+// Members can confirm their own boarding through an endpoint that
+// verifies the authenticated identity owns the relevant booking.
+// The permission alone must never authorize confirmation for another person.
+
 const memberPermissions = [
   'identity:read',
 
@@ -313,6 +324,7 @@ const memberPermissions = [
   'booking:cancel',
 
   'boarding:read',
+  'boarding:confirm-passenger',
 
   'verification:read',
   'verification:submit',
@@ -335,6 +347,17 @@ const driverPermissions = [
   'journey:cancel',
   'journey:manage',
 
+  // Journey boarding
+  'boarding:read',
+  'boarding:create',
+  'boarding:open',
+  'boarding:start',
+  'boarding:cancel',
+  'boarding:board-provider',
+  'boarding:board-passenger',
+  'boarding:passenger-no-show',
+  'boarding:participant-withdraw',
+  'boarding:participant-remove',
   'boarding:manage',
 ];
 
@@ -356,7 +379,18 @@ const adminPermissions = [
   'booking:read',
   'booking:manage',
 
+  // Boarding
   'boarding:read',
+  'boarding:create',
+  'boarding:open',
+  'boarding:start',
+  'boarding:cancel',
+  'boarding:board-provider',
+  'boarding:board-passenger',
+  'boarding:confirm-passenger',
+  'boarding:passenger-no-show',
+  'boarding:participant-withdraw',
+  'boarding:participant-remove',
   'boarding:manage',
 
   'verification:read',
@@ -420,7 +454,7 @@ for (const [roleCode, permissionCodes] of Object.entries(
       update: {},
       create: {
         publicId: `SM-RP-${roleCode}-${permissionCode
-          .replace(':', '-')
+          .replace(/:/g, '-')
           .toUpperCase()}`,
         roleId: role.id,
         permissionId: permission.id,
@@ -428,75 +462,86 @@ for (const [roleCode, permissionCodes] of Object.entries(
     });
   }
 }
-  // ===========================================================================
-  // 4. IDENTITIES
-  // ===========================================================================
 
-  console.log('[4/12] Seeding identities...');
+// ===========================================================================
+// 4. IDENTITIES
+// ===========================================================================
 
-  const identityDefinitions = {
-    member: {
-      publicId: 'SM-MEMBER-001',
-      email: 'member@sisimove.test',
-      phoneNumber: '+254700000001',
-    },
-    driver: {
-      publicId: 'SM-DRIVER-001',
-      email: 'driver@sisimove.test',
-      phoneNumber: '+254700000002',
-    },
-    admin: {
-      publicId: 'SM-ADMIN-001',
-      email: 'admin@sisimove.test',
-      phoneNumber: '+254700000003',
-    },
-    superAdmin: {
-      publicId: 'SM-SUPERADMIN-001',
-      email: 'superadmin@sisimove.test',
-      phoneNumber: '+254700000004',
-    },
-  };
+console.log('[4/12] Seeding identities...');
 
-  const identities: Record<
-    keyof typeof identityDefinitions,
-    {
-      id: string;
-      publicId: string;
-    }
-  > = {} as Record<
-    keyof typeof identityDefinitions,
-    {
-      id: string;
-      publicId: string;
-    }
-  >;
+const identityDefinitions = {
+  member: {
+    publicId: 'SM-MEMBER-001',
+    email: 'member@sisimove.test',
+    phoneNumber: '+254700000001',
+  },
+  member2: {
+    publicId: 'SM-MEMBER-002',
+    email: 'member2@sisimove.test',
+    phoneNumber: '+254700000005',
+  },
+  driver: {
+    publicId: 'SM-DRIVER-001',
+    email: 'driver@sisimove.test',
+    phoneNumber: '+254700000002',
+  },
+  driver2: {
+    publicId: 'SM-DRIVER-002',
+    email: 'driver2@sisimove.test',
+    phoneNumber: '+254700000006',
+  },
+  admin: {
+    publicId: 'SM-ADMIN-001',
+    email: 'admin@sisimove.test',
+    phoneNumber: '+254700000003',
+  },
+  superAdmin: {
+    publicId: 'SM-SUPERADMIN-001',
+    email: 'superadmin@sisimove.test',
+    phoneNumber: '+254700000004',
+  },
+};
 
-  for (const [key, definition] of Object.entries(identityDefinitions)) {
-    const identity = await prisma.identity.upsert({
-      where: {
-        email: definition.email,
-      },
-      update: {
-        phoneNumber: definition.phoneNumber,
-        status: IdentityStatus.ACTIVE,
-        activatedAt: NOW,
-        suspendedAt: null,
-        closedAt: null,
-      },
-      create: {
-        publicId: definition.publicId,
-        email: definition.email,
-        phoneNumber: definition.phoneNumber,
-        status: IdentityStatus.ACTIVE,
-        activatedAt: NOW,
-      },
-    });
-
-    identities[key as keyof typeof identityDefinitions] = {
-      id: identity.id,
-      publicId: identity.publicId,
-    };
+const identities: Record<
+  keyof typeof identityDefinitions,
+  {
+    id: string;
+    publicId: string;
   }
+> = {} as Record<
+  keyof typeof identityDefinitions,
+  {
+    id: string;
+    publicId: string;
+  }
+>;
+
+for (const [key, definition] of Object.entries(identityDefinitions)) {
+  const identity = await prisma.identity.upsert({
+    where: {
+      email: definition.email,
+    },
+    update: {
+      phoneNumber: definition.phoneNumber,
+      status: IdentityStatus.ACTIVE,
+      activatedAt: NOW,
+      suspendedAt: null,
+      closedAt: null,
+    },
+    create: {
+      publicId: definition.publicId,
+      email: definition.email,
+      phoneNumber: definition.phoneNumber,
+      status: IdentityStatus.ACTIVE,
+      activatedAt: NOW,
+    },
+  });
+
+  identities[key as keyof typeof identityDefinitions] = {
+    id: identity.id,
+    publicId: identity.publicId,
+  };
+}
 
 // ===========================================================================
 // 5. IDENTITY ROLES
@@ -506,7 +551,9 @@ console.log('[5/12] Assigning identity roles...');
 
 const identityRoleDefinitions = [
   ['member', 'MEMBER'],
+  ['member2', 'MEMBER'],
   ['driver', 'DRIVER'],
+  ['driver2', 'DRIVER'],
   ['admin', 'ADMIN'],
   ['superAdmin', 'SUPER_ADMIN'],
 ] as const;
@@ -1267,6 +1314,107 @@ const memberVerification = await prisma.verification.upsert({
 });
 
 // ---------------------------------------------------------------------------
+// Second driver verification
+// ---------------------------------------------------------------------------
+
+await prisma.verification.upsert({
+  where: {
+    identityId: identities.driver2.id,
+  },
+  update: {
+    status: VerificationStatus.VERIFIED,
+    level: VerificationLevel.DRIVER,
+
+    profilePhotoVerified: true,
+    governmentIdVerified: true,
+    driverLicenseVerified: true,
+
+    verifiedAt: VERIFICATION_VERIFIED_AT,
+    memberVerifiedAt: VERIFICATION_VERIFIED_AT,
+    driverVerifiedAt: VERIFICATION_VERIFIED_AT,
+    profilePhotoVerifiedAt: VERIFICATION_VERIFIED_AT,
+    governmentIdVerifiedAt: VERIFICATION_VERIFIED_AT,
+    driverLicenseVerifiedAt: VERIFICATION_VERIFIED_AT,
+
+    reviewedById: identities.admin.id,
+    lastReviewedAt: VERIFICATION_REVIEWED_AT,
+    createdAt: VERIFICATION_CREATED_AT,
+  },
+  create: {
+    publicId: 'AS-VERIFICATION-DRIVER-002',
+    identityId: identities.driver2.id,
+
+    status: VerificationStatus.VERIFIED,
+    level: VerificationLevel.DRIVER,
+
+    profilePhotoVerified: true,
+    governmentIdVerified: true,
+    driverLicenseVerified: true,
+
+    verifiedAt: VERIFICATION_VERIFIED_AT,
+    memberVerifiedAt: VERIFICATION_VERIFIED_AT,
+    driverVerifiedAt: VERIFICATION_VERIFIED_AT,
+    profilePhotoVerifiedAt: VERIFICATION_VERIFIED_AT,
+    governmentIdVerifiedAt: VERIFICATION_VERIFIED_AT,
+    driverLicenseVerifiedAt: VERIFICATION_VERIFIED_AT,
+
+    reviewedById: identities.admin.id,
+    lastReviewedAt: VERIFICATION_REVIEWED_AT,
+    createdAt: VERIFICATION_CREATED_AT,
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Second member verification
+// ---------------------------------------------------------------------------
+
+await prisma.verification.upsert({
+  where: {
+    identityId: identities.member2.id,
+  },
+  update: {
+    status: VerificationStatus.VERIFIED,
+    level: VerificationLevel.MEMBER,
+
+    profilePhotoVerified: true,
+    governmentIdVerified: true,
+    driverLicenseVerified: false,
+
+    verifiedAt: VERIFICATION_VERIFIED_AT,
+    memberVerifiedAt: VERIFICATION_VERIFIED_AT,
+    driverVerifiedAt: null,
+    profilePhotoVerifiedAt: VERIFICATION_VERIFIED_AT,
+    governmentIdVerifiedAt: VERIFICATION_VERIFIED_AT,
+    driverLicenseVerifiedAt: null,
+
+    reviewedById: identities.admin.id,
+    lastReviewedAt: VERIFICATION_REVIEWED_AT,
+    createdAt: VERIFICATION_CREATED_AT,
+  },
+  create: {
+    publicId: 'AS-VERIFICATION-MEMBER-002',
+    identityId: identities.member2.id,
+
+    status: VerificationStatus.VERIFIED,
+    level: VerificationLevel.MEMBER,
+
+    profilePhotoVerified: true,
+    governmentIdVerified: true,
+    driverLicenseVerified: false,
+
+    verifiedAt: VERIFICATION_VERIFIED_AT,
+    memberVerifiedAt: VERIFICATION_VERIFIED_AT,
+    driverVerifiedAt: null,
+    profilePhotoVerifiedAt: VERIFICATION_VERIFIED_AT,
+    governmentIdVerifiedAt: VERIFICATION_VERIFIED_AT,
+    driverLicenseVerifiedAt: null,
+
+    reviewedById: identities.admin.id,
+    lastReviewedAt: VERIFICATION_REVIEWED_AT,
+    createdAt: VERIFICATION_CREATED_AT,
+  },
+});
+// ---------------------------------------------------------------------------
 // Driver verification request — licence
 // ---------------------------------------------------------------------------
 
@@ -1376,6 +1524,87 @@ await prisma.verificationRequest.upsert({
       visibility: TravellerProfileVisibility.PUBLIC,
     },
   });
+
+ 
+const member2Profile = await prisma.travellerProfile.upsert({
+  where: {
+    memberPublicId: identities.member2.publicId,
+  },
+  update: {
+    handle: 'sisimove_member2',
+    bio: 'SisiMove development member without bookings.',
+    countryCode: 'KE',
+    status: TravellerProfileStatus.ACTIVE,
+    visibility: TravellerProfileVisibility.PUBLIC,
+  },
+  create: {
+    publicId: 'AS-TRAVELLER-MEMBER-002',
+    memberPublicId: identities.member2.publicId,
+    handle: 'sisimove_member2',
+    bio: 'SisiMove development member without bookings.',
+    countryCode: 'KE',
+    status: TravellerProfileStatus.ACTIVE,
+    visibility: TravellerProfileVisibility.PUBLIC,
+  },
+});
+
+const driver2Profile = await prisma.travellerProfile.upsert({
+  where: {
+    memberPublicId: identities.driver2.publicId,
+  },
+  update: {
+    handle: 'sisimove_driver2',
+    bio: 'Verified SisiMove development driver without journeys.',
+    countryCode: 'KE',
+    status: TravellerProfileStatus.ACTIVE,
+    visibility: TravellerProfileVisibility.PUBLIC,
+    providerJourneys: 0,
+    completedProviderJourneys: 0,
+    totalJourneys: 0,
+    completedJourneys: 0,
+  },
+  create: {
+    publicId: 'AS-TRAVELLER-DRIVER-002',
+    memberPublicId: identities.driver2.publicId,
+    handle: 'sisimove_driver2',
+    bio: 'SisiMove development driver without journeys.',
+    countryCode: 'KE',
+    status: TravellerProfileStatus.ACTIVE,
+    visibility: TravellerProfileVisibility.PUBLIC,
+    providerJourneys: 0,
+    completedProviderJourneys: 0,
+    totalJourneys: 0,
+    completedJourneys: 0,
+  },
+});
+
+await prisma.travellerProfilePreferences.upsert({
+  where: {
+    profileId: member2Profile.id,
+  },
+  update: {},
+  create: {
+    publicId: 'AS-TPREF-MEMBER-002',
+    profileId: member2Profile.id,
+    showJourneyHistory: true,
+    showJourneyStatistics: true,
+    allowJourneyInvites: true,
+  },
+});
+
+await prisma.travellerProfilePreferences.upsert({
+  where: {
+    profileId: driver2Profile.id,
+  },
+  update: {},
+  create: {
+    publicId: 'AS-TPREF-DRIVER-002',
+    profileId: driver2Profile.id,
+    showJourneyHistory: true,
+    showJourneyStatistics: true,
+    allowJourneyInvites: true,
+  },
+});
 
   const driverProfile = await prisma.travellerProfile.upsert({
     where: {
@@ -1502,6 +1731,76 @@ await prisma.verificationRequest.upsert({
       cancellationRate: new Prisma.Decimal('0.00'),
     },
   });
+
+  
+  // ---------------------------------------------------------------------------
+  // Second member trust profile — no bookings or completed journeys
+  // ---------------------------------------------------------------------------
+
+  await prisma.trustProfile.upsert({
+    where: {
+      memberPublicId: identities.member2.publicId,
+    },
+    update: {
+      status: TrustProfileStatus.ACTIVE,
+      verificationLevel: TrustVerificationLevel.VERIFIED,
+      ratingAverage: new Prisma.Decimal('0.00'),
+      ratingCount: 0,
+      completedJourneys: 0,
+      passengerJourneys: 0,
+      completedPassengerJourneys: 0,
+      completionRate: new Prisma.Decimal('0.00'),
+      cancellationRate: new Prisma.Decimal('0.00'),
+    },
+    create: {
+      publicId: 'SM-TRUST-MEMBER-002',
+      memberPublicId: identities.member2.publicId,
+      status: TrustProfileStatus.ACTIVE,
+      verificationLevel: TrustVerificationLevel.VERIFIED,
+      ratingAverage: new Prisma.Decimal('0.00'),
+      ratingCount: 0,
+      completedJourneys: 0,
+      passengerJourneys: 0,
+      completedPassengerJourneys: 0,
+      completionRate: new Prisma.Decimal('0.00'),
+      cancellationRate: new Prisma.Decimal('0.00'),
+    },
+  });
+
+  // ---------------------------------------------------------------------------
+  // Second driver trust profile — no journeys or bookings
+  // ---------------------------------------------------------------------------
+
+  await prisma.trustProfile.upsert({
+    where: {
+      memberPublicId: identities.driver2.publicId,
+    },
+    update: {
+      status: TrustProfileStatus.ACTIVE,
+      verificationLevel: TrustVerificationLevel.HIGHLY_VERIFIED,
+      ratingAverage: new Prisma.Decimal('0.00'),
+      ratingCount: 0,
+      completedJourneys: 0,
+      providerJourneys: 0,
+      completedProviderJourneys: 0,
+      completionRate: new Prisma.Decimal('0.00'),
+      cancellationRate: new Prisma.Decimal('0.00'),
+    },
+    create: {
+      publicId: 'SM-TRUST-DRIVER-002',
+      memberPublicId: identities.driver2.publicId,
+      status: TrustProfileStatus.ACTIVE,
+      verificationLevel: TrustVerificationLevel.HIGHLY_VERIFIED,
+      ratingAverage: new Prisma.Decimal('0.00'),
+      ratingCount: 0,
+      completedJourneys: 0,
+      providerJourneys: 0,
+      completedProviderJourneys: 0,
+      completionRate: new Prisma.Decimal('0.00'),
+      cancellationRate: new Prisma.Decimal('0.00'),
+    },
+  });
+
 
   // ===========================================================================
   // 11. JOURNEY VEHICLES
@@ -2994,6 +3293,51 @@ await prisma.verificationRequest.upsert({
     },
   });
 
+ 
+  // ---------------------------------------------------------------------------
+  // Second member wallet account
+  // ---------------------------------------------------------------------------
+
+  const member2Account = await prisma.financialAccount.upsert({
+    where: {
+      ownerPublicId: identities.member2.publicId,
+    },
+    update: {
+      type: FinancialAccountType.USER,
+      status: FinancialAccountStatus.ACTIVE,
+      currency: 'KES',
+    },
+    create: {
+      publicId: 'SM-FIN-ACCOUNT-MEMBER-002',
+      type: FinancialAccountType.USER,
+      status: FinancialAccountStatus.ACTIVE,
+      ownerPublicId: identities.member2.publicId,
+      currency: 'KES',
+    },
+  });
+
+  // ---------------------------------------------------------------------------
+  // Second driver wallet account
+  // ---------------------------------------------------------------------------
+
+  const driver2Account = await prisma.financialAccount.upsert({
+    where: {
+      ownerPublicId: identities.driver2.publicId,
+    },
+    update: {
+      type: FinancialAccountType.USER,
+      status: FinancialAccountStatus.ACTIVE,
+      currency: 'KES',
+    },
+    create: {
+      publicId: 'SM-FIN-ACCOUNT-DRIVER-002',
+      type: FinancialAccountType.USER,
+      status: FinancialAccountStatus.ACTIVE,
+      ownerPublicId: identities.driver2.publicId,
+      currency: 'KES',
+    },
+  });
+
   const platformAccount = await prisma.financialAccount.upsert({
     where: {
       publicId: 'SM-FIN-ACCOUNT-PLATFORM-001',
@@ -3078,7 +3422,60 @@ await prisma.financialAccountBalance.upsert({
       version: 1,
     },
   });
-const memberWalletFundingTransaction =
+
+  // ---------------------------------------------------------------------------
+  // Second member wallet balance — KES 5,000
+  // ---------------------------------------------------------------------------
+
+  await prisma.financialAccountBalance.upsert({
+    where: {
+      accountId: member2Account.id,
+    },
+    update: {
+      availableAmount: 5000,
+      pendingAmount: 0,
+      heldAmount: 0,
+      currency: 'KES',
+      version: 1,
+    },
+    create: {
+      publicId: 'SM-FIN-BALANCE-MEMBER-002',
+      accountId: member2Account.id,
+      availableAmount: 5000,
+      pendingAmount: 0,
+      heldAmount: 0,
+      currency: 'KES',
+      version: 1,
+    },
+  });
+
+  // ---------------------------------------------------------------------------
+  // Second driver wallet balance — KES 5,000
+  // ---------------------------------------------------------------------------
+
+  await prisma.financialAccountBalance.upsert({
+    where: {
+      accountId: driver2Account.id,
+    },
+    update: {
+      availableAmount: 5000,
+      pendingAmount: 0,
+      heldAmount: 0,
+      currency: 'KES',
+      version: 1,
+    },
+    create: {
+      publicId: 'SM-FIN-BALANCE-DRIVER-002',
+      accountId: driver2Account.id,
+      availableAmount: 5000,
+      pendingAmount: 0,
+      heldAmount: 0,
+      currency: 'KES',
+      version: 1,
+    },
+  });
+
+  const memberWalletFundingTransaction =
   await prisma.financialTransaction.upsert({
     where: {
       publicId: 'SM-FIN-TX-WALLET-FUNDING-MEMBER-001',
@@ -3132,6 +3529,125 @@ await prisma.financialTransactionEntry.upsert({
     amount: 11260,
   },
 });
+
+  // ---------------------------------------------------------------------------
+  // Second member wallet funding transaction — KES 5,000
+  // ---------------------------------------------------------------------------
+
+  const member2WalletFundingTransaction =
+    await prisma.financialTransaction.upsert({
+      where: {
+        publicId: 'SM-FIN-TX-WALLET-FUNDING-MEMBER-002',
+      },
+      update: {
+        type: FinancialTransactionType.ADJUSTMENT,
+        status: FinancialTransactionStatus.COMPLETED,
+        sourceAccountId: null,
+        destinationAccountId: member2Account.id,
+        amount: 5000,
+        currency: 'KES',
+        referenceType: 'SeedWalletFunding',
+        referencePublicId: identities.member2.publicId,
+        accountingJournalPublicId: null,
+        completedAt: NOW,
+        failedAt: null,
+        reversedAt: null,
+        cancelledAt: null,
+      },
+      create: {
+        publicId: 'SM-FIN-TX-WALLET-FUNDING-MEMBER-002',
+        type: FinancialTransactionType.ADJUSTMENT,
+        status: FinancialTransactionStatus.COMPLETED,
+        sourceAccountId: null,
+        destinationAccountId: member2Account.id,
+        amount: 5000,
+        currency: 'KES',
+        referenceType: 'SeedWalletFunding',
+        referencePublicId: identities.member2.publicId,
+        completedAt: NOW,
+      },
+    });
+
+  await prisma.financialTransactionEntry.upsert({
+    where: {
+      publicId: 'SM-FIN-ENTRY-WALLET-FUNDING-MEMBER-002',
+    },
+    update: {
+      transactionId: member2WalletFundingTransaction.id,
+      accountId: member2Account.id,
+      type: FinancialTransactionEntryType.CREDIT,
+      balanceType: FinancialBalanceType.AVAILABLE,
+      amount: 5000,
+    },
+    create: {
+      publicId: 'SM-FIN-ENTRY-WALLET-FUNDING-MEMBER-002',
+      transactionId: member2WalletFundingTransaction.id,
+      accountId: member2Account.id,
+      type: FinancialTransactionEntryType.CREDIT,
+      balanceType: FinancialBalanceType.AVAILABLE,
+      amount: 5000,
+    },
+  });
+
+  // ---------------------------------------------------------------------------
+  // Second driver wallet funding transaction — KES 5,000
+  // ---------------------------------------------------------------------------
+
+  const driver2WalletFundingTransaction =
+    await prisma.financialTransaction.upsert({
+      where: {
+        publicId: 'SM-FIN-TX-WALLET-FUNDING-DRIVER-002',
+      },
+      update: {
+        type: FinancialTransactionType.ADJUSTMENT,
+        status: FinancialTransactionStatus.COMPLETED,
+        sourceAccountId: null,
+        destinationAccountId: driver2Account.id,
+        amount: 5000,
+        currency: 'KES',
+        referenceType: 'SeedWalletFunding',
+        referencePublicId: identities.driver2.publicId,
+        accountingJournalPublicId: null,
+        completedAt: NOW,
+        failedAt: null,
+        reversedAt: null,
+        cancelledAt: null,
+      },
+      create: {
+        publicId: 'SM-FIN-TX-WALLET-FUNDING-DRIVER-002',
+        type: FinancialTransactionType.ADJUSTMENT,
+        status: FinancialTransactionStatus.COMPLETED,
+        sourceAccountId: null,
+        destinationAccountId: driver2Account.id,
+        amount: 5000,
+        currency: 'KES',
+        referenceType: 'SeedWalletFunding',
+        referencePublicId: identities.driver2.publicId,
+        completedAt: NOW,
+      },
+    });
+
+  await prisma.financialTransactionEntry.upsert({
+    where: {
+      publicId: 'SM-FIN-ENTRY-WALLET-FUNDING-DRIVER-002',
+    },
+    update: {
+      transactionId: driver2WalletFundingTransaction.id,
+      accountId: driver2Account.id,
+      type: FinancialTransactionEntryType.CREDIT,
+      balanceType: FinancialBalanceType.AVAILABLE,
+      amount: 5000,
+    },
+    create: {
+      publicId: 'SM-FIN-ENTRY-WALLET-FUNDING-DRIVER-002',
+      transactionId: driver2WalletFundingTransaction.id,
+      accountId: driver2Account.id,
+      type: FinancialTransactionEntryType.CREDIT,
+      balanceType: FinancialBalanceType.AVAILABLE,
+      amount: 5000,
+    },
+  });
+
   const memberPaymentMethod = await prisma.financialPaymentMethod.upsert({
     where: {
       provider_providerReference: {
@@ -3444,9 +3960,6 @@ await prisma.financialTransactionEntry.upsert({
     },
   });
 
-
-
-  
 
   // ===========================================================================
   // 19. MESSAGING
@@ -3864,14 +4377,18 @@ await prisma.financialTransactionEntry.upsert({
   console.log('SEED COMPLETE');
   console.log('==============================================');
 
-  console.log('\nAccounts:');
-  console.log('  MEMBER      member@sisimove.test');
-  console.log('  DRIVER      driver@sisimove.test');
-  console.log('  ADMIN       admin@sisimove.test');
-  console.log('  SUPER ADMIN superadmin@sisimove.test');
+ 
+console.log('\nAccounts:');
+console.log('  MEMBER       member@sisimove.test');
+console.log('  MEMBER 2     member2@sisimove.test');
+console.log('  DRIVER       driver@sisimove.test');
+console.log('  DRIVER 2     driver2@sisimove.test');
+console.log('  ADMIN        admin@sisimove.test');
+console.log('  SUPER ADMIN  superadmin@sisimove.test');
+
 
   console.log('\nDevelopment password:');
-  console.log('  SisiMove123!');
+  console.log('  sisiMove123');
 
   console.log('\nSeeded:');
   console.log('  ✓ Roles');

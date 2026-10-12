@@ -1,3 +1,4 @@
+//src/features/journey-boarding/api/participants/index.ts
 // -----------------------------------------------------------------------------
 // sisiMove — Journey Boarding Participant API Barrel
 // -----------------------------------------------------------------------------

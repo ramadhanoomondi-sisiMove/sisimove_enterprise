@@ -12,12 +12,13 @@ import { AUTHENTICATED_ROUTES } from '@/foundation/routing';
 import { useMyJourneyBookings } from '@/features/journey-booking';
 
 export default function MyBookingsPage() {
-  const { data: bookings = [] } = useMyJourneyBookings();
+  const { data: bookingItems = [] } = useMyJourneyBookings();
 
   return (
     <main className="page-shell">
       <div className="page-container py-5 sm:py-8">
         <div className="mx-auto w-full max-w-5xl">
+          {/* Page heading */}
           <header className="mb-6 sm:mb-8">
             <div className="max-w-2xl">
               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--foreground-muted)]">
@@ -34,13 +35,14 @@ export default function MyBookingsPage() {
             </div>
           </header>
 
-          {bookings.length === 0 ? (
+          {bookingItems.length === 0 ? (
             <EmptyBookings />
           ) : (
             <section
               aria-labelledby="my-bookings-list-title"
               className="space-y-4"
             >
+              {/* List heading */}
               <div className="flex items-center justify-between gap-3 px-0.5">
                 <div className="min-w-0">
                   <h2
@@ -56,25 +58,52 @@ export default function MyBookingsPage() {
                 </div>
 
                 <span className="shrink-0 rounded-full border border-[var(--border-subtle)] bg-[var(--background-subtle)] px-2.5 py-1 text-xs font-medium text-[var(--foreground-muted)]">
-                  {bookings.length}{' '}
-                  {bookings.length === 1 ? 'booking' : 'bookings'}
+                  {bookingItems.length}{' '}
+                  {bookingItems.length === 1 ? 'booking' : 'bookings'}
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                {bookings.map((booking) => (
-                  <JourneyBookingCard
-                    key={booking.publicId}
-                    booking={booking}
-                    navigation={{
-                      bookingsHref: AUTHENTICATED_ROUTES.BOOKING(
-                        booking.publicId,
-                      ),
-                      messagesHref: `/my-bookings/${booking.publicId}/messages`,
-                      participantsHref: `/my-bookings/${booking.publicId}/participants`,
-                    }}
-                    actions={
-                      <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+              {/* One full-width card per row */}
+              <div className="grid grid-cols-1 gap-4">
+                {bookingItems.map((item) => {
+                  const booking = item.booking;
+                  const activitySummary = item.activitySummary;
+
+                  const unreadMessagesCount = Math.max(
+                    0,
+                    activitySummary?.unreadMessagesCount ?? 0,
+                  );
+
+                  const associatedBookingsCount = Math.max(
+                    0,
+                    activitySummary?.associatedBookingsCount ?? 0,
+                  );
+
+                  const participantsCount = Math.max(
+                    0,
+                    activitySummary?.participantsCount ?? 0,
+                  );
+
+                  return (
+                    <JourneyBookingCard
+                      key={booking.publicId}
+                      booking={booking}
+                      unreadMessagesCount={unreadMessagesCount}
+                      associatedBookingsCount={associatedBookingsCount}
+                      participantsCount={participantsCount}
+                      navigation={{
+                        bookingsHref: AUTHENTICATED_ROUTES.BOOKING(
+                          booking.publicId,
+                        ),
+                        messagesHref: `/my-bookings/${encodeURIComponent(
+                          booking.publicId,
+                        )}/messages`,
+                        participantsHref:
+                          AUTHENTICATED_ROUTES.BOOKING_PARTICIPANTS(
+                            booking.publicId,
+                          ),
+                      }}
+                      actions={
                         <Link
                           href={AUTHENTICATED_ROUTES.BOOKING(
                             booking.publicId,
@@ -100,10 +129,10 @@ export default function MyBookingsPage() {
                         >
                           View booking
                         </Link>
-                      </div>
-                    }
-                  />
-                ))}
+                      }
+                    />
+                  );
+                })}
               </div>
             </section>
           )}
