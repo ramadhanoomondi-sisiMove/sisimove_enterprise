@@ -4,8 +4,9 @@
 //
 // Responsibilities:
 // - Execute Journey Boarding creation.
-// - Manage mutation state through the application's query layer.
+// - Manage mutation state through React Query.
 // - Map the HTTP response into the frontend JourneyBoarding model.
+// - Invalidate affected queries after successful creation.
 //
 // Architectural rules:
 // - The hook owns mutation orchestration only.
@@ -21,7 +22,10 @@
 // React Query
 // -----------------------------------------------------------------------------
 
-import { useMutation } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query';
 
 // -----------------------------------------------------------------------------
 // API
@@ -55,6 +59,8 @@ import { journeyBoardingMapper } from '../../mappers';
  * raw HTTP transport response.
  */
 export function useCreateJourneyBoarding() {
+  const queryClient = useQueryClient();
+
   return useMutation<
     JourneyBoarding,
     Error,
@@ -77,6 +83,33 @@ export function useCreateJourneyBoarding() {
         createdAt: response.createdAt,
         updatedAt: response.updatedAt,
       });
+    },
+
+    onSuccess: async (boarding) => {
+      await Promise.all([
+        // Refresh Journey Boarding lists.
+        queryClient.invalidateQueries({
+          queryKey: ['journey-boardings'],
+        }),
+
+        // Refresh the newly created boarding's detail view, if mounted.
+        queryClient.invalidateQueries({
+          queryKey: [
+            'journey-boardings',
+            'detail',
+            boarding.publicId,
+          ],
+        }),
+
+        // Refresh views associated with this journey.
+        queryClient.invalidateQueries({
+          queryKey: [
+            'journey-boardings',
+            'journey',
+            boarding.journeyId,
+          ],
+        }),
+      ]);
     },
   });
 }

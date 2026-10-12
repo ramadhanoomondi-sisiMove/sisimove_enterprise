@@ -42,3 +42,12 @@ export type { JourneyBoardingEvent } from './journey-boarding-event';
 // -----------------------------------------------------------------------------
 
 export type { JourneyBoarding } from './journey-boarding';
+
+// -----------------------------------------------------------------------------
+// Provider Summary
+// -----------------------------------------------------------------------------
+
+export type {
+  JourneyBoardingParticipantSummary ,
+  JourneyBoardingParticipantBadge ,
+} from './journey-boarding-participant-summary';

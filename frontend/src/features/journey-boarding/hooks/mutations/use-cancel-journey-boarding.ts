@@ -1,31 +1,8 @@
 // -----------------------------------------------------------------------------
 // sisiMove — useCancelJourneyBoarding
 // -----------------------------------------------------------------------------
-//
-// Responsibilities:
-// - Execute the Journey Boarding cancellation operation.
-// - Manage mutation state through the application's query layer.
-// - Map the HTTP response into the frontend JourneyBoarding model.
-//
-// Architectural rules:
-// - The hook owns mutation orchestration only.
-// - HTTP execution remains inside the API adapter.
-// - Authentication remains inside AuthenticatedApiClient.
-// - Response mapping remains inside the mapper.
-// - No domain/business rules belong here.
-// - The backend aggregate remains authoritative for lifecycle transitions.
-// - Public identifiers remain opaque strings.
-// -----------------------------------------------------------------------------
 
-// -----------------------------------------------------------------------------
-// React Query
-// -----------------------------------------------------------------------------
-
-import { useMutation } from '@tanstack/react-query';
-
-// -----------------------------------------------------------------------------
-// API
-// -----------------------------------------------------------------------------
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import {
   cancelJourneyBoarding,
@@ -33,38 +10,18 @@ import {
   type CancelJourneyBoardingRequest,
 } from '../../api';
 
-// -----------------------------------------------------------------------------
-// Model
-// -----------------------------------------------------------------------------
-
 import type { JourneyBoarding } from '../../models';
 
-// -----------------------------------------------------------------------------
-// Mapper
-// -----------------------------------------------------------------------------
-
 import { journeyBoardingMapper } from '../../mappers';
-
-// -----------------------------------------------------------------------------
-// Variables
-// -----------------------------------------------------------------------------
 
 export interface CancelJourneyBoardingVariables {
   params: CancelJourneyBoardingParams;
   request?: CancelJourneyBoardingRequest;
 }
 
-// -----------------------------------------------------------------------------
-// Hook
-// -----------------------------------------------------------------------------
-
-/**
- * Cancels a Journey Boarding.
- *
- * The mutation returns the frontend JourneyBoarding model rather than the
- * raw HTTP transport response.
- */
 export function useCancelJourneyBoarding() {
+  const queryClient = useQueryClient();
+
   return useMutation<
     JourneyBoarding,
     Error,
@@ -90,6 +47,34 @@ export function useCancelJourneyBoarding() {
         createdAt: response.createdAt,
         updatedAt: response.updatedAt,
       });
+    },
+
+    onSuccess: async (boarding) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: [
+            'journey-boardings',
+            'detail',
+            boarding.publicId,
+          ],
+        }),
+
+        queryClient.invalidateQueries({
+          queryKey: [
+            'journey-boardings',
+            'journey',
+            boarding.journeyId,
+          ],
+        }),
+
+        queryClient.invalidateQueries({
+          queryKey: [
+            'journey-boardings',
+            'participants',
+            boarding.publicId,
+          ],
+        }),
+      ]);
     },
   });
 }

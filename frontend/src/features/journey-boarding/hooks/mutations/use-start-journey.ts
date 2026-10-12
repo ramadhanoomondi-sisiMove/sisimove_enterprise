@@ -6,6 +6,7 @@
 // - Execute the Journey Boarding start operation.
 // - Manage mutation state through the application's query layer.
 // - Map the HTTP response into the frontend JourneyBoarding model.
+// - Invalidate affected queries after a successful start.
 //
 // Architectural rules:
 // - The hook owns mutation orchestration only.
@@ -21,7 +22,10 @@
 // React Query
 // -----------------------------------------------------------------------------
 
-import { useMutation } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query';
 
 // -----------------------------------------------------------------------------
 // API
@@ -65,6 +69,8 @@ export interface StartJourneyVariables {
  * raw HTTP transport response.
  */
 export function useStartJourney() {
+  const queryClient = useQueryClient();
+
   return useMutation<
     JourneyBoarding,
     Error,
@@ -90,6 +96,34 @@ export function useStartJourney() {
         createdAt: response.createdAt,
         updatedAt: response.updatedAt,
       });
+    },
+
+    onSuccess: async (boarding) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: [
+            'journey-boardings',
+            'detail',
+            boarding.publicId,
+          ],
+        }),
+
+        queryClient.invalidateQueries({
+          queryKey: [
+            'journey-boardings',
+            'journey',
+            boarding.journeyId,
+          ],
+        }),
+
+        queryClient.invalidateQueries({
+          queryKey: [
+            'journey-boardings',
+            'participants',
+            boarding.publicId,
+          ],
+        }),
+      ]);
     },
   });
 }

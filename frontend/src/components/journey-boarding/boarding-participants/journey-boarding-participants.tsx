@@ -1,12 +1,13 @@
+
+'use client';
+
 // -----------------------------------------------------------------------------
 // sisiMove — Journey Boarding Participant
 // -----------------------------------------------------------------------------
 //
-// Individual participant presentation for the Journey Boarding experience.
-//
 // Responsibilities:
 // - Present one boarding participant.
-// - Show participant identity reference.
+// - Show the participant's shared profile and trust summary.
 // - Show the participant's current boarding status.
 // - Keep participant presentation separate from participant actions.
 //
@@ -18,23 +19,28 @@
 // - Public identifiers remain opaque.
 // -----------------------------------------------------------------------------
 
-// -----------------------------------------------------------------------------
-// Domain Model
-// -----------------------------------------------------------------------------
+import type {
+  JourneyBoardingParticipant as JourneyBoardingParticipantModel,
+} from '@/features/journey-boarding/models';
 
-import type { JourneyBoardingParticipant as JourneyBoardingParticipantModel } from '@/features/journey-boarding/models';
+import {
+  JourneyBoardingParticipantStatusBadge,
+} from './journey-boarding-participant-status';
 
-// -----------------------------------------------------------------------------
-// Child Component
-// -----------------------------------------------------------------------------
-
-import { JourneyBoardingParticipantStatusBadge } from './journey-boarding-participant-status';
+import {
+  JourneyBoardingParticipantSummary,
+} from '../shared/journey-boarding-participant-summary';
 
 // -----------------------------------------------------------------------------
 // Types
 // -----------------------------------------------------------------------------
 
 export interface JourneyBoardingParticipantProps {
+  /**
+   * Public identifier of the Journey Boarding record.
+   */
+  journeyBoardingPublicId: string;
+
   /**
    * Passenger participant to present.
    */
@@ -46,77 +52,51 @@ export interface JourneyBoardingParticipantProps {
 // -----------------------------------------------------------------------------
 
 export function JourneyBoardingParticipant({
+  journeyBoardingPublicId,
   participant,
 }: JourneyBoardingParticipantProps) {
+  const normalizedBoardingPublicId = journeyBoardingPublicId.trim();
+
+  const participantIdentityPublicId =
+    participant.memberPublicId?.trim() ?? '';
+
   return (
-    <article
-      className={[
-        'flex',
-        'items-center',
-        'gap-3',
-        'py-4',
-        'first:pt-0',
-        'last:pb-0',
-      ].join(' ')}
-    >
-      {/* ------------------------------------------------------------------- */}
-      {/* Participant Avatar                                                  */}
-      {/* ------------------------------------------------------------------- */}
+    <article className="space-y-4">
+      {/* ----------------------------------------------------------------- */}
+      {/* Passenger Profile Summary                                         */}
+      {/* ----------------------------------------------------------------- */}
 
-      <div
-        aria-hidden="true"
-        className={[
-          'flex',
-          'h-10',
-          'w-10',
-          'shrink-0',
-          'items-center',
-          'justify-center',
-          'rounded-[var(--radius-full)]',
-          'bg-[var(--background-muted)]',
-          'text-sm',
-          'font-semibold',
-          'text-[var(--foreground-secondary)]',
-        ].join(' ')}
-      >
-        P
-      </div>
-
-      {/* ------------------------------------------------------------------- */}
-      {/* Participant Identity                                                */}
-      {/* ------------------------------------------------------------------- */}
-
-      <div className="min-w-0 flex-1">
-        <p
-          className={[
-            'truncate',
-            'text-sm',
-            'font-medium',
-            'text-[var(--foreground)]',
-          ].join(' ')}
-        >
-          Passenger
+      {normalizedBoardingPublicId &&
+      participantIdentityPublicId ? (
+        <JourneyBoardingParticipantSummary
+          journeyBoardingPublicId={normalizedBoardingPublicId}
+          participantIdentityPublicId={participantIdentityPublicId}
+        />
+      ) : (
+        <p className="text-sm text-[var(--foreground-secondary)]">
+          Passenger profile is unavailable.
         </p>
+      )}
 
-        <p
-          className={[
-            'truncate',
-            'text-xs',
-            'text-[var(--foreground-muted)]',
-          ].join(' ')}
-          title={participant.memberPublicId}
-        >
-          {participant.memberPublicId}
-        </p>
+      {/* ----------------------------------------------------------------- */}
+      {/* Boarding Participant Status                                       */}
+      {/* ----------------------------------------------------------------- */}
+
+      <div className="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-4">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-[var(--foreground)]">
+            Boarding status
+          </p>
+
+          <p className="mt-1 truncate text-xs text-[var(--foreground-muted)]">
+            Passenger reference: {participant.publicId}
+          </p>
+        </div>
+
+        <JourneyBoardingParticipantStatusBadge
+          status={participant.status}
+        />
       </div>
-
-      {/* ------------------------------------------------------------------- */}
-      {/* Participant Status                                                  */}
-      {/* ------------------------------------------------------------------- */}
-
-      <JourneyBoardingParticipantStatusBadge
-        status={participant.status}
-      />
     </article>
   );
 }

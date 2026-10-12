@@ -70,3 +70,27 @@ export {
 export type {
   ListJourneyBoardingsResponse,
 } from './list-journey-boardings.api';
+
+// -----------------------------------------------------------------------------
+// Get Journey Boarding Provider Summary
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// sisiMove — Journey Boarding Summary API Exports
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Shared Participant Summary API
+// -----------------------------------------------------------------------------
+
+export {
+  getJourneyBoardingParticipantSummary,
+} from './get-journey-boarding-participant-summary.api';
+
+export type {
+  GetJourneyBoardingParticipantSummaryParams,
+  GetJourneyBoardingParticipantSummaryResponse,
+  GetJourneyBoardingParticipantBadgeResponse,
+} from './get-journey-boarding-participant-summary.api';

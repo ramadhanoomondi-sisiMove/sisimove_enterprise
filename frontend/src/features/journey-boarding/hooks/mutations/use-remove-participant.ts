@@ -6,6 +6,7 @@
 // - Execute the participant removal operation.
 // - Manage mutation state through React Query.
 // - Map the HTTP response into the frontend JourneyBoarding model.
+// - Invalidate affected queries after successful removal.
 //
 // Architectural rules:
 // - No boarding business rules belong in this hook.
@@ -20,7 +21,10 @@
 // React Query
 // -----------------------------------------------------------------------------
 
-import { useMutation } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query';
 
 // -----------------------------------------------------------------------------
 // API
@@ -64,6 +68,8 @@ export interface RemoveParticipantVariables {
  * than exposing the raw HTTP transport response to consuming components.
  */
 export function useRemoveParticipant() {
+  const queryClient = useQueryClient();
+
   return useMutation<
     JourneyBoarding,
     Error,
@@ -89,6 +95,34 @@ export function useRemoveParticipant() {
         createdAt: response.createdAt,
         updatedAt: response.updatedAt,
       });
+    },
+
+    onSuccess: async (boarding) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: [
+            'journey-boardings',
+            'detail',
+            boarding.publicId,
+          ],
+        }),
+
+        queryClient.invalidateQueries({
+          queryKey: [
+            'journey-boardings',
+            'journey',
+            boarding.journeyId,
+          ],
+        }),
+
+        queryClient.invalidateQueries({
+          queryKey: [
+            'journey-boardings',
+            'participants',
+            boarding.publicId,
+          ],
+        }),
+      ]);
     },
   });
 }

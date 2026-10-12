@@ -3,6 +3,9 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { JourneyModule } from '../journey/journey.module';
 
+import { SocialModule } from '../social/social.module';
+import { TrustModule } from '../trust/trust.module';
+
 // -----------------------------------------------------------------------------
 // Domain Dependencies
 // -----------------------------------------------------------------------------
@@ -57,6 +60,7 @@ import {
   GetJourneyBoardingHandler,
   GetJourneyBoardingByJourneyHandler,
   GetJourneyBoardingParticipantsHandler,
+  GetJourneyBoardingParticipantSummaryHandler,
   ListJourneyBoardingsHandler,
 } from './application/query-handlers';
 
@@ -69,7 +73,13 @@ import {
   // Imports
   // ===========================================================================
 
-  imports: [IdentityModule, PrismaModule, forwardRef(() => JourneyModule)],
+  imports: [
+    IdentityModule,
+    TrustModule,
+    SocialModule,
+    PrismaModule,
+    forwardRef(() => JourneyModule),
+  ],
 
   // ===========================================================================
   // Controllers
@@ -178,6 +188,15 @@ import {
     {
       provide: JOURNEY_BOARDING_TOKENS.QUERY_HANDLERS.GET_PARTICIPANTS,
       useClass: GetJourneyBoardingParticipantsHandler,
+    },
+
+    // =========================================================================
+    // Participant Summary Query Handler
+    // =========================================================================
+
+    {
+      provide: JOURNEY_BOARDING_TOKENS.QUERY_HANDLERS.GET_PARTICIPANT_SUMMARY,
+      useClass: GetJourneyBoardingParticipantSummaryHandler,
     },
   ],
 

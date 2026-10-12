@@ -23,3 +23,7 @@ export {
 export {
   journeyBoardingMapper,
 } from './journey-boarding.mapper';
+
+export {
+  journeyBoardingProviderSummaryMapper,
+} from "./journey-boarding-participant-summary.mapper";

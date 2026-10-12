@@ -1,4 +1,3 @@
-//src/app/(authenticated)/my-bookings/[bookingPublicId]/participants/page.tsx
 
 'use client';
 
@@ -10,17 +9,11 @@ import { useCurrentIdentity } from '@/features/identity';
 
 import { useJourneyBookingDetail } from '@/features/journey-booking/hooks/queries';
 
-import {
-  useJourneyBoardingByJourney,
-} from '@/features/journey-boarding/hooks';
+import { useJourneyBoardingByJourney } from '@/features/journey-boarding/hooks';
 
-import {
-  JourneyBoardingParticipantRole,
-} from '@/features/journey-boarding/models';
+import { JourneyBoardingParticipantRole } from '@/features/journey-boarding/models';
 
-import {
-  PassengerParticipantsPage,
-} from '@/components/journey-boarding/passenger';
+import { PassengerParticipantsPage } from '@/components/journey-boarding/passenger';
 
 function ParticipantsPageLoading() {
   return (
@@ -40,18 +33,15 @@ function ParticipantsPageLoading() {
 export default function BookingParticipantsRoutePage() {
   const params = useParams<{ bookingPublicId: string }>();
 
-  const bookingPublicId =
-    params.bookingPublicId?.trim() ?? '';
+  const bookingPublicId = params.bookingPublicId?.trim() ?? '';
 
-  const bookingQuery =
-    useJourneyBookingDetail(bookingPublicId);
+  const bookingQuery = useJourneyBookingDetail(bookingPublicId);
 
   const identityQuery = useCurrentIdentity();
 
   const booking = bookingQuery.data?.booking;
 
-  const journeyPublicId =
-    booking?.journeyPublicId ?? '';
+  const journeyPublicId = booking?.journeyPublicId ?? '';
 
   const boardingQuery = useJourneyBoardingByJourney({
     journeyPublicId,
@@ -150,7 +140,7 @@ export default function BookingParticipantsRoutePage() {
 
   const boarding = boardingQuery.data;
 
-  // The boarding record must belong to the booking's journey.
+  // Ensure the boarding record belongs to this booking's journey.
   if (boarding.journeyId !== journeyPublicId) {
     return (
       <main className="page-shell">
@@ -164,12 +154,12 @@ export default function BookingParticipantsRoutePage() {
     );
   }
 
-  // Select this authenticated member's passenger participant.
-  // Booking IDs are not used as the participant identity.
+  // Find the authenticated member's passenger participant by identity ID.
+  // participant.publicId identifies the boarding participant record;
+  // participant.memberPublicId identifies the member.
   const currentParticipant = boarding.participants.find(
     (participant) =>
-      participant.role ===
-        JourneyBoardingParticipantRole.PASSENGER &&
+      participant.role === JourneyBoardingParticipantRole.PASSENGER &&
       participant.memberPublicId === identity.publicId,
   );
 
@@ -200,9 +190,8 @@ export default function BookingParticipantsRoutePage() {
       destination={snapshot?.destinationName ?? 'Destination unavailable'}
       departureAt={snapshot?.departureAt ?? null}
       journeyStatus={booking.journey?.status ?? null}
-      providerName={
-        booking.journey?.provider?.traveller?.handle ?? null
-      }
+      providerName={booking.journey?.provider?.traveller?.handle ?? null}
+      providerPublicId={boarding.providerPublicId}
     />
   );
 }

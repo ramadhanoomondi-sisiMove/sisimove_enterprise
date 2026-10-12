@@ -17,7 +17,6 @@
 //
 // -----------------------------------------------------------------------------
 
-
 // =============================================================================
 // IDENTITY
 // =============================================================================
@@ -29,7 +28,6 @@ export { GetIdentityByEmailHandler } from './get-identity-by-email.handler';
 export { GetIdentityByPhoneNumberHandler } from './get-identity-by-phone-number.handler';
 
 export { GetIdentityRolesHandler } from './get-identity-roles.handler';
-
 
 // =============================================================================
 // VERIFICATION
@@ -59,7 +57,6 @@ export { GetVerificationRequestsHandler } from './get-verification-requests.hand
 
 export { GetVerificationRequestHandler } from './get-verification-request.handler';
 
-
 // =============================================================================
 // ROLE
 // =============================================================================
@@ -68,7 +65,6 @@ export { GetRoleHandler } from './get-role.handler';
 
 export { GetRolesHandler } from './get-roles.handler';
 
-
 // =============================================================================
 // PERMISSION
 // =============================================================================
@@ -76,7 +72,6 @@ export { GetRolesHandler } from './get-roles.handler';
 export { GetPermissionHandler } from './get-permission.handler';
 
 export { GetPermissionsHandler } from './get-permissions.handler';
-
 
 // =============================================================================
 // ROLE PERMISSION

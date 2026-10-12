@@ -1,3 +1,4 @@
+//src/domain/journey-baording/application/query-handlers/index.ts
 // -----------------------------------------------------------------------------
 // Journey Boarding — Query Handlers
 // -----------------------------------------------------------------------------
@@ -12,3 +13,5 @@ export { GetJourneyBoardingByJourneyHandler } from './get-journey-boarding-by-jo
 export { GetJourneyBoardingParticipantsHandler } from './get-journey-boarding-participants.handler';
 
 export { ListJourneyBoardingsHandler } from './list-journey-boardings.handler';
+
+export { GetJourneyBoardingParticipantSummaryHandler } from './get-journey-participant-provider-summary.handler';

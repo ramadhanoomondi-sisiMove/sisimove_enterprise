@@ -79,6 +79,22 @@ export const JOURNEY_BOARDING_TOKENS = {
     LIST: Symbol('ListJourneyBoardingsQueryHandler'),
 
     // -------------------------------------------------------------------------
+    // Participant Summary
+    // -------------------------------------------------------------------------
+
+    GET_PARTICIPANT_SUMMARY: Symbol(
+      'GetJourneyBoardingParticipantSummaryQueryHandler',
+    ),
+
+    // -------------------------------------------------------------------------
+    // Legacy Provider Summary — remove after migration is complete
+    // -------------------------------------------------------------------------
+
+    GET_PROVIDER_SUMMARY: Symbol(
+      'GetJourneyBoardingProviderSummaryQueryHandler',
+    ),
+
+    // -------------------------------------------------------------------------
     // Participants
     // -------------------------------------------------------------------------
 

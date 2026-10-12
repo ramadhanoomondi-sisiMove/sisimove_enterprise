@@ -6,6 +6,8 @@ import { JourneyParticipantsList } from './journey-participants-list';
 import { PassengerBoardingAction } from './passenger-boarding-action';
 import { PassengerJourneySummary } from './passenger-journey-summary';
 
+import { JourneyBoardingParticipantSummary } from '../shared/journey-boarding-participant-summary';
+
 import type { JourneyBoardingParticipant } from '@/features/journey-boarding/models';
 
 export interface PassengerParticipantsPageProps {
@@ -16,6 +18,7 @@ export interface PassengerParticipantsPageProps {
   departureAt?: string | Date | null;
   journeyStatus?: string | null;
   providerName?: string | null;
+  providerPublicId?: string | null;
   onBoardingSuccess?: () => void;
   className?: string;
 }
@@ -28,13 +31,20 @@ export function PassengerParticipantsPage({
   departureAt,
   journeyStatus,
   providerName,
+  providerPublicId,
   onBoardingSuccess,
   className,
 }: PassengerParticipantsPageProps) {
+  const normalizedBoardingPublicId = boardingPublicId.trim();
+  const normalizedProviderIdentityPublicId =
+    providerPublicId?.trim() ?? '';
+
   return (
     <main className="page-shell">
       <div className="page-container py-5 sm:py-8">
-        <div className={`mx-auto w-full max-w-5xl space-y-5 ${className ?? ''}`}>
+        <div
+          className={`mx-auto w-full max-w-5xl space-y-5 ${className ?? ''}`}
+        >
           <header>
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--foreground-muted)]">
               Your travel
@@ -58,40 +68,52 @@ export function PassengerParticipantsPage({
             providerName={providerName}
           />
 
+          {normalizedBoardingPublicId &&
+            normalizedProviderIdentityPublicId && (
+              <section
+                aria-labelledby="journey-provider-heading"
+                className="space-y-3"
+              >
+                <div>
+                  <h2
+                    id="journey-provider-heading"
+                    className="text-lg font-semibold text-[var(--foreground)]"
+                  >
+                    Your journey provider
+                  </h2>
+
+                  <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
+                    Review the provider&apos;s profile, verification
+                    information, and available trust details.
+                  </p>
+                </div>
+
+                <JourneyBoardingParticipantSummary
+                  journeyBoardingPublicId={normalizedBoardingPublicId}
+                  participantIdentityPublicId={
+                    normalizedProviderIdentityPublicId
+                  }
+                />
+              </section>
+            )}
+
           <PassengerBoardingStatusCard
             participant={currentParticipant}
           />
 
           <PassengerBoardingAction
-            boardingPublicId={boardingPublicId}
+            boardingPublicId={normalizedBoardingPublicId}
             participant={currentParticipant}
             onBoardingSuccess={onBoardingSuccess}
           />
 
-          <section
-            aria-labelledby="journey-participants-heading"
-            className="space-y-3"
-          >
-            <div>
-              <h2
-                id="journey-participants-heading"
-                className="text-lg font-semibold text-[var(--foreground)]"
-              >
-                Other journey participants
-              </h2>
-
-              <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
-                See the participants associated with this journey.
-              </p>
-            </div>
-
-            <JourneyParticipantsList
-              journeyBoardingPublicId={boardingPublicId}
-              currentPassengerParticipantPublicId={
-                currentParticipant.publicId
-              }
-            />
-          </section>
+          <JourneyParticipantsList
+            journeyBoardingPublicId={normalizedBoardingPublicId}
+            currentPassengerParticipantPublicId={
+              currentParticipant.publicId
+            }
+            title="Other journey participants"
+          />
         </div>
       </div>
     </main>
