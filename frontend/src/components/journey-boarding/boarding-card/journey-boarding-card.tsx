@@ -1,3 +1,4 @@
+"use client";
 
 // -----------------------------------------------------------------------------
 // sisiMove — Journey Boarding Card
@@ -6,47 +7,41 @@
 // Responsibilities:
 // - Present Journey Boarding status and progress.
 // - Summarize registered and boarded passengers.
-// - Render passenger profile summaries and boarding statuses.
-// - Preserve provider participant-management actions.
 // - Preserve journey-level actions and technical identifiers.
+// - Pass the scheduled departure time to the start action.
 //
 // Architectural rules:
 // - The boarding aggregate remains authoritative.
-// - Profile and trust data come from the shared participant summary.
+// - Passenger profiles and contact details are presented by
+//   JourneyBoardingProvider to avoid duplicate passenger lists.
 // - Boarding lifecycle rules remain in their existing action components.
-// - No business logic is implemented in this presentation component.
+// - No business lifecycle logic is implemented in this presentation component.
 // -----------------------------------------------------------------------------
 
-import Link from 'next/link';
+import Link from "next/link";
 
 import {
   ArrowUpRight,
   CheckCircle2,
   Clock3,
   Users,
-} from 'lucide-react';
+} from "lucide-react";
 
 import {
   JourneyBoardingParticipantRole,
   JourneyBoardingParticipantStatus,
   JourneyBoardingStatus,
   type JourneyBoarding,
-} from '@/features/journey-boarding/models';
+} from "@/features/journey-boarding/models";
 
-import { Badge, Card } from '@/components/ui';
+import { Badge, Card } from "@/components/ui";
 
-import { JourneyBoardingProgress } from '../boarding-progress/journey-boarding-progress';
-
-import {
-  JourneyBoardingParticipant,
-} from '../boarding-participants';
+import { JourneyBoardingProgress } from "../boarding-progress/journey-boarding-progress";
 
 import {
-  MarkPassengerNoShowAction,
-  RemoveParticipantAction,
   StartJourneyAction,
   CancelJourneyBoardingAction,
-} from '../boarding-actions';
+} from "../boarding-actions";
 
 // -----------------------------------------------------------------------------
 // Types
@@ -57,15 +52,24 @@ export interface JourneyBoardingCardProps {
   isProvider?: boolean;
   href?: string;
   title?: string;
+
+  /**
+   * Scheduled departure timestamp in ISO 8601 format.
+   * Supplied by the parent from the associated Journey data.
+   *
+   * Optional to prevent a runtime crash when the parent has not
+   * supplied the scheduled departure timestamp.
+   */
+  departureAt?: string;
 }
 
 type BadgeVariant =
-  | 'default'
-  | 'brand'
-  | 'success'
-  | 'warning'
-  | 'danger'
-  | 'outline';
+  | "default"
+  | "brand"
+  | "success"
+  | "warning"
+  | "danger"
+  | "outline";
 
 // -----------------------------------------------------------------------------
 // Status Presentation
@@ -79,19 +83,19 @@ function getStatusPresentation(
 } {
   switch (status) {
     case JourneyBoardingStatus.NOT_STARTED:
-      return { label: 'Not started', variant: 'default' };
+      return { label: "Not started", variant: "default" };
 
     case JourneyBoardingStatus.BOARDING:
-      return { label: 'Boarding', variant: 'brand' };
+      return { label: "Boarding", variant: "brand" };
 
     case JourneyBoardingStatus.STARTED:
-      return { label: 'Started', variant: 'success' };
+      return { label: "Started", variant: "success" };
 
     case JourneyBoardingStatus.CANCELLED:
-      return { label: 'Cancelled', variant: 'danger' };
+      return { label: "Cancelled", variant: "danger" };
 
     default:
-      return { label: 'Unknown', variant: 'outline' };
+      return { label: "Unknown", variant: "outline" };
   }
 }
 
@@ -141,7 +145,8 @@ export function JourneyBoardingCard({
   boarding,
   isProvider = false,
   href,
-  title = 'Journey boarding',
+  title = "Journey boarding",
+  departureAt,
 }: JourneyBoardingCardProps) {
   const status = getStatusPresentation(boarding.status);
 
@@ -219,7 +224,10 @@ export function JourneyBoardingCard({
 
         {/* Passenger summary metrics */}
 
-        <div className="grid grid-cols-2 gap-3">
+        <section
+          aria-label="Passenger summary"
+          className="grid grid-cols-2 gap-3"
+        >
           <SummaryMetric
             icon={<Users size={19} aria-hidden="true" />}
             label="Passengers"
@@ -233,82 +241,6 @@ export function JourneyBoardingCard({
             value={boardedPassengerCount}
             detail={`${remainingPassengerCount} remaining`}
           />
-        </div>
-
-        {/* Passenger list and shared profile summaries */}
-
-        <section
-          aria-labelledby={`boarding-passengers-${boarding.publicId}`}
-          className="border-t border-[var(--border-subtle)] pt-4"
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h3
-                id={`boarding-passengers-${boarding.publicId}`}
-                className="text-sm font-semibold text-[var(--foreground)]"
-              >
-                Passengers
-              </h3>
-
-              <p className="mt-1 text-xs text-[var(--foreground-muted)]">
-                {isProvider
-                  ? 'Review passenger profiles and manage boarding'
-                  : 'Registered journey participants'}
-              </p>
-            </div>
-
-            <Badge variant="outline" size="sm">
-              {passengerCount}
-            </Badge>
-          </div>
-
-          {passengerParticipants.length === 0 ? (
-            <div className="mt-3 rounded-[var(--radius-lg)] border border-dashed border-[var(--border)] px-4 py-6 text-center">
-              <Users
-                size={23}
-                className="mx-auto text-[var(--foreground-muted)]"
-                aria-hidden="true"
-              />
-
-              <p className="mt-2 text-sm font-medium text-[var(--foreground)]">
-                No passengers yet
-              </p>
-
-              <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
-                Registered passengers will appear here.
-              </p>
-            </div>
-          ) : (
-            <ul className="mt-3 flex flex-col gap-3">
-              {passengerParticipants.map((participant) => (
-                <li
-                  key={participant.publicId}
-                  className="rounded-[var(--radius-lg)] border border-[var(--border-subtle)] p-3"
-                >
-                  <JourneyBoardingParticipant
-                    journeyBoardingPublicId={boarding.publicId}
-                    participant={participant}
-                  />
-
-                  {/* Preserve provider-only participant actions */}
-
-                  {isProvider && (
-                    <div className="mt-3 flex flex-wrap gap-2 border-t border-[var(--border-subtle)] pt-3">
-                      <MarkPassengerNoShowAction
-                        boarding={boarding}
-                        participant={participant}
-                      />
-
-                      <RemoveParticipantAction
-                        boarding={boarding}
-                        participant={participant}
-                      />
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
         </section>
 
         {/* Provider journey-level actions */}
@@ -322,7 +254,10 @@ export function JourneyBoardingCard({
               Journey actions
             </h3>
 
-            <StartJourneyAction boarding={boarding} />
+            <StartJourneyAction
+              boarding={boarding}
+              departureAt={departureAt}
+            />
 
             <CancelJourneyBoardingAction boarding={boarding} />
           </section>
@@ -376,17 +311,17 @@ export function JourneyBoardingCard({
             <Link
               href={href}
               className={[
-                'inline-flex min-h-10 w-full items-center justify-center gap-2',
-                'rounded-[var(--radius-md)]',
-                'border border-[var(--border-strong)]',
-                'bg-transparent px-4 text-sm font-medium',
-                'text-[var(--foreground)]',
-                'transition-colors duration-150',
-                'hover:bg-[var(--background-subtle)]',
-                'focus-visible:outline-none focus-visible:ring-2',
-                'focus-visible:ring-[var(--brand)] focus-visible:ring-offset-2',
-                'sm:w-auto',
-              ].join(' ')}
+                "inline-flex min-h-10 w-full items-center justify-center gap-2",
+                "rounded-[var(--radius-md)]",
+                "border border-[var(--border-strong)]",
+                "bg-transparent px-4 text-sm font-medium",
+                "text-[var(--foreground)]",
+                "transition-colors duration-150",
+                "hover:bg-[var(--background-subtle)]",
+                "focus-visible:outline-none focus-visible:ring-2",
+                "focus-visible:ring-[var(--brand)] focus-visible:ring-offset-2",
+                "sm:w-auto",
+              ].join(" ")}
             >
               View boarding
               <ArrowUpRight size={16} aria-hidden="true" />

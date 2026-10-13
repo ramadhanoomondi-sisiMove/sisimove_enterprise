@@ -7,7 +7,8 @@
 // Responsibilities:
 // - Resolve the Journey Boarding aggregate by its public identifier.
 // - Delegate passenger boarding to the aggregate.
-// - Persist the updated aggregate through the repository.
+// - Record a historical event after successful boarding.
+// - Persist the updated aggregate and historical event.
 // - Resolve the associated Journey's public identifier.
 // - Return the updated aggregate together with the Journey public ID.
 //
@@ -59,10 +60,17 @@ import type { JourneyBoardingRepository } from '../../domain/repositories/journe
 import type { JourneyRepository } from '../../../journey/domain/repositories/journey.repository';
 
 // -----------------------------------------------------------------------------
+// Historical Event
+// -----------------------------------------------------------------------------
+
+import { JourneyBoardingEventEntity } from '../../domain/entities/journey-boarding-event.entity';
+
+// -----------------------------------------------------------------------------
 // Value Objects
 // -----------------------------------------------------------------------------
 
 import { JourneyId } from '../../../journey/domain/value-objects/journey-id.vo';
+import { JourneyBoardingEventType } from '../../domain/value-objects/journey-boarding-event-type.vo';
 
 // -----------------------------------------------------------------------------
 // Exceptions
@@ -125,8 +133,8 @@ export class BoardPassengerHandler implements CommandHandler<
     // Domain Operation
     // -------------------------------------------------------------------------
     //
-    // The aggregate validates whether this participant can be boarded and
-    // records the corresponding domain event.
+    // The aggregate validates whether this participant can be boarded.
+    // If the operation fails, no historical event is created.
     // -------------------------------------------------------------------------
 
     aggregate.boardPassenger(
@@ -137,7 +145,27 @@ export class BoardPassengerHandler implements CommandHandler<
     );
 
     // -------------------------------------------------------------------------
+    // Record Successful Passenger Boarding
+    // -------------------------------------------------------------------------
+    //
+    // Historical event recording is separate from the aggregate's domain
+    // event mechanism. Add it only after the boarding operation succeeds.
+    // -------------------------------------------------------------------------
+
+    const passengerBoardedEvent = JourneyBoardingEventEntity.create({
+      boardingId: aggregate.publicId,
+      type: JourneyBoardingEventType.passengerBoarded(),
+      occurredAt: command.boardedAt ?? new Date(),
+    });
+
+    aggregate.addBoardingEvent(passengerBoardedEvent);
+
+    // -------------------------------------------------------------------------
     // Persistence
+    // -------------------------------------------------------------------------
+    //
+    // Persist the aggregate and its historical event through the same
+    // repository operation.
     // -------------------------------------------------------------------------
 
     await this.repository.save(aggregate);

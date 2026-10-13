@@ -50,6 +50,8 @@ import { JourneyBoardingEntity } from '../../../../journey-boarding/domain/entit
 
 import { JourneyBoardingParticipantEntity } from '../../../../journey-boarding/domain/entities/journey-boarding-participant.entity';
 
+import { JourneyBoardingEventEntity } from '../../../../journey-boarding/domain/entities/journey-boarding-event.entity';
+
 // -----------------------------------------------------------------------------
 // Journey Boarding — Repository
 // -----------------------------------------------------------------------------
@@ -78,6 +80,8 @@ import { JourneyBoardingParticipantStatus } from '../../../../journey-boarding/d
 
 import { JourneyBoardingStatus } from '../../../../journey-boarding/domain/value-objects/journey-boarding-status.vo';
 
+import { JourneyBoardingEventType } from '../../../../journey-boarding/domain/value-objects/journey-boarding-event-type.vo';
+
 // -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
@@ -92,14 +96,17 @@ import { JourneyBoardingStatus } from '../../../../journey-boarding/domain/value
  * 3. Create a Journey Boarding aggregate.
  * 4. Create and attach the provider participant in EXPECTED status.
  * 5. Open boarding: NOT_STARTED -> BOARDING.
- * 6. Board the provider: EXPECTED -> BOARDED.
- * 7. Persist the Journey and Journey Boarding aggregate.
+ * 6. Record BOARDING_OPENED history.
+ * 7. Board the provider: EXPECTED -> BOARDED.
+ * 8. Record PROVIDER_BOARDED history.
+ * 9. Persist the Journey Boarding aggregate.
  *
  * All repository operations must use the transaction-scoped Prisma client
  * supplied by PrismaTransactionContext.
  *
  * If any operation fails, the Prisma transaction rolls back.
  */
+
 @Injectable()
 export class PublishJourneyHandler implements CommandHandler<
   PublishJourneyCommand,
@@ -171,6 +178,10 @@ export class PublishJourneyHandler implements CommandHandler<
         journey.providerPublicId.value,
       );
 
+      const providerMemberPublicId = new JourneyBoardingMemberPublicId(
+        journey.providerPublicId.value,
+      );
+
       // -----------------------------------------------------------------------
       // 4. Create Boarding Entity and Aggregate
       // -----------------------------------------------------------------------
@@ -192,22 +203,10 @@ export class PublishJourneyHandler implements CommandHandler<
       // 5. Create Provider Participant
       // -----------------------------------------------------------------------
 
-      /**
-       * A provider is a participant in the physical boarding workflow even
-       * though the provider does not have a passenger booking.
-       *
-       * The participant must reference the Journey Boarding public ID.
-       * It must not reference the Journey public ID.
-       *
-       * JourneyBoardingParticipantEntity defaults to EXPECTED, but the status
-       * is supplied explicitly to make the initial lifecycle state clear.
-       */
       const providerParticipant = JourneyBoardingParticipantEntity.create({
         publicId: new JourneyBoardingParticipantPublicId(),
         boardingId: boardingPublicId,
-        memberPublicId: new JourneyBoardingMemberPublicId(
-          journey.providerPublicId.value,
-        ),
+        memberPublicId: providerMemberPublicId,
         role: JourneyBoardingParticipantRole.provider(),
         status: JourneyBoardingParticipantStatus.expected(),
         expectedAt: publishedAt,
@@ -219,12 +218,6 @@ export class PublishJourneyHandler implements CommandHandler<
       // 6. Open Boarding
       // -----------------------------------------------------------------------
 
-      /**
-       * Opening boarding requires the provider participant to exist.
-       *
-       * The aggregate records the boarding-opened domain event and validates
-       * the NOT_STARTED -> BOARDING lifecycle transition.
-       */
       boardingAggregate.open(
         command.correlationId,
         command.causationId,
@@ -232,16 +225,25 @@ export class PublishJourneyHandler implements CommandHandler<
       );
 
       // -----------------------------------------------------------------------
-      // 7. Board Provider
+      // 7. Record Successful Boarding Opening
+      // -----------------------------------------------------------------------
+      //
+      // This historical event is created only after open() succeeds.
+      // It is stored on the aggregate for repository persistence.
       // -----------------------------------------------------------------------
 
-      /**
-       * The provider can now transition from EXPECTED to BOARDED because:
-       *
-       * - the aggregate is in BOARDING status;
-       * - the provider participant has been attached;
-       * - the participant's member identity matches the provider identity.
-       */
+      const boardingOpenedEvent = JourneyBoardingEventEntity.create({
+        boardingId: boardingPublicId,
+        type: JourneyBoardingEventType.boardingOpened(),
+        occurredAt: boardingAggregate.boardingStartedAt ?? publishedAt,
+      });
+
+      boardingAggregate.addBoardingEvent(boardingOpenedEvent);
+
+      // -----------------------------------------------------------------------
+      // 8. Board Provider
+      // -----------------------------------------------------------------------
+
       boardingAggregate.boardProvider(
         command.correlationId,
         command.causationId,
@@ -249,15 +251,30 @@ export class PublishJourneyHandler implements CommandHandler<
       );
 
       // -----------------------------------------------------------------------
-      // 8. Persist Completed Boarding Setup
+      // 9. Record Successful Provider Boarding
+      // -----------------------------------------------------------------------
+      //
+      // This historical event is created only after boardProvider() succeeds.
+      // The member identity identifies the provider who was boarded.
       // -----------------------------------------------------------------------
 
-      /**
-       * Persist the aggregate after all participant and lifecycle changes.
-       *
-       * The repository must persist the boarding entity, provider participant,
-       * and applicable boarding event history consistently.
-       */
+      const providerBoardedEvent = JourneyBoardingEventEntity.create({
+        boardingId: boardingPublicId,
+        type: JourneyBoardingEventType.providerBoarded(),
+        memberPublicId: providerMemberPublicId,
+        occurredAt: publishedAt,
+      });
+
+      boardingAggregate.addBoardingEvent(providerBoardedEvent);
+
+      // -----------------------------------------------------------------------
+      // 10. Persist Completed Boarding Setup
+      // -----------------------------------------------------------------------
+      //
+      // Persist the boarding entity, participant and historical events together.
+      // If this operation fails, the surrounding transaction must roll back.
+      // -----------------------------------------------------------------------
+
       await this.journeyBoardingRepository.save(boardingAggregate);
     });
   }

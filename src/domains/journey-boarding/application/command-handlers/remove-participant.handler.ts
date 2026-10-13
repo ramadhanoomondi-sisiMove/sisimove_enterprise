@@ -7,7 +7,8 @@
 // Responsibilities:
 // - Resolve the Journey Boarding aggregate by public identifier.
 // - Delegate participant removal to the aggregate.
-// - Persist the updated aggregate.
+// - Record a historical event after successful removal.
+// - Persist the updated aggregate and historical event.
 // - Resolve the associated Journey's public identifier.
 // - Return the aggregate together with the Journey public ID.
 //
@@ -36,6 +37,10 @@ import type { JourneyRepository } from '../../../journey/domain/repositories/jou
 import { JourneyId } from '../../../journey/domain/value-objects/journey-id.vo';
 
 import { JourneyBoardingNotFoundException } from '../../domain/exceptions';
+
+import { JourneyBoardingEventEntity } from '../../domain/entities/journey-boarding-event.entity';
+
+import { JourneyBoardingEventType } from '../../domain/value-objects/journey-boarding-event-type.vo';
 
 // -----------------------------------------------------------------------------
 // Result
@@ -66,6 +71,10 @@ export class RemoveParticipantHandler implements CommandHandler<
   public async execute(
     command: RemoveParticipantCommand,
   ): Promise<RemoveParticipantResult> {
+    // -------------------------------------------------------------------------
+    // Load Aggregate
+    // -------------------------------------------------------------------------
+
     const aggregate = await this.repository.findByPublicId(
       command.journeyBoardingPublicId,
     );
@@ -76,6 +85,14 @@ export class RemoveParticipantHandler implements CommandHandler<
       );
     }
 
+    // -------------------------------------------------------------------------
+    // Remove Participant
+    // -------------------------------------------------------------------------
+    //
+    // The aggregate enforces participant and lifecycle invariants.
+    // If removal fails, no historical event is created.
+    // -------------------------------------------------------------------------
+
     aggregate.removeParticipant(
       command.participantPublicId,
       command.correlationId,
@@ -84,7 +101,28 @@ export class RemoveParticipantHandler implements CommandHandler<
       command.actorPublicId,
     );
 
+    // -------------------------------------------------------------------------
+    // Record Successful Removal
+    // -------------------------------------------------------------------------
+
+    const removalEvent = JourneyBoardingEventEntity.create({
+      boardingId: aggregate.publicId,
+      type: JourneyBoardingEventType.participantRemoved(),
+      actorPublicId: command.actorPublicId,
+      occurredAt: command.removedAt ?? new Date(),
+    });
+
+    aggregate.addBoardingEvent(removalEvent);
+
+    // -------------------------------------------------------------------------
+    // Persist Aggregate And History
+    // -------------------------------------------------------------------------
+
     await this.repository.save(aggregate);
+
+    // -------------------------------------------------------------------------
+    // Resolve Journey Public ID
+    // -------------------------------------------------------------------------
 
     const journey = await this.journeyRepository.findJourneyById(
       new JourneyId(aggregate.journeyBoarding.journeyId.value),
@@ -95,6 +133,10 @@ export class RemoveParticipantHandler implements CommandHandler<
         `Journey not found for boarding ${aggregate.journeyBoarding.publicId.value}.`,
       );
     }
+
+    // -------------------------------------------------------------------------
+    // Result
+    // -------------------------------------------------------------------------
 
     return {
       aggregate,

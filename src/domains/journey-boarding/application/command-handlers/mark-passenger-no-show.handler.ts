@@ -7,7 +7,8 @@
 // Responsibilities:
 // - Resolve the Journey Boarding aggregate by public identifier.
 // - Delegate the passenger no-show operation to the aggregate.
-// - Persist the updated aggregate.
+// - Record a historical event after successful operation.
+// - Persist the updated aggregate and historical event.
 // - Resolve the associated Journey's public identifier.
 // - Return the aggregate together with the Journey public ID.
 //
@@ -36,6 +37,10 @@ import type { JourneyRepository } from '../../../journey/domain/repositories/jou
 import { JourneyId } from '../../../journey/domain/value-objects/journey-id.vo';
 
 import { JourneyBoardingNotFoundException } from '../../domain/exceptions';
+
+import { JourneyBoardingEventEntity } from '../../domain/entities/journey-boarding-event.entity';
+
+import { JourneyBoardingEventType } from '../../domain/value-objects/journey-boarding-event-type.vo';
 
 // -----------------------------------------------------------------------------
 // Result
@@ -66,6 +71,10 @@ export class MarkPassengerNoShowHandler implements CommandHandler<
   public async execute(
     command: MarkPassengerNoShowCommand,
   ): Promise<MarkPassengerNoShowResult> {
+    // -------------------------------------------------------------------------
+    // Load Aggregate
+    // -------------------------------------------------------------------------
+
     const aggregate = await this.repository.findByPublicId(
       command.journeyBoardingPublicId,
     );
@@ -76,6 +85,14 @@ export class MarkPassengerNoShowHandler implements CommandHandler<
       );
     }
 
+    // -------------------------------------------------------------------------
+    // Apply Domain Operation
+    // -------------------------------------------------------------------------
+    //
+    // The aggregate validates the participant and lifecycle transition.
+    // If the operation fails, no historical event is added.
+    // -------------------------------------------------------------------------
+
     aggregate.markPassengerNoShow(
       command.participantPublicId,
       command.correlationId,
@@ -83,7 +100,27 @@ export class MarkPassengerNoShowHandler implements CommandHandler<
       command.noShowAt,
     );
 
+    // -------------------------------------------------------------------------
+    // Record Successful No-Show
+    // -------------------------------------------------------------------------
+
+    const noShowEvent = JourneyBoardingEventEntity.create({
+      boardingId: aggregate.publicId,
+      type: JourneyBoardingEventType.passengerNoShow(),
+      occurredAt: command.noShowAt ?? new Date(),
+    });
+
+    aggregate.addBoardingEvent(noShowEvent);
+
+    // -------------------------------------------------------------------------
+    // Persist Aggregate And History
+    // -------------------------------------------------------------------------
+
     await this.repository.save(aggregate);
+
+    // -------------------------------------------------------------------------
+    // Resolve Journey Public ID
+    // -------------------------------------------------------------------------
 
     const journey = await this.journeyRepository.findJourneyById(
       new JourneyId(aggregate.journeyBoarding.journeyId.value),
@@ -94,6 +131,10 @@ export class MarkPassengerNoShowHandler implements CommandHandler<
         `Journey not found for boarding ${aggregate.journeyBoarding.publicId.value}.`,
       );
     }
+
+    // -------------------------------------------------------------------------
+    // Result
+    // -------------------------------------------------------------------------
 
     return {
       aggregate,

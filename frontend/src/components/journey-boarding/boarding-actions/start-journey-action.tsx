@@ -1,85 +1,103 @@
+"use client";
+
 // -----------------------------------------------------------------------------
 // sisiMove — Start Journey Action
 // -----------------------------------------------------------------------------
 //
-// Presents the provider operation for starting the Journey.
-//
 // Responsibilities:
-// - Present the start operation when the current lifecycle projection makes
-//   the operation relevant.
+// - Present the start operation while boarding is active.
+// - Explain when the scheduled departure time has not arrived.
+// - Handle missing or invalid departure timestamps safely.
+// - Update departure-time eligibility automatically.
 // - Require explicit confirmation before starting the Journey.
 // - Build the variables expected by useStartJourney.
-// - Invoke the start mutation.
 // - Present mutation progress and failure feedback.
 //
-// Non-responsibilities:
-// - Does not determine whether every passenger must be boarded.
-// - Does not determine whether the Journey may legally start.
-// - Does not perform HTTP requests.
-// - Does not own Journey Boarding lifecycle rules.
-// - Does not mutate the JourneyBoarding model locally.
-//
-// The backend JourneyBoardingAggregate remains authoritative for whether the
-// Journey can actually be started.
+// The backend remains authoritative for Journey lifecycle and departure rules.
 // -----------------------------------------------------------------------------
 
-import { useState } from 'react';
+import { useEffect, useState } from "react";
 
 import {
   Button,
   Dialog,
-} from '@/components/ui';
+} from "@/components/ui";
 
 import {
   JourneyBoardingStatus,
   type JourneyBoarding,
-} from '@/features/journey-boarding/models';
+} from "@/features/journey-boarding/models";
 
-import { useStartJourney } from '@/features/journey-boarding/hooks';
-
-// -----------------------------------------------------------------------------
-// Props
-// -----------------------------------------------------------------------------
+import { useStartJourney } from "@/features/journey-boarding/hooks";
 
 export interface StartJourneyActionProps {
-  /**
-   * Current Journey Boarding projection.
-   */
   boarding: JourneyBoarding;
+  departureAt?: string;
 }
-
-// -----------------------------------------------------------------------------
-// Component
-// -----------------------------------------------------------------------------
 
 export function StartJourneyAction({
   boarding,
+  departureAt,
 }: StartJourneyActionProps) {
   const [isConfirmationOpen, setIsConfirmationOpen] =
     useState(false);
 
+  const [currentTime, setCurrentTime] = useState(
+    () => Date.now(),
+  );
+
   const startJourney = useStartJourney();
 
-  // ---------------------------------------------------------------------------
-  // Client-visible applicability
-  // ---------------------------------------------------------------------------
-  //
-  // Starting the Journey is meaningful while boarding is active.
-  //
-  // The backend aggregate remains authoritative. In particular, this component
-  // intentionally does not infer requirements about outstanding passengers,
-  // provider boarding, or any other aggregate invariant.
-  // ---------------------------------------------------------------------------
+  const departureTimestamp =
+    typeof departureAt === "string"
+      ? Date.parse(departureAt)
+      : Number.NaN;
+
+  const isValidDepartureTime =
+    typeof departureAt === "string" &&
+    departureAt.trim().length > 0 &&
+    !Number.isNaN(departureTimestamp);
+
+  const hasDepartureArrived =
+    isValidDepartureTime &&
+    currentTime >= departureTimestamp;
+
+  useEffect(() => {
+    if (!isValidDepartureTime || hasDepartureArrived) {
+      return;
+    }
+
+    const remainingTime = departureTimestamp - Date.now();
+
+    const timeoutId = window.setTimeout(() => {
+      setCurrentTime(Date.now());
+    }, Math.max(remainingTime, 0));
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    departureTimestamp,
+    hasDepartureArrived,
+    isValidDepartureTime,
+  ]);
 
   if (boarding.status !== JourneyBoardingStatus.BOARDING) {
     return null;
   }
 
-  // ---------------------------------------------------------------------------
-  // Handlers
-  // ---------------------------------------------------------------------------
-
   const handleConfirm = () => {
+    const now = Date.now();
+
+    if (
+      startJourney.isPending ||
+      !isValidDepartureTime ||
+      now < departureTimestamp
+    ) {
+      setCurrentTime(now);
+      return;
+    }
+
     startJourney.mutate(
       {
         params: {
@@ -102,24 +120,71 @@ export function StartJourneyAction({
       return;
     }
 
+    if (open) {
+      const now = Date.now();
+
+      setCurrentTime(now);
+
+      if (
+        !isValidDepartureTime ||
+        now < departureTimestamp
+      ) {
+        return;
+      }
+    }
+
     setIsConfirmationOpen(open);
   };
 
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
-
   return (
     <>
-      <Button
-        type="button"
-        variant="primary"
-        size="md"
-        onClick={() => setIsConfirmationOpen(true)}
-        disabled={startJourney.isPending}
-      >
-        Start journey
-      </Button>
+      <div className="flex flex-col gap-2">
+        <Button
+          type="button"
+          variant="primary"
+          size="md"
+          onClick={() => handleOpenChange(true)}
+          disabled={
+            startJourney.isPending ||
+            !isValidDepartureTime ||
+            !hasDepartureArrived
+          }
+        >
+          {startJourney.isPending
+            ? "Starting journey…"
+            : "Start journey"}
+        </Button>
+
+        {!isValidDepartureTime && (
+          <p
+            role="alert"
+            className="text-sm text-[var(--danger)]"
+          >
+            The scheduled departure time is unavailable. Please
+            refresh the journey details or contact support.
+          </p>
+        )}
+
+        {isValidDepartureTime && !hasDepartureArrived && (
+          <p
+            role="status"
+            className="text-sm text-[var(--foreground-secondary)]"
+          >
+            This journey cannot start yet. Scheduled departure is{" "}
+            {new Date(departureTimestamp).toLocaleString()}.
+          </p>
+        )}
+
+        {isValidDepartureTime && hasDepartureArrived && (
+          <p
+            role="status"
+            className="text-sm text-[var(--foreground-secondary)]"
+          >
+            The scheduled departure time has arrived. You can start
+            the journey when you are ready.
+          </p>
+        )}
+      </div>
 
       <Dialog
         open={isConfirmationOpen}
@@ -143,20 +208,24 @@ export function StartJourneyAction({
               variant="primary"
               size="md"
               loading={startJourney.isPending}
-              disabled={startJourney.isPending}
+              disabled={
+                startJourney.isPending ||
+                !isValidDepartureTime ||
+                !hasDepartureArrived
+              }
               onClick={handleConfirm}
             >
               {startJourney.isPending
-                ? 'Starting journey…'
-                : 'Confirm start'}
+                ? "Starting journey…"
+                : "Confirm start"}
             </Button>
           </>
         }
       >
         <div className="flex flex-col gap-4">
           <p className="text-sm text-[var(--foreground-secondary)]">
-            Starting the journey will change the boarding lifecycle
-            and record the journey start time.
+            Starting the journey will move it into progress and
+            record the journey start time.
           </p>
 
           {startJourney.isError && (
@@ -166,7 +235,7 @@ export function StartJourneyAction({
             >
               {startJourney.error instanceof Error
                 ? startJourney.error.message
-                : 'Unable to start the journey. Please try again.'}
+                : "Unable to start the journey. Please try again."}
             </p>
           )}
         </div>

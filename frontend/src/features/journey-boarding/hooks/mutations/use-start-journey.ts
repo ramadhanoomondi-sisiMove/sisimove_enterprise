@@ -1,10 +1,11 @@
+
 // -----------------------------------------------------------------------------
 // sisiMove — useStartJourney
 // -----------------------------------------------------------------------------
 //
 // Responsibilities:
 // - Execute the Journey Boarding start operation.
-// - Manage mutation state through the application's query layer.
+// - Manage mutation state through React Query.
 // - Map the HTTP response into the frontend JourneyBoarding model.
 // - Invalidate affected queries after a successful start.
 //
@@ -14,12 +15,8 @@
 // - Authentication remains inside AuthenticatedApiClient.
 // - Response mapping remains inside the mapper.
 // - No domain/business rules belong here.
-// - The backend aggregate remains authoritative for lifecycle transitions.
+// - The backend remains authoritative for lifecycle transitions.
 // - Public identifiers remain opaque strings.
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// React Query
 // -----------------------------------------------------------------------------
 
 import {
@@ -27,25 +24,13 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 
-// -----------------------------------------------------------------------------
-// API
-// -----------------------------------------------------------------------------
-
 import {
   startJourney,
   type StartJourneyParams,
   type StartJourneyRequest,
 } from '../../api';
 
-// -----------------------------------------------------------------------------
-// Model
-// -----------------------------------------------------------------------------
-
 import type { JourneyBoarding } from '../../models';
-
-// -----------------------------------------------------------------------------
-// Mapper
-// -----------------------------------------------------------------------------
 
 import { journeyBoardingMapper } from '../../mappers';
 
@@ -63,10 +48,10 @@ export interface StartJourneyVariables {
 // -----------------------------------------------------------------------------
 
 /**
- * Starts the Journey associated with the Journey Boarding.
+ * Starts the Journey associated with a Journey Boarding.
  *
- * The mutation returns the frontend JourneyBoarding model rather than the
- * raw HTTP transport response.
+ * The mutation returns the frontend JourneyBoarding model rather than
+ * the raw HTTP transport response.
  */
 export function useStartJourney() {
   const queryClient = useQueryClient();
@@ -77,25 +62,9 @@ export function useStartJourney() {
     StartJourneyVariables
   >({
     mutationFn: async ({ params, request }) => {
-      const response = await startJourney(
-        params,
-        request,
-      );
+      const response = await startJourney(params, request);
 
-      return journeyBoardingMapper.toModel({
-        publicId: response.publicId,
-        journeyId: response.journeyId,
-        providerPublicId: response.providerPublicId,
-        status: response.status,
-        boardingStartedAt: response.boardingStartedAt,
-        journeyStartedAt: response.journeyStartedAt,
-        cancelledAt: response.cancelledAt,
-        version: response.version,
-        participants: response.participants,
-        events: response.events,
-        createdAt: response.createdAt,
-        updatedAt: response.updatedAt,
-      });
+      return journeyBoardingMapper.toModel(response);
     },
 
     onSuccess: async (boarding) => {

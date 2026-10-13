@@ -1,15 +1,16 @@
+
 // -----------------------------------------------------------------------------
 // sisiMove — Start Journey API
 // -----------------------------------------------------------------------------
 //
 // Responsibilities:
-// - Start the Journey associated with a JourneyBoarding.
-// - Define the HTTP request/response transport contract.
+// - Request the backend to start the Journey associated with a JourneyBoarding.
+// - Define the HTTP request and response transport contracts.
 // - Delegate authenticated HTTP execution to AuthenticatedApiClient.
 //
 // Architectural rules:
 // - This is an API adapter only.
-// - No lifecycle/business rules belong here.
+// - No lifecycle or business rules belong here.
 // - No aggregate is created or orchestrated in the frontend.
 // - No domain value objects are constructed in the frontend.
 // - No authentication storage is accessed directly.
@@ -23,19 +24,12 @@
 // - journeyBoardingPublicId
 // - journeyStartedAt (optional)
 //
-// The backend aggregate remains authoritative for all start-Journey
-// invariants, including provider boarding and lifecycle state.
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// HTTP
+// The backend coordinates the Journey and JourneyBoarding lifecycle changes,
+// persists the historical JOURNEY_STARTED event, and returns the updated
+// JourneyBoarding representation.
 // -----------------------------------------------------------------------------
 
 import type { RequestOptions } from '@/foundation/http';
-
-// -----------------------------------------------------------------------------
-// Authentication HTTP Client
-// -----------------------------------------------------------------------------
 
 import { authenticatedApiClient } from '@/features/authentication/http/authenticated-api-client';
 
@@ -46,15 +40,15 @@ import { authenticatedApiClient } from '@/features/authentication/http/authentic
 /**
  * Request body accepted by the start Journey endpoint.
  *
- * `journeyStartedAt` is optional because the backend command supports an
- * optional explicit timestamp.
+ * The timestamp is optional. When omitted, the backend determines the
+ * effective start time.
  */
 export interface StartJourneyRequest {
   journeyStartedAt?: string;
 }
 
 // -----------------------------------------------------------------------------
-// Response Contract
+// Response Contracts
 // -----------------------------------------------------------------------------
 
 /**
@@ -77,7 +71,7 @@ export interface StartJourneyParticipantResponse {
 }
 
 /**
- * Transport representation of a JourneyBoarding event.
+ * Transport representation of a historical JourneyBoarding event.
  */
 export interface StartJourneyEventResponse {
   publicId: string;
@@ -94,7 +88,11 @@ export interface StartJourneyEventResponse {
 /**
  * HTTP response returned by the start Journey endpoint.
  *
- * Dates are serialized as ISO strings at the HTTP boundary.
+ * This contract mirrors the JourneyBoarding frontend model.
+ * Dates are represented as serialized ISO date-time strings.
+ *
+ * The response describes the updated JourneyBoarding; it does not
+ * expose or recreate the backend Journey aggregate.
  */
 export interface StartJourneyResponse {
   publicId: string;
@@ -117,8 +115,8 @@ export interface StartJourneyResponse {
 
 export interface StartJourneyParams {
   /**
-   * Opaque public identifier of the JourneyBoarding whose Journey should
-   * be started.
+   * Opaque public identifier of the JourneyBoarding whose Journey
+   * should be started.
    */
   journeyBoardingPublicId: string;
 }
@@ -128,21 +126,24 @@ export interface StartJourneyParams {
 // -----------------------------------------------------------------------------
 
 /**
- * Starts the Journey associated with a JourneyBoarding.
+ * Requests that the backend start the Journey associated with a
+ * JourneyBoarding.
  *
- * Backend endpoint:
- *
- * POST /journey-boardings/:journeyBoardingPublicId/start
+ * The backend remains responsible for lifecycle validation, coordinated
+ * persistence, and recording the historical start event.
  */
 export async function startJourney(
   params: StartJourneyParams,
   request?: StartJourneyRequest,
   options?: RequestOptions,
 ): Promise<StartJourneyResponse> {
-  return authenticatedApiClient.post<StartJourneyResponse>(
+  const path =
     `/journey-boardings/${encodeURIComponent(
       params.journeyBoardingPublicId,
-    )}/start`,
+    )}/start`;
+
+  return authenticatedApiClient.post<StartJourneyResponse>(
+    path,
     request,
     options,
   );

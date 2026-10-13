@@ -196,27 +196,35 @@ export class GetJourneyBoardingParticipantSummaryHandler implements QueryHandler
     const now = new Date();
     const verificationActive = verification.isActive(now);
 
-    // Preserve the existing validity-aware verification semantics.
-    // Role-specific verification semantics should be confirmed against
-    // the verification domain model before introducing new rules.
+    // Preserve existing validity-aware verification semantics.
     const currentlyVerified =
       verificationActive &&
       (verification.isMemberVerified() || verification.isDriverVerified());
 
     const avatarUrl = await this.resolveAvatarUrl(profile.avatar?.publicId);
 
-    // This value must be populated by the trusted authenticated request
-    // context, not supplied directly by an untrusted request body.
+    // These values must originate from trusted authenticated context and
+    // trusted controller-side boarding authorization, never from an
+    // untrusted request body or query parameter.
     const requesterPublicId = query.requesterPublicId;
 
-    // Preserve the existing policy: contact details are returned only
-    // when the participant is viewing their own summary.
-    //
-    // Journey-participant contact sharing requires an explicit policy
-    // and must not be enabled implicitly by this refactor.
     const isParticipantViewingOwnSummary =
       requesterPublicId !== undefined &&
       requesterPublicId.value === participantPublicId.value;
+
+    // The trusted controller authorizes contact sharing only after verifying
+    // that the requester and target belong to the same Journey Boarding.
+    //
+    // This supports:
+    // - Passenger viewing another passenger's contact details.
+    // - Passenger viewing the provider's contact details.
+    // - Provider viewing a passenger's contact details.
+    // - Participants viewing their own contact details.
+    //
+    // Never infer boarding membership from these identity IDs alone.
+    const mayViewContactDetails =
+      isParticipantViewingOwnSummary ||
+      query.allowJourneyContactSharing === true;
 
     return {
       participant: {
@@ -228,7 +236,7 @@ export class GetJourneyBoardingParticipantSummaryHandler implements QueryHandler
         accountStatus: identity.status.value,
       },
 
-      contact: isParticipantViewingOwnSummary
+      contact: mayViewContactDetails
         ? {
             email: identity.email.toString(),
             phoneNumber: identity.phoneNumber.toString(),

@@ -1,22 +1,6 @@
 // -----------------------------------------------------------------------------
 // sisiMove — Journey Boarding HTTP Controller
 // -----------------------------------------------------------------------------
-//
-// Responsibilities:
-// - Bind HTTP requests and route parameters.
-// - Resolve the authenticated identity through CurrentIdentity.
-// - Convert transport primitives into domain value objects.
-// - Dispatch application commands and queries.
-// - Map application results into HTTP response models.
-//
-// Architectural rules:
-// - No business logic in the controller.
-// - No direct persistence access.
-// - No aggregate mutation outside application handlers.
-// - Authenticated identity is never accepted from an untrusted request body.
-// - Existing Journey Boarding operations retain their application boundaries.
-//
-// -----------------------------------------------------------------------------
 
 import { randomUUID } from 'node:crypto';
 
@@ -52,18 +36,10 @@ import type { QueryHandler } from '../../../../../foundation/kernel/application/
 
 import { JOURNEY_BOARDING_TOKENS } from '../../../application/journey-boarding.tokens';
 
-// -----------------------------------------------------------------------------
-// Response Mapper
-// -----------------------------------------------------------------------------
-
 import JourneyBoardingResponseMapper, {
   JourneyBoardingParticipantResponse,
   JourneyBoardingResponse,
 } from '../mappers/journey-boarding-response.mapper';
-
-// -----------------------------------------------------------------------------
-// Application Commands
-// -----------------------------------------------------------------------------
 
 import {
   BoardPassengerCommand,
@@ -77,10 +53,6 @@ import {
   WithdrawParticipantCommand,
 } from '../../../application/commands';
 
-// -----------------------------------------------------------------------------
-// Application Queries
-// -----------------------------------------------------------------------------
-
 import {
   GetJourneyBoardingByJourneyQuery,
   GetJourneyBoardingParticipantsQuery,
@@ -89,18 +61,9 @@ import {
   ListJourneyBoardingsQuery,
 } from '../../../application/queries';
 
-// -----------------------------------------------------------------------------
-// Domain Aggregates and Entities
-// -----------------------------------------------------------------------------
-
 import type { JourneyBoardingAggregate } from '../../../domain/aggregates/journey-boarding.aggregate';
-
 import type { JourneyBoardingEntity } from '../../../domain/entities/journey-boarding.entity';
 import type { JourneyBoardingParticipantEntity } from '../../../domain/entities/journey-boarding-participant.entity';
-
-// -----------------------------------------------------------------------------
-// Journey Boarding Value Objects
-// -----------------------------------------------------------------------------
 
 import {
   JourneyBoardingJourneyId,
@@ -110,21 +73,8 @@ import {
   JourneyBoardingPublicId,
 } from '../../../domain/value-objects';
 
-// -----------------------------------------------------------------------------
-// Journey Value Objects
-// -----------------------------------------------------------------------------
-
 import { JourneyPublicId } from '../../../../trust/domain/value-objects';
-
-// -----------------------------------------------------------------------------
-// Identity Value Objects
-// -----------------------------------------------------------------------------
-
 import { IdentityPublicId } from '../../../../identity/domain/value-objects/identity-public-id.vo';
-
-// -----------------------------------------------------------------------------
-// Request DTOs
-// -----------------------------------------------------------------------------
 
 import {
   BoardPassengerDto,
@@ -138,34 +88,20 @@ import {
   WithdrawParticipantDto,
 } from '../dto/request';
 
-// -----------------------------------------------------------------------------
-// Command Handler Result Types
-// -----------------------------------------------------------------------------
-
 import type { BoardPassengerResult } from '../../../application/command-handlers/board-passenger.handler';
 import type { StartJourneyResult } from '../../../application/command-handlers/start-journey.handler';
 import type { CancelJourneyBoardingResult } from '../../../application/command-handlers/cancel-journey-boarding.handler';
 import type { MarkPassengerNoShowResult } from '../../../application/command-handlers/mark-passenger-no-show.handler';
 import type { WithdrawParticipantResult } from '../../../application/command-handlers/withdraw-participant.handler';
 import type { RemoveParticipantResult } from '../../../application/command-handlers/remove-participant.handler';
-
-// -----------------------------------------------------------------------------
-// Provider Summary Response
-// -----------------------------------------------------------------------------
-
-// =============================================================================
-// Controller
-// =============================================================================
+import type { JourneyBoardingParticipantSummary } from '../../../application/query-handlers/get-journey-participant-provider-summary.handler';
 
 @ApiTags('Journey Boardings')
 @ApiBearerAuth('access-token')
 @Controller('journey-boardings')
 export class JourneyBoardingController {
   public constructor(
-    // -------------------------------------------------------------------------
-    // Command Handlers
-    // -------------------------------------------------------------------------
-
+    // Command handlers
     @Inject(JOURNEY_BOARDING_TOKENS.COMMAND_HANDLERS.CREATE)
     private readonly createJourneyBoardingHandler: CommandHandler<
       CreateJourneyBoardingCommand,
@@ -220,10 +156,7 @@ export class JourneyBoardingController {
       RemoveParticipantResult
     >,
 
-    // -------------------------------------------------------------------------
-    // Journey Boarding Query Handlers
-    // -------------------------------------------------------------------------
-
+    // Query handlers
     @Inject(JOURNEY_BOARDING_TOKENS.QUERY_HANDLERS.GET)
     private readonly getJourneyBoardingHandler: QueryHandler<
       GetJourneyBoardingQuery,
@@ -248,23 +181,15 @@ export class JourneyBoardingController {
       JourneyBoardingParticipantEntity[]
     >,
 
-    // -------------------------------------------------------------------------
-    // Provider Summary Query Handler
-    // -------------------------------------------------------------------------
-
     @Inject(JOURNEY_BOARDING_TOKENS.QUERY_HANDLERS.GET_PARTICIPANT_SUMMARY)
     private readonly getParticipantSummaryHandler: QueryHandler<
       GetParticipantSummaryQuery,
-      GetJourneyBoardingParticipantsQuery
+      JourneyBoardingParticipantSummary
     >,
   ) {}
 
-  // ===========================================================================
-  // Queries
-  // ===========================================================================
-
   // ---------------------------------------------------------------------------
-  // List Journey Boardings
+  // Queries
   // ---------------------------------------------------------------------------
 
   @Get()
@@ -279,10 +204,6 @@ export class JourneyBoardingController {
       new ListJourneyBoardingsQuery(),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Get Journey Boarding by Journey
-  // ---------------------------------------------------------------------------
 
   @Get('journey/:journeyId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -308,10 +229,6 @@ export class JourneyBoardingController {
     return JourneyBoardingResponseMapper.toResponse(aggregate, journeyId);
   }
 
-  // ---------------------------------------------------------------------------
-  // Get Participant Summary
-  // ---------------------------------------------------------------------------
-
   @Get(
     ':journeyBoardingPublicId/participants/:participantIdentityPublicId/summary',
   )
@@ -320,7 +237,7 @@ export class JourneyBoardingController {
   @ApiOperation({
     summary: 'Get journey boarding participant summary',
     description:
-      'Returns a participant profile, verification status, ratings, and trust information after confirming that the requester and target belong to the specified Journey Boarding.',
+      'Returns a participant profile, verification status, ratings, trust information, and contact details after confirming that both the authenticated requester and target belong to the specified Journey Boarding.',
   })
   @ApiParam({
     name: 'journeyBoardingPublicId',
@@ -336,12 +253,10 @@ export class JourneyBoardingController {
       'Identity public ID of the participant whose summary is requested.',
   })
   public async getParticipantSummary(
-    @Param('journeyBoardingPublicId')
-    journeyBoardingPublicId: string,
-    @Param('participantIdentityPublicId')
-    participantIdentityPublicId: string,
+    @Param('journeyBoardingPublicId') journeyBoardingPublicId: string,
+    @Param('participantIdentityPublicId') participantIdentityPublicId: string,
     @CurrentIdentity() identity: AuthenticatedIdentity,
-  ): Promise<GetJourneyBoardingParticipantsQuery> {
+  ): Promise<JourneyBoardingParticipantSummary> {
     const boarding = await this.getJourneyBoardingHandler.execute(
       new GetJourneyBoardingQuery(
         new JourneyBoardingPublicId(journeyBoardingPublicId),
@@ -383,12 +298,10 @@ export class JourneyBoardingController {
       new GetParticipantSummaryQuery(
         new IdentityPublicId(participantIdentityPublicId),
         new IdentityPublicId(identity.identityPublicId),
+        true,
       ),
     );
   }
-  // ---------------------------------------------------------------------------
-  // List Boarding Participants
-  // ---------------------------------------------------------------------------
 
   @Get(':journeyBoardingPublicId/participants')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -396,7 +309,7 @@ export class JourneyBoardingController {
   @ApiOperation({
     summary: 'List boarding participants',
     description:
-      'Returns participants belonging to the specified Journey Boarding.',
+      'Returns participants belonging to the specified Journey Boarding. Access is restricted to the provider or a participant in that boarding.',
   })
   @ApiParam({
     name: 'journeyBoardingPublicId',
@@ -406,20 +319,40 @@ export class JourneyBoardingController {
   })
   public async getParticipants(
     @Param('journeyBoardingPublicId') journeyBoardingPublicId: string,
+    @CurrentIdentity() identity: AuthenticatedIdentity,
   ): Promise<JourneyBoardingParticipantResponse[]> {
+    const boardingPublicId = new JourneyBoardingPublicId(
+      journeyBoardingPublicId,
+    );
+
+    const boarding = await this.getJourneyBoardingHandler.execute(
+      new GetJourneyBoardingQuery(boardingPublicId),
+    );
+
+    const requesterIsProvider =
+      boarding.providerPublicId.value === identity.identityPublicId;
+
+    const requesterMemberPublicId = new JourneyBoardingMemberPublicId(
+      identity.identityPublicId,
+    );
+
+    const requesterIsParticipant = boarding.participants.some((participant) =>
+      participant.memberPublicId.equals(requesterMemberPublicId),
+    );
+
+    if (!requesterIsProvider && !requesterIsParticipant) {
+      throw new ForbiddenException(
+        'You are not authorized to view participants for this Journey Boarding.',
+      );
+    }
+
     const participants =
       await this.getJourneyBoardingParticipantsHandler.execute(
-        new GetJourneyBoardingParticipantsQuery(
-          new JourneyBoardingPublicId(journeyBoardingPublicId),
-        ),
+        new GetJourneyBoardingParticipantsQuery(boardingPublicId),
       );
 
     return JourneyBoardingResponseMapper.participantsToResponse(participants);
   }
-
-  // ---------------------------------------------------------------------------
-  // Get Journey Boarding by Public ID
-  // ---------------------------------------------------------------------------
 
   @Get(':journeyBoardingPublicId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -444,12 +377,8 @@ export class JourneyBoardingController {
     );
   }
 
-  // ===========================================================================
-  // Create and Open Boarding
-  // ===========================================================================
-
   // ---------------------------------------------------------------------------
-  // Create Journey Boarding
+  // Create and Open Boarding
   // ---------------------------------------------------------------------------
 
   @Post()
@@ -474,10 +403,6 @@ export class JourneyBoardingController {
     return this.createJourneyBoardingHandler.execute(command);
   }
 
-  // ---------------------------------------------------------------------------
-  // Open Journey Boarding
-  // ---------------------------------------------------------------------------
-
   @Post(':journeyBoardingPublicId/open')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('boarding:open')
@@ -501,12 +426,8 @@ export class JourneyBoardingController {
     return this.openJourneyBoardingHandler.execute(command);
   }
 
-  // ===========================================================================
-  // Journey Lifecycle
-  // ===========================================================================
-
   // ---------------------------------------------------------------------------
-  // Start Journey
+  // Journey Lifecycle
   // ---------------------------------------------------------------------------
 
   @Post(':journeyBoardingPublicId/start')
@@ -536,10 +457,6 @@ export class JourneyBoardingController {
       result.journeyPublicId,
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Cancel Journey Boarding
-  // ---------------------------------------------------------------------------
 
   @Post(':journeyBoardingPublicId/cancel')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -574,9 +491,9 @@ export class JourneyBoardingController {
     );
   }
 
-  // ===========================================================================
+  // ---------------------------------------------------------------------------
   // Provider Boarding
-  // ===========================================================================
+  // ---------------------------------------------------------------------------
 
   @Post(':journeyBoardingPublicId/provider/board')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -599,12 +516,8 @@ export class JourneyBoardingController {
     return this.boardProviderHandler.execute(command);
   }
 
-  // ===========================================================================
-  // Passenger Boarding
-  // ===========================================================================
-
   // ---------------------------------------------------------------------------
-  // Board Passenger
+  // Passenger Boarding
   // ---------------------------------------------------------------------------
 
   @Post(':journeyBoardingPublicId/participants/:participantPublicId/board')
@@ -635,10 +548,6 @@ export class JourneyBoardingController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Mark Passenger No-Show
-  // ---------------------------------------------------------------------------
-
   @Post(':journeyBoardingPublicId/participants/:participantPublicId/no-show')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('boarding:passenger:no-show')
@@ -668,12 +577,8 @@ export class JourneyBoardingController {
     );
   }
 
-  // ===========================================================================
-  // Participant Lifecycle
-  // ===========================================================================
-
   // ---------------------------------------------------------------------------
-  // Withdraw Participant
+  // Participant Lifecycle
   // ---------------------------------------------------------------------------
 
   @Post(':journeyBoardingPublicId/participants/:participantPublicId/withdraw')
@@ -703,10 +608,6 @@ export class JourneyBoardingController {
       result.journeyPublicId,
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Remove Participant
-  // ---------------------------------------------------------------------------
 
   @Post(':journeyBoardingPublicId/participants/:participantPublicId/remove')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -743,9 +644,5 @@ export class JourneyBoardingController {
     );
   }
 }
-
-// -----------------------------------------------------------------------------
-// Default Export
-// -----------------------------------------------------------------------------
 
 export default JourneyBoardingController;

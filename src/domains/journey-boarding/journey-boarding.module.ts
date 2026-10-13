@@ -1,44 +1,20 @@
 // src/domains/journey-boarding/journey-boarding.module.ts
 
 import { forwardRef, Module } from '@nestjs/common';
-import { JourneyModule } from '../journey/journey.module';
 
+import { JourneyModule } from '../journey/journey.module';
 import { SocialModule } from '../social/social.module';
 import { TrustModule } from '../trust/trust.module';
-
-// -----------------------------------------------------------------------------
-// Domain Dependencies
-// -----------------------------------------------------------------------------
-
+import { AssetsModule } from '../assets/assets.module';
 import { IdentityModule } from '../identity/identity.module';
-
-// -----------------------------------------------------------------------------
-// Infrastructure
-// -----------------------------------------------------------------------------
 
 import { PrismaModule } from '../../infrastructure/database/prisma/prisma.module';
 
-// -----------------------------------------------------------------------------
-// Presentation
-// -----------------------------------------------------------------------------
-
 import { JourneyBoardingController } from './presentation/rest/controllers/journey-boarding.controller';
-
-// -----------------------------------------------------------------------------
-// Infrastructure — Dependency Injection
-// -----------------------------------------------------------------------------
 
 import { JOURNEY_BOARDING_PROVIDERS } from './infrastructure/dependency-injection/journey-boarding.providers';
 
-// -----------------------------------------------------------------------------
-// Application — Tokens
-// -----------------------------------------------------------------------------
-
 import { JOURNEY_BOARDING_TOKENS } from './application/journey-boarding.tokens';
-
-// -----------------------------------------------------------------------------
-// Application — Command Handlers
-// -----------------------------------------------------------------------------
 
 import {
   BoardPassengerHandler,
@@ -52,10 +28,6 @@ import {
   WithdrawParticipantHandler,
 } from './application/command-handlers';
 
-// -----------------------------------------------------------------------------
-// Application — Query Handlers
-// -----------------------------------------------------------------------------
-
 import {
   GetJourneyBoardingHandler,
   GetJourneyBoardingByJourneyHandler,
@@ -64,155 +36,92 @@ import {
   ListJourneyBoardingsHandler,
 } from './application/query-handlers';
 
-// -----------------------------------------------------------------------------
-// Module
-// -----------------------------------------------------------------------------
-
 @Module({
-  // ===========================================================================
-  // Imports
-  // ===========================================================================
-
   imports: [
     IdentityModule,
     TrustModule,
     SocialModule,
+    AssetsModule,
     PrismaModule,
     forwardRef(() => JourneyModule),
   ],
 
-  // ===========================================================================
-  // Controllers
-  // ===========================================================================
-
   controllers: [JourneyBoardingController],
 
-  // ===========================================================================
-  // Providers
-  // ===========================================================================
-
   providers: [
-    // -------------------------------------------------------------------------
-    // Infrastructure Providers
-    //
-    // Includes the Journey Boarding repository implementation and its
-    // associated infrastructure dependencies.
-    // -------------------------------------------------------------------------
-
+    // Infrastructure
     ...JOURNEY_BOARDING_PROVIDERS,
 
-    // =========================================================================
-    // Journey Boarding Lifecycle Command Handlers
-    // =========================================================================
-
+    // Journey Boarding lifecycle
     {
       provide: JOURNEY_BOARDING_TOKENS.COMMAND_HANDLERS.CREATE,
       useClass: CreateJourneyBoardingHandler,
     },
-
     {
       provide: JOURNEY_BOARDING_TOKENS.COMMAND_HANDLERS.OPEN,
       useClass: OpenJourneyBoardingHandler,
     },
-
     {
       provide: JOURNEY_BOARDING_TOKENS.COMMAND_HANDLERS.START_JOURNEY,
       useClass: StartJourneyHandler,
     },
-
     {
       provide: JOURNEY_BOARDING_TOKENS.COMMAND_HANDLERS.CANCEL,
       useClass: CancelJourneyBoardingHandler,
     },
 
-    // =========================================================================
-    // Provider Boarding
-    // =========================================================================
-
+    // Provider boarding
     {
       provide: JOURNEY_BOARDING_TOKENS.COMMAND_HANDLERS.BOARD_PROVIDER,
       useClass: BoardProviderHandler,
     },
 
-    // =========================================================================
-    // Passenger Boarding
-    // =========================================================================
-
+    // Passenger boarding
     {
       provide: JOURNEY_BOARDING_TOKENS.COMMAND_HANDLERS.BOARD_PASSENGER,
       useClass: BoardPassengerHandler,
     },
-
     {
       provide: JOURNEY_BOARDING_TOKENS.COMMAND_HANDLERS.MARK_PASSENGER_NO_SHOW,
       useClass: MarkPassengerNoShowHandler,
     },
 
-    // =========================================================================
-    // Participant Lifecycle
-    // =========================================================================
-
+    // Participant lifecycle
     {
       provide: JOURNEY_BOARDING_TOKENS.COMMAND_HANDLERS.WITHDRAW_PARTICIPANT,
       useClass: WithdrawParticipantHandler,
     },
-
     {
       provide: JOURNEY_BOARDING_TOKENS.COMMAND_HANDLERS.REMOVE_PARTICIPANT,
       useClass: RemoveParticipantHandler,
     },
 
-    // =========================================================================
-    // Journey Boarding Query Handlers
-    // =========================================================================
-
+    // Journey Boarding queries
     {
       provide: JOURNEY_BOARDING_TOKENS.QUERY_HANDLERS.GET,
       useClass: GetJourneyBoardingHandler,
     },
-
     {
       provide: JOURNEY_BOARDING_TOKENS.QUERY_HANDLERS.GET_BY_JOURNEY,
       useClass: GetJourneyBoardingByJourneyHandler,
     },
-
     {
       provide: JOURNEY_BOARDING_TOKENS.QUERY_HANDLERS.LIST,
       useClass: ListJourneyBoardingsHandler,
     },
 
-    // =========================================================================
-    // Participant Query Handlers
-    // =========================================================================
-
+    // Participant queries
     {
       provide: JOURNEY_BOARDING_TOKENS.QUERY_HANDLERS.GET_PARTICIPANTS,
       useClass: GetJourneyBoardingParticipantsHandler,
     },
 
-    // =========================================================================
-    // Participant Summary Query Handler
-    // =========================================================================
-
+    // Participant summary
     {
       provide: JOURNEY_BOARDING_TOKENS.QUERY_HANDLERS.GET_PARTICIPANT_SUMMARY,
       useClass: GetJourneyBoardingParticipantSummaryHandler,
     },
   ],
-
-  // ===========================================================================
-  // Exports
-  // ===========================================================================
-  //
-  // Export the repository contract token, not the concrete Prisma repository.
-  //
-  // JourneyModule can import JourneyBoardingModule and inject the repository
-  // through JOURNEY_BOARDING_TOKENS.REPOSITORY without depending directly on
-  // Journey Boarding's persistence implementation.
-  //
-  // Command and query handlers remain private because the controller resolves
-  // them within this module.
-  // ===========================================================================
 
   exports: [
     JOURNEY_BOARDING_TOKENS.REPOSITORY,
@@ -220,9 +129,5 @@ import {
   ],
 })
 export class JourneyBoardingModule {}
-
-// -----------------------------------------------------------------------------
-// Default Export
-// -----------------------------------------------------------------------------
 
 export default JourneyBoardingModule;

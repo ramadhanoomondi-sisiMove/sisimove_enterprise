@@ -1,3 +1,4 @@
+
 'use client';
 
 // -----------------------------------------------------------------------------
@@ -5,18 +6,17 @@
 // -----------------------------------------------------------------------------
 //
 // Responsibilities:
-// - Fetch a participant summary through the shared query hook.
-// - Present participant profile, verification, trust, and experience information.
-// - Present contact details only when included in the read model.
-// - Handle loading, error, and retry states.
+// - Fetch and display a participant summary.
+// - Present profile, verification, trust, and experience information.
+// - Display contact details only when provided by the backend.
+// - Preserve loading, error, and retry behavior.
 // - Reuse the same component for providers and passengers.
 //
 // Architectural rules:
-// - HTTP execution remains in the API adapter.
-// - Response mapping remains in the mapper layer.
-// - React Query state and caching remain in the query hook.
-// - The backend remains authoritative for contact visibility and verification.
-// - No authorization or participant lifecycle rules belong here.
+// - API execution remains in the API adapter.
+// - React Query state remains in the query hook.
+// - Backend authorization controls contact visibility.
+// - No authorization or lifecycle rules belong in this component.
 // -----------------------------------------------------------------------------
 
 import Image from 'next/image';
@@ -36,11 +36,7 @@ import {
   Waypoints,
 } from 'lucide-react';
 
-import {
-  ErrorState,
-  Skeleton,
-} from '@/components/ui';
-
+import { ErrorState, Skeleton } from '@/components/ui';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -55,14 +51,10 @@ import {
 // -----------------------------------------------------------------------------
 
 export interface JourneyBoardingParticipantSummaryProps {
-  /**
-   * Public identifier of the journey boarding.
-   */
+  /** Public identifier of the journey boarding. */
   journeyBoardingPublicId: string;
 
-  /**
-   * Identity public identifier of the participant whose summary is requested.
-   */
+  /** Identity public identifier of the participant. */
   participantIdentityPublicId: string;
 }
 
@@ -97,13 +89,10 @@ function ParticipantSummaryLoadingState() {
         aria-busy="true"
         className="flex flex-col gap-5"
       >
-        <div className="flex items-start gap-4">
-          <Skeleton
-            className="size-16 shrink-0"
-            radius="full"
-          />
+        <div className="surface-brand flex items-start gap-4 p-4 sm:p-5">
+          <Skeleton className="size-16 shrink-0" radius="full" />
 
-          <div className="grid min-w-0 flex-1 gap-2">
+          <div className="grid min-w-0 flex-1 gap-3">
             <Skeleton className="h-5 w-40 max-w-full" />
             <Skeleton className="h-4 w-28 max-w-full" />
             <Skeleton className="h-4 w-full" />
@@ -115,6 +104,41 @@ function ParticipantSummaryLoadingState() {
         <Skeleton className="h-24 w-full" radius="lg" />
       </div>
     </Card>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Reusable Trust Metric
+// -----------------------------------------------------------------------------
+
+interface TrustMetricProps {
+  label: string;
+  value: string | number;
+  description: string;
+  icon: React.ReactNode;
+}
+
+function TrustMetric({
+  label,
+  value,
+  description,
+  icon,
+}: TrustMetricProps) {
+  return (
+    <div className="surface-muted min-w-0 rounded-[var(--radius-lg)] p-3 sm:p-4">
+      <div className="flex items-center gap-2 text-[var(--foreground-muted)]">
+        <span className="shrink-0">{icon}</span>
+        <p className="truncate text-xs font-medium">{label}</p>
+      </div>
+
+      <p className="mt-3 break-words text-xl font-semibold tracking-tight tabular-nums text-[var(--foreground)]">
+        {value}
+      </p>
+
+      <p className="mt-1 text-xs leading-5 text-[var(--foreground-muted)]">
+        {description}
+      </p>
+    </div>
   );
 }
 
@@ -137,10 +161,8 @@ export function JourneyBoardingParticipantSummary({
     normalizedParticipantIdentityPublicId.length > 0;
 
   const summaryQuery = useJourneyBoardingParticipantSummary({
-    journeyBoardingPublicId:
-      normalizedJourneyBoardingPublicId,
-    participantIdentityPublicId:
-      normalizedParticipantIdentityPublicId,
+    journeyBoardingPublicId: normalizedJourneyBoardingPublicId,
+    participantIdentityPublicId: normalizedParticipantIdentityPublicId,
     enabled: identifiersAreValid,
   });
 
@@ -189,48 +211,80 @@ export function JourneyBoardingParticipantSummary({
     ? 'success'
     : 'default';
 
+  const displayedRating =
+    trust.ratingCount > 0
+      ? trust.ratingAverage.toFixed(1)
+      : '—';
+
   return (
     <Card variant="default" padding="md">
       <section
         aria-label="Participant summary"
-        className="flex min-w-0 flex-col gap-5"
+        className="flex min-w-0 flex-col gap-6"
       >
-        {/* ----------------------------------------------------------------- */}
-        {/* Profile Header                                                    */}
-        {/* ----------------------------------------------------------------- */}
+        {/* Profile Header */}
 
-        <header className="surface-brand rounded-[var(--radius-xl)] p-4 sm:p-5">
+        <header className="surface-brand overflow-hidden rounded-[var(--radius-xl)] p-4 sm:p-6">
           <div className="flex min-w-0 items-start gap-4">
-            <Avatar
-              src={participant.avatarUrl}
-              alt={`${participant.handle} profile`}
-              fallback={participant.handle}
-              size="xl"
-            />
+            <div className="shrink-0 rounded-full bg-[var(--surface)] p-1 shadow-[var(--shadow-sm)]">
+              <Avatar
+                src={participant.avatarUrl}
+                alt={`${participant.handle} profile`}
+                fallback={participant.handle}
+                size="xl"
+              />
+            </div>
 
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="break-words text-lg font-semibold tracking-tight text-[var(--foreground)]">
+                <h2 className="break-words text-lg font-semibold tracking-tight text-[var(--foreground)] sm:text-xl">
                   {participant.handle}
                 </h2>
 
+                {isVerified && (
+                  <span
+                    className="inline-flex items-center text-[var(--brand)]"
+                    aria-label="Verified participant"
+                    title="Verified participant"
+                  >
+                    <BadgeCheck size={19} aria-hidden="true" />
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Badge
                   variant={accountStatusVariant}
                   size="sm"
                   leadingContent={
                     accountIsActive ? (
-                      <CheckCircle2
-                        size={13}
-                        aria-hidden="true"
-                      />
+                      <CheckCircle2 size={13} aria-hidden="true" />
                     ) : undefined
                   }
                 >
                   {participant.accountStatus}
                 </Badge>
+
+                <Badge
+                  variant={verificationVariant}
+                  size="sm"
+                  leadingContent={
+                    isVerified ? (
+                      <ShieldCheck size={13} aria-hidden="true" />
+                    ) : (
+                      <ShieldAlert size={13} aria-hidden="true" />
+                    )
+                  }
+                >
+                  {isVerified
+                    ? 'Verified'
+                    : isVerificationActive
+                      ? 'Verification active'
+                      : 'Not verified'}
+                </Badge>
               </div>
 
-              <p className="mt-2 flex items-center gap-1.5 text-sm text-[var(--foreground-secondary)]">
+              <p className="mt-3 flex items-center gap-2 text-sm text-[var(--foreground-secondary)]">
                 <Globe
                   size={15}
                   aria-hidden="true"
@@ -248,101 +302,76 @@ export function JourneyBoardingParticipantSummary({
           </div>
         </header>
 
-        {/* ----------------------------------------------------------------- */}
-        {/* Verification                                                      */}
-        {/* ----------------------------------------------------------------- */}
+        {/* Verification */}
 
         <section
           aria-label="Participant verification"
-          className="space-y-3"
+          className="space-y-4"
         >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <ShieldCheck
-                size={19}
-                aria-hidden="true"
-                className="text-[var(--brand)]"
-              />
+          <div className="flex items-center gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--brand-soft)] text-[var(--brand)]">
+              <ShieldCheck size={19} aria-hidden="true" />
+            </span>
 
+            <div className="min-w-0">
               <h3 className="text-sm font-semibold text-[var(--foreground)]">
                 Verification
               </h3>
+              <p className="mt-0.5 text-sm text-[var(--foreground-muted)]">
+                Identity verification status
+              </p>
             </div>
-
-            <Badge
-              variant={verificationVariant}
-              leadingContent={
-                isVerified ? (
-                  <BadgeCheck size={14} aria-hidden="true" />
-                ) : isVerificationActive ? (
-                  <ShieldCheck size={14} aria-hidden="true" />
-                ) : (
-                  <ShieldAlert size={14} aria-hidden="true" />
-                )
-              }
-            >
-              {isVerified
-                ? 'Verified'
-                : isVerificationActive
-                  ? 'Active'
-                  : 'Inactive'}
-            </Badge>
           </div>
 
           <div className="surface-muted grid grid-cols-1 gap-4 rounded-[var(--radius-lg)] p-4 sm:grid-cols-2">
             <div className="min-w-0">
-              <p className="text-xs text-[var(--foreground-muted)]">
+              <p className="text-xs font-medium text-[var(--foreground-muted)]">
                 Verification status
               </p>
-
-              <p className="mt-1 break-words text-sm font-medium text-[var(--foreground)]">
+              <p className="mt-1 break-words text-sm font-semibold text-[var(--foreground)]">
                 {verification.status}
               </p>
             </div>
 
             <div className="min-w-0">
-              <p className="text-xs text-[var(--foreground-muted)]">
+              <p className="text-xs font-medium text-[var(--foreground-muted)]">
                 Verification level
               </p>
-
-              <p className="mt-1 break-words text-sm font-medium text-[var(--foreground)]">
+              <p className="mt-1 break-words text-sm font-semibold text-[var(--foreground)]">
                 {verification.level}
               </p>
             </div>
           </div>
 
-          <p className="text-sm leading-5 text-[var(--foreground-secondary)]">
+          <p className="text-sm leading-6 text-[var(--foreground-secondary)]">
             {isVerificationActive
               ? 'Verification is currently active.'
               : 'Verification is not currently active.'}
           </p>
 
           {verification.expiresAt && (
-            <p className="flex items-center gap-2 text-xs text-[var(--foreground-muted)]">
+            <div className="flex items-center gap-2 text-xs text-[var(--foreground-muted)]">
               <CalendarClock
-                size={14}
+                size={15}
                 aria-hidden="true"
                 className="shrink-0"
               />
-
               <span>
                 Expires {formatExpiryDate(verification.expiresAt)}
               </span>
-            </p>
+            </div>
           )}
         </section>
 
         <Divider />
 
-        {/* ----------------------------------------------------------------- */}
-        {/* Trust and Experience                                              */}
-        {/* ----------------------------------------------------------------- */}
+        {/* Trust and Experience */}
 
         <section
           aria-label="Participant trust information"
           className="space-y-4"
         >
-          <div className="flex items-start gap-3">
+          <div className="flex items-center gap-3">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--brand-soft)] text-[var(--brand)]">
               <Trophy size={19} aria-hidden="true" />
             </span>
@@ -351,18 +380,22 @@ export function JourneyBoardingParticipantSummary({
               <h3 className="text-sm font-semibold text-[var(--foreground)]">
                 Trust and experience
               </h3>
-
-              <p className="mt-1 text-sm text-[var(--foreground-muted)]">
+              <p className="mt-0.5 text-sm text-[var(--foreground-muted)]">
                 Ratings and journey history
               </p>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {/* Rating */}
-
-            <div className="surface-muted min-w-0 rounded-[var(--radius-lg)] p-3">
-              <div className="flex items-center gap-1.5 text-[var(--foreground-muted)]">
+            <TrustMetric
+              label="Rating"
+              value={displayedRating}
+              description={
+                trust.ratingCount > 0
+                  ? 'Average rating'
+                  : 'Not yet rated'
+              }
+              icon={
                 <Star
                   size={15}
                   aria-hidden="true"
@@ -372,98 +405,46 @@ export function JourneyBoardingParticipantSummary({
                       : ''
                   }
                 />
+              }
+            />
 
-                <p className="text-xs">Rating</p>
-              </div>
-
-              <p className="mt-2 text-xl font-semibold tracking-tight tabular-nums text-[var(--foreground)]">
-                {trust.ratingCount > 0
-                  ? trust.ratingAverage.toFixed(1)
-                  : '—'}
-              </p>
-
-              <p className="mt-1 text-xs text-[var(--foreground-muted)]">
-                {trust.ratingCount > 0
-                  ? 'Average rating'
-                  : 'Not yet rated'}
-              </p>
-            </div>
-
-            {/* Reviews */}
-
-            <div className="surface-muted min-w-0 rounded-[var(--radius-lg)] p-3">
-              <div className="flex items-center gap-1.5 text-[var(--foreground-muted)]">
+            <TrustMetric
+              label="Reviews"
+              value={trust.ratingCount}
+              description="Ratings received"
+              icon={
                 <MessageSquareText
                   size={15}
                   aria-hidden="true"
                 />
+              }
+            />
 
-                <p className="text-xs">Reviews</p>
-              </div>
+            <TrustMetric
+              label="Journeys"
+              value={trust.completedJourneys}
+              description="Completed"
+              icon={<Waypoints size={15} aria-hidden="true" />}
+            />
 
-              <p className="mt-2 text-xl font-semibold tracking-tight tabular-nums text-[var(--foreground)]">
-                {trust.ratingCount}
-              </p>
-
-              <p className="mt-1 text-xs text-[var(--foreground-muted)]">
-                Ratings received
-              </p>
-            </div>
-
-            {/* Completed journeys */}
-
-            <div className="surface-muted min-w-0 rounded-[var(--radius-lg)] p-3">
-              <div className="flex items-center gap-1.5 text-[var(--foreground-muted)]">
-                <Waypoints
-                  size={15}
-                  aria-hidden="true"
-                />
-
-                <p className="text-xs">Journeys</p>
-              </div>
-
-              <p className="mt-2 text-xl font-semibold tracking-tight tabular-nums text-[var(--foreground)]">
-                {trust.completedJourneys}
-              </p>
-
-              <p className="mt-1 text-xs text-[var(--foreground-muted)]">
-                Completed
-              </p>
-            </div>
-
-            {/* Trust level */}
-
-            <div className="surface-muted min-w-0 rounded-[var(--radius-lg)] p-3">
-              <div className="flex items-center gap-1.5 text-[var(--foreground-muted)]">
-                <ShieldCheck
-                  size={15}
-                  aria-hidden="true"
-                />
-
-                <p className="text-xs">Trust level</p>
-              </div>
-
-              <p className="mt-2 break-words text-base font-semibold text-[var(--foreground)]">
-                {trust.verificationLevel}
-              </p>
-
-              <p className="mt-1 text-xs text-[var(--foreground-muted)]">
-                Verification level
-              </p>
-            </div>
+            <TrustMetric
+              label="Trust level"
+              value={trust.verificationLevel}
+              description="Verification level"
+              icon={<ShieldCheck size={15} aria-hidden="true" />}
+            />
           </div>
 
           {/* Trust Badges */}
 
           {trust.badges.length > 0 && (
-            <div className="space-y-3">
+            <div className="space-y-3 pt-1">
               <h4 className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
                 <BadgeCheck
                   size={17}
                   aria-hidden="true"
                   className="text-[var(--brand)]"
                 />
-
                 Badges and recognition
               </h4>
 
@@ -474,7 +455,7 @@ export function JourneyBoardingParticipantSummary({
                     className="flex min-w-0 items-start gap-3 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] p-3 transition-colors hover:bg-[var(--background-subtle)]"
                   >
                     {badge.asset ? (
-                      <span className="relative size-10 shrink-0 overflow-hidden rounded-[var(--radius-md)] bg-[var(--background-muted)]">
+                      <span className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-md)] bg-[var(--background-muted)]">
                         <Image
                           src={badge.asset.url}
                           alt={badge.asset.alt || ''}
@@ -491,7 +472,7 @@ export function JourneyBoardingParticipantSummary({
                     )}
 
                     <div className="min-w-0 flex-1">
-                      <p className="break-words text-sm font-medium text-[var(--foreground)]">
+                      <p className="break-words text-sm font-semibold text-[var(--foreground)]">
                         {badge.name}
                       </p>
 
@@ -508,9 +489,7 @@ export function JourneyBoardingParticipantSummary({
           )}
         </section>
 
-        {/* ----------------------------------------------------------------- */}
-        {/* Authorized Contact                                                */}
-        {/* ----------------------------------------------------------------- */}
+        {/* Authorized Contact */}
 
         {contact && (
           <>
@@ -518,12 +497,12 @@ export function JourneyBoardingParticipantSummary({
 
             <section
               aria-label="Participant contact information"
-              className="space-y-3"
+              className="space-y-4"
             >
-              <div className="flex items-start gap-3">
+              <div className="flex items-center gap-3">
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--brand-soft)] text-[var(--brand)]">
                   <MessageSquareText
-                    size={18}
+                    size={19}
                     aria-hidden="true"
                   />
                 </span>
@@ -532,49 +511,48 @@ export function JourneyBoardingParticipantSummary({
                   <h3 className="text-sm font-semibold text-[var(--foreground)]">
                     Contact information
                   </h3>
-
-                  <p className="mt-1 text-sm text-[var(--foreground-muted)]">
+                  <p className="mt-0.5 text-sm text-[var(--foreground-muted)]">
                     Contact details available for this request
                   </p>
                 </div>
               </div>
 
-              <div className="rounded-[var(--radius-lg)] border border-[var(--border)] p-4">
-                <div className="flex min-w-0 items-start gap-3">
-                  <Mail
-                    size={17}
-                    aria-hidden="true"
-                    className="mt-0.5 shrink-0 text-[var(--foreground-muted)]"
-                  />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="flex min-w-0 items-start gap-3 rounded-[var(--radius-lg)] border border-[var(--border)] p-4 transition-colors hover:bg-[var(--background-subtle)]">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--background-muted)] text-[var(--foreground-secondary)]">
+                    <Mail size={17} aria-hidden="true" />
+                  </span>
 
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-medium text-[var(--foreground-muted)]">
                       Email
                     </p>
 
-                    <p className="mt-1 break-all text-sm text-[var(--foreground)]">
+                    <a
+                      href={`mailto:${contact.email}`}
+                      className="mt-1 inline-block break-all text-sm font-medium text-[var(--brand)] underline-offset-4 hover:underline focus-visible:rounded-sm"
+                    >
                       {contact.email}
-                    </p>
+                    </a>
                   </div>
                 </div>
 
-                <Divider />
-
-                <div className="mt-4 flex min-w-0 items-start gap-3">
-                  <Phone
-                    size={17}
-                    aria-hidden="true"
-                    className="mt-0.5 shrink-0 text-[var(--foreground-muted)]"
-                  />
+                <div className="flex min-w-0 items-start gap-3 rounded-[var(--radius-lg)] border border-[var(--border)] p-4 transition-colors hover:bg-[var(--background-subtle)]">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--background-muted)] text-[var(--foreground-secondary)]">
+                    <Phone size={17} aria-hidden="true" />
+                  </span>
 
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-medium text-[var(--foreground-muted)]">
                       Phone
                     </p>
 
-                    <p className="mt-1 break-words text-sm text-[var(--foreground)]">
+                    <a
+                      href={`tel:${contact.phoneNumber}`}
+                      className="mt-1 inline-flex min-h-8 items-center break-words text-sm font-semibold text-[var(--brand)] underline-offset-4 hover:underline focus-visible:rounded-sm"
+                    >
                       {contact.phoneNumber}
-                    </p>
+                    </a>
                   </div>
                 </div>
               </div>
@@ -582,9 +560,7 @@ export function JourneyBoardingParticipantSummary({
           </>
         )}
 
-        {/* ----------------------------------------------------------------- */}
-        {/* Verification Disclaimer                                           */}
-        {/* ----------------------------------------------------------------- */}
+        {/* Verification Disclaimer */}
 
         <footer className="flex items-start gap-3 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--background-subtle)] p-4">
           <ShieldAlert

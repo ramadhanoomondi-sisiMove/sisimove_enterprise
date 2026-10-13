@@ -1,4 +1,3 @@
-
 "use client";
 
 import { use } from "react";
@@ -21,6 +20,7 @@ import {
 } from "@/components/journey-boarding";
 
 import { useJourneyBoardingByJourney } from "@/features/journey-boarding/hooks";
+import { useMyJourney } from "@/features/journey/hooks/queries/use-my-journey";
 
 import { AUTHENTICATED_ROUTES } from "@/foundation/routing";
 
@@ -111,7 +111,13 @@ export default function JourneyBoardingPage({
 
   const identityQuery = useCurrentIdentity();
 
-  if (boardingQuery.isPending || identityQuery.isPending) {
+  const journeyQuery = useMyJourney(journeyPublicId);
+
+  if (
+    boardingQuery.isPending ||
+    identityQuery.isPending ||
+    journeyQuery.isLoading
+  ) {
     return <JourneyBoardingPageLoading />;
   }
 
@@ -139,8 +145,20 @@ export default function JourneyBoardingPage({
     );
   }
 
+  if (journeyQuery.error) {
+    return (
+      <JourneyBoardingPageError
+        message={
+          journeyQuery.error.message ||
+          "We could not load the scheduled departure time for this journey."
+        }
+      />
+    );
+  }
+
   const boarding = boardingQuery.data;
   const identity = identityQuery.data;
+  const journey = journeyQuery.journey;
 
   if (boarding === undefined) {
     return (
@@ -158,8 +176,18 @@ export default function JourneyBoardingPage({
     );
   }
 
+  if (!journey) {
+    return (
+      <JourneyBoardingPageError
+        message="The Journey details could not be found in your authenticated journeys."
+      />
+    );
+  }
+
   const isProvider =
     boarding.providerPublicId === identity.publicId;
+
+  const departureAt = journey.schedule?.departureAt ?? "";
 
   return (
     <div className="page-shell">
@@ -216,11 +244,13 @@ export default function JourneyBoardingPage({
               <JourneyBoardingCard
                 boarding={boarding}
                 isProvider={isProvider}
+                departureAt={departureAt}
               />
 
               {isProvider && (
                 <JourneyBoardingProvider
                   boarding={boarding}
+                  departureAt={departureAt}
                 />
               )}
 

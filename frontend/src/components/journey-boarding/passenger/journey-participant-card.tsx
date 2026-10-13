@@ -1,3 +1,4 @@
+
 'use client';
 
 // -----------------------------------------------------------------------------
@@ -16,11 +17,14 @@ import {
   type JourneyBoardingParticipant,
 } from '@/features/journey-boarding/models';
 
+import { JourneyBoardingParticipantSummary } from '../shared/journey-boarding-participant-summary';
+
 // -----------------------------------------------------------------------------
 // Props
 // -----------------------------------------------------------------------------
 
 export interface JourneyParticipantCardProps {
+  journeyBoardingPublicId: string;
   participant: JourneyBoardingParticipant;
   isCurrentPassenger?: boolean;
 }
@@ -32,15 +36,11 @@ export interface JourneyParticipantCardProps {
 function formatTimestamp(
   value: string | undefined,
 ): string | undefined {
-  if (!value) {
-    return undefined;
-  }
+  if (!value) return undefined;
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) {
-    return undefined;
-  }
+  if (Number.isNaN(date.getTime())) return undefined;
 
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: 'medium',
@@ -98,7 +98,6 @@ function getStatusPresentation(
       };
 
     default:
-      // Protect the UI against missing or unrecognized API status values.
       return {
         label: 'Status unavailable',
         variant: 'default',
@@ -112,18 +111,28 @@ function getStatusPresentation(
 // -----------------------------------------------------------------------------
 
 export function JourneyParticipantCard({
+  journeyBoardingPublicId,
   participant,
   isCurrentPassenger = false,
 }: JourneyParticipantCardProps) {
-  const statusPresentation = getStatusPresentation(
-    participant.status,
-  );
+  const statusPresentation = getStatusPresentation(participant.status);
 
   const expectedAt = formatTimestamp(participant.expectedAt);
   const boardedAt = formatTimestamp(participant.boardedAt);
   const withdrawnAt = formatTimestamp(participant.withdrawnAt);
   const noShowAt = formatTimestamp(participant.noShowAt);
   const removedAt = formatTimestamp(participant.removedAt);
+
+  const isPassenger =
+    participant.role === JourneyBoardingParticipantRole.PASSENGER;
+
+  const participantIdentityPublicId =
+    participant.memberPublicId?.trim() ?? '';
+
+  const hasPassengerIdentity =
+    isPassenger &&
+    journeyBoardingPublicId.trim().length > 0 &&
+    participantIdentityPublicId.length > 0;
 
   const roleLabel =
     participant.role === JourneyBoardingParticipantRole.PROVIDER
@@ -153,69 +162,84 @@ export function JourneyParticipantCard({
             : undefined;
 
   return (
-    <Card
-      padding="md"
-      className="min-w-0"
-      aria-label={`${roleLabel} boarding status`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold text-[var(--foreground)]">
-              {roleLabel}
-            </p>
+    <div className="min-w-0 space-y-3">
+      {hasPassengerIdentity && (
+        <JourneyBoardingParticipantSummary
+          journeyBoardingPublicId={journeyBoardingPublicId.trim()}
+          participantIdentityPublicId={participantIdentityPublicId}
+        />
+      )}
 
-            {isCurrentPassenger && (
-              <Badge variant="brand" size="sm">
-                You
-              </Badge>
-            )}
+      {isPassenger && !hasPassengerIdentity && (
+        <Card padding="md">
+          <p className="text-sm text-[var(--foreground-secondary)]">
+            Passenger profile and contact information are unavailable for
+            this participant.
+          </p>
+        </Card>
+      )}
+
+      <Card
+        padding="md"
+        className="min-w-0"
+        aria-label={`${roleLabel} boarding status`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-[var(--foreground)]">
+                {roleLabel}
+              </p>
+
+              {isCurrentPassenger && (
+                <Badge variant="brand" size="sm">
+                  You
+                </Badge>
+              )}
+            </div>
+
+            <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
+              {statusPresentation.description}
+            </p>
           </div>
 
-          <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
-            {statusPresentation.description}
-          </p>
+          <Badge variant={statusPresentation.variant} size="sm">
+            {statusPresentation.label}
+          </Badge>
         </div>
 
-        <Badge
-          variant={statusPresentation.variant}
-          size="sm"
-        >
-          {statusPresentation.label}
-        </Badge>
-      </div>
+        {(expectedAt || outcomeTimestamp) && (
+          <>
+            <Divider className="my-3" />
 
-      {(expectedAt || outcomeTimestamp) && (
-        <>
-          <Divider className="my-3" />
+            <dl className="grid gap-2 text-sm">
+              {expectedAt && (
+                <div className="flex flex-wrap justify-between gap-x-4 gap-y-1">
+                  <dt className="text-[var(--foreground-muted)]">
+                    Expected at
+                  </dt>
 
-          <dl className="grid gap-2 text-sm">
-            {expectedAt && (
-              <div className="flex flex-wrap justify-between gap-x-4 gap-y-1">
-                <dt className="text-[var(--foreground-muted)]">
-                  Expected at
-                </dt>
+                  <dd className="text-right font-medium text-[var(--foreground)]">
+                    {expectedAt}
+                  </dd>
+                </div>
+              )}
 
-                <dd className="text-right font-medium text-[var(--foreground)]">
-                  {expectedAt}
-                </dd>
-              </div>
-            )}
+              {outcomeTimestamp && outcomeLabel && (
+                <div className="flex flex-wrap justify-between gap-x-4 gap-y-1">
+                  <dt className="text-[var(--foreground-muted)]">
+                    {outcomeLabel}
+                  </dt>
 
-            {outcomeTimestamp && outcomeLabel && (
-              <div className="flex flex-wrap justify-between gap-x-4 gap-y-1">
-                <dt className="text-[var(--foreground-muted)]">
-                  {outcomeLabel}
-                </dt>
-
-                <dd className="text-right font-medium text-[var(--foreground)]">
-                  {outcomeTimestamp}
-                </dd>
-              </div>
-            )}
-          </dl>
-        </>
-      )}
-    </Card>
+                  <dd className="text-right font-medium text-[var(--foreground)]">
+                    {outcomeTimestamp}
+                  </dd>
+                </div>
+              )}
+            </dl>
+          </>
+        )}
+      </Card>
+    </div>
   );
 }

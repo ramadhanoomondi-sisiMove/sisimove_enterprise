@@ -7,7 +7,8 @@
 // Responsibilities:
 // - Resolve the Journey Boarding aggregate by public identifier.
 // - Delegate cancellation to the aggregate.
-// - Persist the updated aggregate.
+// - Record a historical cancellation event after successful cancellation.
+// - Persist the updated aggregate and historical event.
 // - Resolve the associated Journey's public identifier.
 // - Return the updated aggregate together with the Journey public ID.
 //
@@ -38,6 +39,10 @@ import { JourneyId } from '../../../journey/domain/value-objects/journey-id.vo';
 
 import { JourneyBoardingNotFoundException } from '../../domain/exceptions';
 
+import { JourneyBoardingEventEntity } from '../../domain/entities/journey-boarding-event.entity';
+
+import { JourneyBoardingEventType } from '../../domain/value-objects/journey-boarding-event-type.vo';
+
 // -----------------------------------------------------------------------------
 // Result
 // -----------------------------------------------------------------------------
@@ -67,6 +72,10 @@ export class CancelJourneyBoardingHandler implements CommandHandler<
   public async execute(
     command: CancelJourneyBoardingCommand,
   ): Promise<CancelJourneyBoardingResult> {
+    // -------------------------------------------------------------------------
+    // Load Aggregate
+    // -------------------------------------------------------------------------
+
     const aggregate = await this.repository.findByPublicId(
       command.journeyBoardingPublicId,
     );
@@ -77,6 +86,14 @@ export class CancelJourneyBoardingHandler implements CommandHandler<
       );
     }
 
+    // -------------------------------------------------------------------------
+    // Cancel Boarding
+    // -------------------------------------------------------------------------
+    //
+    // The aggregate enforces lifecycle invariants. If cancellation fails,
+    // no historical cancellation event is added.
+    // -------------------------------------------------------------------------
+
     aggregate.cancel(
       command.correlationId,
       command.causationId,
@@ -84,7 +101,28 @@ export class CancelJourneyBoardingHandler implements CommandHandler<
       command.actorPublicId,
     );
 
+    // -------------------------------------------------------------------------
+    // Record Successful Cancellation
+    // -------------------------------------------------------------------------
+
+    const cancellationEvent = JourneyBoardingEventEntity.create({
+      boardingId: aggregate.publicId,
+      type: JourneyBoardingEventType.boardingCancelled(),
+      actorPublicId: command.actorPublicId,
+      occurredAt: command.cancelledAt ?? new Date(),
+    });
+
+    aggregate.addBoardingEvent(cancellationEvent);
+
+    // -------------------------------------------------------------------------
+    // Persist Aggregate And History
+    // -------------------------------------------------------------------------
+
     await this.repository.save(aggregate);
+
+    // -------------------------------------------------------------------------
+    // Resolve Journey Public ID
+    // -------------------------------------------------------------------------
 
     const journey = await this.journeyRepository.findJourneyById(
       new JourneyId(aggregate.journeyBoarding.journeyId.value),
@@ -95,6 +133,10 @@ export class CancelJourneyBoardingHandler implements CommandHandler<
         `Journey not found for boarding ${aggregate.journeyBoarding.publicId.value}.`,
       );
     }
+
+    // -------------------------------------------------------------------------
+    // Result
+    // -------------------------------------------------------------------------
 
     return {
       aggregate,

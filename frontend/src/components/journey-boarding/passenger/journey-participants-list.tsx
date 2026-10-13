@@ -214,9 +214,10 @@ export function JourneyParticipantsList({
       </div>
 
       <div className="grid gap-3">
-        {visibleParticipants.map((participant, index) => (
+          {visibleParticipants.map((participant, index) => (
           <JourneyParticipantCard
             key={`${participant.publicId || 'participant'}-${index}`}
+            journeyBoardingPublicId={journeyBoardingPublicId}
             participant={participant}
           />
         ))}
