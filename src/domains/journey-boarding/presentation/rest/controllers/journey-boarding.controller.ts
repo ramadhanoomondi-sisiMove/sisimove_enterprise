@@ -1,3 +1,5 @@
+// src/domains/journey-boarding/presentation/rest/controllers/journey-boarding.controller.ts
+
 // -----------------------------------------------------------------------------
 // sisiMove — Journey Boarding HTTP Controller
 // -----------------------------------------------------------------------------
@@ -7,13 +9,13 @@ import { randomUUID } from 'node:crypto';
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Inject,
+  NotFoundException,
   Param,
   Post,
   UseGuards,
-  ForbiddenException,
-  NotFoundException,
 } from '@nestjs/common';
 
 import {
@@ -254,7 +256,8 @@ export class JourneyBoardingController {
   })
   public async getParticipantSummary(
     @Param('journeyBoardingPublicId') journeyBoardingPublicId: string,
-    @Param('participantIdentityPublicId') participantIdentityPublicId: string,
+    @Param('participantIdentityPublicId')
+    participantIdentityPublicId: string,
     @CurrentIdentity() identity: AuthenticatedIdentity,
   ): Promise<JourneyBoardingParticipantSummary> {
     const boarding = await this.getJourneyBoardingHandler.execute(
@@ -611,7 +614,7 @@ export class JourneyBoardingController {
 
   @Post(':journeyBoardingPublicId/participants/:participantPublicId/remove')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('boarding:participant:remove')
+  @RequirePermissions('boarding:participant-remove')
   @ApiOperation({
     summary: 'Remove participant',
     description:

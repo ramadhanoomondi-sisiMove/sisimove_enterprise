@@ -1334,7 +1334,66 @@ export class PrismaJourneyRepository implements JourneyRepository {
       'Journey capacity changed concurrently. Please retry the booking confirmation.',
     );
   }
+  /**
+   * Release seats previously reserved for a Journey Booking.
+   *
+   * Uses optimistic concurrency and the ambient Prisma client so the release
+   * participates in the caller's UnitOfWork.
+   */
+  public async releaseCapacitySeats(
+    journeyId: JourneyId,
+    seats: number,
+  ): Promise<void> {
+    if (!Number.isInteger(seats) || seats <= 0) {
+      throw new Error(
+        'The number of seats to release must be a positive integer.',
+      );
+    }
 
+    const maxAttempts = 5;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const capacity = await this.prisma.journeyCapacity.findUnique({
+        where: {
+          journeyId: journeyId.value,
+        },
+      });
+
+      if (capacity === null) {
+        throw new Error(
+          `Journey capacity was not found for Journey ${journeyId.value}.`,
+        );
+      }
+
+      if (seats > capacity.bookedSeats) {
+        throw new Error(
+          `Cannot release ${seats} seat(s): only ` +
+            `${capacity.bookedSeats} seat(s) are currently booked.`,
+        );
+      }
+
+      const result = await this.prisma.journeyCapacity.updateMany({
+        where: {
+          journeyId: journeyId.value,
+          bookedSeats: capacity.bookedSeats,
+        },
+        data: {
+          bookedSeats: {
+            decrement: seats,
+          },
+          updatedAt: new Date(),
+        },
+      });
+
+      if (result.count === 1) {
+        return;
+      }
+    }
+
+    throw new Error(
+      'Journey capacity changed concurrently. Please retry the seat release.',
+    );
+  }
   // ===========================================================================
   // Pricing
   // ===========================================================================

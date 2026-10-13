@@ -616,7 +616,13 @@ export interface JourneyRepository {
   existsCapacity(journeyId: JourneyId): Promise<boolean>;
 
   reserveCapacitySeats(journeyId: JourneyId, seats: number): Promise<void>;
-
+  /**
+   * Release seats previously reserved for a Journey Booking.
+   *
+   * The implementation must prevent bookedSeats from becoming negative
+   * and must participate in the ambient Prisma UnitOfWork.
+   */
+  releaseCapacitySeats(journeyId: JourneyId, seats: number): Promise<void>;
   // ===========================================================================
   // Pricing
   // ===========================================================================

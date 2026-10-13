@@ -778,6 +778,38 @@ export class FinancialAccountAggregate extends AggregateRoot<FinancialAccountAgg
     this.ensureValidBalance();
   }
 
+  /**
+   * Reverses pending funds without releasing them into available funds.
+   *
+   * Use this when a pending amount must be removed from an account
+   * without making that amount available to its owner.
+   *
+   * This operation reduces the total balance held by this account.
+   * Any corresponding financial movement must be represented by the
+   * relevant FinancialTransactionAggregate.
+   */
+  public reversePending(
+    amount: number,
+    currency: Currency,
+    at: Date = new Date(),
+  ): void {
+    this.ensureOperational();
+
+    this.ensureCurrency(currency);
+
+    this.ensurePositiveAmount(amount);
+
+    if (!this.hasPendingFunds(amount)) {
+      throw new FinancialAccountInsufficientFundsException();
+    }
+
+    this.balance.decreasePending(amount);
+
+    this.balance.setUpdatedAt(at);
+
+    this.ensureValidBalance();
+  }
+
   // ===========================================================================
   // Held Balance
   // ===========================================================================

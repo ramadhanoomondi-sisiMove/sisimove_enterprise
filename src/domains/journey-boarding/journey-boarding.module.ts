@@ -1,5 +1,3 @@
-// src/domains/journey-boarding/journey-boarding.module.ts
-
 import { forwardRef, Module } from '@nestjs/common';
 
 import { JourneyModule } from '../journey/journey.module';
@@ -7,6 +5,8 @@ import { SocialModule } from '../social/social.module';
 import { TrustModule } from '../trust/trust.module';
 import { AssetsModule } from '../assets/assets.module';
 import { IdentityModule } from '../identity/identity.module';
+import { FinancialModule } from '../financial/financial.module';
+import { JourneyBookingModule } from '../journey-booking/journey-booking.module';
 
 import { PrismaModule } from '../../infrastructure/database/prisma/prisma.module';
 
@@ -42,8 +42,11 @@ import {
     TrustModule,
     SocialModule,
     AssetsModule,
+    FinancialModule,
     PrismaModule,
+
     forwardRef(() => JourneyModule),
+    forwardRef(() => JourneyBookingModule),
   ],
 
   controllers: [JourneyBoardingController],

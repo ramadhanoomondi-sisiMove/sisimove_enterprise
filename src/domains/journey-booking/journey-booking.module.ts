@@ -110,7 +110,7 @@ import {
     // the expected passenger against the boarding associated with the journey.
     // -------------------------------------------------------------------------
 
-    JourneyBoardingModule,
+    forwardRef(() => JourneyBoardingModule),
 
     // -------------------------------------------------------------------------
     // Social
