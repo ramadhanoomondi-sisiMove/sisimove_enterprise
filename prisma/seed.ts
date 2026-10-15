@@ -240,6 +240,14 @@ const permissionDefinitions = [
   ['financial', 'read'],
   ['financial', 'manage'],
 
+    // Journey Completion
+  ['completion', 'read'],
+  ['completion', 'manage'],
+
+  // Journey Settlement
+  ['settlement', 'read'],
+  ['settlement', 'manage'],
+
   // Support
   ['support', 'read'],
   ['support', 'create'],
@@ -403,6 +411,11 @@ const adminPermissions = [
   'trust:manage',
 
   'financial:read',
+  'completion:read',
+  'completion:manage',
+
+  'settlement:read',
+  'settlement:manage',
 
   'support:read',
   'support:manage',
@@ -1414,6 +1427,86 @@ await prisma.verification.upsert({
     createdAt: VERIFICATION_CREATED_AT,
   },
 });
+
+
+  // ---------------------------------------------------------------------------
+  // Admin verification — pending, with no member/driver verification level
+  // ---------------------------------------------------------------------------
+
+  await prisma.verification.upsert({
+    where: {
+      identityId: identities.admin.id,
+    },
+    update: {
+      status: VerificationStatus.PENDING,
+      level: VerificationLevel.NONE,
+
+      profilePhotoVerified: false,
+      governmentIdVerified: false,
+      driverLicenseVerified: false,
+
+      verifiedAt: null,
+      memberVerifiedAt: null,
+      driverVerifiedAt: null,
+      profilePhotoVerifiedAt: null,
+      governmentIdVerifiedAt: null,
+      driverLicenseVerifiedAt: null,
+
+      reviewedById: null,
+      lastReviewedAt: null,
+    },
+    create: {
+      publicId: 'AS-VERIFICATION-ADMIN-001',
+      identityId: identities.admin.id,
+
+      status: VerificationStatus.PENDING,
+      level: VerificationLevel.NONE,
+
+      profilePhotoVerified: false,
+      governmentIdVerified: false,
+      driverLicenseVerified: false,
+    },
+  });
+
+  // ---------------------------------------------------------------------------
+  // Super-admin verification — pending, with no member/driver verification level
+  // ---------------------------------------------------------------------------
+
+  await prisma.verification.upsert({
+    where: {
+      identityId: identities.superAdmin.id,
+    },
+    update: {
+      status: VerificationStatus.PENDING,
+      level: VerificationLevel.NONE,
+
+      profilePhotoVerified: false,
+      governmentIdVerified: false,
+      driverLicenseVerified: false,
+
+      verifiedAt: null,
+      memberVerifiedAt: null,
+      driverVerifiedAt: null,
+      profilePhotoVerifiedAt: null,
+      governmentIdVerifiedAt: null,
+      driverLicenseVerifiedAt: null,
+
+      reviewedById: null,
+      lastReviewedAt: null,
+    },
+    create: {
+      publicId: 'AS-VERIFICATION-SUPERADMIN-001',
+      identityId: identities.superAdmin.id,
+
+      status: VerificationStatus.PENDING,
+      level: VerificationLevel.NONE,
+
+      profilePhotoVerified: false,
+      governmentIdVerified: false,
+      driverLicenseVerified: false,
+    },
+  });
+
 // ---------------------------------------------------------------------------
 // Driver verification request — licence
 // ---------------------------------------------------------------------------
@@ -1577,6 +1670,94 @@ const driver2Profile = await prisma.travellerProfile.upsert({
     completedJourneys: 0,
   },
 });
+
+  // ---------------------------------------------------------------------------
+  // Admin traveller profile
+  // ---------------------------------------------------------------------------
+
+  const adminProfile = await prisma.travellerProfile.upsert({
+    where: {
+      memberPublicId: identities.admin.publicId,
+    },
+    update: {
+      handle: 'sisimove_admin',
+      bio: 'SisiMove development administrator.',
+      countryCode: 'KE',
+      status: TravellerProfileStatus.ACTIVE,
+      visibility: TravellerProfileVisibility.PUBLIC,
+    },
+    create: {
+      publicId: 'AS-TRAVELLER-ADMIN-001',
+      memberPublicId: identities.admin.publicId,
+      handle: 'sisimove_admin',
+      bio: 'SisiMove development administrator.',
+      countryCode: 'KE',
+      status: TravellerProfileStatus.ACTIVE,
+      visibility: TravellerProfileVisibility.PUBLIC,
+    },
+  });
+
+  // ---------------------------------------------------------------------------
+  // Super-admin traveller profile
+  // ---------------------------------------------------------------------------
+
+  const superAdminProfile = await prisma.travellerProfile.upsert({
+    where: {
+      memberPublicId: identities.superAdmin.publicId,
+    },
+    update: {
+      handle: 'sisimove_superadmin',
+      bio: 'SisiMove development super-administrator.',
+      countryCode: 'KE',
+      status: TravellerProfileStatus.ACTIVE,
+      visibility: TravellerProfileVisibility.PUBLIC,
+    },
+    create: {
+      publicId: 'AS-TRAVELLER-SUPERADMIN-001',
+      memberPublicId: identities.superAdmin.publicId,
+      handle: 'sisimove_superadmin',
+      bio: 'SisiMove development super-administrator.',
+      countryCode: 'KE',
+      status: TravellerProfileStatus.ACTIVE,
+      visibility: TravellerProfileVisibility.PUBLIC,
+    },
+  });
+
+  // ---------------------------------------------------------------------------
+  // Admin profile preferences
+  // ---------------------------------------------------------------------------
+
+  await prisma.travellerProfilePreferences.upsert({
+    where: {
+      profileId: adminProfile.id,
+    },
+    update: {},
+    create: {
+      publicId: 'AS-TPREF-ADMIN-001',
+      profileId: adminProfile.id,
+      showJourneyHistory: true,
+      showJourneyStatistics: true,
+      allowJourneyInvites: true,
+    },
+  });
+
+  // ---------------------------------------------------------------------------
+  // Super-admin profile preferences
+  // ---------------------------------------------------------------------------
+
+  await prisma.travellerProfilePreferences.upsert({
+    where: {
+      profileId: superAdminProfile.id,
+    },
+    update: {},
+    create: {
+      publicId: 'AS-TPREF-SUPERADMIN-001',
+      profileId: superAdminProfile.id,
+      showJourneyHistory: true,
+      showJourneyStatistics: true,
+      allowJourneyInvites: true,
+    },
+  });
 
 await prisma.travellerProfilePreferences.upsert({
   where: {

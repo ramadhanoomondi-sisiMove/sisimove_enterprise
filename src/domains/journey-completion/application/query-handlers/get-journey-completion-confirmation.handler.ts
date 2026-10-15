@@ -1,6 +1,29 @@
 // -----------------------------------------------------------------------------
 // Get Journey Completion Confirmation Query Handler
 // -----------------------------------------------------------------------------
+//
+// Responsibilities:
+//
+// 1. Receive the confirmation lookup query.
+// 2. Construct the owning Journey Completion public ID.
+// 3. Construct the confirmation public ID.
+// 4. Retrieve the confirmation through the Journey Completion repository.
+//
+// Architectural rules:
+//
+// - NestJS manages this handler through @Injectable().
+// - The repository is injected through the Journey Completion repository token.
+// - Both public identities are required to resolve the confirmation within
+//   its owning Journey Completion.
+// - The handler delegates retrieval to the repository.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
@@ -35,6 +58,12 @@ import { JourneyCompletionPublicId } from '../../domain/value-objects/journey-co
 import { JourneyCompletionConfirmationPublicId } from '../../domain/value-objects/journey-completion-confirmation-public-id.vo';
 
 // -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_COMPLETION_TOKENS } from '../journey-completion.tokens';
+
+// -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
@@ -44,8 +73,9 @@ import { JourneyCompletionConfirmationPublicId } from '../../domain/value-object
  * The confirmation is resolved within its owning Journey Completion using
  * both public identities.
  *
- * The repository is supplied explicitly and is not injected through NestJS.
+ * NestJS injects the repository through the registered repository token.
  */
+@Injectable()
 export class GetJourneyCompletionConfirmationHandler implements QueryHandler<
   GetJourneyCompletionConfirmationQuery,
   JourneyCompletionConfirmationEntity | null
@@ -55,6 +85,7 @@ export class GetJourneyCompletionConfirmationHandler implements QueryHandler<
   // ===========================================================================
 
   public constructor(
+    @Inject(JOURNEY_COMPLETION_TOKENS.REPOSITORY)
     private readonly repository: JourneyCompletionRepository,
   ) {}
 
@@ -73,7 +104,7 @@ export class GetJourneyCompletionConfirmationHandler implements QueryHandler<
       query.confirmationPublicId,
     );
 
-    return await this.repository.findConfirmationByCompletionPublicId(
+    return this.repository.findConfirmationByCompletionPublicId(
       completionPublicId,
       confirmationPublicId,
     );

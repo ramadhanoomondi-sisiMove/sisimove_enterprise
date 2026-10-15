@@ -331,6 +331,36 @@ export interface JourneyBoardingRepository {
   ): Promise<boolean>;
 
   /**
+   * Counts all participants across all Journey Boardings.
+   */
+  countAllParticipants(): Promise<number>;
+
+  /**
+   * Counts all participants whose status is BOARDED.
+   */
+  countAllBoardedParticipants(): Promise<number>;
+
+  /**
+   * Counts all participants whose status is EXPECTED.
+   */
+  countAllExpectedParticipants(): Promise<number>;
+
+  /**
+   * Counts all participants whose status is WITHDRAWN.
+   */
+  countAllWithdrawnParticipants(): Promise<number>;
+
+  /**
+   * Counts all participants whose status is NO_SHOW.
+   */
+  countAllNoShowParticipants(): Promise<number>;
+
+  /**
+   * Counts all participants whose status is REMOVED.
+   */
+  countAllRemovedParticipants(): Promise<number>;
+
+  /**
    * Counts all participants belonging to a Journey Boarding.
    */
   countParticipants(journeyBoardingId: UniqueEntityId): Promise<number>;

@@ -839,6 +839,16 @@ export class PrismaJourneyBookingRepository implements JourneyBookingRepository 
     );
   }
 
+  /**
+   * Counts all Journey Booking root records.
+   *
+   * Uses a database count query without rehydrating booking aggregates.
+   * Respects the current Prisma transaction context.
+   */
+  public async count(): Promise<number> {
+    return this.prisma.journeyBooking.count();
+  }
+
   public async findJourneyBookingsByJourneyPublicId(
     journeyPublicId: JourneyBookingJourneyPublicId,
   ): Promise<JourneyBookingEntity[]> {

@@ -292,10 +292,10 @@ import {
   // ===========================================================================
 
   GetIdentityHandler,
+  CountIdentitiesHandler,
   GetIdentityByEmailHandler,
   GetIdentityByPhoneNumberHandler,
   GetIdentityRolesHandler,
-
   // ===========================================================================
   // Verification
   // ===========================================================================
@@ -321,6 +321,7 @@ import {
   // ===========================================================================
   GetRolePermissionHandler,
   GetRolePermissionsHandler,
+  CountPendingVerificationsHandler,
 } from './application/query-handlers';
 
 // =============================================================================
@@ -445,6 +446,10 @@ import {
     // Identity — Query Handlers
     // =========================================================================
 
+    {
+      provide: IDENTITY_TOKENS.QUERY_HANDLERS.COUNT_IDENTITIES,
+      useClass: CountIdentitiesHandler,
+    },
     {
       provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_IDENTITY,
       useClass: GetIdentityHandler,
@@ -679,6 +684,11 @@ import {
     {
       provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_ROLE_PERMISSIONS,
       useClass: GetRolePermissionsHandler,
+    },
+
+    {
+      provide: IDENTITY_TOKENS.QUERY_HANDLERS.COUNT_PENDING_VERIFICATIONS,
+      useClass: CountPendingVerificationsHandler,
     },
   ],
 

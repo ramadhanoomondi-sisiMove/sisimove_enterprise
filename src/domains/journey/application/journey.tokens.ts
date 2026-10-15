@@ -145,6 +145,8 @@ export const JOURNEY_TOKENS = {
 
     GET_BY_STATUS: Symbol('GetJourneysByStatusQueryHandler'),
 
+    COUNT_ACTIVE: Symbol('CountActiveJourneysQueryHandler'),
+
     GET_BY_PROVIDER_AND_STATUS: Symbol(
       'GetJourneysByProviderAndStatusQueryHandler',
     ),

@@ -26,6 +26,10 @@ export { ListJourneyCompletionsByStatusQuery } from './list-journey-completions-
 
 export type { ListJourneyCompletionsByStatusQueryProps } from './list-journey-completions-by-status.query';
 
+export { CountJourneyCompletionsByStatusQuery } from './count-journey-completions-by-status.query';
+
+export type { CountJourneyCompletionsByStatusQueryProps } from './count-journey-completions-by-status.query';
+
 // -----------------------------------------------------------------------------
 // Journey Completion Confirmations
 // -----------------------------------------------------------------------------
@@ -65,3 +69,7 @@ export type { GetJourneySettlementByCompletionQueryProps } from './get-journey-s
 export { ListJourneySettlementsQuery } from './list-journey-settlements.query';
 
 export type { ListJourneySettlementsQueryProps } from './list-journey-settlements.query';
+
+export { CountJourneySettlementsByStatusQuery } from './count-journey-settlements-by-status.query';
+
+export type { CountJourneySettlementsByStatusQueryProps } from './count-journey-settlements-by-status.query';

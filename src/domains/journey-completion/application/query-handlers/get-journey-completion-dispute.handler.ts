@@ -1,6 +1,28 @@
 // -----------------------------------------------------------------------------
 // Get Journey Completion Dispute Query Handler
 // -----------------------------------------------------------------------------
+//
+// Responsibilities:
+//
+// 1. Receive a query for a specific Journey Completion dispute.
+// 2. Construct the owning Journey Completion public ID.
+// 3. Construct the dispute public ID.
+// 4. Retrieve the dispute through the Journey Completion repository.
+//
+// Architectural rules:
+//
+// - NestJS manages this handler through @Injectable().
+// - The repository is injected through JOURNEY_COMPLETION_TOKENS.REPOSITORY.
+// - Both public identities are used to resolve the dispute within its
+//   owning Journey Completion.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
@@ -35,14 +57,21 @@ import { JourneyCompletionPublicId } from '../../domain/value-objects/journey-co
 import { JourneyCompletionDisputePublicId } from '../../domain/value-objects/journey-completion-dispute-public-id.vo';
 
 // -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_COMPLETION_TOKENS } from '../journey-completion.tokens';
+
+// -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
 /**
  * Handles retrieval of a single Journey Completion dispute.
  *
- * The repository is supplied explicitly and is not injected through NestJS.
+ * NestJS injects the repository through the registered repository token.
  */
+@Injectable()
 export class GetJourneyCompletionDisputeHandler implements QueryHandler<
   GetJourneyCompletionDisputeQuery,
   JourneyCompletionDisputeEntity | null
@@ -52,6 +81,7 @@ export class GetJourneyCompletionDisputeHandler implements QueryHandler<
   // ===========================================================================
 
   public constructor(
+    @Inject(JOURNEY_COMPLETION_TOKENS.REPOSITORY)
     private readonly repository: JourneyCompletionRepository,
   ) {}
 
@@ -70,7 +100,7 @@ export class GetJourneyCompletionDisputeHandler implements QueryHandler<
       query.disputePublicId,
     );
 
-    return await this.repository.findDisputeByCompletionPublicId(
+    return this.repository.findDisputeByCompletionPublicId(
       completionPublicId,
       disputePublicId,
     );

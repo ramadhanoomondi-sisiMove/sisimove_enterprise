@@ -1,6 +1,26 @@
 // -----------------------------------------------------------------------------
 // List Journey Settlements Query Handler
 // -----------------------------------------------------------------------------
+//
+// Responsibilities:
+//
+// 1. Retrieve Journey Settlement root entities.
+// 2. Support optional filtering by journey, provider, and status.
+// 3. Delegate supported filtering combinations to the repository.
+//
+// Architectural rules:
+//
+// - NestJS manages this handler through @Injectable().
+// - The repository is injected using JOURNEY_SETTLEMENT_TOKENS.REPOSITORY.
+// - Existing repository methods and domain value objects are preserved.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
@@ -37,18 +57,24 @@ import { JourneyCompletionProviderPublicId } from '../../domain/value-objects/jo
 import { JourneySettlementStatus } from '../../domain/value-objects/journey-settlement-status.vo';
 
 // -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_SETTLEMENT_TOKENS } from '../journey-settlement.tokens';
+
+// -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
 /**
  * Handles listing Journey Settlement root entities.
  *
- * Repository access is supplied explicitly. No NestJS dependency injection
- * is used inside the handler.
+ * NestJS injects the repository through the registered repository token.
  *
- * The handler delegates supported filtering combinations directly to the
+ * The handler delegates supported filtering combinations to the existing
  * JourneySettlementRepository contract.
  */
+@Injectable()
 export class ListJourneySettlementsHandler implements QueryHandler<
   ListJourneySettlementsQuery,
   JourneySettlementEntity[]
@@ -58,6 +84,7 @@ export class ListJourneySettlementsHandler implements QueryHandler<
   // ===========================================================================
 
   public constructor(
+    @Inject(JOURNEY_SETTLEMENT_TOKENS.REPOSITORY)
     private readonly repository: JourneySettlementRepository,
   ) {}
 
@@ -77,7 +104,7 @@ export class ListJourneySettlementsHandler implements QueryHandler<
       query.providerPublicId === undefined &&
       query.status === undefined
     ) {
-      return await this.repository.findJourneySettlements();
+      return this.repository.findJourneySettlements();
     }
 
     // -------------------------------------------------------------------------
@@ -104,7 +131,7 @@ export class ListJourneySettlementsHandler implements QueryHandler<
     // -------------------------------------------------------------------------
 
     if (journeyPublicId !== undefined && status !== undefined) {
-      return await this.repository.findJourneySettlementsByJourneyAndStatus(
+      return this.repository.findJourneySettlementsByJourneyAndStatus(
         journeyPublicId,
         status,
       );
@@ -115,7 +142,7 @@ export class ListJourneySettlementsHandler implements QueryHandler<
     // -------------------------------------------------------------------------
 
     if (providerPublicId !== undefined && status !== undefined) {
-      return await this.repository.findJourneySettlementsByProviderAndStatus(
+      return this.repository.findJourneySettlementsByProviderAndStatus(
         providerPublicId,
         status,
       );
@@ -126,7 +153,7 @@ export class ListJourneySettlementsHandler implements QueryHandler<
     // -------------------------------------------------------------------------
 
     if (journeyPublicId !== undefined) {
-      return await this.repository.findJourneySettlementsByJourneyPublicId(
+      return this.repository.findJourneySettlementsByJourneyPublicId(
         journeyPublicId,
       );
     }
@@ -136,7 +163,7 @@ export class ListJourneySettlementsHandler implements QueryHandler<
     // -------------------------------------------------------------------------
 
     if (providerPublicId !== undefined) {
-      return await this.repository.findJourneySettlementsByProviderPublicId(
+      return this.repository.findJourneySettlementsByProviderPublicId(
         providerPublicId,
       );
     }
@@ -146,14 +173,14 @@ export class ListJourneySettlementsHandler implements QueryHandler<
     // -------------------------------------------------------------------------
 
     if (status !== undefined) {
-      return await this.repository.findJourneySettlementsByStatus(status);
+      return this.repository.findJourneySettlementsByStatus(status);
     }
 
     // -------------------------------------------------------------------------
     // Defensive fallback
     // -------------------------------------------------------------------------
 
-    return await this.repository.findJourneySettlements();
+    return this.repository.findJourneySettlements();
   }
 }
 

@@ -764,7 +764,12 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
 
     return FinancialPaymentPrismaMapper.toDomain(record);
   }
-
+  /**
+   * Counts all Financial Payment records without loading aggregates.
+   */
+  public async count(): Promise<number> {
+    return this.prisma.financialPayment.count();
+  }
   // ===========================================================================
   // Exists By Public ID
   // ===========================================================================

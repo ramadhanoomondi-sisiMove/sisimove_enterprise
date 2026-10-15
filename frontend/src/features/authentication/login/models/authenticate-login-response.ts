@@ -60,6 +60,16 @@ export interface AuthenticateLoginResponse {
    */
   readonly sessionPublicId: string;
 
+    /**
+   * Stable role codes resolved by the backend at login.
+   *
+   * Used to choose the post-login destination. Backend authorization
+   * remains authoritative.
+   *
+   * Examples: MEMBER, DRIVER, ADMIN, SUPER_ADMIN.
+   */
+  readonly roleCodes: readonly string[];
+
   /**
    * Access token used for authenticated API requests.
    */

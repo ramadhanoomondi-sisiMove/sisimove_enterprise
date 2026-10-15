@@ -1,62 +1,102 @@
 // -----------------------------------------------------------------------------
+
 // Prisma Journey Settlement Repository
+
 // -----------------------------------------------------------------------------
+
 //
+
 // Infrastructure repository for the Journey Settlement aggregate.
+
 //
+
 // Responsibilities:
+
 // - Aggregate persistence and rehydration
+
 // - Root Journey Settlement queries
+
 // - Journey Completion association queries
+
 // - Journey queries
+
 // - Provider queries
+
 // - Settlement lifecycle queries
+
 // - Financial transaction reference queries
+
 //
+
 // Journey Settlement owns only its settlement entity.
+
 //
+
 // Journey Completion is a separate aggregate. The persistence model therefore
+
 // stores the internal JourneyCompletion.id through completionId.
+
 //
+
 // Cross-domain/public references remain value-object based at the domain
+
 // boundary.
+
 //
+
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
+
 // Prisma
+
 // -----------------------------------------------------------------------------
 
 import type { $Enums } from '@prisma/client';
 
 // -----------------------------------------------------------------------------
+
 // Foundation
+
 // -----------------------------------------------------------------------------
 
-import type { PrismaService } from '../../../../../../infrastructure/database/prisma/prisma.service';
+import { Injectable } from '@nestjs/common';
+
+import {
+  PrismaTransactionContext,
+  type PrismaClientLike,
+} from '../../../../../../infrastructure/database/prisma/prisma-transaction.context';
 
 import type { UniqueEntityId } from '../../../../../../foundation/kernel/domain/unique-entity-id';
 
 // -----------------------------------------------------------------------------
+
 // Aggregate
+
 // -----------------------------------------------------------------------------
 
 import { JourneySettlementAggregate } from '../../../../domain/aggregates/journey-settlement.aggregate';
 
 // -----------------------------------------------------------------------------
+
 // Domain Entity
+
 // -----------------------------------------------------------------------------
 
 import type { JourneySettlementEntity } from '../../../../domain/entities/journey-settlement.entity';
 
 // -----------------------------------------------------------------------------
+
 // Repository
+
 // -----------------------------------------------------------------------------
 
 import type { JourneySettlementRepository } from '../../../../domain/repositories/journey-settlement.repository';
 
 // -----------------------------------------------------------------------------
+
 // Value Objects
+
 // -----------------------------------------------------------------------------
 
 import type { JourneySettlementPublicId } from '../../../../domain/value-objects/journey-settlement-public-id.vo';
@@ -72,32 +112,56 @@ import type { JourneySettlementFinancialTransactionPublicId } from '../../../../
 import type { JourneySettlementStatus } from '../../../../domain/value-objects/journey-settlement-status.vo';
 
 // -----------------------------------------------------------------------------
+
 // Mapper
+
 // -----------------------------------------------------------------------------
 
 import { JourneySettlementPrismaMapper } from '../../../persistence/prisma/mappers/journey-settlement-prisma.mapper';
 
 // =============================================================================
+
 // Repository
+
 // =============================================================================
 
+@Injectable()
 export class PrismaJourneySettlementRepository implements JourneySettlementRepository {
   // ===========================================================================
+
   // Constructor
-  // ===========================================================================
-
-  constructor(private readonly prisma: PrismaService) {}
 
   // ===========================================================================
+
+  constructor(private readonly transactionContext: PrismaTransactionContext) {}
+
+  /**
+   * Uses the active UnitOfWork transaction when one exists; otherwise returns
+   * the application's root Prisma client. Transaction ownership remains with
+   * PrismaUnitOfWork, not this repository.
+   */
+  private get prisma(): PrismaClientLike {
+    return this.transactionContext.getClient();
+  }
+
+  // ===========================================================================
+
   // Prisma Enum Boundary
+
   // ===========================================================================
 
   /**
+
    * Converts a domain status value into the generated Prisma enum.
+
    *
+
    * The domain value object is the authoritative boundary. Prisma receives
+
    * the corresponding persisted enum only at the infrastructure boundary.
+
    */
+
   private toPrismaJourneySettlementStatus(
     value: string,
   ): $Enums.JourneySettlementStatus {
@@ -105,22 +169,36 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
   }
 
   // ===========================================================================
+
   // Aggregate Persistence
+
   // ===========================================================================
 
   /**
+
    * Persists the complete Journey Settlement aggregate.
+
    *
+
    * Journey Settlement currently owns only the root entity, so persistence
+
    * requires a single root upsert.
+
    */
+
   public async save(aggregate: JourneySettlementAggregate): Promise<void> {
     // -------------------------------------------------------------------------
+
     // IMPORTANT:
+
     //
+
     // The Prisma mapper maps JourneySettlementEntity -> persistence.
+
     //
+
     // The aggregate owns the entity through `journeySettlement`.
+
     // -------------------------------------------------------------------------
 
     const persistence = JourneySettlementPrismaMapper.toPersistence(
@@ -136,11 +214,13 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
 
       create: {
         id: settlement.id,
+
         publicId: settlement.publicId,
 
         completionId: settlement.completionId,
 
         journeyPublicId: settlement.journeyPublicId,
+
         providerPublicId: settlement.providerPublicId,
 
         status: this.toPrismaJourneySettlementStatus(settlement.status),
@@ -148,10 +228,15 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
         financialTransactionPublicId: settlement.financialTransactionPublicId,
 
         submittedAt: settlement.submittedAt,
+
         processingAt: settlement.processingAt,
+
         completedAt: settlement.completedAt,
+
         failedAt: settlement.failedAt,
+
         heldAt: settlement.heldAt,
+
         cancelledAt: settlement.cancelledAt,
 
         failureReason: settlement.failureReason,
@@ -159,6 +244,7 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
         version: settlement.version,
 
         createdAt: settlement.createdAt,
+
         updatedAt: settlement.updatedAt,
       },
 
@@ -168,6 +254,7 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
         completionId: settlement.completionId,
 
         journeyPublicId: settlement.journeyPublicId,
+
         providerPublicId: settlement.providerPublicId,
 
         status: this.toPrismaJourneySettlementStatus(settlement.status),
@@ -175,10 +262,15 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
         financialTransactionPublicId: settlement.financialTransactionPublicId,
 
         submittedAt: settlement.submittedAt,
+
         processingAt: settlement.processingAt,
+
         completedAt: settlement.completedAt,
+
         failedAt: settlement.failedAt,
+
         heldAt: settlement.heldAt,
+
         cancelledAt: settlement.cancelledAt,
 
         failureReason: settlement.failureReason,
@@ -191,7 +283,9 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
   }
 
   // ===========================================================================
+
   // Aggregate Lookup
+
   // ===========================================================================
 
   public async findById(
@@ -219,7 +313,9 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
   }
 
   // ===========================================================================
+
   // Delete / Exists
+
   // ===========================================================================
 
   public async delete(id: UniqueEntityId): Promise<void> {
@@ -253,7 +349,9 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
   }
 
   // ===========================================================================
+
   // Root Journey Settlement Queries
+
   // ===========================================================================
 
   public async findJourneySettlementById(
@@ -297,7 +395,9 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
   }
 
   // ===========================================================================
+
   // Journey Completion Queries
+
   // ===========================================================================
 
   public async findJourneySettlementByCompletionId(
@@ -357,7 +457,9 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
   }
 
   // ===========================================================================
+
   // Journey Queries
+
   // ===========================================================================
 
   public async findJourneySettlementsByJourneyPublicId(
@@ -380,6 +482,7 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
 
   public async findJourneySettlementsByJourneyAndStatus(
     journeyPublicId: JourneyCompletionJourneyPublicId,
+
     status: JourneySettlementStatus,
   ): Promise<JourneySettlementEntity[]> {
     const records = await this.prisma.journeySettlement.findMany({
@@ -401,6 +504,7 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
 
   public async existsByJourneyPublicIdAndStatus(
     journeyPublicId: JourneyCompletionJourneyPublicId,
+
     status: JourneySettlementStatus,
   ): Promise<boolean> {
     return (
@@ -415,7 +519,9 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
   }
 
   // ===========================================================================
+
   // Provider Queries
+
   // ===========================================================================
 
   public async findJourneySettlementsByProviderPublicId(
@@ -438,6 +544,7 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
 
   public async findJourneySettlementsByProviderAndStatus(
     providerPublicId: JourneyCompletionProviderPublicId,
+
     status: JourneySettlementStatus,
   ): Promise<JourneySettlementEntity[]> {
     const records = await this.prisma.journeySettlement.findMany({
@@ -459,6 +566,7 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
 
   public async existsByProviderPublicIdAndStatus(
     providerPublicId: JourneyCompletionProviderPublicId,
+
     status: JourneySettlementStatus,
   ): Promise<boolean> {
     return (
@@ -473,7 +581,9 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
   }
 
   // ===========================================================================
+
   // Status Queries
+
   // ===========================================================================
 
   public async findJourneySettlementsByStatus(
@@ -561,7 +671,9 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
   }
 
   // ===========================================================================
+
   // Financial Transaction Queries
+
   // ===========================================================================
 
   public async findByFinancialTransactionPublicId(
@@ -621,7 +733,9 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
   }
 
   // ===========================================================================
+
   // Operational Queries
+
   // ===========================================================================
 
   public async findSettlementsAwaitingSubmission(): Promise<
@@ -650,6 +764,7 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
         status: {
           in: [
             this.toPrismaJourneySettlementStatus('FAILED'),
+
             this.toPrismaJourneySettlementStatus('HELD'),
           ],
         },
@@ -672,6 +787,7 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
           status: {
             in: [
               this.toPrismaJourneySettlementStatus('FAILED'),
+
               this.toPrismaJourneySettlementStatus('HELD'),
             ],
           },
@@ -681,16 +797,25 @@ export class PrismaJourneySettlementRepository implements JourneySettlementRepos
   }
 
   // ===========================================================================
+
   // Aggregate Reconstruction
+
   // ===========================================================================
 
   /**
+
    * Rehydrates the Journey Settlement aggregate from a persisted Prisma
+
    * record.
+
    *
+
    * The mapper reconstructs the root entity first. The aggregate factory
+
    * then restores the aggregate boundary and validates its invariants.
+
    */
+
   private toAggregate(
     record: Parameters<typeof JourneySettlementPrismaMapper.toDomain>[0],
   ): JourneySettlementAggregate {

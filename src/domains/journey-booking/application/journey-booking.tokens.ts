@@ -125,6 +125,8 @@ export const JOURNEY_BOOKING_TOKENS = {
 
     GET_BY_PUBLIC_ID: Symbol('GetJourneyBookingByPublicIdQueryHandler'),
 
+    COUNT: Symbol('CountJourneyBookingsQueryHandler'),
+
     GET_MY: Symbol('GetMyJourneyBookingsQueryHandler'),
 
     // -------------------------------------------------------------------------

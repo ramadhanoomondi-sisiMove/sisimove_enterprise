@@ -132,6 +132,7 @@ import {
 // -----------------------------------------------------------------------------
 
 import {
+  CountActiveJourneysQuery,
   GetJourneyAssetByReferenceQuery,
   GetJourneyAssetsQuery,
   GetJourneyCapacityQuery,
@@ -506,6 +507,15 @@ export class JourneyController {
       GetPublicAssetReferenceQuery,
       JourneyVehicleAssetReference
     >,
+    // =========================================================================
+    // Journey — Admin Overview Query
+    // =========================================================================
+
+    @Inject(JOURNEY_TOKENS.QUERY_HANDLERS.COUNT_ACTIVE)
+    private readonly countActiveJourneysQueryHandler: QueryHandler<
+      CountActiveJourneysQuery,
+      number
+    >,
   ) {}
 
   // ===========================================================================
@@ -764,7 +774,24 @@ export class JourneyController {
   // ===========================================================================
   // PUBLIC JOURNEY DETAIL
   // ===========================================================================
+  // ---------------------------------------------------------------------------
+  // Count Active Journeys
+  // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Count active journeys',
+    description:
+      'Returns the total number of journeys with status PUBLISHED, FULL, BOARDING, IN_PROGRESS, or COMPLETION_PENDING, regardless of departure time.',
+  })
+  @Get('active-count')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:read')
+  public async countActiveJourneys(): Promise<number> {
+    return this.countActiveJourneysQueryHandler.execute(
+      new CountActiveJourneysQuery(),
+    );
+  }
   // ---------------------------------------------------------------------------
   // Get Public Journey
   // ---------------------------------------------------------------------------

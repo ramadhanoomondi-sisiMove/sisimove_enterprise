@@ -169,3 +169,5 @@ export * from './get-financial-disbursement.query';
 export * from './get-financial-disbursement-attempts.query';
 
 export * from './get-my-financial-account.query';
+
+export * from './count-financial-payments.query';

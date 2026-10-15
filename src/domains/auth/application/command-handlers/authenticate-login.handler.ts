@@ -401,6 +401,14 @@ export interface AuthenticateLoginSuccessResult {
 
   readonly sessionPublicId: string;
 
+  /**
+   * Stable role codes resolved from the current authorization snapshot.
+   *
+   * Used by the frontend to choose the post-login destination.
+   * Backend authorization remains authoritative.
+   */
+  readonly roleCodes: readonly string[];
+
   readonly accessToken: string;
 
   readonly refreshToken: string;
@@ -950,6 +958,7 @@ export class AuthenticateLoginHandler implements CommandHandler<
       authenticationPublicId: authentication.publicId.value,
       devicePublicId: device.publicId.value,
       sessionPublicId: session.publicId.value,
+      roleCodes: authorization.roleCodes,
       accessToken,
       refreshToken,
     };

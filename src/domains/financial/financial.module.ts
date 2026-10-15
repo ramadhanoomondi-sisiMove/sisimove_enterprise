@@ -229,6 +229,7 @@ import {
   // ---------------------------------------------------------------------------
   GetFinancialDisbursementHandler,
   GetFinancialDisbursementAttemptsHandler,
+  CountFinancialPaymentsQueryHandler,
 } from './application/query-handlers';
 
 // =============================================================================
@@ -548,6 +549,10 @@ import {
     {
       provide: FINANCIAL_SETTLEMENT_TOKENS.QUERY_HANDLERS.GET_ITEMS,
       useClass: GetFinancialSettlementItemsHandler,
+    },
+    {
+      provide: FINANCIAL_PAYMENT_TOKENS.QUERY_HANDLERS.COUNT,
+      useClass: CountFinancialPaymentsQueryHandler,
     },
 
     // =========================================================================

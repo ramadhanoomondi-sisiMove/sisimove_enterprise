@@ -32,3 +32,5 @@ export { FindJourneyBookingsByStatusQuery } from './find-journey-bookings-by-sta
 export { FindJourneyBookingsByJourneyAndPassengerQuery } from './find-journey-bookings-by-journey-and-passenger.query';
 
 export { FindJourneyBookingByTransactionQuery } from './find-journey-booking-by-transaction.query';
+
+export { CountJourneyBookingsQuery } from './count-journey-bookings.query';

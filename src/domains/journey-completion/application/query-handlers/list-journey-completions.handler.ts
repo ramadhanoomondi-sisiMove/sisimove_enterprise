@@ -2,11 +2,27 @@
 // List Journey Completions Query Handler
 // -----------------------------------------------------------------------------
 //
-// Retrieves Journey Completion root entities using the repository query
-// contract.
+// Responsibilities:
 //
-// The repository is supplied explicitly and is not injected through NestJS.
+// 1. Retrieve Journey Completion entities from the repository.
+// 2. Support optional filtering by journey, provider, and status.
+// 3. Delegate supported lookups to the existing repository methods.
+// 4. Apply additional filters when the repository does not expose a combined
+//    query for the requested criteria.
+//
+// Architectural rules:
+//
+// - NestJS manages this handler through @Injectable().
+// - The repository is injected using JOURNEY_COMPLETION_TOKENS.REPOSITORY.
+// - Existing repository methods and domain value objects are preserved.
+//
 // -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
@@ -39,9 +55,16 @@ import { JourneyCompletionProviderPublicId } from '../../domain/value-objects/jo
 import { JourneyCompletionStatus } from '../../domain/value-objects/journey-completion-status.vo';
 
 // -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_COMPLETION_TOKENS } from '../journey-completion.tokens';
+
+// -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
+@Injectable()
 export class ListJourneyCompletionsHandler implements QueryHandler<
   ListJourneyCompletionsQuery,
   JourneyCompletionEntity[]
@@ -51,6 +74,7 @@ export class ListJourneyCompletionsHandler implements QueryHandler<
   // ===========================================================================
 
   public constructor(
+    @Inject(JOURNEY_COMPLETION_TOKENS.REPOSITORY)
     private readonly repository: JourneyCompletionRepository,
   ) {}
 
@@ -70,7 +94,7 @@ export class ListJourneyCompletionsHandler implements QueryHandler<
       query.providerPublicId === undefined &&
       query.status === undefined
     ) {
-      return await this.repository.findJourneyCompletions();
+      return this.repository.findJourneyCompletions();
     }
 
     // -------------------------------------------------------------------------
@@ -89,11 +113,6 @@ export class ListJourneyCompletionsHandler implements QueryHandler<
 
     // -------------------------------------------------------------------------
     // Journey filter
-    // -------------------------------------------------------------------------
-    //
-    // The repository exposes a dedicated Journey lookup rather than a
-    // journey+provider/status combination query. Retrieve the completion
-    // associated with the Journey and apply the remaining filters here.
     // -------------------------------------------------------------------------
 
     if (query.journeyPublicId !== undefined) {
@@ -129,7 +148,7 @@ export class ListJourneyCompletionsHandler implements QueryHandler<
     // -------------------------------------------------------------------------
 
     if (providerPublicId !== undefined && status !== undefined) {
-      return await this.repository.findJourneyCompletionsByProviderAndStatus(
+      return this.repository.findJourneyCompletionsByProviderAndStatus(
         providerPublicId,
         status,
       );
@@ -140,7 +159,7 @@ export class ListJourneyCompletionsHandler implements QueryHandler<
     // -------------------------------------------------------------------------
 
     if (providerPublicId !== undefined) {
-      return await this.repository.findJourneyCompletionsByProviderPublicId(
+      return this.repository.findJourneyCompletionsByProviderPublicId(
         providerPublicId,
       );
     }
@@ -150,14 +169,14 @@ export class ListJourneyCompletionsHandler implements QueryHandler<
     // -------------------------------------------------------------------------
 
     if (status !== undefined) {
-      return await this.repository.findJourneyCompletionsByStatus(status);
+      return this.repository.findJourneyCompletionsByStatus(status);
     }
 
     // -------------------------------------------------------------------------
     // Defensive fallback
     // -------------------------------------------------------------------------
 
-    return await this.repository.findJourneyCompletions();
+    return this.repository.findJourneyCompletions();
   }
 }
 

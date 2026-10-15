@@ -192,6 +192,14 @@ export const IDENTITY_TOKENS = {
 
     GET_IDENTITY: Symbol('GetIdentityHandler'),
 
+    /**
+     * Counts all Identity records through IdentityRepository.count().
+     *
+     * This is a read-only application query. It does not rehydrate individual
+     * Identity aggregates or access persistence directly.
+     */
+    COUNT_IDENTITIES: Symbol('CountIdentitiesHandler'),
+
     GET_IDENTITY_BY_EMAIL: Symbol('GetIdentityByEmailHandler'),
 
     GET_IDENTITY_BY_PHONE_NUMBER: Symbol('GetIdentityByPhoneNumberHandler'),
@@ -225,6 +233,13 @@ export const IDENTITY_TOKENS = {
      * This is intentionally separate from GET_VERIFICATION because the two
      * queries address the aggregate through different public-ID boundaries.
      */
+    /**
+     * Counts Verification aggregates whose lifecycle status is PENDING.
+     *
+     * Counts Verification aggregates, not individual VerificationRequest
+     * entities.
+     */
+    COUNT_PENDING_VERIFICATIONS: Symbol('CountPendingVerificationsHandler'),
     GET_VERIFICATION_BY_PUBLIC_ID: Symbol('GetVerificationByPublicIdHandler'),
 
     GET_VERIFICATION_REQUESTS: Symbol('GetVerificationRequestsHandler'),

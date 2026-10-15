@@ -55,3 +55,5 @@ export * from './get-permissions.query';
 
 export * from './get-role-permission.query';
 export * from './get-role-permissions.query';
+export { CountIdentitiesQuery } from './count-identities.query';
+export { CountPendingVerificationsQuery } from './count-pending-verifications.query';

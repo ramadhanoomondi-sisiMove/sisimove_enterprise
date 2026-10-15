@@ -70,6 +70,7 @@ import {
 // -----------------------------------------------------------------------------
 
 import {
+  CountJourneyBookingsQuery,
   FindJourneyBookingByTransactionQuery,
   FindJourneyBookingsByJourneyAndPassengerQuery,
   FindJourneyBookingsByJourneyQuery,
@@ -336,6 +337,11 @@ export class JourneyBookingController {
       FindJourneyBookingByTransactionQuery,
       JourneyBookingEntity
     >,
+    @Inject(JOURNEY_BOOKING_TOKENS.QUERY_HANDLERS.COUNT)
+    private readonly countJourneyBookingsHandler: QueryHandler<
+      CountJourneyBookingsQuery,
+      number
+    >,
   ) {}
 
   // ===========================================================================
@@ -562,7 +568,27 @@ export class JourneyBookingController {
 
     return JourneyBookingResponseMapper.fromEntity(booking);
   }
+  // ---------------------------------------------------------------------------
+  // Count Journey Bookings
+  // ---------------------------------------------------------------------------
 
+  /**
+   * Returns the total number of Journey Booking root records.
+   *
+   * The repository performs a database count without rehydrating aggregates.
+   */
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Count journey bookings',
+    description: 'Returns the total number of Journey Booking records.',
+  })
+  @Get('count')
+  @auth.RequirePermissions('booking:read')
+  public async countJourneyBookings(): Promise<number> {
+    return this.countJourneyBookingsHandler.execute(
+      new CountJourneyBookingsQuery(),
+    );
+  }
   // ---------------------------------------------------------------------------
   // Get Journey Booking Detail
   // ---------------------------------------------------------------------------

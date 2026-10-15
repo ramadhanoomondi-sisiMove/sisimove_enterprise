@@ -253,6 +253,7 @@ import type { SubmitVerificationRequestHandler } from '../../../application/comm
 // -----------------------------------------------------------------------------
 
 import {
+  CountPendingVerificationsQuery,
   GetVerificationByPublicIdQuery,
   GetVerificationQuery,
   GetVerificationRequestQuery,
@@ -476,6 +477,11 @@ export class VerificationsController {
       GetVerificationRequestQuery,
       VerificationRequestEntity | null
     >,
+    @Inject(IDENTITY_TOKENS.QUERY_HANDLERS.COUNT_PENDING_VERIFICATIONS)
+    private readonly countPendingVerificationsHandler: QueryHandler<
+      CountPendingVerificationsQuery,
+      number
+    >,
   ) {}
 
   // ===========================================================================
@@ -509,6 +515,25 @@ export class VerificationsController {
   // ===========================================================================
   // Verification Queries — Reviewer
   // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Count Pending Verifications — Reviewer
+  // ---------------------------------------------------------------------------
+
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Count pending verifications',
+    description:
+      'Returns the number of Verification aggregates whose lifecycle status is PENDING.',
+  })
+  @Get('pending-count')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('verification:read')
+  public async countPending(): Promise<number> {
+    return this.countPendingVerificationsHandler.execute(
+      new CountPendingVerificationsQuery(),
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // Get Verification By Public ID

@@ -2,10 +2,26 @@
 // List Journey Completions By Status Query Handler
 // -----------------------------------------------------------------------------
 //
-// Retrieves Journey Completion root entities matching a lifecycle status.
+// Responsibilities:
 //
-// The repository is supplied explicitly and is not injected through NestJS.
+// 1. Retrieve Journey Completion entities matching a lifecycle status.
+// 2. Optionally filter by provider public ID.
+// 3. Optionally filter by journey public ID.
+// 4. Apply combined filters when both provider and journey IDs are supplied.
+//
+// Architectural rules:
+//
+// - NestJS manages this handler through @Injectable().
+// - The repository is injected using JOURNEY_COMPLETION_TOKENS.REPOSITORY.
+// - Existing repository methods and domain value objects are preserved.
+//
 // -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
@@ -38,9 +54,16 @@ import { JourneyCompletionProviderPublicId } from '../../domain/value-objects/jo
 import { JourneyCompletionJourneyPublicId } from '../../domain/value-objects/journey-completion-journey-public-id.vo';
 
 // -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_COMPLETION_TOKENS } from '../journey-completion.tokens';
+
+// -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
+@Injectable()
 export class ListJourneyCompletionsByStatusHandler implements QueryHandler<
   ListJourneyCompletionsByStatusQuery,
   JourneyCompletionEntity[]
@@ -50,6 +73,7 @@ export class ListJourneyCompletionsByStatusHandler implements QueryHandler<
   // ===========================================================================
 
   public constructor(
+    @Inject(JOURNEY_COMPLETION_TOKENS.REPOSITORY)
     private readonly repository: JourneyCompletionRepository,
   ) {}
 
@@ -107,7 +131,7 @@ export class ListJourneyCompletionsByStatusHandler implements QueryHandler<
         query.providerPublicId,
       );
 
-      return await this.repository.findJourneyCompletionsByProviderAndStatus(
+      return this.repository.findJourneyCompletionsByProviderAndStatus(
         providerPublicId,
         status,
       );
@@ -142,7 +166,7 @@ export class ListJourneyCompletionsByStatusHandler implements QueryHandler<
     // Status only
     // -------------------------------------------------------------------------
 
-    return await this.repository.findJourneyCompletionsByStatus(status);
+    return this.repository.findJourneyCompletionsByStatus(status);
   }
 }
 

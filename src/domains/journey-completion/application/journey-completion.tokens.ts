@@ -68,6 +68,7 @@ export const JOURNEY_COMPLETION_TOKENS = {
 
     LIST_BY_STATUS: Symbol('ListJourneyCompletionsByStatusHandler'),
 
+    COUNT_BY_STATUS: Symbol('CountJourneyCompletionsByStatusQueryHandler'),
     // -------------------------------------------------------------------------
     // Journey Completion Confirmations
     // -------------------------------------------------------------------------

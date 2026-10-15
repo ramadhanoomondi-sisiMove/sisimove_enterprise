@@ -92,8 +92,10 @@ import {
 // Application — Queries
 // -----------------------------------------------------------------------------
 
-import { GetFinancialPaymentQuery } from '../../../application/queries';
-
+import {
+  CountFinancialPaymentsQuery,
+  GetFinancialPaymentQuery,
+} from '../../../application/queries';
 // -----------------------------------------------------------------------------
 // Domain — Aggregate
 // -----------------------------------------------------------------------------
@@ -207,18 +209,34 @@ export class FinancialPaymentsController {
       GetFinancialPaymentQuery,
       FinancialPaymentAggregate | null
     >,
+
+    @Inject(FINANCIAL_PAYMENT_TOKENS.QUERY_HANDLERS.COUNT)
+    private readonly countFinancialPaymentsHandler: QueryHandler<
+      CountFinancialPaymentsQuery,
+      number
+    >,
   ) {}
 
   // ===========================================================================
   // Queries
   // ===========================================================================
+  // ---------------------------------------------------------------------------
+  // Count Financial Payments
+  // ---------------------------------------------------------------------------
 
+  @Get('count')
+  @RequirePermissions('financial-payment:read')
+  public async count(): Promise<number> {
+    return this.countFinancialPaymentsHandler.execute(
+      new CountFinancialPaymentsQuery(),
+    );
+  }
   // ---------------------------------------------------------------------------
   // Get Financial Payment
   // ---------------------------------------------------------------------------
 
   @Get(':paymentPublicId')
-  @RequirePermissions('financial-payment:read')
+  @RequirePermissions('financial:read')
   public async get(
     @Param('paymentPublicId') paymentPublicId: string,
   ): Promise<ReturnType<

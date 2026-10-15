@@ -64,6 +64,7 @@ import {
 // -----------------------------------------------------------------------------
 
 import {
+  CountJourneyBookingsQueryHandler,
   FindJourneyBookingByTransactionHandler,
   FindJourneyBookingsByJourneyAndPassengerHandler,
   FindJourneyBookingsByJourneyHandler,
@@ -321,6 +322,11 @@ import {
     {
       provide: JOURNEY_BOOKING_TOKENS.QUERY_HANDLERS.FIND_BY_TRANSACTION,
       useClass: FindJourneyBookingByTransactionHandler,
+    },
+
+    {
+      provide: JOURNEY_BOOKING_TOKENS.QUERY_HANDLERS.COUNT,
+      useClass: CountJourneyBookingsQueryHandler,
     },
   ],
 

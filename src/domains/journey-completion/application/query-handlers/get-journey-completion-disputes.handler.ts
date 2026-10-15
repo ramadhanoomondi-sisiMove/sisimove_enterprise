@@ -1,6 +1,28 @@
 // -----------------------------------------------------------------------------
 // Get Journey Completion Disputes Query Handler
 // -----------------------------------------------------------------------------
+//
+// Responsibilities:
+//
+// 1. Retrieve disputes belonging to a specific Journey Completion.
+// 2. Support filtering by the member who raised a dispute.
+// 3. Support filtering by dispute status and reason.
+// 4. Resolve the owning aggregate before querying its disputes.
+//
+// Architectural rules:
+//
+// - NestJS manages this handler through @Injectable().
+// - The repository is injected through JOURNEY_COMPLETION_TOKENS.REPOSITORY.
+// - Existing repository methods and domain value objects are preserved.
+// - Disputes remain scoped to their owning Journey Completion aggregate.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
@@ -39,17 +61,24 @@ import { JourneyCompletionDisputeStatus } from '../../domain/value-objects/journ
 import { JourneyCompletionDisputeReason } from '../../domain/value-objects/journey-completion-dispute-reason.vo';
 
 // -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_COMPLETION_TOKENS } from '../journey-completion.tokens';
+
+// -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
 /**
  * Handles retrieval of Journey Completion disputes.
  *
- * The repository is supplied explicitly and is not injected through NestJS.
+ * NestJS injects the repository through the registered repository token.
  *
- * The handler delegates persistence-specific lookup to the repository while
- * preserving the domain value-object boundary.
+ * Persistence-specific lookup is delegated to the repository while domain
+ * filtering uses the appropriate value objects.
  */
+@Injectable()
 export class GetJourneyCompletionDisputesHandler implements QueryHandler<
   GetJourneyCompletionDisputesQuery,
   JourneyCompletionDisputeEntity[]
@@ -59,6 +88,7 @@ export class GetJourneyCompletionDisputesHandler implements QueryHandler<
   // ===========================================================================
 
   public constructor(
+    @Inject(JOURNEY_COMPLETION_TOKENS.REPOSITORY)
     private readonly repository: JourneyCompletionRepository,
   ) {}
 
@@ -76,11 +106,6 @@ export class GetJourneyCompletionDisputesHandler implements QueryHandler<
     // -------------------------------------------------------------------------
     // Resolve owning Journey Completion aggregate
     // -------------------------------------------------------------------------
-    //
-    // The repository's status/reason/raised-by queries are scoped by the
-    // internal Journey Completion ID. Resolve the aggregate first so the
-    // child queries can use its internal aggregate identity.
-    // -------------------------------------------------------------------------
 
     const aggregate = await this.repository.findByPublicId(completionPublicId);
 
@@ -97,7 +122,7 @@ export class GetJourneyCompletionDisputesHandler implements QueryHandler<
         query.raisedByPublicId,
       );
 
-      return await this.repository.findDisputesByRaisedByPublicId(
+      return this.repository.findDisputesByRaisedByPublicId(
         aggregate.aggregateId,
         raisedByPublicId,
       );
@@ -131,7 +156,7 @@ export class GetJourneyCompletionDisputesHandler implements QueryHandler<
     if (query.reason !== undefined) {
       const reason = JourneyCompletionDisputeReason.create(query.reason);
 
-      return await this.repository.findDisputesByReason(
+      return this.repository.findDisputesByReason(
         aggregate.aggregateId,
         reason,
       );
@@ -141,7 +166,7 @@ export class GetJourneyCompletionDisputesHandler implements QueryHandler<
     // All disputes
     // -------------------------------------------------------------------------
 
-    return await this.repository.findDisputes(aggregate.aggregateId);
+    return this.repository.findDisputes(aggregate.aggregateId);
   }
 }
 

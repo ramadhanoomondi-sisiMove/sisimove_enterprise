@@ -761,7 +761,13 @@ export class PrismaVerificationRepository implements VerificationRepository {
   public async findPending(): Promise<VerificationAggregate[]> {
     return this.findByStatusValue($Enums.VerificationStatus.PENDING);
   }
-
+  public async countPending(): Promise<number> {
+    return this.prisma.verification.count({
+      where: {
+        status: $Enums.VerificationStatus.PENDING,
+      },
+    });
+  }
   public async findVerified(): Promise<VerificationAggregate[]> {
     return this.findByStatusValue($Enums.VerificationStatus.VERIFIED);
   }

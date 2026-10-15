@@ -14,10 +14,10 @@
 //         │
 //         └── active IdentityRole assignments
 //                    │
-//                    └── Role public IDs
-//                              │
-//                              ▼
-//                    RolePermission assignments
+//                    ├── Role public IDs
+//                    ├── Role codes
+//                    │
+//                    └── RolePermission assignments
 //                              │
 //                              └── Permission public IDs
 //                                        │
@@ -25,6 +25,12 @@
 //                              Permission aggregates
 //                                        │
 //                                        └── active Permission codes
+//
+// Notes:
+// - `roles` retains role public IDs for existing JWT compatibility.
+// - `roleCodes` exposes stable role codes such as ADMIN and SUPER_ADMIN.
+// - `permissions` retains active permission codes.
+// - Backend guards remain responsible for authorization.
 //
 // -----------------------------------------------------------------------------
 
@@ -50,6 +56,8 @@ import type { RolePermissionRepository } from '../../domain/repositories/role-pe
 
 import type { PermissionRepository } from '../../domain/repositories/permission.repository';
 
+import type { RoleRepository } from '../../domain/repositories/role.repository';
+
 // =============================================================================
 // Identity Application Tokens
 // =============================================================================
@@ -67,8 +75,24 @@ import { PermissionPublicId } from '../../domain/value-objects/permission-public
 // =============================================================================
 
 export interface AuthorizationSnapshot {
+  /**
+   * Role public IDs.
+   *
+   * Preserved for compatibility with existing JWT role claims.
+   */
   readonly roles: readonly string[];
 
+  /**
+   * Stable role codes used by application workflows, including post-login
+   * navigation.
+   *
+   * Examples: MEMBER, DRIVER, ADMIN, SUPER_ADMIN.
+   */
+  readonly roleCodes: readonly string[];
+
+  /**
+   * Active permission codes.
+   */
   readonly permissions: readonly string[];
 }
 
@@ -98,6 +122,9 @@ export class AuthorizationSnapshotServiceImpl implements AuthorizationSnapshotSe
 
     @Inject(IDENTITY_TOKENS.REPOSITORIES.PERMISSION)
     private readonly permissionRepository: PermissionRepository,
+
+    @Inject(IDENTITY_TOKENS.REPOSITORIES.ROLE)
+    private readonly roleRepository: RoleRepository,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -110,10 +137,6 @@ export class AuthorizationSnapshotServiceImpl implements AuthorizationSnapshotSe
     const identity =
       await this.identityRepository.findByPublicId(identityPublicId);
 
-    // -------------------------------------------------------------------------
-    // Identity Not Found
-    // -------------------------------------------------------------------------
-
     if (identity === null) {
       return AuthorizationSnapshotServiceImpl.emptySnapshot();
     }
@@ -121,7 +144,7 @@ export class AuthorizationSnapshotServiceImpl implements AuthorizationSnapshotSe
     const referenceDate = new Date();
 
     // -------------------------------------------------------------------------
-    // Active Roles
+    // Active Identity Role Assignments
     // -------------------------------------------------------------------------
 
     const activeIdentityRoles = identity.identityRoles.filter((identityRole) =>
@@ -133,10 +156,11 @@ export class AuthorizationSnapshotServiceImpl implements AuthorizationSnapshotSe
     }
 
     // -------------------------------------------------------------------------
-    // Role Claims
+    // Role Public IDs and Role Codes
     // -------------------------------------------------------------------------
 
-    const roleValues = new Set<string>();
+    const rolePublicIds = new Set<string>();
+    const roleCodes = new Set<string>();
 
     // -------------------------------------------------------------------------
     // Permission References
@@ -145,11 +169,19 @@ export class AuthorizationSnapshotServiceImpl implements AuthorizationSnapshotSe
     const permissionPublicIdValues = new Set<string>();
 
     for (const identityRole of activeIdentityRoles) {
-      roleValues.add(identityRole.rolePublicId.value);
+      const rolePublicId = identityRole.rolePublicId;
+
+      rolePublicIds.add(rolePublicId.value);
+
+      const role = await this.roleRepository.findByPublicId(rolePublicId);
+
+      if (role !== null && role.isActive) {
+        roleCodes.add(role.code.value);
+      }
 
       const assignments =
         await this.rolePermissionRepository.findAssignmentsByRolePublicId(
-          identityRole.rolePublicId,
+          rolePublicId,
         );
 
       for (const assignment of assignments) {
@@ -158,12 +190,13 @@ export class AuthorizationSnapshotServiceImpl implements AuthorizationSnapshotSe
     }
 
     // -------------------------------------------------------------------------
-    // No Permissions
+    // No Permission Assignments
     // -------------------------------------------------------------------------
 
     if (permissionPublicIdValues.size === 0) {
       return {
-        roles: Object.freeze([...roleValues]),
+        roles: Object.freeze([...rolePublicIds]),
+        roleCodes: Object.freeze([...roleCodes]),
         permissions: Object.freeze([]),
       };
     }
@@ -182,19 +215,7 @@ export class AuthorizationSnapshotServiceImpl implements AuthorizationSnapshotSe
       const permission =
         await this.permissionRepository.findByPublicId(permissionPublicId);
 
-      // -----------------------------------------------------------------------
-      // Missing Permission
-      // -----------------------------------------------------------------------
-
-      if (permission === null) {
-        continue;
-      }
-
-      // -----------------------------------------------------------------------
-      // Inactive Permission
-      // -----------------------------------------------------------------------
-
-      if (!permission.isActive) {
+      if (permission === null || !permission.isActive) {
         continue;
       }
 
@@ -206,7 +227,8 @@ export class AuthorizationSnapshotServiceImpl implements AuthorizationSnapshotSe
     // -------------------------------------------------------------------------
 
     return {
-      roles: Object.freeze([...roleValues]),
+      roles: Object.freeze([...rolePublicIds]),
+      roleCodes: Object.freeze([...roleCodes]),
       permissions: Object.freeze([...permissionCodes]),
     };
   }
@@ -218,6 +240,7 @@ export class AuthorizationSnapshotServiceImpl implements AuthorizationSnapshotSe
   private static emptySnapshot(): AuthorizationSnapshot {
     return {
       roles: Object.freeze([]),
+      roleCodes: Object.freeze([]),
       permissions: Object.freeze([]),
     };
   }

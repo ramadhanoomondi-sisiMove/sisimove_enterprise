@@ -427,6 +427,17 @@ export interface JourneyRepository {
   ): Promise<JourneyEntity[]>;
 
   /**
+   * Counts journeys whose lifecycle status qualifies as active
+   * for the Admin Overview.
+   *
+   * Active statuses:
+   * PUBLISHED, FULL, BOARDING, IN_PROGRESS, COMPLETION_PENDING.
+   *
+   * Departure time does not affect this count.
+   */
+  countActive(): Promise<number>;
+
+  /**
    * Find Journeys belonging to a provider with a specific status.
    *
    * This is a provider-owned operational query and does not imply public

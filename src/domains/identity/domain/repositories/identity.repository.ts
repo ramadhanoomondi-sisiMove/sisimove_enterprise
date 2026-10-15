@@ -197,6 +197,11 @@ export interface IdentityRepository {
   // ===========================================================================
 
   /**
+   * Counts all Identity records without rehydrating their aggregates.
+   */
+  count(): Promise<number>;
+
+  /**
    * Finds Identity aggregates by lifecycle status.
    *
    * Results are complete aggregates because Identity lifecycle processing

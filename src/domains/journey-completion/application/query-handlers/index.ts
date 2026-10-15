@@ -16,6 +16,8 @@ export { ListJourneyCompletionsByProviderHandler } from './list-journey-completi
 
 export { ListJourneyCompletionsByStatusHandler } from './list-journey-completions-by-status.handler';
 
+export { CountJourneyCompletionsByStatusQueryHandler } from './count-journey-completions-by-status.query-handler';
+
 // -----------------------------------------------------------------------------
 // Journey Completion Confirmations
 // -----------------------------------------------------------------------------
@@ -41,3 +43,5 @@ export { GetJourneySettlementHandler } from './get-journey-settlement.handler';
 export { GetJourneySettlementByCompletionHandler } from './get-journey-settlement-by-completion.handler';
 
 export { ListJourneySettlementsHandler } from './list-journey-settlements.handler';
+
+export { CountJourneySettlementsByStatusQueryHandler } from './count-journey-settlements-by-status.query-handler';

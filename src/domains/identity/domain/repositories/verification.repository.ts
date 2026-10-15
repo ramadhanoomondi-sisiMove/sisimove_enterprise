@@ -303,6 +303,17 @@ export interface VerificationRepository {
    */
   findRevoked(): Promise<VerificationAggregate[]>;
 
+  /**
+   * Counts Verification aggregates whose lifecycle status is PENDING.
+   *
+   * This is intended for read-only summary metrics and avoids rehydrating
+   * complete Verification aggregates solely to obtain a count.
+   *
+   * This counts Verification aggregates, not pending VerificationRequest
+   * entities.
+   */
+  countPending(): Promise<number>;
+
   // ===========================================================================
   // Verification Level
   // ===========================================================================

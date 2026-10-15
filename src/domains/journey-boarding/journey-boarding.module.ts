@@ -29,6 +29,7 @@ import {
 } from './application/command-handlers';
 
 import {
+  CountAllJourneyBoardingParticipantsQueryHandler,
   GetJourneyBoardingHandler,
   GetJourneyBoardingByJourneyHandler,
   GetJourneyBoardingParticipantsHandler,
@@ -117,6 +118,10 @@ import {
     {
       provide: JOURNEY_BOARDING_TOKENS.QUERY_HANDLERS.GET_PARTICIPANTS,
       useClass: GetJourneyBoardingParticipantsHandler,
+    },
+    {
+      provide: JOURNEY_BOARDING_TOKENS.QUERY_HANDLERS.COUNT_ALL_PARTICIPANTS,
+      useClass: CountAllJourneyBoardingParticipantsQueryHandler,
     },
 
     // Participant summary

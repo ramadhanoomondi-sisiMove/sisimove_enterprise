@@ -192,3 +192,5 @@ export * from './get-financial-disbursement.handler';
 // -----------------------------------------------------------------------------
 
 export * from './get-financial-disbursement-attempts.handler';
+
+export * from './count-financial-payments.query-handler';

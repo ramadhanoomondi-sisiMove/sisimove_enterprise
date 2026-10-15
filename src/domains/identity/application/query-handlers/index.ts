@@ -80,3 +80,5 @@ export { GetPermissionsHandler } from './get-permissions.handler';
 export { GetRolePermissionHandler } from './get-role-permission.handler';
 
 export { GetRolePermissionsHandler } from './get-role-permissions.handler';
+export { CountIdentitiesHandler } from './count-identities.handler';
+export { CountPendingVerificationsHandler } from './count-pending-verifications.handler';

@@ -477,6 +477,7 @@ import {
 // -----------------------------------------------------------------------------
 
 import {
+  CountIdentitiesQuery,
   GetIdentityByEmailQuery,
   GetIdentityByPhoneNumberQuery,
   GetIdentityQuery,
@@ -625,6 +626,11 @@ export class IdentitiesController {
     private readonly getIdentityRolesHandler: QueryHandler<
       GetIdentityRolesQuery,
       readonly IdentityRoleEntity[]
+    >,
+    @Inject(IDENTITY_TOKENS.QUERY_HANDLERS.COUNT_IDENTITIES)
+    private readonly countIdentitiesHandler: QueryHandler<
+      CountIdentitiesQuery,
+      number
     >,
   ) {}
 
@@ -816,7 +822,46 @@ export class IdentitiesController {
 
     return IdentityResponseMapper.toResponse(aggregate);
   }
+  // ===========================================================================
+  // Identity Count
+  // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Count Identities
+  // ---------------------------------------------------------------------------
+  //
+  // GET /identities/count
+  //
+  // Privileged, read-only aggregate metric.
+  // Uses the existing identity:lookup permission.
+  // ---------------------------------------------------------------------------
+
+  @Get('count')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Count identities',
+    description:
+      'Returns the total number of Identity records. Requires the identity:lookup permission.',
+  })
+  @ApiOkResponse({
+    description: 'Identity count retrieved successfully.',
+    schema: {
+      type: 'integer',
+      example: 12,
+    },
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication is required or the access token is invalid.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'The authenticated identity does not have the identity:lookup permission.',
+  })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('identity:read')
+  public async count(): Promise<number> {
+    return this.countIdentitiesHandler.execute(new CountIdentitiesQuery());
+  }
   // ===========================================================================
   // Identity Target Queries
   // ===========================================================================

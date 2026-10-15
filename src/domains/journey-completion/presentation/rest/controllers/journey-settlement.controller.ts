@@ -66,6 +66,7 @@ import {
 // -----------------------------------------------------------------------------
 
 import {
+  CountJourneySettlementsByStatusQuery,
   GetJourneySettlementByCompletionQuery,
   GetJourneySettlementQuery,
   ListJourneySettlementsQuery,
@@ -193,6 +194,12 @@ export class JourneySettlementController {
       ListJourneySettlementsQuery,
       JourneySettlementEntity[]
     >,
+
+    @Inject(JOURNEY_SETTLEMENT_TOKENS.QUERY_HANDLERS.COUNT_BY_STATUS)
+    private readonly countJourneySettlementsByStatusHandler: QueryHandler<
+      CountJourneySettlementsByStatusQuery,
+      number
+    >,
   ) {}
 
   // ===========================================================================
@@ -217,6 +224,27 @@ export class JourneySettlementController {
           ? { providerPublicId: dto.providerPublicId }
           : {}),
         ...(dto.status !== undefined ? { status: dto.status } : {}),
+      }),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Count Journey Settlements By Status
+  // ---------------------------------------------------------------------------
+
+  @Get('count-by-status')
+  @RequirePermissions('settlement:read')
+  public async countByStatus(@Query('status') status: string): Promise<number> {
+    return this.countJourneySettlementsByStatusHandler.execute(
+      new CountJourneySettlementsByStatusQuery({
+        status: status.trim().toUpperCase() as
+          | 'PENDING'
+          | 'SUBMITTED'
+          | 'PROCESSING'
+          | 'COMPLETED'
+          | 'FAILED'
+          | 'HELD'
+          | 'CANCELLED',
       }),
     );
   }

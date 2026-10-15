@@ -238,7 +238,12 @@ export interface FinancialPaymentRepository {
   // ===========================================================================
   // Financial Transaction Reference
   // ===========================================================================
-
+  /**
+   * Counts all Financial Payment records.
+   *
+   * Used by read-only overview metrics.
+   */
+  count(): Promise<number>;
   /**
    * Finds the Financial Payment associated with a Financial Transaction.
    *

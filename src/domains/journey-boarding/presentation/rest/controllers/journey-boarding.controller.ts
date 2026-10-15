@@ -56,6 +56,7 @@ import {
 } from '../../../application/commands';
 
 import {
+  CountAllJourneyBoardingParticipantsQuery,
   GetJourneyBoardingByJourneyQuery,
   GetJourneyBoardingParticipantsQuery,
   GetJourneyBoardingQuery,
@@ -188,12 +189,34 @@ export class JourneyBoardingController {
       GetParticipantSummaryQuery,
       JourneyBoardingParticipantSummary
     >,
+    @Inject(JOURNEY_BOARDING_TOKENS.QUERY_HANDLERS.COUNT_ALL_PARTICIPANTS)
+    private readonly countAllParticipantsHandler: QueryHandler<
+      CountAllJourneyBoardingParticipantsQuery,
+      number
+    >,
   ) {}
 
   // ---------------------------------------------------------------------------
   // Queries
   // ---------------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------------
+  // Count All Participants
+  // ---------------------------------------------------------------------------
+
+  @Get('participants/count')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('boarding:read')
+  @ApiOperation({
+    summary: 'Count all journey boarding participants',
+    description:
+      'Returns the total number of participants across all Journey Boardings.',
+  })
+  public async countAllParticipants(): Promise<number> {
+    return this.countAllParticipantsHandler.execute(
+      new CountAllJourneyBoardingParticipantsQuery(),
+    );
+  }
   @Get()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('boarding:read')

@@ -115,6 +115,7 @@ import {
 // -----------------------------------------------------------------------------
 
 import {
+  CountActiveJourneysQueryHandler,
   GetJourneyAssetByReferenceQueryHandler,
   GetJourneyAssetsQueryHandler,
   GetJourneyCapacityQueryHandler,
@@ -492,6 +493,11 @@ import {
       provide: JOURNEY_TOKENS.QUERY_HANDLERS.GET_ASSET_BY_REFERENCE,
       useClass: GetJourneyAssetByReferenceQueryHandler,
     },
+
+    {
+      provide: JOURNEY_TOKENS.QUERY_HANDLERS.COUNT_ACTIVE,
+      useClass: CountActiveJourneysQueryHandler,
+    },
   ],
 
   // ===========================================================================
@@ -648,6 +654,7 @@ import {
 
     JOURNEY_TOKENS.QUERY_HANDLERS.GET_ASSETS,
     JOURNEY_TOKENS.QUERY_HANDLERS.GET_ASSET_BY_REFERENCE,
+    JOURNEY_TOKENS.QUERY_HANDLERS.COUNT_ACTIVE,
   ],
 })
 export class JourneyModule {}

@@ -33,3 +33,5 @@ export { FindJourneyBookingsByStatusHandler } from './find-journey-bookings-by-s
 export { FindJourneyBookingsByJourneyAndPassengerHandler } from './find-journey-bookings-by-journey-and-passenger.handler';
 
 export { FindJourneyBookingByTransactionHandler } from './find-journey-booking-by-transaction.handler';
+
+export { CountJourneyBookingsQueryHandler } from './count-journey-bookings.query-handler';

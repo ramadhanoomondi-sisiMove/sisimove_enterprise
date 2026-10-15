@@ -75,3 +75,5 @@ export * from './get-journey-asset.query';
 export * from './get-journey-assets.query';
 
 export * from './get-journey-asset-by-reference.query';
+
+export { CountActiveJourneysQuery } from './count-active-journeys.query';

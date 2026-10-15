@@ -14,3 +14,5 @@ export { GetJourneyBoardingParticipantsQuery } from './get-journey-boarding-part
 export { ListJourneyBoardingsQuery } from './list-journey-boardings.query';
 
 export { GetParticipantSummaryQuery } from './get-participant-summary.query';
+
+export { CountAllJourneyBoardingParticipantsQuery } from './count-all-journey-boarding-participants.query';

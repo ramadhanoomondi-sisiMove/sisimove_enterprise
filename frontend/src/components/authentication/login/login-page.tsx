@@ -1,3 +1,4 @@
+
 'use client';
 
 // -----------------------------------------------------------------------------
@@ -11,52 +12,9 @@
 // - Present the sisiMove introduction/brand context.
 // - Provide navigation to registration.
 // - Render the LoginForm.
-// - Return the user to the route that initiated authentication when supplied.
-// - Fall back to the authenticated marketplace after successful login.
-//
-// Non-responsibilities:
-// - No form state.
-// - No validation.
-// - No API calls.
-// - No token/session management.
-// - No authentication state management.
-//
-// Navigation boundary:
-//
-//     LoginForm
-//          │
-//          │ authentication succeeds
-//          ▼
-//     onSuccess(response)
-//          │
-//          ▼
-//     LoginPage
-//          │
-//          ├── returnTo supplied
-//          │       │
-//          │       ▼
-//          │   returnTo route
-//          │
-//          └── no returnTo
-//                  │
-//                  ▼
-//          AUTHENTICATED_ROUTES.HOME
-//
-// Public Journey booking flow:
-//
-//     /journeys/[publicId]
-//          │
-//          ▼
-//     Book Journey
-//          │
-//          ▼
-//     /login?returnTo=/journeys/[publicId]
-//          │
-//          ▼
-//     Successful login
-//          │
-//          ▼
-//     /journeys/[publicId]
+// - Return the user to a valid local continuation route when supplied.
+// - Route administrators to the admin dashboard after successful login.
+// - Fall back to the authenticated marketplace for other users.
 //
 // -----------------------------------------------------------------------------
 
@@ -91,19 +49,30 @@ export function LoginPage({
   // ---------------------------------------------------------------------------
   // Successful Authentication
   // ---------------------------------------------------------------------------
-  //
-  // If authentication was initiated from a protected continuation such as
-  // booking a public Journey, return to that exact route.
-  //
-  // Otherwise, use the normal authenticated marketplace destination.
-  //
-  // ---------------------------------------------------------------------------
 
-  const handleLoginSuccess = () => {
+  const handleLoginSuccess = (
+    response: { readonly roleCodes: readonly string[] },
+  ) => {
     const returnTo = searchParams.get('returnTo');
 
-    if (returnTo && returnTo.startsWith('/')) {
+    // Preserve local continuation routes, including journey-booking flows.
+    // Reject protocol-relative URLs such as //example.com.
+    if (
+      returnTo &&
+      returnTo.startsWith('/') &&
+      !returnTo.startsWith('//')
+    ) {
       router.replace(returnTo);
+      return;
+    }
+
+    const isAdministrator = response.roleCodes.some(
+      (roleCode) =>
+        roleCode === 'ADMIN' || roleCode === 'SUPER_ADMIN',
+    );
+
+    if (isAdministrator) {
+      router.replace('/admin');
       return;
     }
 
@@ -131,9 +100,7 @@ export function LoginPage({
           'lg:grid-cols-[0.9fr_1.1fr]',
         ].join(' ')}
       >
-        {/* -----------------------------------------------------------------
-            Brand / context panel
-            ----------------------------------------------------------------- */}
+        {/* Brand / context panel */}
 
         <section
           className={[
@@ -188,10 +155,6 @@ export function LoginPage({
               your way, and continue from where you left off.
             </p>
 
-            {/* -------------------------------------------------------------
-                Product context
-                ------------------------------------------------------------- */}
-
             <div
               className={[
                 'mt-[clamp(1.5rem,3vw,2rem)]',
@@ -203,15 +166,9 @@ export function LoginPage({
               ].join(' ')}
             >
               <p>Discover journeys going your way.</p>
-
               <p>Book a journey when you find the right one.</p>
-
               <p>Share a journey when you have available seats.</p>
             </div>
-
-            {/* -------------------------------------------------------------
-                Registration
-                ------------------------------------------------------------- */}
 
             <div
               className={[
@@ -254,9 +211,7 @@ export function LoginPage({
           </div>
         </section>
 
-        {/* -----------------------------------------------------------------
-            Authentication panel
-            ----------------------------------------------------------------- */}
+        {/* Authentication panel */}
 
         <section
           className={[

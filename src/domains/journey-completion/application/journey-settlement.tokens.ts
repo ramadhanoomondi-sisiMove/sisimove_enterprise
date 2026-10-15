@@ -47,5 +47,7 @@ export const JOURNEY_SETTLEMENT_TOKENS = {
     GET_BY_COMPLETION: Symbol('GetJourneySettlementByCompletionHandler'),
 
     LIST: Symbol('ListJourneySettlementsHandler'),
+
+    COUNT_BY_STATUS: Symbol('CountJourneySettlementsByStatusQueryHandler'),
   } as const,
 } as const;

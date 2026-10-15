@@ -114,6 +114,14 @@ export interface JourneyBookingRepository {
   findJourneyBookings(): Promise<JourneyBookingEntity[]>;
 
   /**
+   * Counts all Journey Booking root records.
+   *
+   * This query is intended for read-only summary metrics and does not
+   * require aggregate rehydration.
+   */
+  count(): Promise<number>;
+
+  /**
    * Finds bookings associated with a Journey.
    */
   findJourneyBookingsByJourneyPublicId(

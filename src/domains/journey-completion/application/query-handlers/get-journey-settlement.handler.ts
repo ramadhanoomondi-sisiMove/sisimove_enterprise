@@ -1,6 +1,26 @@
 // -----------------------------------------------------------------------------
 // Get Journey Settlement Query Handler
 // -----------------------------------------------------------------------------
+//
+// Responsibilities:
+//
+// 1. Receive a query containing a Journey Settlement public ID.
+// 2. Construct the corresponding domain value object.
+// 3. Retrieve the Journey Settlement aggregate through the repository.
+//
+// Architectural rules:
+//
+// - NestJS manages this handler through @Injectable().
+// - The repository is injected using JOURNEY_SETTLEMENT_TOKENS.REPOSITORY.
+// - The handler delegates retrieval to the repository.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
@@ -33,14 +53,21 @@ import type { JourneySettlementRepository } from '../../domain/repositories/jour
 import { JourneySettlementPublicId } from '../../domain/value-objects/journey-settlement-public-id.vo';
 
 // -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_SETTLEMENT_TOKENS } from '../journey-settlement.tokens';
+
+// -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
 /**
  * Handles retrieval of a Journey Settlement aggregate by public identity.
  *
- * The repository is supplied explicitly and is not injected through NestJS.
+ * NestJS injects the repository through the registered repository token.
  */
+@Injectable()
 export class GetJourneySettlementHandler implements QueryHandler<
   GetJourneySettlementQuery,
   JourneySettlementAggregate | null
@@ -50,6 +77,7 @@ export class GetJourneySettlementHandler implements QueryHandler<
   // ===========================================================================
 
   public constructor(
+    @Inject(JOURNEY_SETTLEMENT_TOKENS.REPOSITORY)
     private readonly repository: JourneySettlementRepository,
   ) {}
 
@@ -64,7 +92,7 @@ export class GetJourneySettlementHandler implements QueryHandler<
       query.journeySettlementPublicId,
     );
 
-    return await this.repository.findByPublicId(journeySettlementPublicId);
+    return this.repository.findByPublicId(journeySettlementPublicId);
   }
 }
 

@@ -1022,6 +1022,72 @@ export class PrismaJourneyBoardingRepository implements JourneyBoardingRepositor
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Global Participant Counts
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Counts all participants across all Journey Boardings.
+   */
+  public async countAllParticipants(): Promise<number> {
+    return this.prisma.journeyBoardingParticipant.count();
+  }
+
+  /**
+   * Counts all participants whose status is BOARDED.
+   */
+  public async countAllBoardedParticipants(): Promise<number> {
+    return this.prisma.journeyBoardingParticipant.count({
+      where: {
+        status: this.toPrismaJourneyBoardingParticipantStatus('BOARDED'),
+      },
+    });
+  }
+
+  /**
+   * Counts all participants whose status is EXPECTED.
+   */
+  public async countAllExpectedParticipants(): Promise<number> {
+    return this.prisma.journeyBoardingParticipant.count({
+      where: {
+        status: this.toPrismaJourneyBoardingParticipantStatus('EXPECTED'),
+      },
+    });
+  }
+
+  /**
+   * Counts all participants whose status is WITHDRAWN.
+   */
+  public async countAllWithdrawnParticipants(): Promise<number> {
+    return this.prisma.journeyBoardingParticipant.count({
+      where: {
+        status: this.toPrismaJourneyBoardingParticipantStatus('WITHDRAWN'),
+      },
+    });
+  }
+
+  /**
+   * Counts all participants whose status is NO_SHOW.
+   */
+  public async countAllNoShowParticipants(): Promise<number> {
+    return this.prisma.journeyBoardingParticipant.count({
+      where: {
+        status: this.toPrismaJourneyBoardingParticipantStatus('NO_SHOW'),
+      },
+    });
+  }
+
+  /**
+   * Counts all participants whose status is REMOVED.
+   */
+  public async countAllRemovedParticipants(): Promise<number> {
+    return this.prisma.journeyBoardingParticipant.count({
+      where: {
+        status: this.toPrismaJourneyBoardingParticipantStatus('REMOVED'),
+      },
+    });
+  }
+
   public async countParticipants(
     journeyBoardingId: JourneyBoardingId,
   ): Promise<number> {

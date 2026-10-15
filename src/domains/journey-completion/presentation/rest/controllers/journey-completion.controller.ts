@@ -79,6 +79,7 @@ import {
   ListJourneyCompletionsByProviderQuery,
   ListJourneyCompletionsByStatusQuery,
   ListJourneyCompletionsQuery,
+  CountJourneyCompletionsByStatusQuery,
 } from '../../../application/queries';
 
 // -----------------------------------------------------------------------------
@@ -295,6 +296,11 @@ export class JourneyCompletionController {
       GetJourneyCompletionDisputeQuery,
       JourneyCompletionDisputeEntity | null
     >,
+    @Inject(JOURNEY_COMPLETION_TOKENS.QUERY_HANDLERS.COUNT_BY_STATUS)
+    private readonly countJourneyCompletionsByStatusHandler: QueryHandler<
+      CountJourneyCompletionsByStatusQuery,
+      number
+    >,
   ) {}
 
   // ===========================================================================
@@ -319,6 +325,25 @@ export class JourneyCompletionController {
           ? { providerPublicId: dto.providerPublicId }
           : {}),
         ...(dto.status !== undefined ? { status: dto.status } : {}),
+      }),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Count Journey Completions By Status
+  // ---------------------------------------------------------------------------
+
+  @Get('count-by-status')
+  @RequirePermissions('completion:read')
+  public async countByStatus(@Query('status') status: string): Promise<number> {
+    return this.countJourneyCompletionsByStatusHandler.execute(
+      new CountJourneyCompletionsByStatusQuery({
+        status: status as
+          | 'PENDING'
+          | 'CONFIRMATION_REQUIRED'
+          | 'CONFIRMED'
+          | 'DISPUTED'
+          | 'CANCELLED',
       }),
     );
   }

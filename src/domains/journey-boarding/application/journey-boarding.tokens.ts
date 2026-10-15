@@ -99,5 +99,9 @@ export const JOURNEY_BOARDING_TOKENS = {
     // -------------------------------------------------------------------------
 
     GET_PARTICIPANTS: Symbol('GetJourneyBoardingParticipantsQueryHandler'),
+
+    COUNT_ALL_PARTICIPANTS: Symbol(
+      'CountAllJourneyBoardingParticipantsQueryHandler',
+    ),
   },
 } as const;

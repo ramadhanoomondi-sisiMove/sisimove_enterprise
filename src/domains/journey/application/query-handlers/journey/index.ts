@@ -33,3 +33,5 @@ export * from './get-journey-assets.query-handler';
 export * from './get-journey-asset-by-reference.query-handler';
 
 export * from './get-public-journeys.query-handler';
+
+export { CountActiveJourneysQueryHandler } from './count-active-journeys.query-handler';

@@ -1,10 +1,14 @@
-// -----------------------------------------------------------------------------
-// Get Journey Completion By Journey Query Handler
-// -----------------------------------------------------------------------------
+/**
+ * -----------------------------------------------------------------------------
+ * Journey Completion — Get By Journey Query Handler
+ * -----------------------------------------------------------------------------
+ */
 
 // -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
 
 import type { QueryHandler } from '../../../../foundation/kernel/application/query-handler';
 
@@ -25,14 +29,25 @@ import type { JourneyCompletionRepository } from '../../domain/repositories/jour
 import { JourneyCompletionJourneyPublicId } from '../../domain/value-objects/journey-completion-journey-public-id.vo';
 
 // -----------------------------------------------------------------------------
+// Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_COMPLETION_TOKENS } from '../journey-completion.tokens';
+
+// -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
 /**
- * Handles retrieval of a Journey Completion by Journey public ID.
+ * Handles retrieval of a Journey Completion aggregate by Journey public ID.
  *
- * The repository is supplied explicitly and is not injected through NestJS.
+ * The repository is injected through the Journey Completion dependency
+ * injection token.
+ *
+ * The handler converts the supplied journey public ID into its domain value
+ * object before delegating the lookup to the repository.
  */
+@Injectable()
 export class GetJourneyCompletionByJourneyHandler implements QueryHandler<
   GetJourneyCompletionByJourneyQuery,
   JourneyCompletionEntity | null
@@ -41,7 +56,8 @@ export class GetJourneyCompletionByJourneyHandler implements QueryHandler<
   // Constructor
   // ===========================================================================
 
-  public constructor(
+  constructor(
+    @Inject(JOURNEY_COMPLETION_TOKENS.REPOSITORY)
     private readonly repository: JourneyCompletionRepository,
   ) {}
 
@@ -56,7 +72,7 @@ export class GetJourneyCompletionByJourneyHandler implements QueryHandler<
       query.journeyPublicId,
     );
 
-    return await this.repository.findJourneyCompletionByJourneyPublicId(
+    return this.repository.findJourneyCompletionByJourneyPublicId(
       journeyPublicId,
     );
   }

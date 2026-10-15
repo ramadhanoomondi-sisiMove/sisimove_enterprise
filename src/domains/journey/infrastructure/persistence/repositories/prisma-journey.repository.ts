@@ -5,7 +5,7 @@
 // -----------------------------------------------------------------------------
 
 import { Injectable } from '@nestjs/common';
-import type { Prisma, $Enums } from '@prisma/client';
+import { Prisma, $Enums } from '@prisma/client';
 
 // -----------------------------------------------------------------------------
 // Foundation
@@ -850,6 +850,29 @@ export class PrismaJourneyRepository implements JourneyRepository {
     });
 
     return records.map((record) => JourneyPrismaMapper.toDomain(record));
+  }
+
+  /**
+   * Counts journeys considered active by the Admin Overview.
+   *
+   * Uses a database count query without hydrating Journey entities.
+   * The criteria match JourneyStatusValueObject.isActive.
+   * Departure time does not affect this count.
+   */
+  public async countActive(): Promise<number> {
+    return this.prisma.journey.count({
+      where: {
+        status: {
+          in: [
+            $Enums.JourneyStatus.PUBLISHED,
+            $Enums.JourneyStatus.FULL,
+            $Enums.JourneyStatus.BOARDING,
+            $Enums.JourneyStatus.IN_PROGRESS,
+            $Enums.JourneyStatus.COMPLETION_PENDING,
+          ],
+        },
+      },
+    });
   }
 
   // ===========================================================================

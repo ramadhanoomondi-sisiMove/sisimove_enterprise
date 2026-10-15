@@ -1,6 +1,28 @@
 // -----------------------------------------------------------------------------
 // Journey Completion — Get Confirmations Query Handler
 // -----------------------------------------------------------------------------
+//
+// Responsibilities:
+//
+// 1. Retrieve confirmations belonging to a Journey Completion.
+// 2. Support filtering by member, booking, confirmation role, and status.
+// 3. Delegate confirmation retrieval to the Journey Completion repository.
+//
+// Architectural rules:
+//
+// - NestJS manages this handler through @Injectable().
+// - The repository is injected using JOURNEY_COMPLETION_TOKENS.REPOSITORY.
+// - Filtering behavior remains consistent with the existing repository
+//   contract.
+// - This handler does not introduce new repository methods.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// NestJS
+// -----------------------------------------------------------------------------
+
+import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
 // Foundation
@@ -41,17 +63,24 @@ import { JourneyCompletionConfirmationRole } from '../../domain/value-objects/jo
 import { JourneyCompletionConfirmationStatus } from '../../domain/value-objects/journey-completion-confirmation-status.vo';
 
 // -----------------------------------------------------------------------------
+// Dependency Injection Tokens
+// -----------------------------------------------------------------------------
+
+import { JOURNEY_COMPLETION_TOKENS } from '../journey-completion.tokens';
+
+// -----------------------------------------------------------------------------
 // Handler
 // -----------------------------------------------------------------------------
 
 /**
  * Handles retrieval of Journey Completion confirmations.
  *
- * The repository is supplied explicitly and is not injected through NestJS.
- *
  * Filtering is delegated to the repository methods already exposed by the
  * Journey Completion repository contract.
+ *
+ * NestJS injects the repository through the registered repository token.
  */
+@Injectable()
 export class GetJourneyCompletionConfirmationsHandler implements QueryHandler<
   GetJourneyCompletionConfirmationsQuery,
   JourneyCompletionConfirmationEntity[]
@@ -61,6 +90,7 @@ export class GetJourneyCompletionConfirmationsHandler implements QueryHandler<
   // ===========================================================================
 
   public constructor(
+    @Inject(JOURNEY_COMPLETION_TOKENS.REPOSITORY)
     private readonly repository: JourneyCompletionRepository,
   ) {}
 
@@ -77,11 +107,6 @@ export class GetJourneyCompletionConfirmationsHandler implements QueryHandler<
 
     // -------------------------------------------------------------------------
     // Member filter
-    // -------------------------------------------------------------------------
-    //
-    // The repository exposes member lookup across all completions, rather than
-    // a completion-public-id + member combination. Therefore filter the
-    // completion after retrieving member confirmations.
     // -------------------------------------------------------------------------
 
     if (query.memberPublicId !== undefined) {
@@ -154,7 +179,7 @@ export class GetJourneyCompletionConfirmationsHandler implements QueryHandler<
       if (query.role !== undefined) {
         const role = JourneyCompletionConfirmationRole.create(query.role);
 
-        return await this.repository.findConfirmationsByRole(
+        return this.repository.findConfirmationsByRole(
           completion.aggregateId,
           role,
         );
@@ -168,7 +193,7 @@ export class GetJourneyCompletionConfirmationsHandler implements QueryHandler<
         query.status as string,
       );
 
-      return await this.repository.findConfirmationsByStatus(
+      return this.repository.findConfirmationsByStatus(
         completion.aggregateId,
         status,
       );
@@ -178,7 +203,7 @@ export class GetJourneyCompletionConfirmationsHandler implements QueryHandler<
     // All confirmations for completion
     // -------------------------------------------------------------------------
 
-    return await this.repository.findConfirmationsByCompletionPublicId(
+    return this.repository.findConfirmationsByCompletionPublicId(
       completionPublicId,
     );
   }
