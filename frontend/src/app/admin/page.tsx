@@ -1,4 +1,4 @@
-
+//src/app/admin/page.tsx
 import { AdminOverview } from "@/components/admin/overview";
 
 export default function AdminPage() {

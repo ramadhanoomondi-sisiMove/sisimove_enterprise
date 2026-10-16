@@ -292,6 +292,7 @@ import {
   // ===========================================================================
 
   GetIdentityHandler,
+  GetIdentitiesHandler,
   CountIdentitiesHandler,
   GetIdentityByEmailHandler,
   GetIdentityByPhoneNumberHandler,
@@ -445,6 +446,11 @@ import {
     // =========================================================================
     // Identity — Query Handlers
     // =========================================================================
+
+    {
+      provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_IDENTITIES,
+      useClass: GetIdentitiesHandler,
+    },
 
     {
       provide: IDENTITY_TOKENS.QUERY_HANDLERS.COUNT_IDENTITIES,

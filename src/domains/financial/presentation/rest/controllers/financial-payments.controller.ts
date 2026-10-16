@@ -225,7 +225,7 @@ export class FinancialPaymentsController {
   // ---------------------------------------------------------------------------
 
   @Get('count')
-  @RequirePermissions('financial-payment:read')
+  @RequirePermissions('financial:read')
   public async count(): Promise<number> {
     return this.countFinancialPaymentsHandler.execute(
       new CountFinancialPaymentsQuery(),

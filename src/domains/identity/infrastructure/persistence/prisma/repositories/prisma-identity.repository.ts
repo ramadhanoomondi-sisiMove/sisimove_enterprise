@@ -163,7 +163,11 @@ import { IdentityAlreadyExistsException } from '../../../../domain/exceptions/id
 // Repository Contract
 // -----------------------------------------------------------------------------
 
-import type { IdentityRepository } from '../../../../domain/repositories/identity.repository';
+import type {
+  IdentityRepository,
+  IdentityDirectoryCriteria,
+  IdentityDirectoryPage,
+} from '../../../../domain/repositories/identity.repository';
 
 // -----------------------------------------------------------------------------
 // Value Objects
@@ -548,6 +552,99 @@ export class PrismaIdentityRepository implements IdentityRepository {
     } catch (error: unknown) {
       throw this.translatePersistenceError(error);
     }
+  }
+
+  // ===========================================================================
+  // Administrative Directory Search
+  // ===========================================================================
+
+  /**
+   * Searches Identity aggregates using database-side filtering and pagination.
+   *
+   * Search covers public ID, email, and phone number. String matching follows
+   * the database provider's configured comparison behavior; no Prisma-provider-
+   * specific case-insensitive mode is assumed here.
+   *
+   * Role filtering only matches assignments that are not revoked and have not
+   * expired at the time this query is executed.
+   */
+  public async searchDirectory(
+    criteria: IdentityDirectoryCriteria,
+  ): Promise<IdentityDirectoryPage> {
+    const now = new Date();
+    const where: Prisma.IdentityWhereInput = {};
+    const and: Prisma.IdentityWhereInput[] = [];
+
+    if (criteria.status !== undefined) {
+      where.status = this.toPrismaIdentityStatus(criteria.status.value);
+    }
+
+    if (
+      criteria.createdFrom !== undefined ||
+      criteria.createdTo !== undefined
+    ) {
+      where.createdAt = {
+        ...(criteria.createdFrom !== undefined
+          ? { gte: criteria.createdFrom }
+          : {}),
+        ...(criteria.createdTo !== undefined
+          ? { lte: criteria.createdTo }
+          : {}),
+      };
+    }
+
+    const search = criteria.search?.trim();
+
+    if (search) {
+      and.push({
+        OR: [
+          { publicId: { contains: search } },
+          { email: { contains: search } },
+          { phoneNumber: { contains: search } },
+        ],
+      });
+    }
+
+    if (criteria.rolePublicId !== undefined) {
+      and.push({
+        identityRoles: {
+          some: {
+            role: { publicId: criteria.rolePublicId.value },
+            revokedAt: null,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+          },
+        },
+      });
+    }
+
+    if (and.length > 0) {
+      where.AND = and;
+    }
+
+    const skip = (criteria.page - 1) * criteria.pageSize;
+    const orderBy: Prisma.IdentityOrderByWithRelationInput[] = [
+      { [criteria.sortBy]: criteria.sortDirection },
+      { publicId: 'asc' },
+    ];
+
+    const [records, totalItems] = await Promise.all([
+      this.prisma.identity.findMany({
+        where,
+        include: this.include,
+        skip,
+        take: criteria.pageSize,
+        orderBy,
+      }),
+      this.prisma.identity.count({ where }),
+    ]);
+
+    return {
+      items: records.map((record) => this.toAggregate(record)),
+      page: criteria.page,
+      pageSize: criteria.pageSize,
+      totalItems,
+      totalPages: Math.ceil(totalItems / criteria.pageSize),
+    };
   }
 
   // ===========================================================================

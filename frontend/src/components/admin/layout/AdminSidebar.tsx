@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -23,21 +24,133 @@ import { ADMIN_ROUTES } from "@/foundation/routing/admin-routes";
 import { AUTHENTICATED_ROUTES } from "@/foundation/routing/authenticated-routes";
 import { useLogout } from "@/features/authentication/logout";
 
-const NAVIGATION = [
-  { label: "Overview", href: ADMIN_ROUTES.HOME, icon: LayoutDashboard },
-  { label: "Members", href: ADMIN_ROUTES.MEMBERS, icon: Users },
-  { label: "Verifications", href: ADMIN_ROUTES.VERIFICATIONS, icon: BadgeCheck },
-  { label: "Trust & Reputation", href: ADMIN_ROUTES.TRUST, icon: ShieldCheck },
-  { label: "Journeys", href: ADMIN_ROUTES.JOURNEYS, icon: Route },
-  { label: "Bookings", href: ADMIN_ROUTES.BOOKINGS, icon: ClipboardList },
-  { label: "Boarding", href: ADMIN_ROUTES.BOARDING, icon: BriefcaseBusiness },
-  { label: "Payments", href: ADMIN_ROUTES.PAYMENTS, icon: Wallet },
-  { label: "Transactions", href: ADMIN_ROUTES.TRANSACTIONS, icon: CreditCard },
-  { label: "Assets", href: ADMIN_ROUTES.ASSETS, icon: FileSearch },
-  { label: "Security", href: ADMIN_ROUTES.SESSIONS, icon: MonitorSmartphone },
-  { label: "Access Control", href: ADMIN_ROUTES.ROLES, icon: ShieldCheck },
-  { label: "Audit Log", href: ADMIN_ROUTES.AUDIT_LOG, icon: Activity },
-];
+const NAVIGATION_GROUPS = [
+  {
+    label: "Platform Overview",
+    items: [
+      {
+        label: "Overview",
+        href: ADMIN_ROUTES.HOME,
+        icon: LayoutDashboard,
+      },
+    ],
+  },
+  {
+    label: "People & Trust",
+    items: [
+      {
+        label: "Members",
+        href: ADMIN_ROUTES.MEMBERS,
+        icon: Users,
+      },
+      {
+        label: "Verifications",
+        href: ADMIN_ROUTES.VERIFICATIONS,
+        icon: BadgeCheck,
+      },
+      {
+        label: "Verification Requests",
+        href: ADMIN_ROUTES.VERIFICATION_REQUESTS,
+        icon: ClipboardList,
+      },
+      {
+        label: "Trust & Reputation",
+        href: ADMIN_ROUTES.TRUST,
+        icon: ShieldCheck,
+      },
+      {
+        label: "Assets",
+        href: ADMIN_ROUTES.ASSETS,
+        icon: FileSearch,
+      },
+    ],
+  },
+  {
+    label: "Journey Operations",
+    items: [
+      {
+        label: "Journeys",
+        href: ADMIN_ROUTES.JOURNEYS,
+        icon: Route,
+      },
+      {
+        label: "Bookings",
+        href: ADMIN_ROUTES.BOOKINGS,
+        icon: ClipboardList,
+      },
+      {
+        label: "Booking Cancellations",
+        href: ADMIN_ROUTES.BOOKING_CANCELLATIONS,
+        icon: Activity,
+      },
+      {
+        label: "Boarding",
+        href: ADMIN_ROUTES.BOARDING,
+        icon: BriefcaseBusiness,
+      },
+    ],
+  },
+  {
+    label: "Finance & Transactions",
+    items: [
+      {
+        label: "Payments",
+        href: ADMIN_ROUTES.PAYMENTS,
+        icon: Wallet,
+      },
+      {
+        label: "Transactions",
+        href: ADMIN_ROUTES.TRANSACTIONS,
+        icon: CreditCard,
+      },
+    ],
+  },
+  {
+    label: "Security & Governance",
+    items: [
+      {
+        label: "Authentications",
+        href: ADMIN_ROUTES.AUTHENTICATIONS,
+        icon: ShieldCheck,
+      },
+      {
+        label: "Sessions",
+        href: ADMIN_ROUTES.SESSIONS,
+        icon: MonitorSmartphone,
+      },
+      {
+        label: "Devices",
+        href: ADMIN_ROUTES.DEVICES,
+        icon: MonitorSmartphone,
+      },
+      {
+        label: "Recoveries",
+        href: ADMIN_ROUTES.RECOVERIES,
+        icon: Activity,
+      },
+      {
+        label: "Roles",
+        href: ADMIN_ROUTES.ROLES,
+        icon: ShieldCheck,
+      },
+      {
+        label: "Permissions",
+        href: ADMIN_ROUTES.PERMISSIONS,
+        icon: BadgeCheck,
+      },
+      {
+        label: "Role Assignments",
+        href: ADMIN_ROUTES.IDENTITY_ROLES,
+        icon: Users,
+      },
+      {
+        label: "Audit Log",
+        href: ADMIN_ROUTES.AUDIT_LOG,
+        icon: Activity,
+      },
+    ],
+  },
+] as const;
 
 function isNavigationActive(pathname: string, href: string) {
   if (href === ADMIN_ROUTES.HOME) {
@@ -66,8 +179,8 @@ export default function AdminSidebar({
       await logout();
       router.replace("/login");
     } catch {
-      // Keep the current page if backend logout fails.
-      // The logout hook retains the error state.
+      // Preserve the current page if logout fails.
+      // The logout hook retains its error state.
     }
   };
 
@@ -78,6 +191,7 @@ export default function AdminSidebar({
         collapsed ? "w-[76px]" : "w-[260px]",
       ].join(" ")}
     >
+      {/* Brand */}
       <div className="flex h-16 shrink-0 items-center gap-3 border-b border-slate-100 px-5">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white">
           sM
@@ -88,49 +202,65 @@ export default function AdminSidebar({
             <p className="truncate text-sm font-bold text-slate-900">
               sisiMove
             </p>
-            <p className="text-xs text-slate-500">Administration</p>
+            <p className="text-xs text-slate-500">
+              Super Admin
+            </p>
           </div>
         )}
       </div>
 
+      {/* Grouped navigation */}
       <nav
-        aria-label="Admin navigation"
-        className="flex-1 space-y-1 overflow-y-auto p-3"
+        aria-label="Super Admin navigation"
+        className="flex-1 space-y-4 overflow-y-auto p-3"
       >
-        {!collapsed && (
-          <p className="px-3 pb-2 pt-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-            Workspace
-          </p>
-        )}
+        {NAVIGATION_GROUPS.map((group) => (
+          <section key={group.label}>
+            {!collapsed && (
+              <p className="px-3 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                {group.label}
+              </p>
+            )}
 
-        {NAVIGATION.map((item) => {
-          const Icon = item.icon;
-          const active = isNavigationActive(pathname, item.href);
+            <div className="space-y-1">
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const active = isNavigationActive(
+                  pathname,
+                  item.href,
+                );
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onNavigate}
-              title={collapsed ? item.label : undefined}
-              aria-current={active ? "page" : undefined}
-              className={[
-                "flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-                collapsed ? "justify-center" : "",
-                active
-                  ? "bg-blue-50 font-semibold text-blue-700"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
-              ].join(" ")}
-            >
-              <Icon className="h-[18px] w-[18px] shrink-0" />
-              {!collapsed && (
-                <span className="truncate">{item.label}</span>
-              )}
-            </Link>
-          );
-        })}
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={onNavigate}
+                    title={collapsed ? item.label : undefined}
+                    aria-current={active ? "page" : undefined}
+                    className={[
+                      "flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                      collapsed ? "justify-center" : "",
+                      active
+                        ? "bg-blue-50 font-semibold text-blue-700"
+                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
+                    ].join(" ")}
+                  >
+                    <Icon className="h-[18px] w-[18px] shrink-0" />
+
+                    {!collapsed && (
+                      <span className="truncate">
+                        {item.label}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        ))}
       </nav>
 
+      {/* Footer actions */}
       <div className="space-y-3 border-t border-slate-100 p-4">
         <Link
           href={AUTHENTICATED_ROUTES.HOME}
@@ -152,7 +282,7 @@ export default function AdminSidebar({
 
         {!collapsed && (
           <p className="text-xs leading-5 text-slate-500">
-            Platform administration
+            Platform-wide administration
             <br />
             Access subject to permissions
           </p>
@@ -174,7 +304,9 @@ export default function AdminSidebar({
           <LogOut className="h-[18px] w-[18px] shrink-0" />
 
           {!collapsed && (
-            <span>{isLoggingOut ? "Logging out..." : "Log out"}</span>
+            <span>
+              {isLoggingOut ? "Logging out..." : "Log out"}
+            </span>
           )}
         </button>
       </div>

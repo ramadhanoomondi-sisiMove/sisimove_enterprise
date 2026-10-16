@@ -1,10 +1,11 @@
+
 "use client";
 
 import { Menu, X } from "lucide-react";
 
-interface AdminMobileHeaderProps {
-  mobileOpen: boolean;
-  onToggleMenu: () => void;
+export interface AdminMobileHeaderProps {
+  readonly mobileOpen: boolean;
+  readonly onToggleMenu: () => void;
 }
 
 export default function AdminMobileHeader({
@@ -12,16 +13,15 @@ export default function AdminMobileHeader({
   onToggleMenu,
 }: AdminMobileHeaderProps) {
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4">
-      <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white">
-          sM
-        </div>
+    <header className="sticky top-0 z-40 flex min-h-14 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface)]/95 px-4 backdrop-blur lg:hidden">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-[var(--foreground)]">
+          Admin Workspace
+        </p>
 
-        <div>
-          <p className="text-sm font-bold text-slate-900">sisiMove</p>
-          <p className="text-xs text-slate-500">Administration</p>
-        </div>
+        <p className="truncate text-xs text-[var(--muted-foreground)]">
+          sisiMove platform operations
+        </p>
       </div>
 
       <button
@@ -29,12 +29,13 @@ export default function AdminMobileHeader({
         onClick={onToggleMenu}
         aria-label={mobileOpen ? "Close admin menu" : "Open admin menu"}
         aria-expanded={mobileOpen}
-        className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-700"
+        aria-controls="admin-mobile-navigation"
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
       >
         {mobileOpen ? (
-          <X className="h-5 w-5" />
+          <X aria-hidden="true" className="h-5 w-5" />
         ) : (
-          <Menu className="h-5 w-5" />
+          <Menu aria-hidden="true" className="h-5 w-5" />
         )}
       </button>
     </header>

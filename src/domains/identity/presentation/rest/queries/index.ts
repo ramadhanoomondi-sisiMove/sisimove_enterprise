@@ -11,6 +11,7 @@
 // -----------------------------------------------------------------------------
 
 export * from './get-identity.query.dto';
+export * from './get-identities.query.dto';
 
 export * from './get-identity-by-email.query.dto';
 

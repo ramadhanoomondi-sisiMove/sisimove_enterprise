@@ -1,5 +1,3 @@
-// src/domains/identity/domain/repositories/identity.repository.ts
-
 // -----------------------------------------------------------------------------
 // Identity Repository
 // -----------------------------------------------------------------------------
@@ -16,79 +14,73 @@
 //
 // - IdentityAggregate is the unit of persistence.
 // - IdentityEntity is the aggregate root entity.
-// - IdentityRoleEntity is owned by IdentityEntity.
-// - IdentityRoleEntity is persisted as part of IdentityAggregate.
+// - IdentityRoleEntity is persisted as part of the aggregate.
 // - Cross-aggregate references remain opaque public identities.
-// - Repository implementations may optimize persistence and queries internally,
-//   but must preserve aggregate invariants.
+// - Infrastructure implementations must preserve aggregate invariants.
 //
-// Responsibilities:
+// This interface belongs to the Identity domain. It does not depend on
+// Prisma, ORM models, HTTP DTOs, authentication, or other domains' internals.
 //
-// - Create Identity aggregates.
-// - Persist existing Identity aggregates.
-// - Retrieve complete Identity aggregates.
-// - Support public identity lookup.
-// - Support contact-attribute lookup.
-// - Support lifecycle queries.
-// - Support active-role queries.
-// - Support existence checks.
-//
-// This interface belongs entirely to the Identity domain.
-//
-// It does NOT:
-//
-// - Depend on Prisma.
-// - Depend on ORM/database models.
-// - Persist IdentityRoleEntity independently.
-// - Execute authentication.
-// - Manage sessions.
-// - Manage devices.
-// - Manage recovery.
-// - Manage OTP challenges.
-// - Manage verification.
-// - Manage permissions.
-// - Execute external provider operations.
-// - Mutate other aggregates.
-//
-// Infrastructure implementations are responsible for translating this contract
-// into persistence operations.
-//
-// IMPORTANT:
-//
-// IdentityRoleEntity is owned by IdentityAggregate.
-//
-// Therefore the repository intentionally does NOT expose:
-//
-// - createRole();
-// - saveRole();
-// - updateRole();
-// - deleteRole();
-//
-// Role persistence occurs through the Identity aggregate.
-//
-// Cross-domain references use dedicated public identity value objects.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// Aggregate
 // -----------------------------------------------------------------------------
 
 import type { IdentityAggregate } from '../aggregates/identity.aggregate';
 
-// -----------------------------------------------------------------------------
-// Value Objects
-// -----------------------------------------------------------------------------
-
 import type { IdentityPublicId } from '../value-objects/identity-public-id.vo';
-
 import type { IdentityEmail } from '../value-objects/identity-email.vo';
-
 import type { IdentityPhoneNumber } from '../value-objects/identity-phone-number.vo';
-
 import type { IdentityStatus } from '../value-objects/identity-status.vo';
-
 import type { IdentityRoleRolePublicId } from '../value-objects/identity-role-role-public-id.vo';
+
+// =============================================================================
+// Directory Search Contract
+// =============================================================================
+
+/**
+ * Supported fields for deterministic Identity directory sorting.
+ *
+ * Keep this contract independent of HTTP query DTOs and Prisma types.
+ */
+export type IdentityDirectorySortField =
+  'createdAt' | 'updatedAt' | 'email' | 'status';
+
+export type IdentityDirectorySortDirection = 'asc' | 'desc';
+
+/**
+ * Criteria for searching the Identity directory.
+ *
+ * The application layer is responsible for validating and normalizing
+ * incoming values before calling the repository.
+ *
+ * `createdFrom` and `createdTo` are inclusive date boundaries.
+ * `rolePublicId`, when supplied, filters by a currently active role assignment.
+ */
+
+export interface IdentityDirectoryCriteria {
+  readonly page: number;
+  readonly pageSize: number;
+  readonly search?: string | undefined;
+  readonly status?: IdentityStatus | undefined;
+  readonly rolePublicId?: IdentityRoleRolePublicId | undefined;
+  readonly createdFrom?: Date | undefined;
+  readonly createdTo?: Date | undefined;
+  readonly sortBy: IdentityDirectorySortField;
+  readonly sortDirection: IdentityDirectorySortDirection;
+}
+
+
+/**
+ * One paginated result from the Identity directory.
+ *
+ * Items must be complete, rehydrated Identity aggregates, including their
+ * aggregate-owned role assignments.
+ */
+export interface IdentityDirectoryPage {
+  readonly items: IdentityAggregate[];
+  readonly page: number;
+  readonly pageSize: number;
+  readonly totalItems: number;
+  readonly totalPages: number;
+}
 
 // =============================================================================
 // Repository
@@ -100,29 +92,13 @@ export interface IdentityRepository {
   // ===========================================================================
 
   /**
-   * Persists a brand-new Identity aggregate.
-   *
-   * The complete aggregate is the unit of persistence:
-   *
-   * IdentityAggregate
-   * └── IdentityEntity
-   *     └── IdentityRoleEntity[]
-   *
-   * The infrastructure implementation must persist the aggregate root and
-   * all aggregate-owned IdentityRoleEntity instances atomically.
-   *
-   * No independent role persistence operation is permitted through this
-   * repository contract.
+   * Persists a new Identity aggregate and its owned role assignments atomically.
    */
   create(aggregate: IdentityAggregate): Promise<void>;
 
   /**
-   * Persists the current state of an existing Identity aggregate.
-   *
-   * The aggregate and its owned IdentityRoleEntity collection must be
-   * synchronized within the same persistence transaction.
-   *
-   * The aggregate identity determines which persisted aggregate is updated.
+   * Persists an existing aggregate and synchronizes its owned role assignments
+   * within the same persistence transaction.
    */
   save(aggregate: IdentityAggregate): Promise<void>;
 
@@ -131,62 +107,48 @@ export interface IdentityRepository {
   // ===========================================================================
 
   /**
-   * Finds a complete Identity aggregate by its internal persistence identity.
+   * Finds a complete aggregate by its internal persistence identifier.
    *
-   * This method is primarily an infrastructure/application concern and should
-   * only be used where the internal identity is intentionally available.
-   *
-   * Rehydration must include:
-   *
-   * - IdentityEntity;
-   * - IdentityRoleEntity[].
-   *
-   * The result must be reconstructed through IdentityAggregate.rehydrate().
-   *
-   * No domain events should be emitted during rehydration.
+   * Rehydration must use IdentityAggregate.rehydrate() and must not emit
+   * creation or other domain events.
    */
   findById(id: string): Promise<IdentityAggregate | null>;
 
   /**
-   * Finds a complete Identity aggregate by public identifier.
-   *
-   * Rehydration must include:
-   *
-   * - IdentityEntity;
-   * - IdentityRoleEntity[].
-   *
-   * The aggregate must be reconstructed through
-   * IdentityAggregate.rehydrate().
-   *
-   * No domain events should be emitted during rehydration.
+   * Finds a complete aggregate by its public identifier.
    */
   findByPublicId(publicId: IdentityPublicId): Promise<IdentityAggregate | null>;
+
+  /**
+   * Searches the Identity directory using database-side filtering, pagination,
+   * and deterministic sorting.
+   *
+   * Implementations must:
+   * - apply filters before pagination;
+   * - use a stable tie-breaker when sorting;
+   * - return complete, rehydrated aggregates with owned role assignments;
+   * - calculate totalItems from the full filtered result set;
+   * - avoid loading the entire Identity collection into memory;
+   * - treat revoked and expired role assignments as inactive for role filters.
+   *
+   * This method does not define an HTTP endpoint. The application and HTTP
+   * layers must expose it deliberately.
+   */
+  searchDirectory(
+    criteria: IdentityDirectoryCriteria,
+  ): Promise<IdentityDirectoryPage>;
 
   // ===========================================================================
   // Contact Identity
   // ===========================================================================
 
   /**
-   * Finds an Identity aggregate by email address.
-   *
-   * The email remains represented by its domain value object.
-   *
-   * The infrastructure implementation is responsible for translating the
-   * value object into the persistence representation used by the database.
-   *
-   * Returns null when no Identity exists for the supplied email.
+   * Finds an aggregate by email address.
    */
   findByEmail(email: IdentityEmail): Promise<IdentityAggregate | null>;
 
   /**
-   * Finds an Identity aggregate by phone number.
-   *
-   * The phone number remains represented by its domain value object.
-   *
-   * The infrastructure implementation is responsible for translating the
-   * value object into the persistence representation used by the database.
-   *
-   * Returns null when no Identity exists for the supplied phone number.
+   * Finds an aggregate by phone number.
    */
   findByPhoneNumber(
     phoneNumber: IdentityPhoneNumber,
@@ -197,42 +159,22 @@ export interface IdentityRepository {
   // ===========================================================================
 
   /**
-   * Counts all Identity records without rehydrating their aggregates.
+   * Counts all Identity records without rehydrating aggregates.
    */
   count(): Promise<number>;
 
   /**
-   * Finds Identity aggregates by lifecycle status.
-   *
-   * Results are complete aggregates because Identity lifecycle processing
-   * operates on the aggregate boundary.
+   * Finds complete aggregates by lifecycle status.
    */
   findByStatus(status: IdentityStatus): Promise<IdentityAggregate[]>;
 
-  /**
-   * Finds Identity aggregates currently in PENDING state.
-   *
-   * Equivalent to querying identities in PENDING state.
-   */
   findPending(): Promise<IdentityAggregate[]>;
 
-  /**
-   * Finds Identity aggregates currently in ACTIVE state.
-   *
-   * Equivalent to querying identities in ACTIVE state.
-   */
   findActive(): Promise<IdentityAggregate[]>;
 
-  /**
-   * Finds Identity aggregates currently in SUSPENDED state.
-   *
-   * Equivalent to querying identities in SUSPENDED state.
-   */
   findSuspended(): Promise<IdentityAggregate[]>;
 
   /**
-   * Finds Identity aggregates currently in CLOSED state.
-   *
    * CLOSED is the terminal Identity lifecycle state.
    */
   findClosed(): Promise<IdentityAggregate[]>;
@@ -242,16 +184,8 @@ export interface IdentityRepository {
   // ===========================================================================
 
   /**
-   * Finds Identity aggregates that currently have an active assignment for
-   * the supplied Role.
-   *
-   * The Role is represented only by its opaque public identity.
-   *
-   * The infrastructure implementation may resolve this public identity
-   * against the persistence representation when querying the database.
-   *
-   * Returned aggregates must be completely rehydrated, including all owned
-   * IdentityRoleEntity instances.
+   * Finds complete aggregates with a currently active assignment for the
+   * supplied Role public identifier.
    */
   findByActiveRole(
     rolePublicId: IdentityRoleRolePublicId,
@@ -261,45 +195,15 @@ export interface IdentityRepository {
   // Existence
   // ===========================================================================
 
-  /**
-   * Determines whether an Identity exists by public identifier.
-   *
-   * This is intentionally an existence-only query and does not require
-   * aggregate rehydration.
-   */
   existsByPublicId(publicId: IdentityPublicId): Promise<boolean>;
 
-  /**
-   * Determines whether an Identity exists for an email address.
-   *
-   * This is an existence-only query and does not require aggregate
-   * rehydration.
-   *
-   * This is useful for enforcing Identity email uniqueness before aggregate
-   * creation or contact-attribute changes.
-   */
   existsByEmail(email: IdentityEmail): Promise<boolean>;
 
-  /**
-   * Determines whether an Identity exists for a phone number.
-   *
-   * This is an existence-only query and does not require aggregate
-   * rehydration.
-   *
-   * This is useful for enforcing Identity phone-number uniqueness before
-   * aggregate creation or contact-attribute changes.
-   */
   existsByPhoneNumber(phoneNumber: IdentityPhoneNumber): Promise<boolean>;
 
   /**
-   * Determines whether an Identity currently has an active assignment for
-   * the supplied Role.
-   *
-   * This is an existence-only query and does not require aggregate
-   * rehydration.
-   *
-   * The query is scoped to active role assignments and therefore must not
-   * consider revoked or expired assignments as active.
+   * Returns true only if an active assignment exists. Revoked or expired
+   * assignments must not count as active.
    */
   existsByActiveRole(rolePublicId: IdentityRoleRolePublicId): Promise<boolean>;
 }

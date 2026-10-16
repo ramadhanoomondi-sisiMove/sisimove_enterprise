@@ -29,7 +29,7 @@ export * from './get-identity-roles.query';
 // =============================================================================
 // Verification
 // =============================================================================
-
+export * from './get-identities.query';
 export * from './get-verification.query';
 export * from './get-verification-requests.query';
 export * from './get-verification-request.query';

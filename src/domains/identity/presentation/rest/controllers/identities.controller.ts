@@ -406,6 +406,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UnauthorizedException,
   UseGuards,
@@ -478,6 +479,7 @@ import {
 
 import {
   CountIdentitiesQuery,
+  GetIdentitiesQuery,
   GetIdentityByEmailQuery,
   GetIdentityByPhoneNumberQuery,
   GetIdentityQuery,
@@ -495,6 +497,7 @@ import type { IdentityAggregate } from '../../../domain/aggregates/identity.aggr
 // -----------------------------------------------------------------------------
 
 import type { IdentityRoleEntity } from '../../../domain/entities/identity-role.entity';
+import type { IdentityDirectoryPage } from '../../../domain/repositories/identity.repository';
 
 // -----------------------------------------------------------------------------
 // Domain — Value Objects
@@ -505,6 +508,7 @@ import {
   IdentityPhoneNumber,
   IdentityPublicId,
   IdentityRoleRolePublicId,
+  IdentityStatus,
 } from '../../../domain/value-objects';
 
 // -----------------------------------------------------------------------------
@@ -528,6 +532,7 @@ import {
   GetIdentityByPhoneNumberQueryDto,
   GetIdentityQueryDto,
   GetIdentityRolesQueryDto,
+  GetIdentitiesQueryDto,
 } from '../queries';
 
 // -----------------------------------------------------------------------------
@@ -631,6 +636,12 @@ export class IdentitiesController {
     private readonly countIdentitiesHandler: QueryHandler<
       CountIdentitiesQuery,
       number
+    >,
+
+    @Inject(IDENTITY_TOKENS.QUERY_HANDLERS.GET_IDENTITIES)
+    private readonly getIdentitiesHandler: QueryHandler<
+      GetIdentitiesQuery,
+      IdentityDirectoryPage
     >,
   ) {}
 
@@ -822,6 +833,72 @@ export class IdentitiesController {
 
     return IdentityResponseMapper.toResponse(aggregate);
   }
+  // ===========================================================================
+  // Identity Directory
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Search Identities
+  // ---------------------------------------------------------------------------
+  //
+  // GET /identities
+  //
+  // Privileged directory endpoint. Target-specific scope, where applicable,
+  // remains an application-layer responsibility.
+  // ---------------------------------------------------------------------------
+
+  @Get()
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Search identities',
+    description:
+      'Returns a filtered, sorted, paginated directory of Identity aggregates. Requires identity:read.',
+  })
+  @ApiOkResponse({
+    description: 'Identity directory retrieved successfully.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication is required or the access token is invalid.',
+  })
+  @ApiForbiddenResponse({
+    description: 'The authenticated identity does not have identity:read.',
+  })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('identity:read')
+  public async getIdentities(@Query() dto: GetIdentitiesQueryDto): Promise<{
+    items: ReturnType<typeof IdentityResponseMapper.toResponse>[];
+    page: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+  }> {
+    const query = new GetIdentitiesQuery(
+      dto.page,
+      dto.pageSize,
+      dto.search,
+      dto.status === undefined ? undefined : IdentityStatus.create(dto.status),
+      dto.rolePublicId === undefined
+        ? undefined
+        : new IdentityRoleRolePublicId(dto.rolePublicId),
+      dto.createdFrom === undefined ? undefined : new Date(dto.createdFrom),
+      dto.createdTo === undefined ? undefined : new Date(dto.createdTo),
+      dto.sortBy,
+      dto.sortDirection,
+    );
+
+    const result = await this.getIdentitiesHandler.execute(query);
+
+    return {
+      items: result.items.map((aggregate) =>
+        IdentityResponseMapper.toResponse(aggregate),
+      ),
+      page: result.page,
+      pageSize: result.pageSize,
+      totalItems: result.totalItems,
+      totalPages: result.totalPages,
+    };
+  }
+
   // ===========================================================================
   // Identity Count
   // ===========================================================================

@@ -23,6 +23,8 @@
 
 export { GetIdentityHandler } from './get-identity.handler';
 
+export { GetIdentitiesHandler } from './get-identities.handler';
+
 export { GetIdentityByEmailHandler } from './get-identity-by-email.handler';
 
 export { GetIdentityByPhoneNumberHandler } from './get-identity-by-phone-number.handler';

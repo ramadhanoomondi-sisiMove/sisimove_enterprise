@@ -512,6 +512,46 @@ export class VerificationsController {
     return VerificationResponseMapper.toResponse(aggregate);
   }
 
+  // ---------------------------------------------------------------------------
+  // Get Verification By Identity Public ID — Reviewer / Admin
+  // ---------------------------------------------------------------------------
+  //
+  // This route is deliberately declared before @Get(':verificationPublicId')
+  // so that the literal "by-identity" segment is not captured as a verification
+  // public ID.
+  //
+  // This endpoint is intended for authorized reviewer/admin workflows. It uses
+  // GetVerificationQuery because the lookup key is an IdentityPublicId.
+  // ---------------------------------------------------------------------------
+
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get verification by identity public ID',
+    description:
+      'Returns the verification aggregate associated with the specified identity public ID.',
+  })
+  @ApiParam({
+    name: 'identityPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the owning Identity.',
+    example: 'IDN-8VBLAO',
+  })
+  @Get('by-identity/:identityPublicId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('verification:read')
+  public async getByIdentityPublicId(
+    @Param('identityPublicId') identityPublicId: string,
+  ): Promise<VerificationResponse> {
+    const query = new GetVerificationQuery(
+      new IdentityPublicId(identityPublicId),
+    );
+
+    const aggregate = await this.getVerificationHandler.execute(query);
+
+    return VerificationResponseMapper.toResponse(aggregate);
+  }
+
   // ===========================================================================
   // Verification Queries — Reviewer
   // ===========================================================================
