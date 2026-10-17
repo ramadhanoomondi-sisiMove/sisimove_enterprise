@@ -132,6 +132,7 @@ import {
   GetJourneysByStatusQueryHandler,
   GetPublicJourneysQueryHandler,
   SearchPublishedJourneysQueryHandler,
+  GetDetailedJourneysHandler,
 } from './application/query-handlers/journey';
 
 // =============================================================================
@@ -497,6 +498,10 @@ import {
     {
       provide: JOURNEY_TOKENS.QUERY_HANDLERS.COUNT_ACTIVE,
       useClass: CountActiveJourneysQueryHandler,
+    },
+    {
+      provide: JOURNEY_TOKENS.QUERY_HANDLERS.GET_DETAILED,
+      useClass: GetDetailedJourneysHandler,
     },
   ],
 

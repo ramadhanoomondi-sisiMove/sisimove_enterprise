@@ -1,3 +1,4 @@
+
 import { useQuery } from "@tanstack/react-query";
 
 import { memberJourneysApi } from "../api/member-journeys.api";
@@ -6,13 +7,17 @@ import { membersKeys } from "../queries/members.keys";
 /**
  * sisiMove — Admin Member Journeys hook
  *
- * Loads journeys associated with the selected member/provider public ID.
- * The API currently returns unknown[] because the backend controller's
- * JourneyAggregate response has not yet been confirmed as a frontend DTO.
+ * Loads detailed journeys associated with the selected journey provider
+ * public ID.
  *
- * The backend enforces the required journey:read permission. A non-empty ID
- * enables the query; this hook does not grant permissions or bypass access
- * control.
+ * Backend:
+ * GET /journeys/provider/:providerPublicId/detailed
+ *
+ * The API response remains unknown[] until the backend response contract
+ * is confirmed.
+ *
+ * A non-empty provider public ID enables the query. Authorization remains
+ * enforced by the backend through the journey:read permission.
  */
 export function useMemberJourneys(providerPublicId: string) {
   const normalizedProviderPublicId = providerPublicId.trim();

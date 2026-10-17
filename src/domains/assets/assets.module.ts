@@ -418,6 +418,7 @@ import {
   GetAssetsByOwnerHandler,
   GetAssetsByStatusHandler,
   GetAssetsHandler,
+  GetPrivateAssetContentHandler,
   GetPublicAssetContentHandler,
   GetPublicAssetReferenceQueryHandler,
 } from './application/query-handlers';
@@ -598,6 +599,10 @@ import {
       provide: ASSET_TOKENS.QUERY_HANDLERS.GET_PUBLIC_ASSET_CONTENT,
       useClass: GetPublicAssetContentHandler,
     },
+    {
+      provide: ASSET_TOKENS.QUERY_HANDLERS.GET_PRIVATE_ASSET_CONTENT,
+      useClass: GetPrivateAssetContentHandler,
+    },
   ],
 
   // ===========================================================================
@@ -660,6 +665,7 @@ import {
     // -------------------------------------------------------------------------
 
     ASSET_TOKENS.QUERY_HANDLERS.GET_PUBLIC_ASSET_CONTENT,
+    ASSET_TOKENS.QUERY_HANDLERS.GET_PRIVATE_ASSET_CONTENT,
   ],
 })
 export class AssetsModule {}

@@ -16,6 +16,8 @@ export * from './get-journeys-by-provider.query';
 
 export * from './search-published-journeys.query';
 
+export * from './get-detailed-journeys.query';
+
 // -----------------------------------------------------------------------------
 // Public Journey
 // -----------------------------------------------------------------------------

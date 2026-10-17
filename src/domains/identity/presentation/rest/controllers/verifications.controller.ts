@@ -169,11 +169,14 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Inject,
+  NotFoundException,
   Param,
   Patch,
   Post,
   Req,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -225,6 +228,18 @@ import type { QueryHandler } from '../../../../../foundation/kernel/application/
 import { IDENTITY_TOKENS } from '../../../application/identity.tokens';
 
 // -----------------------------------------------------------------------------
+// Assets — Private Evidence Content
+// -----------------------------------------------------------------------------
+
+import { ASSET_TOKENS } from '../../../../assets/application/asset.tokens';
+
+import { GetPrivateAssetContentQuery } from '../../../../assets/application/queries/get-private-asset-content.query';
+
+import type { AssetStorageObjectContent } from '../../../../assets/application/ports/asset-storage.port';
+
+import { AssetPublicId } from '../../../../assets/domain/value-objects';
+
+// -----------------------------------------------------------------------------
 // Application — Commands
 // -----------------------------------------------------------------------------
 
@@ -258,6 +273,7 @@ import {
   GetVerificationQuery,
   GetVerificationRequestQuery,
   GetVerificationRequestsQuery,
+  GetVerificationReviewQueueQuery,
 } from '../../../application/queries';
 
 // -----------------------------------------------------------------------------
@@ -477,10 +493,26 @@ export class VerificationsController {
       GetVerificationRequestQuery,
       VerificationRequestEntity | null
     >,
+
+    // -------------------------------------------------------------------------
+    // Private Asset Content — Reviewer Evidence Preview
+    // -------------------------------------------------------------------------
+
+    @Inject(ASSET_TOKENS.QUERY_HANDLERS.GET_PRIVATE_ASSET_CONTENT)
+    private readonly getPrivateAssetContentHandler: QueryHandler<
+      GetPrivateAssetContentQuery,
+      AssetStorageObjectContent
+    >,
+
     @Inject(IDENTITY_TOKENS.QUERY_HANDLERS.COUNT_PENDING_VERIFICATIONS)
     private readonly countPendingVerificationsHandler: QueryHandler<
       CountPendingVerificationsQuery,
       number
+    >,
+    @Inject(IDENTITY_TOKENS.QUERY_HANDLERS.GET_VERIFICATION_REVIEW_QUEUE)
+    private readonly getVerificationReviewQueueHandler: QueryHandler<
+      GetVerificationReviewQueueQuery,
+      VerificationAggregate[]
     >,
   ) {}
 
@@ -572,6 +604,29 @@ export class VerificationsController {
   public async countPending(): Promise<number> {
     return this.countPendingVerificationsHandler.execute(
       new CountPendingVerificationsQuery(),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Get Verification Review Queue — Reviewer
+  // ---------------------------------------------------------------------------
+
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get verification review queue',
+    description:
+      'Returns verification aggregates containing pending verification requests.',
+  })
+  @Get('review-queue')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('verification:read')
+  public async getReviewQueue(): Promise<VerificationResponse[]> {
+    const aggregates = await this.getVerificationReviewQueueHandler.execute(
+      new GetVerificationReviewQueueQuery(),
+    );
+
+    return aggregates.map((aggregate) =>
+      VerificationResponseMapper.toResponse(aggregate),
     );
   }
 
@@ -713,6 +768,69 @@ export class VerificationsController {
     }
 
     return VerificationResponseMapper.requestFromEntity(request);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Get Private Verification Evidence — Reviewer
+  // ---------------------------------------------------------------------------
+
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'View verification evidence',
+    description:
+      'Streams private evidence belonging to a verification request for an authorized reviewer.',
+  })
+  @ApiParam({
+    name: 'verificationPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Verification aggregate.',
+    example: 'VER-8VBLAO',
+  })
+  @ApiParam({
+    name: 'verificationRequestPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Verification Request.',
+    example: 'VRQ-XBBJ1OQ',
+  })
+  @Get(':verificationPublicId/requests/:verificationRequestPublicId/evidence')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('verification:read')
+  @Header('Cache-Control', 'private, no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  public async getVerificationEvidence(
+    @Param('verificationPublicId') verificationPublicId: string,
+    @Param('verificationRequestPublicId')
+    verificationRequestPublicId: string,
+  ): Promise<StreamableFile> {
+    // Resolve the request using both IDs so the request is scoped to the
+    // specified Verification aggregate.
+    const request = await this.getVerificationRequestHandler.execute(
+      new GetVerificationRequestQuery(
+        new VerificationPublicId(verificationPublicId),
+        new VerificationRequestPublicId(verificationRequestPublicId),
+      ),
+    );
+
+    if (request === null) {
+      throw new NotFoundException(
+        'Verification request or evidence was not found.',
+      );
+    }
+
+    // The asset ID is sourced from the resolved request, never from caller input.
+    const content = await this.getPrivateAssetContentHandler.execute(
+      new GetPrivateAssetContentQuery(
+        new AssetPublicId(request.assetPublicId.value),
+      ),
+    );
+
+    return new StreamableFile(content.content, {
+      type: content.mimeType.value,
+      length: content.sizeBytes.value,
+      disposition: 'inline',
+    });
   }
 
   // ===========================================================================
@@ -1071,7 +1189,7 @@ export class VerificationsController {
   })
   @Patch(':verificationPublicId/requests/:verificationRequestPublicId/approve')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('verification-request:approve')
+  @RequirePermissions('request:approve')
   public async approveRequest(
     @Param('verificationRequestPublicId')
     verificationRequestPublicId: string,
@@ -1117,7 +1235,7 @@ export class VerificationsController {
   })
   @Patch(':verificationPublicId/requests/:verificationRequestPublicId/reject')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('verification-request:reject')
+  @RequirePermissions('request:reject')
   public async rejectRequest(
     @Param('verificationRequestPublicId')
     verificationRequestPublicId: string,

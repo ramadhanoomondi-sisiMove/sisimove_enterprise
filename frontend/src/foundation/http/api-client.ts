@@ -1,21 +1,23 @@
-// -----------------------------------------------------------------------------
-// API Client
-// -----------------------------------------------------------------------------
-//
-// Lightweight fetch-based HTTP client.
-// No Axios dependency.
-//
-// Supports:
-// - JSON request bodies
-// - FormData request bodies
-// - Authentication context
-// - Correlation IDs
-// - Query parameters
-// - Request cancellation
-// - Request timeout
-// - Standardized API errors
-//
-// -----------------------------------------------------------------------------
+
+ // -----------------------------------------------------------------------------
+ // API Client
+ // -----------------------------------------------------------------------------
+ //
+ // Lightweight fetch-based HTTP client.
+ // No Axios dependency.
+ //
+ // Supports:
+ // - JSON request bodies
+ // - FormData request bodies
+ // - Authentication context
+ // - Correlation IDs
+ // - Query parameters
+ // - Request cancellation
+ // - Request timeout
+ // - Standardized API errors
+ // - Binary Blob responses
+ //
+ // -----------------------------------------------------------------------------
 
 import { apiConfig } from '../config/api.config';
 import { ApiError } from '../errors/api-error';
@@ -119,39 +121,25 @@ export class ApiClient {
     // Request Body
     // -------------------------------------------------------------------------
 
-    const requestBody =
-      this.prepareRequestBody(
-        options.body,
-        headers,
-      );
+    const requestBody = this.prepareRequestBody(
+      options.body,
+      headers,
+    );
 
     // -------------------------------------------------------------------------
     // Timeout Controller
     // -------------------------------------------------------------------------
-    //
-    // The timeout controller is always created.
-    //
-    // An external signal may additionally cancel the request. The two signals
-    // are combined below so that:
-    //
-    // - caller cancellation still works;
-    // - API timeout still works;
-    // - either one can terminate the request.
-    //
-    // -------------------------------------------------------------------------
 
-    const timeoutController =
-      new AbortController();
+    const timeoutController = new AbortController();
 
     const timeout = setTimeout(() => {
       timeoutController.abort();
     }, apiConfig.timeoutMs);
 
-    const signal =
-      this.combineAbortSignals(
-        timeoutController.signal,
-        options.context?.signal,
-      );
+    const signal = this.combineAbortSignals(
+      timeoutController.signal,
+      options.context?.signal,
+    );
 
     // =========================================================================
     // Fetch
@@ -169,8 +157,20 @@ export class ApiClient {
         },
       );
 
-      const payload =
-        await this.parseResponse(response);
+      // -----------------------------------------------------------------------
+      // Response Parsing
+      // -----------------------------------------------------------------------
+      //
+      // Successful Blob requests preserve the binary response.
+      // Error responses continue through the normal parser so standardized
+      // API error messages remain readable.
+      //
+      // -----------------------------------------------------------------------
+
+      const payload: unknown =
+        response.ok && options.responseType === 'blob'
+          ? await response.blob()
+          : await this.parseResponse(response);
 
       if (!response.ok) {
         throw new ApiError(
@@ -181,12 +181,22 @@ export class ApiClient {
         );
       }
 
-      return this.unwrapResponse<T>(
-        payload,
-      );
+      // -----------------------------------------------------------------------
+      // Binary Response
+      // -----------------------------------------------------------------------
+
+      if (options.responseType === 'blob') {
+        return payload as T;
+      }
+
+      // -----------------------------------------------------------------------
+      // Standard API Response
+      // -----------------------------------------------------------------------
+
+      return this.unwrapResponse<T>(payload);
     } catch (error) {
       // -----------------------------------------------------------------------
-      // Preserve standardized API errors.
+      // Preserve Standardized API Errors
       // -----------------------------------------------------------------------
 
       if (error instanceof ApiError) {
@@ -194,7 +204,7 @@ export class ApiClient {
       }
 
       // -----------------------------------------------------------------------
-      // Abort / timeout / cancellation.
+      // Abort / Timeout / Cancellation
       // -----------------------------------------------------------------------
 
       if (
@@ -209,7 +219,7 @@ export class ApiClient {
       }
 
       // -----------------------------------------------------------------------
-      // Network failure.
+      // Network Failure
       // -----------------------------------------------------------------------
 
       throw new ApiError(
@@ -231,43 +241,18 @@ export class ApiClient {
     timeoutSignal: AbortSignal,
     externalSignal?: AbortSignal,
   ): AbortSignal {
-    // -------------------------------------------------------------------------
-    // No external signal.
-    // -------------------------------------------------------------------------
-
     if (!externalSignal) {
       return timeoutSignal;
     }
 
-    // -------------------------------------------------------------------------
-    // AbortSignal.any()
-    // -------------------------------------------------------------------------
-    //
-    // Modern browsers support AbortSignal.any(), allowing the request to abort
-    // when either the timeout or external signal aborts.
-    //
-    // -------------------------------------------------------------------------
-
-    if (
-      typeof AbortSignal.any === 'function'
-    ) {
+    if (typeof AbortSignal.any === 'function') {
       return AbortSignal.any([
         timeoutSignal,
         externalSignal,
       ]);
     }
 
-    // -------------------------------------------------------------------------
-    // Compatibility fallback.
-    // -------------------------------------------------------------------------
-    //
-    // This fallback creates a combined signal without mutating either source
-    // signal.
-    //
-    // -------------------------------------------------------------------------
-
-    const controller =
-      new AbortController();
+    const controller = new AbortController();
 
     const abort = (): void => {
       if (!controller.signal.aborted) {
@@ -311,11 +296,7 @@ export class ApiClient {
     }
 
     if (body instanceof FormData) {
-      /**
-       * Do not manually specify Content-Type for multipart requests.
-       *
-       * The browser adds the multipart boundary automatically.
-       */
+      // Let the browser set the multipart Content-Type and boundary.
       headers.delete('Content-Type');
 
       return body;
@@ -349,16 +330,14 @@ export class ApiClient {
     path: string,
     query?: RequestOptions['query'],
   ): string {
-    const normalizedBase =
-      this.baseUrl.replace(
-        /\/+$/,
-        '',
-      );
+    const normalizedBase = this.baseUrl.replace(
+      /\/+$/,
+      '',
+    );
 
-    const normalizedPath =
-      path.startsWith('/')
-        ? path
-        : `/${path}`;
+    const normalizedPath = path.startsWith('/')
+      ? path
+      : `/${path}`;
 
     const url = new URL(
       `${normalizedBase}${normalizedPath}`,
@@ -366,10 +345,7 @@ export class ApiClient {
     );
 
     if (query) {
-      for (
-        const [key, value]
-        of Object.entries(query)
-      ) {
+      for (const [key, value] of Object.entries(query)) {
         if (
           value !== undefined &&
           value !== null &&
@@ -394,20 +370,13 @@ export class ApiClient {
     response: Response,
   ): Promise<unknown> {
     const contentType =
-      response.headers.get(
-        'content-type',
-      ) ?? '';
+      response.headers.get('content-type') ?? '';
 
-    if (
-      contentType.includes(
-        'application/json',
-      )
-    ) {
+    if (contentType.includes('application/json')) {
       return response.json();
     }
 
-    const text =
-      await response.text();
+    const text = await response.text();
 
     if (!text) {
       return null;
@@ -473,5 +442,4 @@ export class ApiClient {
 // Singleton
 // =============================================================================
 
-export const apiClient =
-  new ApiClient();
+export const apiClient = new ApiClient();

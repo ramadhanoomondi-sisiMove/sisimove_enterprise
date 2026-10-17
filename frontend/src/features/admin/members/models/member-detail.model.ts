@@ -12,6 +12,8 @@
  * - Trust owns trust assessments, ratings, reviews, badges and trust events.
  * - Security owns supported account-security information.
  * - Roles owns role definitions and member role assignments.
+ * - Journeys owns journey records associated with the member/provider.
+ * - Bookings owns booking records associated with the member/passenger.
  * - Activity owns the member activity history projection.
  *
  * This model composes domain-specific frontend models. It is not a backend
@@ -53,7 +55,19 @@ export interface MemberDetail {
   /** Role definitions and assignments, when loaded. */
   roles?: MemberRolesOverview | null;
 
-  /** Activity history summary, when loaded. */
+  /**
+   * Journey API records associated with this member/provider.
+   * The backend response contract is not yet confirmed.
+   */
+  journeys?: unknown[] | null;
+
+  /**
+   * Booking API records associated with this member/passenger.
+   * The booking endpoint returns booking records independently of Identity.
+   */
+  bookings?: unknown[] | null;
+
+  /** Activity history summary, when loaded and available. */
   activity?: MemberActivitySummary | null;
 }
 
@@ -70,6 +84,8 @@ export type MemberDetailSection =
   | "trust"
   | "security"
   | "roles"
+  | "journeys"
+  | "bookings"
   | "activity";
 
 export interface MemberDetailLoadState {

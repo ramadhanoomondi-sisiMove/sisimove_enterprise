@@ -155,6 +155,13 @@ export const IDENTITY_TOKENS = {
     GET_VERIFICATION_BY_PUBLIC_ID: Symbol('GetVerificationByPublicIdHandler'),
 
     COUNT_PENDING_VERIFICATIONS: Symbol('CountPendingVerificationsHandler'),
+
+    /**
+     * Retrieves Verification aggregates containing pending
+     * VerificationRequest entities for the administrative review queue.
+     */
+    GET_VERIFICATION_REVIEW_QUEUE: Symbol('GetVerificationReviewQueueHandler'),
+
     GET_VERIFICATION_REQUESTS: Symbol('GetVerificationRequestsHandler'),
     GET_VERIFICATION_REQUEST: Symbol('GetVerificationRequestHandler'),
 

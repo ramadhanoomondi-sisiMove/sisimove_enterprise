@@ -1291,7 +1291,7 @@ export class IdentitiesController {
       'The authenticated identity does not have the required permission or target-identity authority.',
   })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('identity-role:read')
+  @RequirePermissions('role:read')
   public async getRoles(
     @Param() dto: GetIdentityRolesQueryDto,
   ): Promise<ReturnType<typeof IdentityResponseMapper.rolesFromEntities>> {
@@ -1348,7 +1348,7 @@ export class IdentitiesController {
       'The authenticated identity does not have the required permission or target-identity authority.',
   })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('identity-role:assign')
+  @RequirePermissions('role:assign')
   public async assignRole(
     @Req() request: Request,
     @Param('identityPublicId') identityPublicId: string,
@@ -1433,7 +1433,7 @@ export class IdentitiesController {
       'The authenticated identity does not have the required permission or target-identity authority.',
   })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('identity-role:revoke')
+  @RequirePermissions('role:revoke')
   public async revokeRole(
     @Req() request: Request,
     @Param('identityPublicId') identityPublicId: string,

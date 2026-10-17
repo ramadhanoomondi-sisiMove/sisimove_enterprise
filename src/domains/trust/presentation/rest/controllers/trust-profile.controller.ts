@@ -926,7 +926,7 @@ export class TrustProfileController {
   @Get(':trustProfileId/events')
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('trust-profile:read')
+  @RequirePermissions('trust:read')
   public async getEvents(
     @Param('trustProfileId') trustProfileId: string,
   ): Promise<TrustEventResponse[]> {

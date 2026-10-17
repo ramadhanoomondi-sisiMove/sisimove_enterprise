@@ -147,6 +147,7 @@ import {
   GetJourneysByProviderQuery,
   GetPublicJourneysQuery,
   SearchPublishedJourneysQuery,
+  GetDetailedJourneysQuery,
 } from '../../../application/queries/journey';
 
 // -----------------------------------------------------------------------------
@@ -516,6 +517,11 @@ export class JourneyController {
       CountActiveJourneysQuery,
       number
     >,
+    @Inject(JOURNEY_TOKENS.QUERY_HANDLERS.GET_DETAILED)
+    private readonly getDetailedJourneysQueryHandler: QueryHandler<
+      GetDetailedJourneysQuery,
+      readonly JourneyAggregate[]
+    >,
   ) {}
 
   // ===========================================================================
@@ -652,7 +658,38 @@ export class JourneyController {
   // ---------------------------------------------------------------------------
   // Get My Journeys
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Get Detailed Journeys By Provider — Admin
+  // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get detailed journeys by provider',
+    description:
+      'Returns complete journey details belonging to the specified journey provider.',
+  })
+  @ApiParam({
+    name: 'providerPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the journey provider.',
+  })
+  @Get('provider/:providerPublicId/detailed')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:read')
+  public async getDetailedJourneysByProvider(
+    @Param('providerPublicId') providerPublicId: string,
+  ): Promise<
+    readonly ReturnType<typeof JourneyResponseMapper.fromAggregate>[]
+  > {
+    const journeys = await this.getDetailedJourneysQueryHandler.execute(
+      new GetDetailedJourneysQuery(providerPublicId),
+    );
+
+    return journeys.map((journey) =>
+      JourneyResponseMapper.fromAggregate(journey),
+    );
+  }
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Get my journeys',

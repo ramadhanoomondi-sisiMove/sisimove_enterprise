@@ -80,6 +80,7 @@ import {
   GetJourneyBookingDetailQuery,
   GetMyJourneyBookingDetailsQuery,
   GetMyJourneyBookingsQuery,
+  FindDetailedJourneyBookingsByPassengerQuery,
 } from '../../../application/queries';
 
 // -----------------------------------------------------------------------------
@@ -342,6 +343,11 @@ export class JourneyBookingController {
       CountJourneyBookingsQuery,
       number
     >,
+    @Inject(JOURNEY_BOOKING_TOKENS.QUERY_HANDLERS.FIND_DETAILED_BY_PASSENGER)
+    private readonly findDetailedJourneyBookingsByPassengerHandler: QueryHandler<
+      FindDetailedJourneyBookingsByPassengerQuery,
+      JourneyBookingDetailResponse[]
+    >,
   ) {}
 
   // ===========================================================================
@@ -440,7 +446,38 @@ export class JourneyBookingController {
 
     return JourneyBookingResponseMapper.fromEntities(bookings);
   }
+  // ---------------------------------------------------------------------------
+  // Find Detailed Bookings By Passenger
+  // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Find detailed journey bookings by passenger',
+    description:
+      'Returns detailed journey booking views associated with the specified passenger.',
+  })
+  @ApiParam({
+    name: 'passengerPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the passenger.',
+  })
+  @Get('passenger/:passengerPublicId/detail')
+  @auth.RequirePermissions('booking:read')
+  public async findDetailedByPassenger(
+    @Param('passengerPublicId') passengerPublicId: string,
+  ): Promise<JourneyBookingDetailResponse[]> {
+    const responses =
+      await this.findDetailedJourneyBookingsByPassengerHandler.execute(
+        new FindDetailedJourneyBookingsByPassengerQuery(
+          new JourneyBookingPassengerPublicId(passengerPublicId),
+        ),
+      );
+
+    return responses.map((response) =>
+      JourneyBookingDetailResponseMapper.toResponse(response),
+    );
+  }
   // ---------------------------------------------------------------------------
   // Find By Passenger
   // ---------------------------------------------------------------------------

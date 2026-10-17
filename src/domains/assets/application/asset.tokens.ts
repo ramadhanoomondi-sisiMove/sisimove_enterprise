@@ -417,6 +417,11 @@ export const ASSET_TOKENS = {
      * - handle HTTP responses;
      * - depend on a concrete delivery implementation.
      */
+    /**
+     * Retrieves physical content for a private Asset after the consuming
+     * use case has established authorization.
+     */
+    GET_PRIVATE_ASSET_CONTENT: Symbol('GetPrivateAssetContentHandler'),
     GET_PUBLIC_ASSET_REFERENCE: Symbol('GetPublicAssetReferenceHandler'),
   } as const,
 } as const;

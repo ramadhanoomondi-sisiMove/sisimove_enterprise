@@ -71,4 +71,31 @@ export const memberActionPolicy = {
       memberPermissionMap.changePhoneNumber,
     );
   },
+
+  canReadRoles(
+    grantedPermissions: readonly string[],
+  ): boolean {
+    return this.hasPermission(
+      grantedPermissions,
+      memberPermissionMap.readRoles,
+    );
+  },
+
+  canAssignRole(
+    grantedPermissions: readonly string[],
+  ): boolean {
+    return this.hasPermission(
+      grantedPermissions,
+      memberPermissionMap.assignRole,
+    );
+  },
+
+  canRevokeRole(
+    grantedPermissions: readonly string[],
+  ): boolean {
+    return this.hasPermission(
+      grantedPermissions,
+      memberPermissionMap.revokeRole,
+    );
+  },
 };

@@ -3,6 +3,7 @@
 // -----------------------------------------------------------------------------
 
 import { forwardRef, Module } from '@nestjs/common';
+
 // -----------------------------------------------------------------------------
 // Domain Dependencies
 // -----------------------------------------------------------------------------
@@ -14,6 +15,7 @@ import { JourneyBoardingModule } from '../journey-boarding/journey-boarding.modu
 import { SocialModule } from '../social/social.module';
 import { TrustModule } from '../trust/trust.module';
 import { MessagingModule } from '../messaging/messaging.module';
+
 // -----------------------------------------------------------------------------
 // Infrastructure
 // -----------------------------------------------------------------------------
@@ -37,6 +39,11 @@ import { JOURNEY_BOOKING_PROVIDERS } from './infrastructure/dependency-injection
 // -----------------------------------------------------------------------------
 
 import { JOURNEY_BOOKING_TOKENS } from './application/journey-booking.tokens';
+
+import {
+  JOURNEY_BOOKING_DETAIL_COMPOSER,
+  JourneyBookingDetailComposer,
+} from './application/services/journey-booking-detail.composer';
 
 // -----------------------------------------------------------------------------
 // Application — Command Handlers
@@ -65,6 +72,7 @@ import {
 
 import {
   CountJourneyBookingsQueryHandler,
+  FindDetailedJourneyBookingsByPassengerHandler,
   FindJourneyBookingByTransactionHandler,
   FindJourneyBookingsByJourneyAndPassengerHandler,
   FindJourneyBookingsByJourneyHandler,
@@ -87,60 +95,19 @@ import {
   // ===========================================================================
 
   imports: [
-    // -------------------------------------------------------------------------
-    // Identity
-    // -------------------------------------------------------------------------
-
     IdentityModule,
-
-    // -------------------------------------------------------------------------
-    // Journey
-    //
-    // Provides the Journey repository required to resolve the journey associated
-    // with a booking and reserve journey capacity during confirmation.
-    // -------------------------------------------------------------------------
 
     forwardRef(() => JourneyModule),
 
-    // -------------------------------------------------------------------------
-    // Journey Boarding
-    //
-    // Exposes JOURNEY_BOARDING_TOKENS.REPOSITORY through the module's exports.
-    //
-    // ConfirmJourneyBookingWithPaymentHandler uses this repository to register
-    // the expected passenger against the boarding associated with the journey.
-    // -------------------------------------------------------------------------
-
     forwardRef(() => JourneyBoardingModule),
-
-    // -------------------------------------------------------------------------
-    // Social
-    // -------------------------------------------------------------------------
 
     SocialModule,
 
-    // -------------------------------------------------------------------------
-    // Trust
-    // -------------------------------------------------------------------------
-
     TrustModule,
-
-    // -------------------------------------------------------------------------
-    // Financial
-    //
-    // Provides the Financial Account, Financial Account Hold, and Financial
-    // Transaction repositories required by booking payment workflows.
-    // -------------------------------------------------------------------------
 
     FinancialModule,
 
     MessagingModule,
-    // -------------------------------------------------------------------------
-    // Prisma
-    //
-    // Provides shared Prisma infrastructure, including the unit of work used
-    // by atomic booking confirmation and payment authorization.
-    // -------------------------------------------------------------------------
 
     PrismaModule,
   ],
@@ -161,6 +128,16 @@ import {
     // -------------------------------------------------------------------------
 
     ...JOURNEY_BOOKING_PROVIDERS,
+
+    // -------------------------------------------------------------------------
+    // Journey Booking Detail Composer
+    // -------------------------------------------------------------------------
+
+    JourneyBookingDetailComposer,
+    {
+      provide: JOURNEY_BOOKING_DETAIL_COMPOSER,
+      useExisting: JourneyBookingDetailComposer,
+    },
 
     // =========================================================================
     // Booking Creation
@@ -201,13 +178,6 @@ import {
 
     // -------------------------------------------------------------------------
     // Atomic Payment + Booking Confirmation
-    //
-    // This handler coordinates payment authorization, booking confirmation,
-    // journey capacity reservation, and expected passenger registration.
-    //
-    // These operations are intended to participate in the same Prisma
-    // transaction through the shared unit of work and transaction context.
-    // All participating repositories must use that transaction context.
     // -------------------------------------------------------------------------
 
     {
@@ -294,6 +264,11 @@ import {
       useClass: GetMyJourneyBookingDetailsQueryHandler,
     },
 
+    {
+      provide: JOURNEY_BOOKING_TOKENS.QUERY_HANDLERS.FIND_DETAILED_BY_PASSENGER,
+      useClass: FindDetailedJourneyBookingsByPassengerHandler,
+    },
+
     // =========================================================================
     // Discovery Query Handlers
     // =========================================================================
@@ -332,11 +307,6 @@ import {
 
   // ===========================================================================
   // Exports
-  // ===========================================================================
-  //
-  // Preserve the existing repository export. Other modules should consume the
-  // booking repository through its application contract rather than depending
-  // on the concrete Prisma implementation.
   // ===========================================================================
 
   exports: [

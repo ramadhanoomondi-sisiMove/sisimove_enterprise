@@ -302,6 +302,7 @@ import {
   // ===========================================================================
   GetVerificationHandler,
   GetVerificationByPublicIdHandler,
+  GetVerificationReviewQueueHandler,
   GetVerificationRequestsHandler,
   GetVerificationRequestHandler,
 
@@ -547,7 +548,10 @@ import {
       provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_VERIFICATION_BY_PUBLIC_ID,
       useClass: GetVerificationByPublicIdHandler,
     },
-
+    {
+      provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_VERIFICATION_REVIEW_QUEUE,
+      useClass: GetVerificationReviewQueueHandler,
+    },
     {
       provide: IDENTITY_TOKENS.QUERY_HANDLERS.GET_VERIFICATION_REQUESTS,
       useClass: GetVerificationRequestsHandler,

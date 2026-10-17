@@ -6,11 +6,15 @@ import { membersKeys } from "../queries/members.keys";
 /**
  * sisiMove — Admin Member Bookings hook
  *
- * Loads bookings for the selected passenger identity using the existing
- * GET /journey-bookings/passenger/:passengerPublicId backend route.
+ * Loads detailed bookings for the selected passenger using:
+ * GET /journey-bookings/passenger/:passengerPublicId/detail
  *
- * The backend enforces the required booking:read permission. The query stays
- * disabled until a non-empty passenger public ID is provided.
+ * Each result contains:
+ * - booking: detailed booking, journey, provider, and payment information
+ * - activitySummary: activity counts, or null
+ *
+ * The backend enforces the required booking:read permission.
+ * The query stays disabled until a non-empty passenger public ID is provided.
  */
 export function useMemberBookings(passengerPublicId: string) {
   const normalizedPassengerPublicId = passengerPublicId.trim();
@@ -18,7 +22,9 @@ export function useMemberBookings(passengerPublicId: string) {
   return useQuery({
     queryKey: membersKeys.bookings(normalizedPassengerPublicId),
     queryFn: () =>
-      memberBookingsApi.getByPassengerPublicId(normalizedPassengerPublicId),
+      memberBookingsApi.getByPassengerPublicId(
+        normalizedPassengerPublicId,
+      ),
     enabled: normalizedPassengerPublicId.length > 0,
   });
 }

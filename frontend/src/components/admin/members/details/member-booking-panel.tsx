@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { ReactNode } from "react";
@@ -32,23 +31,45 @@ function formatMoney(
   amount?: number | null,
   currency?: string | null,
 ): string {
-  if (typeof amount !== "number" || !Number.isFinite(amount)) return "—";
+  if (typeof amount !== "number" || !Number.isFinite(amount)) {
+    return "—";
+  }
 
-  return new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: currency || "KES",
-    maximumFractionDigits: 2,
-  }).format(amount);
+  const normalizedCurrency = currency?.trim().toUpperCase() || "KES";
+
+  try {
+    return new Intl.NumberFormat("en-KE", {
+      style: "currency",
+      currency: normalizedCurrency,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${normalizedCurrency} ${amount.toLocaleString("en-KE", {
+      maximumFractionDigits: 2,
+    })}`;
+  }
+}
+
+function formatStatus(status?: string | null): string {
+  if (!status?.trim()) return "Unknown";
+
+  return status
+    .trim()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function statusVariant(
-  status: string,
+  status?: string | null,
 ): "success" | "warning" | "danger" | "outline" {
-  switch (status.toUpperCase()) {
+  switch (status?.trim().toUpperCase()) {
     case "CONFIRMED":
     case "COMPLETED":
     case "CAPTURED":
     case "AUTHORIZED":
+    case "VERIFIED":
       return "success";
 
     case "PENDING":
@@ -56,6 +77,7 @@ function statusVariant(
       return "warning";
 
     case "CANCELLED":
+    case "CANCELED":
     case "FAILED":
     case "EXPIRED":
     case "REFUNDED":
@@ -73,67 +95,234 @@ function Detail({
   label: string;
   value: ReactNode;
 }) {
+  const hasValue =
+    value !== null &&
+    value !== undefined &&
+    value !== false &&
+    value !== "";
+
   return (
     <div className="min-w-0">
       <p className="text-xs font-medium text-[var(--foreground-muted)]">
         {label}
       </p>
       <div className="mt-1 break-words text-sm text-[var(--foreground)]">
-        {value || "—"}
+        {hasValue ? value : "—"}
       </div>
     </div>
   );
 }
 
-function BookingCard({ booking }: { booking: MemberBookingApiResponse }) {
+function BookingCard({
+  response,
+}: {
+  response: MemberBookingApiResponse;
+}) {
+  const booking = response.booking;
   const snapshot = booking.snapshot;
   const pricing = booking.pricing;
   const payment = booking.payment;
   const cancellation = booking.cancellation;
+  const journey = booking.journey;
+  const provider = journey.provider;
+  const traveller = provider.traveller;
+  const trust = provider.trust;
+  const activity = response.activitySummary;
 
   return (
     <article className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] p-4">
+      {/* Booking heading */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-medium text-[var(--foreground-muted)]">
             Booking reference
           </p>
           <p className="mt-1 break-all text-sm font-semibold text-[var(--foreground)]">
-            {booking.publicId}
+            {booking.publicId || "—"}
           </p>
         </div>
 
         <Badge variant={statusVariant(booking.status)}>
-          {booking.status.replaceAll("_", " ")}
+          {formatStatus(booking.status)}
         </Badge>
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Detail
-          label="Origin"
-          value={snapshot?.originName}
-        />
-        <Detail
-          label="Destination"
-          value={snapshot?.destinationName}
-        />
-        <Detail
-          label="Departure"
-          value={formatDate(snapshot?.departureAt)}
-        />
-        <Detail
-          label="Arrival"
-          value={formatDate(snapshot?.arrivalAt)}
-        />
-        <Detail label="Seats booked" value={booking.seats} />
-        <Detail
-          label="Journey reference"
-          value={booking.journeyPublicId}
-        />
-        <Detail label="Booking created" value={formatDate(booking.createdAt)} />
-        <Detail label="Last updated" value={formatDate(booking.updatedAt)} />
+      {/* Journey and booking details */}
+      <div className="mt-4">
+        <h4 className="text-sm font-semibold text-[var(--foreground)]">
+          Journey details
+        </h4>
+
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Detail label="Origin" value={snapshot?.originName} />
+          <Detail label="Destination" value={snapshot?.destinationName} />
+          <Detail
+            label="Departure"
+            value={formatDate(snapshot?.departureAt)}
+          />
+          <Detail
+            label="Arrival"
+            value={formatDate(snapshot?.arrivalAt)}
+          />
+          <Detail label="Seats booked" value={booking.seats} />
+          <Detail
+            label="Journey reference"
+            value={booking.journeyPublicId}
+          />
+          <Detail
+            label="Journey status"
+            value={
+              <Badge variant={statusVariant(journey.status)}>
+                {formatStatus(journey.status)}
+              </Badge>
+            }
+          />
+          <Detail
+            label="Booking created"
+            value={formatDate(booking.createdAt)}
+          />
+          <Detail
+            label="Last updated"
+            value={formatDate(booking.updatedAt)}
+          />
+          <Detail
+            label="Timezone"
+            value={snapshot?.timezone}
+          />
+        </div>
       </div>
 
+      {/* Vehicle snapshot */}
+      {snapshot && (
+        <div className="mt-5 border-t border-[var(--border-subtle)] pt-4">
+          <h4 className="text-sm font-semibold text-[var(--foreground)]">
+            Vehicle details
+          </h4>
+
+          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Detail label="Make" value={snapshot.vehicleMake} />
+            <Detail label="Model" value={snapshot.vehicleModel} />
+            <Detail label="Year" value={snapshot.vehicleYear} />
+            <Detail label="Color" value={snapshot.vehicleColor} />
+            <Detail
+              label="Registration"
+              value={snapshot.vehicleRegistration}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Provider and trust */}
+      <div className="mt-5 border-t border-[var(--border-subtle)] pt-4">
+        <h4 className="text-sm font-semibold text-[var(--foreground)]">
+          Journey provider
+        </h4>
+
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Detail label="Provider ID" value={journey.providerPublicId} />
+          <Detail label="Public handle" value={traveller.handle} />
+          <Detail label="Profile ID" value={traveller.publicId} />
+          <Detail label="Country code" value={traveller.countryCode} />
+          <Detail label="Bio" value={traveller.bio} />
+          <Detail
+            label="Verification level"
+            value={formatStatus(trust.verificationLevel)}
+          />
+          <Detail
+            label="Average rating"
+            value={
+              typeof trust.ratingAverage === "number"
+                ? trust.ratingAverage.toFixed(2)
+                : "—"
+            }
+          />
+          <Detail label="Rating count" value={trust.ratingCount} />
+          <Detail
+            label="Completed journeys"
+            value={trust.completedJourneys}
+          />
+        </div>
+
+        {trust.badges.length > 0 && (
+          <div className="mt-4">
+            <p className="text-xs font-medium text-[var(--foreground-muted)]">
+              Trust badges
+            </p>
+
+            <div className="mt-2 flex flex-wrap gap-2">
+              {trust.badges.map((badge) => (
+                <Badge key={badge.publicId} variant="outline">
+                  {badge.name}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Journey lifecycle */}
+      <div className="mt-5 border-t border-[var(--border-subtle)] pt-4">
+        <h4 className="text-sm font-semibold text-[var(--foreground)]">
+          Journey timeline
+        </h4>
+
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Detail
+            label="Published"
+            value={formatDate(journey.publishedAt)}
+          />
+          <Detail
+            label="Started"
+            value={formatDate(journey.startedAt)}
+          />
+          <Detail
+            label="Completion requested"
+            value={formatDate(journey.completionRequestedAt)}
+          />
+          <Detail
+            label="Journey completed"
+            value={formatDate(journey.completedAt)}
+          />
+          <Detail
+            label="Journey cancelled"
+            value={formatDate(journey.cancelledAt)}
+          />
+          <Detail
+            label="Journey expired"
+            value={formatDate(journey.expiredAt)}
+          />
+        </div>
+      </div>
+
+      {/* Activity summary */}
+      {activity && (
+        <div className="mt-5 border-t border-[var(--border-subtle)] pt-4">
+          <h4 className="text-sm font-semibold text-[var(--foreground)]">
+            Journey activity
+          </h4>
+
+          <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <Detail
+              label="Associated bookings"
+              value={activity.associatedBookingsCount}
+            />
+            <Detail
+              label="Participants"
+              value={activity.participantsCount}
+            />
+            <Detail
+              label="Visible messages"
+              value={activity.messagesCount}
+            />
+            <Detail
+              label="Unread messages"
+              value={activity.unreadMessagesCount}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Pricing */}
       {pricing && (
         <div className="mt-5 border-t border-[var(--border-subtle)] pt-4">
           <h4 className="text-sm font-semibold text-[var(--foreground)]">
@@ -166,14 +355,16 @@ function BookingCard({ booking }: { booking: MemberBookingApiResponse }) {
         </div>
       )}
 
+      {/* Payment */}
       {payment && (
         <div className="mt-5 border-t border-[var(--border-subtle)] pt-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="text-sm font-semibold text-[var(--foreground)]">
               Payment
             </h4>
+
             <Badge variant={statusVariant(payment.status)}>
-              {payment.status.replaceAll("_", " ")}
+              {formatStatus(payment.status)}
             </Badge>
           </div>
 
@@ -183,21 +374,35 @@ function BookingCard({ booking }: { booking: MemberBookingApiResponse }) {
               value={formatMoney(payment.amount, payment.currency)}
             />
             <Detail label="Currency" value={payment.currency} />
-            <Detail label="Authorized at" value={formatDate(payment.authorizedAt)} />
-            <Detail label="Captured at" value={formatDate(payment.capturedAt)} />
-            <Detail label="Failed at" value={formatDate(payment.failedAt)} />
-            <Detail label="Refunded at" value={formatDate(payment.refundedAt)} />
+            <Detail
+              label="Authorized at"
+              value={formatDate(payment.authorizedAt)}
+            />
+            <Detail
+              label="Captured at"
+              value={formatDate(payment.capturedAt)}
+            />
+            <Detail
+              label="Failed at"
+              value={formatDate(payment.failedAt)}
+            />
+            <Detail
+              label="Refunded at"
+              value={formatDate(payment.refundedAt)}
+            />
             <Detail
               label="Transaction reference"
               value={payment.transactionPublicId}
             />
-            {payment.failureReason && (
-              <Detail label="Failure reason" value={payment.failureReason} />
-            )}
+            <Detail
+              label="Failure reason"
+              value={payment.failureReason}
+            />
           </div>
         </div>
       )}
 
+      {/* Cancellation */}
       {cancellation && (
         <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--danger)]/30 bg-[var(--danger-soft)] p-3">
           <h4 className="text-sm font-semibold text-[var(--foreground)]">
@@ -222,6 +427,7 @@ function BookingCard({ booking }: { booking: MemberBookingApiResponse }) {
         </div>
       )}
 
+      {/* Booking lifecycle */}
       <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 border-t border-[var(--border-subtle)] pt-3 text-xs text-[var(--foreground-muted)]">
         {booking.confirmedAt && (
           <span>Confirmed: {formatDate(booking.confirmedAt)}</span>
@@ -250,7 +456,7 @@ export function MemberBookingPanel({
   return (
     <MemberDataSection
       title="Bookings"
-      description="Booking history, journey details, pricing and available payment information for this passenger."
+      description="Booking history, journey details, provider trust, pricing, payment and activity information for this passenger."
       className={cn("space-y-4", className)}
     >
       {bookingsQuery.isPending ? (
@@ -300,14 +506,17 @@ export function MemberBookingPanel({
         <>
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-[var(--foreground-secondary)]">
-              Booking records
+              Detailed booking records
             </p>
             <Badge variant="outline">{bookings.length}</Badge>
           </div>
 
           <div className="space-y-4">
-            {bookings.map((booking) => (
-              <BookingCard key={booking.publicId} booking={booking} />
+            {bookings.map((response) => (
+              <BookingCard
+                key={response.booking.publicId}
+                response={response}
+              />
             ))}
           </div>
         </>

@@ -1,34 +1,14 @@
-// -----------------------------------------------------------------------------
-// sisiMove — Admin Member Journey Panel
-// -----------------------------------------------------------------------------
-//
-// Responsibilities:
-// - Display journeys associated with a selected member/provider.
-// - Validate unknown API responses before rendering them.
-// - Display confirmed Journey fields when present.
-// - Handle loading, error, empty and partially populated responses.
-//
-// Non-responsibilities:
-// - Defining a new backend Journey response contract.
-// - Fetching journeys directly.
-// - Mutating journey status.
-// - Inferring journey visibility or authorization.
-//
-// -----------------------------------------------------------------------------
 
-'use client';
+"use client";
 
-import { useMemo } from 'react';
-import type { ReactNode } from 'react';
+import { useMemo } from "react";
+import type { ReactNode } from "react";
 
-import { useMemberJourneys } from '@/features/admin/members/hooks/use-member-journeys';
-
-import { MemberDataSection } from '@/components/admin/members/primitives/member-data-section';
-
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-
-import { cn } from '@/foundation/utils/cn';
+import { useMemberJourneys } from "@/features/admin/members/hooks/use-member-journeys";
+import { MemberDataSection } from "@/components/admin/members/primitives/member-data-section";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/foundation/utils/cn";
 
 // -----------------------------------------------------------------------------
 // Types
@@ -36,10 +16,9 @@ import { cn } from '@/foundation/utils/cn';
 
 export interface MemberJourneyPanelProps {
   /**
-   * Member/provider public ID used by the existing journeys query.
+   * Public ID of the journey provider associated with this member.
    */
   readonly providerPublicId: string;
-
   readonly className?: string;
 }
 
@@ -86,19 +65,28 @@ interface JourneyRecord {
 // -----------------------------------------------------------------------------
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value)
+  );
 }
 
 function isString(value: unknown): value is string {
-  return typeof value === 'string';
+  return typeof value === "string";
 }
 
-function isNullableString(value: unknown): value is string | null {
+function isNullableString(
+  value: unknown,
+): value is string | null {
   return value === null || isString(value);
 }
 
 function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value)
+  );
 }
 
 function isRoute(value: unknown): value is JourneyRoute {
@@ -118,13 +106,32 @@ function isSchedule(value: unknown): value is JourneySchedule {
   );
 }
 
-function isCapacity(value: unknown): value is JourneyCapacity {
-  return (
-    isRecord(value) &&
-    isFiniteNumber(value.totalSeats) &&
-    isFiniteNumber(value.bookedSeats) &&
-    isFiniteNumber(value.availableSeats)
-  );
+function parseCapacity(value: unknown): JourneyCapacity | null {
+  if (
+    !isRecord(value) ||
+    !isFiniteNumber(value.totalSeats) ||
+    !isFiniteNumber(value.bookedSeats)
+  ) {
+    return null;
+  }
+
+  const availableSeats = isFiniteNumber(value.availableSeats)
+    ? value.availableSeats
+    : value.totalSeats - value.bookedSeats;
+
+  if (
+    value.totalSeats < 0 ||
+    value.bookedSeats < 0 ||
+    availableSeats < 0
+  ) {
+    return null;
+  }
+
+  return {
+    totalSeats: value.totalSeats,
+    bookedSeats: value.bookedSeats,
+    availableSeats,
+  };
 }
 
 function isPricing(value: unknown): value is JourneyPricing {
@@ -135,6 +142,12 @@ function isPricing(value: unknown): value is JourneyPricing {
   );
 }
 
+/**
+ * Validates the core journey fields and safely parses optional nested objects.
+ *
+ * The backend response contract must still be verified against the actual
+ * JourneyResponseMapper implementation.
+ */
 function parseJourney(value: unknown): JourneyRecord | null {
   if (!isRecord(value)) {
     return null;
@@ -154,33 +167,19 @@ function parseJourney(value: unknown): JourneyRecord | null {
     return null;
   }
 
-  const route =
-    value.corridor === null
-      ? null
-      : isRoute(value.corridor)
-        ? value.corridor
-        : null;
+  const route = isRoute(value.corridor)
+    ? value.corridor
+    : null;
 
-  const schedule =
-    value.schedule === null
-      ? null
-      : isSchedule(value.schedule)
-        ? value.schedule
-        : null;
+  const schedule = isSchedule(value.schedule)
+    ? value.schedule
+    : null;
 
-  const capacity =
-    value.capacity === null
-      ? null
-      : isCapacity(value.capacity)
-        ? value.capacity
-        : null;
+  const capacity = parseCapacity(value.capacity);
 
-  const pricing =
-    value.pricing === null
-      ? null
-      : isPricing(value.pricing)
-        ? value.pricing
-        : null;
+  const pricing = isPricing(value.pricing)
+    ? value.pricing
+    : null;
 
   return {
     publicId: value.publicId,
@@ -208,25 +207,25 @@ function formatTimestamp(
   timezone?: string,
 ): string {
   if (!value?.trim()) {
-    return 'Not recorded';
+    return "Not recorded";
   }
 
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    return 'Unavailable';
+    return "Unavailable";
   }
 
   try {
-    return new Intl.DateTimeFormat('en-KE', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
+    return new Intl.DateTimeFormat("en-KE", {
+      dateStyle: "medium",
+      timeStyle: "short",
       ...(timezone ? { timeZone: timezone } : {}),
     }).format(date);
   } catch {
-    return new Intl.DateTimeFormat('en-KE', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
+    return new Intl.DateTimeFormat("en-KE", {
+      dateStyle: "medium",
+      timeStyle: "short",
     }).format(date);
   }
 }
@@ -234,30 +233,30 @@ function formatTimestamp(
 function formatStatus(value: string): string {
   return value
     .trim()
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function getStatusVariant(
   status: string,
-): 'success' | 'warning' | 'danger' | 'outline' {
+): "success" | "warning" | "danger" | "outline" {
   switch (status.toUpperCase()) {
-    case 'PUBLISHED':
-    case 'FULL':
-    case 'BOARDING':
-      return 'success';
+    case "PUBLISHED":
+    case "FULL":
+    case "BOARDING":
+      return "success";
 
-    case 'COMPLETION_PENDING':
-    case 'IN_PROGRESS':
-      return 'warning';
+    case "COMPLETION_PENDING":
+    case "IN_PROGRESS":
+      return "warning";
 
-    case 'CANCELLED':
-    case 'EXPIRED':
-      return 'danger';
+    case "CANCELLED":
+    case "EXPIRED":
+      return "danger";
 
     default:
-      return 'outline';
+      return "outline";
   }
 }
 
@@ -305,9 +304,14 @@ function JourneyCard({
           {journey.route ? (
             <p className="mt-2 break-words text-base font-medium text-[var(--foreground)]">
               {journey.route.originName}
-              <span className="mx-2 text-[var(--foreground-muted)]" aria-hidden="true">
+
+              <span
+                className="mx-2 text-[var(--foreground-muted)]"
+                aria-hidden="true"
+              >
                 →
               </span>
+
               {journey.route.destinationName}
             </p>
           ) : (
@@ -331,7 +335,7 @@ function JourneyCard({
                   journey.schedule.departureAt,
                   journey.schedule.timezone,
                 )
-              : 'Not available'
+              : "Not available"
           }
         />
 
@@ -343,7 +347,7 @@ function JourneyCard({
                   journey.schedule.arrivalAt,
                   journey.schedule.timezone,
                 )
-              : 'Not available'
+              : "Not available"
           }
         />
 
@@ -352,7 +356,7 @@ function JourneyCard({
           value={
             journey.capacity
               ? `${journey.capacity.bookedSeats} booked / ${journey.capacity.totalSeats} total`
-              : 'Not available'
+              : "Not available"
           }
         />
 
@@ -360,8 +364,8 @@ function JourneyCard({
           label="Available seats"
           value={
             journey.capacity
-              ? journey.capacity.availableSeats.toLocaleString('en-KE')
-              : 'Not available'
+              ? journey.capacity.availableSeats.toLocaleString("en-KE")
+              : "Not available"
           }
         />
 
@@ -369,8 +373,8 @@ function JourneyCard({
           label="Pricing"
           value={
             journey.pricing
-              ? `${journey.pricing.currency} ${journey.pricing.amount.toLocaleString('en-KE')}`
-              : 'Not available'
+              ? `${journey.pricing.currency} ${journey.pricing.amount.toLocaleString("en-KE")}`
+              : "Not available"
           }
         />
 
@@ -462,7 +466,9 @@ export function MemberJourneyPanel({
             </div>
           ))}
 
-          <span className="sr-only">Loading member journeys…</span>
+          <span className="sr-only">
+            Loading member journeys…
+          </span>
         </div>
       ) : journeysQuery.isError ? (
         <div
@@ -507,9 +513,9 @@ export function MemberJourneyPanel({
           {parsed.invalidCount > 0 ? (
             <p className="rounded-[var(--radius-md)] border border-[var(--warning)]/25 bg-[var(--warning-soft)] p-3 text-sm text-[var(--foreground-secondary)]">
               {parsed.invalidCount} journey record
-              {parsed.invalidCount === 1 ? ' was' : 's were'} omitted because
-              the response did not match the fields this panel can safely
-              display. The backend response contract still needs confirmation.
+              {parsed.invalidCount === 1 ? " was" : "s were"} omitted because
+              the response did not contain the required core fields. The
+              backend response contract still needs confirmation.
             </p>
           ) : null}
 
@@ -524,9 +530,7 @@ export function MemberJourneyPanel({
 
       {journeysQuery.isFetching && !journeysQuery.isPending ? (
         <p
-          className={cn(
-            'mt-3 text-xs text-[var(--foreground-muted)]',
-          )}
+          className={cn("mt-3 text-xs text-[var(--foreground-muted)]")}
           role="status"
         >
           Refreshing journeys…

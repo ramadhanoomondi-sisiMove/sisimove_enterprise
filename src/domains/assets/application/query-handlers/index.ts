@@ -105,3 +105,5 @@ export { CheckAssetExistsHandler } from './check-asset-exists.handler';
 export { GetPublicAssetContentHandler } from './get-public-asset-content.handler';
 
 export { GetPublicAssetReferenceQueryHandler } from './get-public-asset-reference.handler';
+
+export { GetPrivateAssetContentHandler } from './get-private-asset-content.handler';

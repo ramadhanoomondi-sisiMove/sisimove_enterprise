@@ -1,20 +1,21 @@
+
 "use client";
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { memberPermissionApi } from "../api/member-permission-api";
-import { memberPermissionMap } from "../permissions/member-permission-map";
 import { memberActionPolicy } from "../permissions/member-action-policy";
 
 /**
  * sisiMove — Admin Member Permissions Hook
  *
  * Loads permission definitions and the selected identity's role assignments.
- * UI actions are evaluated separately against permission codes supplied by the
- * application's authenticated authorization state. These API reads do not
- * establish the current user's effective grants; backend guards remain the
- * authoritative security boundary.
+ * UI actions are evaluated against permission codes supplied by the
+ * application's authenticated authorization state.
+ *
+ * Permission-definition and role-assignment reads do not establish the
+ * current user's effective grants. Backend authorization remains authoritative.
  */
 export function useMemberPermissions(
   identityPublicId: string,
@@ -29,38 +30,100 @@ export function useMemberPermissions(
 
   const rolePermissionAssignmentsQuery = useQuery({
     queryKey: ["admin", "members", "role-permission-assignments"],
-    queryFn: () => memberPermissionApi.listRolePermissionAssignments(),
+    queryFn: () =>
+      memberPermissionApi.listRolePermissionAssignments(),
   });
 
   const memberRolesQuery = useQuery({
-    queryKey: ["admin", "members", "identity-roles", normalizedIdentityPublicId],
+    queryKey: [
+      "admin",
+      "members",
+      "identity-roles",
+      normalizedIdentityPublicId,
+    ],
     queryFn: () =>
-      memberPermissionApi.listRolesForIdentity(normalizedIdentityPublicId),
+      memberPermissionApi.listRolesForIdentity(
+        normalizedIdentityPublicId,
+      ),
     enabled: normalizedIdentityPublicId.length > 0,
   });
 
   const actionPermissions = useMemo(() => {
-    const granted = new Set(grantedPermissions);
+    const canRead = memberActionPolicy.canRead(grantedPermissions);
+    const canActivate =
+      memberActionPolicy.canActivate(grantedPermissions);
+    const canSuspend =
+      memberActionPolicy.canSuspend(grantedPermissions);
+    const canClose = memberActionPolicy.canClose(grantedPermissions);
+    const canChangeEmail =
+      memberActionPolicy.canChangeEmail(grantedPermissions);
+    const canChangePhoneNumber =
+      memberActionPolicy.canChangePhoneNumber(grantedPermissions);
+
+    const canReadRoles =
+      memberActionPolicy.canReadRoles(grantedPermissions);
+    const canAssignRole =
+      memberActionPolicy.canAssignRole(grantedPermissions);
+    const canRevokeRole =
+      memberActionPolicy.canRevokeRole(grantedPermissions);
 
     return {
-      canRead: granted.has(memberPermissionMap.read),
-      canActivate: granted.has(memberPermissionMap.activate),
-      canSuspend: granted.has(memberPermissionMap.suspend),
-      canClose: granted.has(memberPermissionMap.close),
-      canChangeEmail: granted.has(memberPermissionMap.changeEmail),
-      canChangePhoneNumber: granted.has(memberPermissionMap.changePhoneNumber),
+      canRead,
+      canActivate,
+      canSuspend,
+      canClose,
+      canChangeEmail,
+      canChangePhoneNumber,
+      canReadRoles,
+      canAssignRole,
+      canRevokeRole,
+
       canPerform: (
-        action: "canRead" | "canActivate" | "canSuspend" | "canClose" | "canChangeEmail" | "canChangePhoneNumber",
-      ): boolean => memberActionPolicy[action](grantedPermissions),
+        action:
+          | "canRead"
+          | "canActivate"
+          | "canSuspend"
+          | "canClose"
+          | "canChangeEmail"
+          | "canChangePhoneNumber"
+          | "canReadRoles"
+          | "canAssignRole"
+          | "canRevokeRole",
+      ): boolean => {
+        switch (action) {
+          case "canRead":
+            return canRead;
+          case "canActivate":
+            return canActivate;
+          case "canSuspend":
+            return canSuspend;
+          case "canClose":
+            return canClose;
+          case "canChangeEmail":
+            return canChangeEmail;
+          case "canChangePhoneNumber":
+            return canChangePhoneNumber;
+          case "canReadRoles":
+            return canReadRoles;
+          case "canAssignRole":
+            return canAssignRole;
+          case "canRevokeRole":
+            return canRevokeRole;
+        }
+      },
     };
   }, [grantedPermissions]);
 
   return {
     ...actionPermissions,
+
     definitions: definitionsQuery.data ?? [],
     definitionsQuery,
-    rolePermissionAssignments: rolePermissionAssignmentsQuery.data ?? [],
+
+    rolePermissionAssignments:
+      rolePermissionAssignmentsQuery.data ?? [],
     rolePermissionAssignmentsQuery,
+
     memberRoles: memberRolesQuery.data ?? [],
     memberRolesQuery,
   };

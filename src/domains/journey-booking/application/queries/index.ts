@@ -34,3 +34,4 @@ export { FindJourneyBookingsByJourneyAndPassengerQuery } from './find-journey-bo
 export { FindJourneyBookingByTransactionQuery } from './find-journey-booking-by-transaction.query';
 
 export { CountJourneyBookingsQuery } from './count-journey-bookings.query';
+export { FindDetailedJourneyBookingsByPassengerQuery } from './find-detailed-journey-bookings-by-passenger.query';

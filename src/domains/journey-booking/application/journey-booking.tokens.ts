@@ -165,5 +165,8 @@ export const JOURNEY_BOOKING_TOKENS = {
     ),
 
     FIND_BY_TRANSACTION: Symbol('FindJourneyBookingByTransactionQueryHandler'),
+    FIND_DETAILED_BY_PASSENGER: Symbol(
+      'FindDetailedJourneyBookingsByPassengerHandler',
+    ),
   },
 } as const;

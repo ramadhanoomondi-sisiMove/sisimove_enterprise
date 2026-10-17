@@ -14,23 +14,9 @@
 //
 // Public Journey queries are kept distinct from general Journey queries.
 //
-// A public Journey read is not the same thing as a general Journey read:
-// the public boundary is responsible for exposing only Journeys that are
-// publicly discoverable.
-//
-// There are two public Journey read shapes:
-//
-// - GET_PUBLIC
-//     Retrieves one publicly discoverable Journey by public ID.
-//
-// - GET_PUBLIC_MANY
-//     Retrieves the publicly discoverable Journey collection used by the
-//     marketplace. Optional discovery criteria may be supplied by the query,
-//     but an empty query represents the default public marketplace scope.
-//
-// The marketplace collection query must not be confused with
-// SEARCH_PUBLISHED. Search is an explicit route/date search operation,
-// whereas GET_PUBLIC_MANY represents the public marketplace inventory.
+// Detailed Journey reads are intended for the administrative Journey panel.
+// They retrieve composed Journey data without changing the public marketplace
+// discovery boundary.
 //
 // -----------------------------------------------------------------------------
 
@@ -152,6 +138,14 @@ export const JOURNEY_TOKENS = {
     ),
 
     /**
+     * Retrieves detailed, composed Journeys for the administrative
+     * Journey panel.
+     *
+     * This is distinct from public marketplace discovery and search.
+     */
+    GET_DETAILED: Symbol('GetDetailedJourneysHandler'),
+
+    /**
      * Searches published Journeys using the explicit Journey search
      * semantics.
      *
@@ -161,19 +155,6 @@ export const JOURNEY_TOKENS = {
 
     // -------------------------------------------------------------------------
     // Public Journey
-    // -------------------------------------------------------------------------
-    //
-    // Public queries intentionally have their own application boundary.
-    //
-    // GET_PUBLIC:
-    //   Reads one publicly discoverable Journey by public ID.
-    //
-    // GET_PUBLIC_MANY:
-    //   Reads the public Journey collection used by marketplace discovery.
-    //
-    // Keeping these separate prevents the marketplace from depending on
-    // general lifecycle queries or provider-specific queries.
-    //
     // -------------------------------------------------------------------------
 
     GET_PUBLIC: Symbol('GetPublicJourneyQueryHandler'),

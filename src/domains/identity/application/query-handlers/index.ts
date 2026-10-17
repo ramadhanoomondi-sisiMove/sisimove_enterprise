@@ -84,3 +84,4 @@ export { GetRolePermissionHandler } from './get-role-permission.handler';
 export { GetRolePermissionsHandler } from './get-role-permissions.handler';
 export { CountIdentitiesHandler } from './count-identities.handler';
 export { CountPendingVerificationsHandler } from './count-pending-verifications.handler';
+export { default as GetVerificationReviewQueueHandler } from './get-verification-review-queue.handler';

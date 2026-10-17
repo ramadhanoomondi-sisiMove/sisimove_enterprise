@@ -171,11 +171,18 @@ for (const definition of roleDefinitions) {
 
 console.log('[2/12] Seeding permissions...');
 
+
 const permissionDefinitions = [
   // Identity
   ['identity', 'read'],
   ['identity', 'update'],
   ['identity', 'manage'],
+  ['identity', 'lookup'],
+  ['identity', 'activate'],
+  ['identity', 'change-email'],
+  ['identity', 'change-phone-number'],
+  ['identity', 'suspend'],
+  ['identity', 'close'],
 
   // Profile
   ['profile', 'read'],
@@ -202,21 +209,17 @@ const permissionDefinitions = [
   ['booking', 'cancel'],
   ['booking', 'manage'],
 
-  // Boarding — read and lifecycle operations
+  // Boarding
   ['boarding', 'read'],
   ['boarding', 'create'],
   ['boarding', 'open'],
   ['boarding', 'start'],
   ['boarding', 'cancel'],
   ['boarding', 'manage'],
-
-  // Boarding — provider and passenger operations
   ['boarding', 'board-provider'],
   ['boarding', 'board-passenger'],
   ['boarding', 'confirm-passenger'],
   ['boarding', 'passenger-no-show'],
-
-  // Boarding — participant lifecycle
   ['boarding', 'participant-withdraw'],
   ['boarding', 'participant-remove'],
 
@@ -240,7 +243,7 @@ const permissionDefinitions = [
   ['financial', 'read'],
   ['financial', 'manage'],
 
-    // Journey Completion
+  // Journey Completion
   ['completion', 'read'],
   ['completion', 'manage'],
 
@@ -256,6 +259,7 @@ const permissionDefinitions = [
   // Authorization
   ['role', 'read'],
   ['role', 'assign'],
+  ['role', 'revoke'],
   ['role', 'manage'],
   ['permission', 'read'],
   ['permission', 'manage'],
@@ -264,6 +268,7 @@ const permissionDefinitions = [
   ['admin', 'read'],
   ['admin', 'manage'],
 ] as const;
+
 
 const permissions: Record<
   string,
@@ -369,21 +374,33 @@ const driverPermissions = [
   'boarding:manage',
 ];
 
+
 const adminPermissions = [
+  // Identity directory and lifecycle
   'identity:read',
   'identity:update',
   'identity:manage',
+  'identity:lookup',
+  'identity:activate',
+  'identity:change-email',
+  'identity:change-phone-number',
+  'identity:suspend',
+  'identity:close',
 
+  // Profile
   'profile:read',
   'profile:update',
   'profile:manage',
 
+  // Journey
   'journey:read',
   'journey:manage',
 
+  // Demand
   'demand:read',
   'demand:manage',
 
+  // Booking
   'booking:read',
   'booking:manage',
 
@@ -401,32 +418,43 @@ const adminPermissions = [
   'boarding:participant-remove',
   'boarding:manage',
 
+  // Verification
   'verification:read',
   'verification:review',
 
+  // Assets
   'asset:read',
   'asset:manage',
 
+  // Trust
   'trust:read',
   'trust:manage',
 
+  // Financial and completion
   'financial:read',
   'completion:read',
   'completion:manage',
 
+  // Settlement
   'settlement:read',
   'settlement:manage',
 
+  // Support
   'support:read',
   'support:manage',
 
+  // Role management
   'role:read',
   'role:assign',
+  'role:revoke',
 
+  // Permission management
   'permission:read',
 
+  // Administration
   'admin:read',
 ];
+
 
 const superAdminPermissions = Object.keys(permissions);
 
@@ -938,6 +966,48 @@ const memberAvatar = await prisma.asset.upsert({
   },
 });
 
+const ADMIN_PROFILE_SIZE = await materializeAssetFixture({
+  bucket: 'sisimove-dev',
+  objectKey: 'seed/admin/profile.jpg',
+  fixtureName: 'member/profile.jpg',
+  mimeType: 'image/jpeg',
+});
+
+const adminProfilePhoto = await prisma.asset.upsert({
+  where: {
+    objectKey: 'seed/admin/profile.jpg',
+  },
+  update: {
+    ownerIdentityId: identities.admin.id,
+    type: AssetType.IMAGE,
+    category: AssetCategory.PROFILE_PHOTO,
+    status: AssetStatus.READY,
+    visibility: AssetVisibility.PUBLIC,
+    storageProvider: StorageProvider.LOCAL,
+    bucket: 'sisimove-dev',
+    mimeType: 'image/jpeg',
+    sizeBytes: ADMIN_PROFILE_SIZE,
+    createdAt: ASSET_CREATED_AT,
+    uploadedAt: ASSET_UPLOADED_AT,
+  },
+  create: {
+    publicId: 'AS-ASSET-ADMIN-PROFILE',
+    ownerIdentityId: identities.admin.id,
+    type: AssetType.IMAGE,
+    category: AssetCategory.PROFILE_PHOTO,
+    status: AssetStatus.READY,
+    visibility: AssetVisibility.PUBLIC,
+    storageProvider: StorageProvider.LOCAL,
+    bucket: 'sisimove-dev',
+    objectKey: 'seed/admin/profile.jpg',
+    originalFilename: 'admin-profile.jpg',
+    mimeType: 'image/jpeg',
+    sizeBytes: ADMIN_PROFILE_SIZE,
+    createdAt: ASSET_CREATED_AT,
+    uploadedAt: ASSET_UPLOADED_AT,
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Member government ID
 // ---------------------------------------------------------------------------
@@ -1381,8 +1451,7 @@ await prisma.verification.upsert({
 // Second member verification
 // ---------------------------------------------------------------------------
 
-await prisma.verification.upsert({
-  where: {
+const adminVerification = await prisma.verification.upsert({  where: {
     identityId: identities.member2.id,
   },
   update: {
@@ -1587,7 +1656,34 @@ await prisma.verificationRequest.upsert({
   },
 });
 
-
+await prisma.verificationRequest.upsert({
+  where: {
+    publicId: 'AS-VREQ-ADMIN-PROFILE-001',
+  },
+  update: {
+    verificationId: adminVerification.id,
+    type: VerificationRequestType.PROFILE_PHOTO,
+    status: VerificationRequestStatus.PENDING,
+    assetId: adminProfilePhoto.id,
+    submittedAt: NOW,
+    reviewedAt: null,
+    reviewedById: null,
+    rejectionReason: null,
+    createdAt: NOW,
+  },
+  create: {
+    publicId: 'AS-VREQ-ADMIN-PROFILE-001',
+    verificationId: adminVerification.id,
+    type: VerificationRequestType.PROFILE_PHOTO,
+    status: VerificationRequestStatus.PENDING,
+    assetId: adminProfilePhoto.id,
+    submittedAt: NOW,
+    reviewedAt: null,
+    reviewedById: null,
+    rejectionReason: null,
+    createdAt: NOW,
+  },
+});
   // ===========================================================================
   // 9. TRAVELLER PROFILES
   // ===========================================================================

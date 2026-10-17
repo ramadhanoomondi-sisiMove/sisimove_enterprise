@@ -19,7 +19,7 @@ export { GetMyJourneyBookingsHandler } from './get-my-journey-bookings.handler';
 export { GetJourneyBookingDetailQueryHandler } from './get-journey-booking-detail.query-handler';
 
 export { GetMyJourneyBookingDetailsQueryHandler } from './get-my-journey-booking-details.handler';
-
+export { FindDetailedJourneyBookingsByPassengerHandler } from './find-detailed-journey-bookings-by-passenger.handler';
 // -----------------------------------------------------------------------------
 // Discovery
 // -----------------------------------------------------------------------------

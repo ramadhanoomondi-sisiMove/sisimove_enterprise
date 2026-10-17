@@ -49,11 +49,6 @@ const NAVIGATION_GROUPS = [
         icon: BadgeCheck,
       },
       {
-        label: "Verification Requests",
-        href: ADMIN_ROUTES.VERIFICATION_REQUESTS,
-        icon: ClipboardList,
-      },
-      {
         label: "Trust & Reputation",
         href: ADMIN_ROUTES.TRUST,
         icon: ShieldCheck,

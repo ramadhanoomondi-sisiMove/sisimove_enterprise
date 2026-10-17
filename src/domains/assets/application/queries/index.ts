@@ -97,3 +97,5 @@ export type { CheckAssetExistsCriteria } from './check-asset-exists.query';
 export { GetPublicAssetReferenceQuery } from './get-public-asset-reference.query';
 
 export { GetPublicAssetContentQuery } from './get-public-asset-content.query';
+
+export { GetPrivateAssetContentQuery } from './get-private-asset-content.query';

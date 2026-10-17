@@ -1,36 +1,17 @@
-// -----------------------------------------------------------------------------
-// sisiMove — Admin Member Security Panel
-// -----------------------------------------------------------------------------
-//
-// Responsibilities:
-// - Display identity lifecycle information relevant to security.
-// - Distinguish identity status from authentication security.
-// - Show whether authentication security data was retrieved successfully.
-// - Avoid inventing security indicators unsupported by the API contract.
-//
-// Non-responsibilities:
-// - Fetching identity or authentication data.
-// - Assuming missing security data means the account is secure.
-// - Inferring session revocation from account suspension.
-// - Performing security mutations or authorization decisions.
-//
-// -----------------------------------------------------------------------------
 
-import type { ReactNode } from 'react';
+ // -----------------------------------------------------------------------------
+ // sisiMove — Admin Member Security Panel
+ // -----------------------------------------------------------------------------
+
+import type { ReactNode } from "react";
 
 import type {
   MemberSecurityOverview,
-} from '@/features/admin/members/models/member-security.model';
+} from "@/features/admin/members/models/member-security.model";
 
-import { MemberDataSection } from '@/components/admin/members/primitives/member-data-section';
-
-import { Button } from '@/components/ui/button';
-
-import { cn } from '@/foundation/utils/cn';
-
-// -----------------------------------------------------------------------------
-// Types
-// -----------------------------------------------------------------------------
+import { MemberDataSection } from "@/components/admin/members/primitives/member-data-section";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/foundation/utils/cn";
 
 export interface MemberSecurityPanelProps {
   readonly security: MemberSecurityOverview | null;
@@ -41,30 +22,22 @@ export interface MemberSecurityPanelProps {
   readonly className?: string;
 }
 
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
-
-function formatTimestamp(value?: string): string {
+function formatTimestamp(value?: string | null): string {
   if (!value?.trim()) {
-    return 'Not recorded';
+    return "Not recorded";
   }
 
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    return 'Unavailable';
+    return "Unavailable";
   }
 
-  return new Intl.DateTimeFormat('en-KE', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
+  return new Intl.DateTimeFormat("en-KE", {
+    dateStyle: "medium",
+    timeStyle: "short",
   }).format(date);
 }
-
-// -----------------------------------------------------------------------------
-// Field
-// -----------------------------------------------------------------------------
 
 interface SecurityFieldProps {
   readonly label: string;
@@ -78,7 +51,7 @@ function SecurityField({
   className,
 }: SecurityFieldProps): ReactNode {
   return (
-    <div className={cn('min-w-0 space-y-1', className)}>
+    <div className={cn("min-w-0 space-y-1", className)}>
       <dt className="text-xs font-medium uppercase tracking-wide text-[var(--foreground-muted)]">
         {label}
       </dt>
@@ -90,10 +63,6 @@ function SecurityField({
   );
 }
 
-// -----------------------------------------------------------------------------
-// Loading State
-// -----------------------------------------------------------------------------
-
 function SecurityLoadingState(): ReactNode {
   return (
     <div
@@ -102,10 +71,7 @@ function SecurityLoadingState(): ReactNode {
       className="space-y-4"
     >
       {[0, 1, 2, 3].map((item) => (
-        <div
-          key={item}
-          className="animate-pulse space-y-2"
-        >
+        <div key={item} className="animate-pulse space-y-2">
           <div className="h-3 w-32 rounded bg-[var(--background-muted)]" />
           <div className="h-4 w-44 rounded bg-[var(--background-muted)]" />
         </div>
@@ -117,10 +83,6 @@ function SecurityLoadingState(): ReactNode {
     </div>
   );
 }
-
-// -----------------------------------------------------------------------------
-// Component
-// -----------------------------------------------------------------------------
 
 export function MemberSecurityPanel({
   security,
@@ -170,8 +132,8 @@ export function MemberSecurityPanel({
           </p>
 
           <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
-            No security overview has been supplied for this member. This does
-            not establish whether the account is secure.
+            No security overview has been supplied for this member. This
+            does not establish whether the account is secure.
           </p>
         </div>
       ) : (
