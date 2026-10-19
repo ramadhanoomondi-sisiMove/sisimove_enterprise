@@ -10,8 +10,13 @@ export const useVerificationActions = () => {
     grantMember: mutations.grantMember,
     grantDriver: mutations.grantDriver,
     rejectVerification: mutations.rejectVerification,
+
+    // Verification lifecycle actions
     reopen: mutations.reopen,
+    expire: mutations.expire,
     revoke: mutations.revoke,
+
+    // Individual verification request actions
     approveRequest: mutations.approveRequest,
     rejectRequest: mutations.rejectRequest,
     cancelRequest: mutations.cancelRequest,

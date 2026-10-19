@@ -831,7 +831,7 @@ export class VerificationEntity extends AggregateRoot<
       'Verification request addition timestamp must be valid.',
     );
 
-    this.ensurePendingForRequestMutation();
+    this.ensureRequestMutationAllowed(request.type.value, timestamp);
 
     if (!request.verificationPublicId.equals(this.publicId)) {
       throw new VerificationInvalidStatusException(
@@ -955,7 +955,18 @@ export class VerificationEntity extends AggregateRoot<
   ): void {
     this.ensureReviewer(reviewedByPublicId);
 
-    this.ensurePendingForVerification();
+    // DRIVER verification is a progressive upgrade from an active MEMBER.
+    // Do not require the aggregate to return to PENDING: doing so would erase
+    // the member's current verification state and block legitimate upgrades.
+    if (
+      !this.isVerified() ||
+      !this.isMemberLevel() ||
+      !this.isActive(at)
+    ) {
+      throw new VerificationInvalidStatusException(
+        `Verification ${this.publicId.value} must be an active VERIFIED / MEMBER verification before it can be upgraded to DRIVER.`,
+      );
+    }
 
     if (!this.hasRequiredDriverVerification()) {
       throw new VerificationInvalidStatusException(
@@ -1760,12 +1771,29 @@ export class VerificationEntity extends AggregateRoot<
     }
   }
 
-  private ensurePendingForRequestMutation(): void {
-    if (!this.isPending()) {
-      throw new VerificationInvalidStatusException(
-        `Verification ${this.publicId.value} cannot accept verification requests from status ${this.props.status.value}.`,
-      );
+  private ensureRequestMutationAllowed(
+    requestType: VerificationRequestEntity['type']['value'],
+    at: Date,
+  ): void {
+    // Initial member verification accepts its normal evidence requests.
+    if (this.isPending()) {
+      return;
     }
+
+    // A verified, active member may submit a DRIVER_LICENSE request without
+    // resetting the existing member verification.
+    if (
+      requestType === 'DRIVER_LICENSE' &&
+      this.isVerified() &&
+      this.isMemberLevel() &&
+      this.isActive(at)
+    ) {
+      return;
+    }
+
+    throw new VerificationInvalidStatusException(
+      `Verification ${this.publicId.value} cannot accept verification requests from status ${this.props.status.value}.`,
+    );
   }
 
   private ensureReviewer(reviewedByPublicId: IdentityPublicId): void {
@@ -1805,9 +1833,16 @@ export class VerificationEntity extends AggregateRoot<
       'Verification evidence timestamp must be valid.',
     );
 
-    if (!this.isPending()) {
+    const isInitialMemberEvidence = this.isPending();
+    const isDriverUpgradeEvidence =
+      type === 'DRIVER_LICENSE' &&
+      this.isVerified() &&
+      this.isMemberLevel() &&
+      this.isActive(timestamp);
+
+    if (!isInitialMemberEvidence && !isDriverUpgradeEvidence) {
       throw new VerificationInvalidStatusException(
-        `Accepted evidence cannot be recorded while verification is ${this.props.status.value}.`,
+        `Accepted ${type} evidence cannot be recorded while verification is ${this.props.status.value} / ${this.props.level.value}.`,
       );
     }
 

@@ -644,19 +644,22 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
    *
    * Supported creation contexts:
    *
-   * INITIAL MEMBER VERIFICATION:
+   * INITIAL / COMBINED VERIFICATION SUBMISSION:
    *
    *     PENDING
    *       ├── PROFILE_PHOTO
-   *       └── GOVERNMENT_ID
+   *       ├── GOVERNMENT_ID
+   *       └── DRIVER_LICENSE
    *
    * PROGRESSIVE DRIVER VERIFICATION:
    *
    *     VERIFIED / MEMBER
    *       └── DRIVER_LICENSE
    *
-   * A DRIVER_LICENSE request therefore does not invalidate the existing
-   * MEMBER verification.
+   * A prospective driver may submit all required evidence before review.
+   * Submission does not grant MEMBER or DRIVER verification. MEMBER
+   * verification must still be granted before DRIVER verification can be
+   * granted.
    */
   public readonly createRequest = (
     props: CreateVerificationRequestProps,
@@ -1490,16 +1493,22 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
   /**
    * Enforces the request types permitted by the current Verification state.
    *
-   * Initial verification:
+   * Initial / combined submission:
    *
    *     PENDING
    *       ├── PROFILE_PHOTO
-   *       └── GOVERNMENT_ID
+   *       ├── GOVERNMENT_ID
+   *       └── DRIVER_LICENSE
    *
-   * Progressive verification:
+   * Progressive driver upgrade:
    *
    *     VERIFIED / MEMBER
    *       └── DRIVER_LICENSE
+   *
+   * DRIVER_LICENSE may be submitted while the aggregate is PENDING so that
+   * applicants who intend to become drivers can submit their evidence in one
+   * session. This does not bypass the grant sequence: MEMBER verification
+   * must still be granted before DRIVER verification can be granted.
    *
    * No request may be created against:
    *
@@ -1515,19 +1524,15 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
     const requestType = type.value;
 
     // -------------------------------------------------------------------------
-    // Initial MEMBER verification
+    // Initial / combined verification submission
     // -------------------------------------------------------------------------
 
     if (this.isPending()) {
       switch (requestType) {
         case 'PROFILE_PHOTO':
         case 'GOVERNMENT_ID':
-          return;
-
         case 'DRIVER_LICENSE':
-          throw new VerificationInvariantException(
-            `A DRIVER_LICENSE request cannot be submitted before MEMBER verification has been granted for verification ${this.publicId.value}.`,
-          );
+          return;
 
         default:
           return this.assertNeverVerificationRequestType(requestType);
@@ -1535,7 +1540,7 @@ export class VerificationAggregate extends AggregateRoot<VerificationAggregatePr
     }
 
     // -------------------------------------------------------------------------
-    // Progressive DRIVER verification
+    // Progressive DRIVER verification after MEMBER verification
     // -------------------------------------------------------------------------
 
     if (this.isMemberVerified()) {

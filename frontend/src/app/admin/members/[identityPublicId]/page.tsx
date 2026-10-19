@@ -1,7 +1,7 @@
 
- // -----------------------------------------------------------------------------
- // sisiMove — Admin Member Detail Page
- // -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// sisiMove — Admin Member Detail Page
+// -----------------------------------------------------------------------------
 
 "use client";
 
@@ -28,13 +28,14 @@ import {
   type MemberDetailSection,
 } from "@/components/admin/members/details";
 
+import { MemberActivityTimeline } from "@/components/admin/members/details/member-activity-timeline";
+
 import {
   isMemberIdentityStatus,
   type MemberIdentity,
 } from "@/features/admin/members/models/member.model";
 
 import type { IdentityResponseDto } from "@/features/admin/members/types/member-api.types";
-import { MemberActivityTimeline } from "@/components/admin/members/details/member-activity-timeline";
 
 import { useMember } from "@/features/admin/members/hooks/use-member";
 import { useMemberProfile } from "@/features/admin/members/hooks/use-member-profile";
@@ -44,6 +45,7 @@ import { useMemberSecurity } from "@/features/admin/members/hooks/use-member-sec
 import { useMemberRolesManager } from "@/features/admin/members/hooks/use-member-roles";
 
 import { usePublicAsset } from "@/features/assets/hooks/use-public-asset";
+
 import { ADMIN_ROUTES } from "@/foundation/routing/admin-routes";
 
 import type {
@@ -92,6 +94,7 @@ function mapIdentityToMember(
     email: identity.email,
     phoneNumber: identity.phoneNumber,
     status: identity.status,
+
     roles: identity.roles.map((role) => ({
       publicId: role.publicId,
       identityPublicId: role.identityPublicId,
@@ -104,6 +107,7 @@ function mapIdentityToMember(
       createdAt: role.createdAt,
       updatedAt: role.updatedAt,
     })),
+
     createdAt: identity.createdAt,
     updatedAt: identity.updatedAt,
     activatedAt: identity.activatedAt,
@@ -128,6 +132,7 @@ export default function AdminMemberDetailPage(): ReactNode {
   // Role-revocation confirmation state.
   const [assignmentToRevoke, setAssignmentToRevoke] =
     useState<MemberRoleAssignmentDetail | null>(null);
+
   const [revokeReason, setRevokeReason] = useState("");
   const [revokeError, setRevokeError] = useState<string | null>(null);
 
@@ -142,15 +147,17 @@ export default function AdminMemberDetailPage(): ReactNode {
     useMemberVerificationByIdentity(identityPublicId);
 
   const trustQuery = useMemberTrust(identityPublicId);
-
   const securityQuery = useMemberSecurity(identityPublicId);
 
-  // Existing role-assignment query and mutations.
+  // Preserve the existing role-assignment query and mutations.
   const rolesManager = useMemberRolesManager({
     identityPublicId,
   });
 
-  // Profile photo.
+  // ---------------------------------------------------------------------------
+  // Profile photo
+  // ---------------------------------------------------------------------------
+
   const profile = profileQuery.data ?? null;
   const profilePhoto = usePublicAsset(profile?.avatarAssetPublicId);
 
@@ -158,9 +165,9 @@ export default function AdminMemberDetailPage(): ReactNode {
   // Role definitions
   // ---------------------------------------------------------------------------
   //
-  // Connect this to the project's existing Roles API/query when its adapter
-  // and response contract are available. Do not substitute permission
-  // definitions or member assignments for role definitions.
+  // Keep this empty until the existing Roles API and its response contract
+  // are connected. Do not substitute permissions or member assignments
+  // for actual role definitions.
   //
 
   const availableRoles = useMemo<MemberRoleDefinition[]>(
@@ -194,7 +201,9 @@ export default function AdminMemberDetailPage(): ReactNode {
   // ---------------------------------------------------------------------------
 
   async function confirmRevokeRole(): Promise<void> {
-    if (!assignmentToRevoke) return;
+    if (!assignmentToRevoke) {
+      return;
+    }
 
     const reason = revokeReason.trim();
 
@@ -411,6 +420,7 @@ export default function AdminMemberDetailPage(): ReactNode {
           </div>
         ) : activeSection === "verification" ? (
           <MemberVerificationPanel
+            identityPublicId={identityPublicId}
             verification={verificationQuery.data ?? null}
             isLoading={
               verificationQuery.isPending &&
@@ -467,9 +477,10 @@ export default function AdminMemberDetailPage(): ReactNode {
           <MemberBookingPanel
             passengerPublicId={identityPublicId}
           />
-          ) : activeSection === "activity" ? (
-            <MemberActivityTimeline memberPublicId={identityPublicId} />
-            
+        ) : activeSection === "activity" ? (
+          <MemberActivityTimeline
+            memberPublicId={identityPublicId}
+          />
         ) : activeSection === "roles" ? (
           <div className="space-y-4">
             <MemberRolesPanel
@@ -538,7 +549,10 @@ export default function AdminMemberDetailPage(): ReactNode {
                 </div>
 
                 {revokeError && (
-                  <p role="alert" className="text-sm text-[var(--danger)]">
+                  <p
+                    role="alert"
+                    className="text-sm text-[var(--danger)]"
+                  >
                     {revokeError}
                   </p>
                 )}

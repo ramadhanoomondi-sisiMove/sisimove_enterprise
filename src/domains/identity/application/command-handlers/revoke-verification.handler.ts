@@ -1,130 +1,23 @@
-// -----------------------------------------------------------------------------
-// Identity — Revoke Verification Command Handler
-// -----------------------------------------------------------------------------
-//
-// Application handler for revoking a Verification aggregate.
-//
-// Aggregate boundary:
-//
-// VerificationAggregate
-// └── VerificationEntity
-//     └── VerificationRequestEntity[]
-//
-// The handler:
-//
-// - validates the command;
-// - loads the Verification aggregate through its owning Identity;
-// - invokes VerificationAggregate.revoke();
-// - persists the complete aggregate.
-//
-// The handler does NOT:
-//
-// - construct VerificationEntity;
-// - construct VerificationRequestEntity;
-// - mutate domain entities directly;
-// - reject VerificationRequestEntity;
-// - expire VerificationRequestEntity;
-// - modify verification evidence directly;
-// - modify Identity state;
-// - modify Identity roles;
-// - revoke authentication credentials;
-// - terminate sessions;
-// - emit domain events directly;
-// - perform external verification-provider operations;
-// - send notifications;
-// - perform external side effects.
-//
-// -----------------------------------------------------------------------------
-//
-// Important distinction:
-//
-// Revoking Verification is NOT rejecting a VerificationRequest.
-//
-// VerificationRequest rejection:
-//
-//     aggregate.rejectRequest()
-//
-// means:
-//
-//     "This submitted verification evidence was rejected."
-//
-// Verification revocation:
-//
-//     aggregate.revoke()
-//
-// means:
-//
-//     "An already VERIFIED Verification is no longer valid and is revoked."
-//
-// REVOKED is terminal.
-//
-// -----------------------------------------------------------------------------
-//
-// Application flow:
-//
-//     RevokeVerificationCommand
-//              │
-//              ▼
-// verificationRepository.findByIdentityPublicId()
-//              │
-//              ▼
-//      VerificationAggregate
-//              │
-//              ▼
-//      aggregate.revoke()
-//              │
-//              ▼
-// verificationRepository.save()
-//              │
-//              ▼
-//      VerificationAggregate
-//
-// -----------------------------------------------------------------------------
-//
-// Lifecycle:
-//
-// VERIFIED ───────► REVOKED
-//
-// REVOKED ───────── terminal
-//
-// The aggregate owns lifecycle validation and determines whether the current
-// Verification may be revoked.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// NestJS
-// -----------------------------------------------------------------------------
+/**
+ * sisiMove — Revoke Verification Command Handler
+ *
+ * Revokes a verified Verification aggregate, persists the transition,
+ * reloads the aggregate, and returns it for the REST response.
+ *
+ * VerificationAggregate remains responsible for lifecycle rules.
+ */
 
 import { Inject, Injectable } from '@nestjs/common';
 
-// -----------------------------------------------------------------------------
-// Foundation
-// -----------------------------------------------------------------------------
-
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
-
-// -----------------------------------------------------------------------------
-// Identity Tokens
-// -----------------------------------------------------------------------------
 
 import { IDENTITY_TOKENS } from '../identity.tokens';
 
-// -----------------------------------------------------------------------------
-// Command
-// -----------------------------------------------------------------------------
-
 import type { RevokeVerificationCommand } from '../commands/revoke-verification.command';
 
-// -----------------------------------------------------------------------------
-// Repository
-// -----------------------------------------------------------------------------
+import type { VerificationAggregate } from '../../domain/aggregates/verification.aggregate';
 
 import type { VerificationRepository } from '../../domain/repositories/verification.repository';
-
-// -----------------------------------------------------------------------------
-// Exceptions
-// -----------------------------------------------------------------------------
 
 import { VerificationInvariantException } from '../../domain/exceptions/verification-invariant.exception';
 
@@ -132,77 +25,47 @@ import { VerificationInvariantException } from '../../domain/exceptions/verifica
 // Handler
 // =============================================================================
 
-/**
- * Revokes an existing Verification aggregate.
- *
- * The handler performs application-level orchestration only:
- *
- *     command
- *       ↓
- *     aggregate lookup by Identity
- *       ↓
- *     aggregate.revoke()
- *       ↓
- *     aggregate persistence
- *
- * All Verification revocation rules remain inside VerificationAggregate.
- */
 @Injectable()
-export class RevokeVerificationHandler implements CommandHandler<RevokeVerificationCommand> {
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
+export class RevokeVerificationHandler implements CommandHandler<
+  RevokeVerificationCommand,
+  VerificationAggregate
+> {
   public constructor(
     @Inject(IDENTITY_TOKENS.REPOSITORIES.VERIFICATION)
     private readonly verificationRepository: VerificationRepository,
   ) {}
 
-  // ===========================================================================
-  // Execute
-  // ===========================================================================
-
   /**
    * Executes the RevokeVerificationCommand.
    *
-   * A successful execution transitions a currently VERIFIED Verification to
-   * terminal REVOKED state.
+   * Transitions a valid VERIFIED aggregate to REVOKED, persists it,
+   * reloads the saved aggregate, and returns the updated aggregate.
    */
-  public async execute(command: RevokeVerificationCommand): Promise<void> {
-    // -------------------------------------------------------------------------
-    // 1. Command guard
-    // -------------------------------------------------------------------------
-
-    if (command === undefined) {
+  public async execute(
+    command: RevokeVerificationCommand,
+  ): Promise<VerificationAggregate> {
+    // 1. Validate command.
+    if (command === undefined || command === null) {
       throw new VerificationInvariantException(
         'Revoke verification command is required.',
       );
     }
 
-    // -------------------------------------------------------------------------
-    // 2. Identity guard
-    // -------------------------------------------------------------------------
-
+    // 2. Validate target identity.
     if (command.identityPublicId === undefined) {
       throw new VerificationInvariantException(
         'Verification identity public ID is required.',
       );
     }
 
-    // -------------------------------------------------------------------------
-    // 3. Revoker guard
-    // -------------------------------------------------------------------------
-
+    // 3. Validate revoking identity.
     if (command.revokedByPublicId === undefined) {
       throw new VerificationInvariantException(
         'Verification revoking identity public ID is required.',
       );
     }
 
-    // -------------------------------------------------------------------------
-    // 4. Reason guard
-    // -------------------------------------------------------------------------
-
+    // 4. Validate revocation reason.
     if (
       typeof command.reason !== 'string' ||
       command.reason.trim().length === 0
@@ -212,16 +75,17 @@ export class RevokeVerificationHandler implements CommandHandler<RevokeVerificat
       );
     }
 
-    // -------------------------------------------------------------------------
-    // 5. Load Verification aggregate
-    // -------------------------------------------------------------------------
-    //
-    // Verification has a one-to-one relationship with Identity.
-    //
-    // The command therefore identifies the Verification through the owning
-    // Identity public identifier.
-    // -------------------------------------------------------------------------
+    // 5. Validate correlation ID.
+    if (
+      typeof command.correlationId !== 'string' ||
+      command.correlationId.trim().length === 0
+    ) {
+      throw new VerificationInvariantException(
+        'Verification correlation ID is required.',
+      );
+    }
 
+    // 6. Load the aggregate by its owning identity.
     const aggregate = await this.verificationRepository.findByIdentityPublicId(
       command.identityPublicId,
     );
@@ -232,23 +96,11 @@ export class RevokeVerificationHandler implements CommandHandler<RevokeVerificat
       );
     }
 
-    // -------------------------------------------------------------------------
-    // 6. Revoke Verification through the aggregate
-    // -------------------------------------------------------------------------
-    //
-    // VerificationAggregate.revoke() owns:
-    //
-    // - correlation validation;
-    // - revoker validation;
-    // - reason validation and normalization;
-    // - timestamp validation;
-    // - VERIFIED-state validation;
-    // - transition to REVOKED;
-    // - aggregate consistency validation.
-    //
-    // The handler performs no direct domain mutation.
-    // -------------------------------------------------------------------------
+    // Preserve the aggregate's public ID to verify the reloaded record.
+    const verificationPublicId = aggregate.publicId;
 
+    // 7. Apply the domain transition.
+    // The aggregate enforces whether revocation is permitted.
     aggregate.revoke(
       command.revokedByPublicId,
       command.reason,
@@ -256,21 +108,31 @@ export class RevokeVerificationHandler implements CommandHandler<RevokeVerificat
       command.revokedAt,
     );
 
-    // -------------------------------------------------------------------------
-    // 7. Persist aggregate
-    // -------------------------------------------------------------------------
-    //
-    // VerificationAggregate remains the unit of persistence.
-    //
-    // No VerificationRequest lifecycle operation occurs here.
-    // -------------------------------------------------------------------------
-
+    // 8. Persist the updated aggregate.
     await this.verificationRepository.save(aggregate);
+
+    // 9. Reload the persisted aggregate for the controller response.
+    const savedAggregate =
+      await this.verificationRepository.findByIdentityPublicId(
+        command.identityPublicId,
+      );
+
+    if (savedAggregate === null) {
+      throw new VerificationInvariantException(
+        'Verification could not be reloaded after revocation.',
+      );
+    }
+
+    // 10. Ensure the reloaded aggregate is the same verification.
+    if (!savedAggregate.publicId.equals(verificationPublicId)) {
+      throw new VerificationInvariantException(
+        'The reloaded verification does not match the revoked verification.',
+      );
+    }
+
+    // 11. Return the aggregate expected by VerificationResponseMapper.
+    return savedAggregate;
   }
 }
-
-// -----------------------------------------------------------------------------
-// Default Export
-// -----------------------------------------------------------------------------
 
 export default RevokeVerificationHandler;

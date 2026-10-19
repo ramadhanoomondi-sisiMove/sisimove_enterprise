@@ -1,55 +1,43 @@
 // -----------------------------------------------------------------------------
-// Identity — Activate Command Handler
+// Identity — Close Command Handler
 // -----------------------------------------------------------------------------
 //
-// Application command handler responsible for activating an Identity
-// aggregate.
+// Application command handler responsible for closing an Identity aggregate.
 //
 // Responsibilities:
 //
 // - Load the Identity aggregate.
-// - Invoke the aggregate's activation behavior.
+// - Invoke the aggregate's closure behavior.
 // - Persist the resulting aggregate state.
 //
-// The IdentityAggregate is responsible for:
+// IdentityAggregate remains responsible for:
 //
 // - validating the lifecycle transition;
 // - enforcing Identity invariants;
-// - determining the activation timestamp;
-// - changing IdentityStatus to ACTIVE;
-// - recording IdentityActivatedEvent.
+// - determining closedAt;
+// - changing IdentityStatus to CLOSED;
+// - recording IdentityClosedEvent;
+// - enforcing terminal closure and idempotency rules.
 //
 // This handler does NOT:
 //
 // - mutate IdentityEntity directly;
-// - construct IdentityEntity;
-// - construct IdentityRoleEntity;
-// - create authentication credentials;
-// - create sessions;
-// - perform verification;
-// - send notifications;
-// - execute external side effects.
+// - construct IdentityEntity or IdentityRoleEntity;
+// - determine closedAt;
+// - activate or suspend the Identity;
+// - delete the Identity record;
+// - directly revoke authentication credentials or sessions;
+// - mutate other aggregates;
+// - emit domain events directly;
+// - perform external side effects.
 //
-// Those concerns belong to their respective application/domain boundaries.
-//
-// IMPORTANT:
-//
-// Activation requires only the IdentityPublicId carried by the command.
-//
-// `activatedAt` is intentionally not supplied by this handler.
-//
-// The activation timestamp is a domain fact describing when the activation
-// mutation actually occurred. IdentityAggregate determines it when the
-// mutation is performed.
-//
-// Correlation and causation metadata are intentionally not part of the
-// activation command or activation aggregate operation.
+// Those concerns remain within their respective application/domain boundaries.
 //
 // -----------------------------------------------------------------------------
 //
 // Flow:
 //
-//     ActivateIdentityCommand
+//     CloseIdentityCommand
 //             │
 //             ▼
 //     IdentityRepository.findByPublicId()
@@ -57,31 +45,27 @@
 //             ├── not found → throw
 //             │
 //             ▼
-//     IdentityAggregate.activate()
+//     IdentityAggregate.close(correlationId)
 //             │
-//             ├── validate transition
-//             ├── determine activatedAt
-//             ├── change lifecycle state
-//             └── record IdentityActivatedEvent
+//             ├── validate lifecycle transition
+//             ├── determine closedAt
+//             ├── transition to CLOSED
+//             └── record IdentityClosedEvent
 //             │
 //             ▼
 //     IdentityRepository.save()
 //             │
 //             ▼
-//     IdentityAggregate
+//     Return IdentityAggregate
 //
 // -----------------------------------------------------------------------------
 //
 // Domain boundary:
 //
-// ActivateIdentityCommand already contains IdentityPublicId as a domain
-// value object.
+// CloseIdentityCommand already contains IdentityPublicId as a domain value
+// object. The handler passes it directly to the repository.
 //
-// Therefore:
-//
-// - no primitive-to-value-object conversion occurs here;
-// - the handler passes command.identityPublicId directly to the repository;
-// - DTO-to-domain conversion belongs before command creation.
+// `closedAt` is a domain fact and is never supplied by this handler.
 //
 // -----------------------------------------------------------------------------
 
@@ -107,7 +91,7 @@ import type { CommandHandler } from '../../../../foundation/kernel/application/c
 // Command
 // -----------------------------------------------------------------------------
 
-import type { ActivateIdentityCommand } from '../commands/activate-identity.command';
+import type { CloseIdentityCommand } from '../commands/close-identity.command';
 
 // -----------------------------------------------------------------------------
 // Aggregate
@@ -132,31 +116,15 @@ import { IdentityInvariantException } from '../../domain/exceptions/identity-inv
 // =============================================================================
 
 /**
- * Activates an Identity aggregate.
+ * Closes an Identity aggregate.
  *
- * The handler is intentionally thin. It performs application orchestration
- * while the IdentityAggregate remains responsible for lifecycle behavior and
- * domain invariants.
- *
- * Flow:
- *
- *     Command
- *       │
- *       ▼
- *     Load IdentityAggregate
- *       │
- *       ▼
- *     aggregate.activate()
- *       │
- *       ▼
- *     repository.save()
- *       │
- *       ▼
- *     Return aggregate
+ * The handler performs application orchestration only. Lifecycle behavior,
+ * timestamps, terminal-state enforcement, and domain-event recording remain
+ * responsibilities of IdentityAggregate.
  */
 @Injectable()
-export class ActivateIdentityHandler implements CommandHandler<
-  ActivateIdentityCommand,
+export class CloseIdentityHandler implements CommandHandler<
+  CloseIdentityCommand,
   IdentityAggregate
 > {
   // ===========================================================================
@@ -173,36 +141,25 @@ export class ActivateIdentityHandler implements CommandHandler<
   // ===========================================================================
 
   /**
-   * Executes the ActivateIdentityCommand.
+   * Executes the CloseIdentityCommand.
    *
-   * The command carries a domain-ready IdentityPublicId value object.
-   *
-   * Activation itself requires no correlation or causation metadata.
+   * The command carries a domain-ready IdentityPublicId and correlation ID.
    */
   public async execute(
-    command: ActivateIdentityCommand,
+    command: CloseIdentityCommand,
   ): Promise<IdentityAggregate> {
     // -------------------------------------------------------------------------
-    // 1. Command guard
+    // 1. Validate command
     // -------------------------------------------------------------------------
 
-    if (command === undefined) {
+    if (command === undefined || command === null) {
       throw new IdentityInvariantException(
-        'Activate Identity command is required.',
+        'Close Identity command is required.',
       );
     }
 
     // -------------------------------------------------------------------------
     // 2. Load Identity aggregate
-    // -------------------------------------------------------------------------
-    //
-    // `command.identityPublicId` is already an IdentityPublicId value object.
-    //
-    // Do NOT reconstruct it with:
-    //
-    //     new IdentityPublicId(command.identityPublicId)
-    //
-    // The repository receives the domain value object directly.
     // -------------------------------------------------------------------------
 
     const identity = await this.repository.findByPublicId(
@@ -220,31 +177,27 @@ export class ActivateIdentityHandler implements CommandHandler<
     }
 
     // -------------------------------------------------------------------------
-    // 4. Activate Identity
+    // 4. Close Identity
     // -------------------------------------------------------------------------
     //
-    // All lifecycle rules remain inside IdentityAggregate.
+    // Delegate all lifecycle rules to IdentityAggregate.
     //
-    // IdentityAggregate.activate() is responsible for:
+    // Expected behavior:
     //
-    // - validating the current status;
-    // - preventing activation of CLOSED identities;
-    // - treating already-ACTIVE identities idempotently;
-    // - determining activatedAt;
-    // - changing the lifecycle state;
-    // - recording IdentityActivatedEvent.
+    // - PENDING, ACTIVE, or SUSPENDED may transition to CLOSED.
+    // - CLOSED remains terminal.
+    // - Repeated closure follows the aggregate's idempotency policy.
+    // - closedAt is determined by the aggregate.
+    // - IdentityClosedEvent is recorded by the aggregate.
     //
-    // The handler supplies no lifecycle timestamp and no correlation metadata.
+    // IMPORTANT:
+    // This handler must never call identity.activate().
     // -------------------------------------------------------------------------
 
-    identity.activate();
+    identity.close(command.correlationId);
 
     // -------------------------------------------------------------------------
     // 5. Persist aggregate
-    // -------------------------------------------------------------------------
-    //
-    // The repository persists the complete Identity aggregate, including its
-    // aggregate-owned IdentityRoleEntity collection.
     // -------------------------------------------------------------------------
 
     await this.repository.save(identity);
@@ -261,4 +214,4 @@ export class ActivateIdentityHandler implements CommandHandler<
 // Default Export
 // -----------------------------------------------------------------------------
 
-export default ActivateIdentityHandler;
+export default CloseIdentityHandler;

@@ -1,232 +1,110 @@
-// -----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
 // Identity — Grant Member Verification Command Handler
-// -----------------------------------------------------------------------------
-//
-// Application handler for granting MEMBER verification.
-//
-// Aggregate boundary:
-//
-// VerificationAggregate
-// └── VerificationEntity
-//     └── VerificationRequestEntity[]
-//
-// The handler:
-//
-// - validates the command;
-// - loads the Verification aggregate;
-// - invokes the aggregate MEMBER-verification operation;
-// - persists the aggregate.
-//
-// The handler does NOT:
-//
-// - construct VerificationEntity;
-// - construct VerificationRequestEntity;
-// - mutate domain entities directly;
-// - approve VerificationRequestEntity directly;
-// - modify verification evidence flags directly;
-// - modify Verification status directly;
-// - modify Verification level directly;
-// - modify Identity;
-// - emit domain events directly;
-// - perform external verification-provider operations;
-// - send notifications;
-// - perform external side effects.
-//
-// The VerificationAggregate is responsible for:
-//
-// - validating the Verification lifecycle state;
-// - validating MEMBER-verification eligibility;
-// - ensuring the required verification evidence exists;
-// - validating the supplied VerificationRequest;
-// - recording reviewer information;
-// - applying MEMBER verification state;
-// - applying verification expiration;
-// - recording VerificationApprovedEvent.
-//
-// -----------------------------------------------------------------------------
-//
-// Domain distinction:
-//
-// Granting MEMBER verification is an aggregate-level decision.
-//
-// It is distinct from:
-//
-//     ApproveVerificationRequest
-//
-// which means:
-//
-//     "The submitted evidence in this request is accepted."
-//
-// Grant MEMBER verification means:
-//
-//     "The Verification aggregate is now recognized as MEMBER verified."
-//
-// -----------------------------------------------------------------------------
-//
-// Application flow:
-//
-//     GrantMemberVerificationCommand
-//              │
-//              ▼
-// verificationRepository.findByIdentityPublicId()
-//              │
-//              ▼
-//      VerificationAggregate
-//              │
-//              ▼
-//   aggregate.grantMemberVerification()
-//              │
-//              ▼
-// verificationRepository.save()
-//              │
-//              ▼
-//      VerificationAggregate
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// NestJS
 // -----------------------------------------------------------------------------
 
 import { Inject, Injectable } from '@nestjs/common';
 
-// -----------------------------------------------------------------------------
-// Foundation
-// -----------------------------------------------------------------------------
-
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
-
-// -----------------------------------------------------------------------------
-// Identity Tokens
-// -----------------------------------------------------------------------------
 
 import { IDENTITY_TOKENS } from '../identity.tokens';
 
-// -----------------------------------------------------------------------------
-// Command
-// -----------------------------------------------------------------------------
-
 import type { GrantMemberVerificationCommand } from '../commands/grant-member-verification.command';
 
-// -----------------------------------------------------------------------------
-// Repository
-// -----------------------------------------------------------------------------
+import type { VerificationAggregate } from '../../domain/aggregates/verification.aggregate';
 
 import type { VerificationRepository } from '../../domain/repositories/verification.repository';
 
-// -----------------------------------------------------------------------------
-// Exceptions
-// -----------------------------------------------------------------------------
+import type { IdentityRepository } from '../../domain/repositories/identity.repository';
+
+import type { RoleRepository } from '../../domain/repositories/role.repository';
+
+import { IdentityRoleRolePublicId, RoleCode } from '../../domain/value-objects';
 
 import { VerificationInvariantException } from '../../domain/exceptions/verification-invariant.exception';
+
+import { PrismaUnitOfWork } from '../../../../infrastructure/persistence/prisma-unit-of-work';
 
 // =============================================================================
 // Handler
 // =============================================================================
 
 /**
- * Grants MEMBER verification to an existing Verification aggregate.
+ * Grants MEMBER verification to an existing Verification aggregate and ensures
+ * that the target Identity has the corresponding active MEMBER role.
  *
- * The handler performs application-level orchestration only:
+ * Transaction boundary:
  *
- *     command
- *       │
- *       ▼
- *     aggregate lookup
- *       │
- *       ▼
- *     aggregate.grantMemberVerification()
- *       │
- *       ▼
- *     aggregate persistence
+ * UnitOfWork
+ * ├── VerificationAggregate.grantMemberVerification()
+ * ├── VerificationRepository.save()
+ * ├── IdentityAggregate.assignRole() when required
+ * └── IdentityRepository.save() when the role was newly assigned
  *
- * All MEMBER-verification rules remain inside VerificationAggregate.
+ * Both aggregate changes commit together or roll back together.
+ *
+ * Domain rules remain inside their respective aggregates. This handler
+ * coordinates the cross-aggregate application workflow.
  */
 @Injectable()
 export class GrantMemberVerificationHandler implements CommandHandler<
   GrantMemberVerificationCommand,
-  void
+  VerificationAggregate
 > {
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
   public constructor(
     @Inject(IDENTITY_TOKENS.REPOSITORIES.VERIFICATION)
     private readonly verificationRepository: VerificationRepository,
-  ) {}
 
-  // ===========================================================================
-  // Execute
-  // ===========================================================================
+    @Inject(IDENTITY_TOKENS.REPOSITORIES.IDENTITY)
+    private readonly identityRepository: IdentityRepository,
+
+    @Inject(IDENTITY_TOKENS.REPOSITORIES.ROLE)
+    private readonly roleRepository: RoleRepository,
+
+    private readonly unitOfWork: PrismaUnitOfWork,
+  ) {}
 
   /**
    * Executes the GrantMemberVerificationCommand.
-   *
-   * The Verification aggregate is responsible for determining whether MEMBER
-   * verification is currently legal.
    */
-  public async execute(command: GrantMemberVerificationCommand): Promise<void> {
-    // -------------------------------------------------------------------------
-    // 1. Command guard
-    // -------------------------------------------------------------------------
-
-    if (command === undefined) {
+  public async execute(
+    command: GrantMemberVerificationCommand,
+  ): Promise<VerificationAggregate> {
+    // 1. Validate command.
+    if (command === undefined || command === null) {
       throw new VerificationInvariantException(
         'Grant member verification command is required.',
       );
     }
 
-    // -------------------------------------------------------------------------
-    // 2. Identity guard
-    // -------------------------------------------------------------------------
-
+    // 2. Validate identity.
     if (command.identityPublicId === undefined) {
       throw new VerificationInvariantException(
         'Verification identity public ID is required.',
       );
     }
 
-    // -------------------------------------------------------------------------
-    // 3. Verification guard
-    // -------------------------------------------------------------------------
-
+    // 3. Validate verification ID.
     if (command.verificationPublicId === undefined) {
       throw new VerificationInvariantException(
         'Verification public ID is required.',
       );
     }
 
-    // -------------------------------------------------------------------------
-    // 4. Verification request guard
-    // -------------------------------------------------------------------------
-    //
-    // MEMBER verification requires an approved MEMBER-eligible request.
-    //
-    // The handler does not inspect the request. It only forwards its public
-    // identifier to the aggregate.
-    // -------------------------------------------------------------------------
-
+    // 4. Validate verification request ID.
     if (command.verificationRequestPublicId === undefined) {
       throw new VerificationInvariantException(
         'Verification request public ID is required for MEMBER verification.',
       );
     }
 
-    // -------------------------------------------------------------------------
-    // 5. Reviewer guard
-    // -------------------------------------------------------------------------
-
+    // 5. Validate reviewer.
     if (command.reviewedByPublicId === undefined) {
       throw new VerificationInvariantException(
         'Verification reviewer public ID is required.',
       );
     }
 
-    // -------------------------------------------------------------------------
-    // 6. Correlation guard
-    // -------------------------------------------------------------------------
-
+    // 6. Validate correlation ID.
     if (
       typeof command.correlationId !== 'string' ||
       command.correlationId.trim().length === 0
@@ -236,93 +114,129 @@ export class GrantMemberVerificationHandler implements CommandHandler<
       );
     }
 
-    // -------------------------------------------------------------------------
-    // 7. Load Verification aggregate
-    // -------------------------------------------------------------------------
-    //
-    // Identity → Verification is a one-to-one relationship.
-    //
-    // The command identifies the aggregate through its owning Identity.
-    // -------------------------------------------------------------------------
+    // 7. Perform all aggregate reads and writes inside one transaction.
+    return this.unitOfWork.execute(async () => {
+      // -----------------------------------------------------------------------
+      // Load and validate the Verification aggregate.
+      // -----------------------------------------------------------------------
 
-    const aggregate = await this.verificationRepository.findByIdentityPublicId(
-      command.identityPublicId,
-    );
+      const verification =
+        await this.verificationRepository.findByIdentityPublicId(
+          command.identityPublicId,
+        );
 
-    // -------------------------------------------------------------------------
-    // 8. Ensure aggregate exists
-    // -------------------------------------------------------------------------
+      if (verification === null) {
+        throw new VerificationInvariantException(
+          `Verification was not found for identity ${command.identityPublicId.value}.`,
+        );
+      }
 
-    if (aggregate === null) {
-      throw new VerificationInvariantException(
-        `Verification was not found for identity ${command.identityPublicId.value}.`,
+      if (!verification.publicId.equals(command.verificationPublicId)) {
+        throw new VerificationInvariantException(
+          `Verification ${command.verificationPublicId.value} does not belong to identity ${command.identityPublicId.value}.`,
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // Resolve the existing MEMBER role.
+      // -----------------------------------------------------------------------
+
+      const memberRole = await this.roleRepository.findByCode(
+        RoleCode.create('MEMBER'),
       );
-    }
 
-    // -------------------------------------------------------------------------
-    // 9. Verify aggregate identity
-    // -------------------------------------------------------------------------
-    //
-    // The command carries both the owning IdentityPublicId and the specific
-    // VerificationPublicId.
-    //
-    // Since the repository lookup is performed by IdentityPublicId, ensure
-    // that the resolved aggregate is the exact aggregate identified by the
-    // command.
-    // -------------------------------------------------------------------------
+      if (memberRole === null) {
+        throw new VerificationInvariantException(
+          'The MEMBER role does not exist and must be provisioned before granting MEMBER verification.',
+        );
+      }
 
-    if (!aggregate.publicId.equals(command.verificationPublicId)) {
-      throw new VerificationInvariantException(
-        `Verification ${command.verificationPublicId.value} does not belong to identity ${command.identityPublicId.value}.`,
+      if (!memberRole.canBeAssigned()) {
+        throw new VerificationInvariantException(
+          'The MEMBER role is inactive or cannot currently be assigned.',
+        );
+      }
+
+      // Convert the Role public ID into the Identity domain's typed reference.
+      // PublicEntityId preserves the supplied value; it does not rewrite it.
+      const memberRolePublicId = new IdentityRoleRolePublicId(
+        memberRole.publicId.value,
       );
-    }
 
-    // -------------------------------------------------------------------------
-    // 10. Grant MEMBER verification through the aggregate
-    // -------------------------------------------------------------------------
-    //
-    // IMPORTANT:
-    //
-    // VerificationAggregate.grantMemberVerification() expects:
-    //
-    //     requestPublicId
-    //     reviewedByPublicId
-    //     correlationId
-    //     verifiedAt
-    //     expiresAt
-    //
-    // The command values must therefore be passed in exactly that order.
-    //
-    // The aggregate remains responsible for:
-    //
-    // - lifecycle validation;
-    // - MEMBER eligibility;
-    // - request ownership;
-    // - request approval state;
-    // - request type;
-    // - verification state transition;
-    // - verification level;
-    // - reviewer;
-    // - expiration;
-    // - domain event recording.
-    // -------------------------------------------------------------------------
+      // -----------------------------------------------------------------------
+      // Load the Identity aggregate.
+      // -----------------------------------------------------------------------
 
-    aggregate.grantMemberVerification(
-      command.verificationRequestPublicId,
-      command.reviewedByPublicId,
-      command.correlationId,
-      command.verifiedAt,
-      command.expiresAt,
-    );
+      const identity = await this.identityRepository.findByPublicId(
+        command.identityPublicId,
+      );
 
-    // -------------------------------------------------------------------------
-    // 11. Persist aggregate
-    // -------------------------------------------------------------------------
-    //
-    // VerificationAggregate remains the unit of persistence.
-    // -------------------------------------------------------------------------
+      if (identity === null) {
+        throw new VerificationInvariantException(
+          `Identity ${command.identityPublicId.value} was not found while granting MEMBER verification.`,
+        );
+      }
 
-    await this.verificationRepository.save(aggregate);
+      // Defend against inconsistent repository results.
+      if (!identity.publicId.equals(command.identityPublicId)) {
+        throw new VerificationInvariantException(
+          'The loaded Identity does not match the requested identity.',
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // Grant verification through the Verification aggregate.
+      // -----------------------------------------------------------------------
+
+      verification.grantMemberVerification(
+        command.verificationRequestPublicId,
+        command.reviewedByPublicId,
+        command.correlationId,
+        command.verifiedAt,
+        command.expiresAt,
+      );
+
+      await this.verificationRepository.save(verification);
+
+      // -----------------------------------------------------------------------
+      // Ensure the target Identity has an active MEMBER role.
+      // -----------------------------------------------------------------------
+
+      const alreadyHasMemberRole = identity.hasRole(memberRolePublicId);
+
+      if (!alreadyHasMemberRole) {
+        identity.assignRole(
+          memberRolePublicId,
+          command.correlationId,
+          command.reviewedByPublicId,
+        );
+
+        await this.identityRepository.save(identity);
+      }
+
+      // -----------------------------------------------------------------------
+      // Reload the persisted Verification for the existing response contract.
+      // -----------------------------------------------------------------------
+
+      const savedVerification =
+        await this.verificationRepository.findByIdentityPublicId(
+          command.identityPublicId,
+        );
+
+      if (savedVerification === null) {
+        throw new VerificationInvariantException(
+          'Verification could not be reloaded after granting MEMBER verification.',
+        );
+      }
+
+      if (!savedVerification.publicId.equals(command.verificationPublicId)) {
+        throw new VerificationInvariantException(
+          'The reloaded verification does not match the requested verification.',
+        );
+      }
+
+      return savedVerification;
+    });
   }
 }
 

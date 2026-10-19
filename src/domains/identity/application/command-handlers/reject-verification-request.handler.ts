@@ -1,138 +1,18 @@
 // -----------------------------------------------------------------------------
 // Identity — Reject Verification Request Command Handler
 // -----------------------------------------------------------------------------
-//
-// Application handler for rejecting a VerificationRequest within an existing
-// Verification aggregate.
-//
-// Aggregate boundary:
-//
-// VerificationAggregate
-// └── VerificationEntity
-//     └── VerificationRequestEntity[]
-//
-// IMPORTANT DOMAIN DISTINCTION
-//
-// Rejecting a VerificationRequest is NOT rejecting the Verification.
-//
-//     VerificationRequest rejection
-//         = the submitted evidence for this request was not accepted.
-//
-//     Verification rejection
-//         = the overall Verification aggregate was rejected.
-//
-// This handler therefore performs request-level rejection only.
-//
-// -----------------------------------------------------------------------------
-//
-// The handler:
-//
-// - validates the command;
-// - resolves the Verification aggregate through its owning Identity;
-// - invokes VerificationAggregate.rejectRequest();
-// - persists the complete Verification aggregate.
-//
-// The handler does NOT:
-//
-// - construct VerificationEntity;
-// - construct VerificationRequestEntity;
-// - mutate domain entities directly;
-// - reject the parent Verification;
-// - grant MEMBER verification;
-// - grant DRIVER verification;
-// - reopen Verification;
-// - expire Verification;
-// - revoke Verification;
-// - modify Identity;
-// - modify Identity roles;
-// - access Asset storage;
-// - perform external verification-provider operations;
-// - emit domain events directly;
-// - send notifications;
-// - perform external side effects.
-//
-// -----------------------------------------------------------------------------
-//
-// Aggregate behavior:
-//
-// VerificationAggregate.rejectRequest() is responsible for:
-//
-// - resolving the requested VerificationRequest;
-// - validating the reviewer;
-// - validating the rejection reason;
-// - validating the review timestamp;
-// - preventing rejection of an expired request;
-// - transitioning the request to REJECTED;
-// - recording VerificationRequestRejectedEvent;
-// - maintaining aggregate consistency.
-//
-// -----------------------------------------------------------------------------
-//
-// Application flow:
-//
-//     RejectVerificationRequestCommand
-//              │
-//              ▼
-// verificationRepository.findByIdentityPublicId()
-//              │
-//              ▼
-//      VerificationAggregate
-//              │
-//              ▼
-//      aggregate.rejectRequest()
-//              │
-//              └── VerificationRequest -> REJECTED
-//              │
-//              ▼
-// verificationRepository.save()
-//              │
-//              ▼
-//      VerificationAggregate
-//
-// -----------------------------------------------------------------------------
-//
-// Request lifecycle:
-//
-// PENDING ───────► REJECTED
-//
-// REJECTED is terminal.
-//
-// An expired PENDING request cannot be rejected through this operation.
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// NestJS
-// -----------------------------------------------------------------------------
 
 import { Inject, Injectable } from '@nestjs/common';
 
-// -----------------------------------------------------------------------------
-// Foundation
-// -----------------------------------------------------------------------------
-
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
-
-// -----------------------------------------------------------------------------
-// Identity Tokens
-// -----------------------------------------------------------------------------
 
 import { IDENTITY_TOKENS } from '../identity.tokens';
 
-// -----------------------------------------------------------------------------
-// Command
-// -----------------------------------------------------------------------------
-
 import type { RejectVerificationRequestCommand } from '../commands/reject-verification-request.command';
-
-// -----------------------------------------------------------------------------
-// Repository
-// -----------------------------------------------------------------------------
 
 import type { VerificationRepository } from '../../domain/repositories/verification.repository';
 
-// -----------------------------------------------------------------------------
-// Exceptions
-// -----------------------------------------------------------------------------
+import type { VerificationRequestEntity } from '../../domain/entities';
 
 import { VerificationInvariantException } from '../../domain/exceptions/verification-invariant.exception';
 
@@ -141,95 +21,69 @@ import { VerificationInvariantException } from '../../domain/exceptions/verifica
 // =============================================================================
 
 /**
- * Rejects a VerificationRequest belonging to a Verification aggregate.
+ * Rejects a VerificationRequest belonging to a specific Verification
+ * aggregate, persists the transition, reloads the aggregate, and returns
+ * the updated VerificationRequestEntity for the REST response.
  *
- * The handler performs application-level orchestration only:
- *
- *     command
- *       ↓
- *     aggregate lookup by Identity
- *       ↓
- *     aggregate.rejectRequest()
- *       ↓
- *     aggregate persistence
- *
- * All request lifecycle rules remain inside VerificationAggregate and
- * VerificationRequestEntity.
+ * VerificationAggregate remains responsible for request ownership,
+ * lifecycle rules, reviewer validation, and domain events.
  */
 @Injectable()
-export class RejectVerificationRequestHandler implements CommandHandler<RejectVerificationRequestCommand> {
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
+export class RejectVerificationRequestHandler implements CommandHandler<
+  RejectVerificationRequestCommand,
+  VerificationRequestEntity
+> {
   public constructor(
     @Inject(IDENTITY_TOKENS.REPOSITORIES.VERIFICATION)
     private readonly verificationRepository: VerificationRepository,
   ) {}
 
-  // ===========================================================================
-  // Execute
-  // ===========================================================================
-
   /**
-   * Executes the RejectVerificationRequestCommand.
+   * Executes the request rejection command.
    *
-   * A successful execution:
-   *
-   * - transitions the requested VerificationRequest to REJECTED;
-   * - records the reviewer;
-   * - records the rejection reason;
-   * - records VerificationRequestRejectedEvent;
-   * - persists the updated Verification aggregate.
-   *
-   * It does not reject the parent Verification aggregate.
+   * Loads the exact aggregate, rejects and persists the request, reloads
+   * the saved aggregate, verifies its identity, and returns the updated
+   * request entity.
    */
   public async execute(
     command: RejectVerificationRequestCommand,
-  ): Promise<void> {
-    // -------------------------------------------------------------------------
-    // 1. Command guard
-    // -------------------------------------------------------------------------
+  ): Promise<VerificationRequestEntity> {
+    // -----------------------------------------------------------------------
+    // 1. Validate command
+    // -----------------------------------------------------------------------
 
-    if (command === undefined) {
+    if (command === undefined || command === null) {
       throw new VerificationInvariantException(
         'Reject verification request command is required.',
       );
     }
 
-    // -------------------------------------------------------------------------
-    // 2. Identity guard
-    // -------------------------------------------------------------------------
-
-    if (command.identityPublicId === undefined) {
+    if (
+      command.verificationPublicId === undefined ||
+      command.verificationPublicId === null
+    ) {
       throw new VerificationInvariantException(
-        'Verification request identity public ID is required.',
+        'Verification public ID is required.',
       );
     }
 
-    // -------------------------------------------------------------------------
-    // 3. Request guard
-    // -------------------------------------------------------------------------
-
-    if (command.requestPublicId === undefined) {
+    if (
+      command.requestPublicId === undefined ||
+      command.requestPublicId === null
+    ) {
       throw new VerificationInvariantException(
         'Verification request public ID is required.',
       );
     }
 
-    // -------------------------------------------------------------------------
-    // 4. Reviewer guard
-    // -------------------------------------------------------------------------
-
-    if (command.reviewedByPublicId === undefined) {
+    if (
+      command.reviewedByPublicId === undefined ||
+      command.reviewedByPublicId === null
+    ) {
       throw new VerificationInvariantException(
         'Verification request reviewer public ID is required.',
       );
     }
-
-    // -------------------------------------------------------------------------
-    // 5. Rejection reason guard
-    // -------------------------------------------------------------------------
 
     if (
       typeof command.reason !== 'string' ||
@@ -240,69 +94,101 @@ export class RejectVerificationRequestHandler implements CommandHandler<RejectVe
       );
     }
 
-    // -------------------------------------------------------------------------
-    // 6. Load Verification aggregate
-    // -------------------------------------------------------------------------
-    //
-    // VerificationRequestEntity is owned by VerificationAggregate.
-    //
-    // Therefore the handler loads the complete Verification aggregate rather
-    // than attempting to retrieve or mutate the request independently.
-    // -------------------------------------------------------------------------
+    if (
+      typeof command.correlationId !== 'string' ||
+      command.correlationId.trim().length === 0
+    ) {
+      throw new VerificationInvariantException(
+        'Verification request rejection correlation ID is required.',
+      );
+    }
 
-    const aggregate = await this.verificationRepository.findByIdentityPublicId(
-      command.identityPublicId,
+    // -----------------------------------------------------------------------
+    // 2. Load the exact Verification aggregate
+    // -----------------------------------------------------------------------
+
+    const aggregate = await this.verificationRepository.findByPublicId(
+      command.verificationPublicId,
     );
 
     if (aggregate === null) {
       throw new VerificationInvariantException(
-        `Verification was not found for identity ${command.identityPublicId.value}.`,
+        `Verification ${command.verificationPublicId.value} was not found.`,
       );
     }
 
-    // -------------------------------------------------------------------------
-    // 7. Reject VerificationRequest through the aggregate
-    // -------------------------------------------------------------------------
-    //
-    // VerificationAggregate.rejectRequest() owns:
-    //
-    // - request ownership resolution;
-    // - reviewer validation;
-    // - rejection reason validation and normalization;
-    // - review timestamp validation;
-    // - request expiration validation;
-    // - request lifecycle transition;
-    // - VerificationRequestRejectedEvent recording;
-    // - aggregate audit synchronization;
-    // - aggregate consistency validation.
-    //
-    // The parent Verification remains unchanged at the lifecycle level.
-    // -------------------------------------------------------------------------
+    // Preserve identifiers to validate the reloaded aggregate and request.
+    const verificationPublicId = aggregate.publicId;
+    const requestPublicId = command.requestPublicId;
+
+    // Confirm the target request exists before changing its lifecycle.
+    const existingRequest = aggregate.getRequest(requestPublicId);
+
+    if (existingRequest === null || existingRequest === undefined) {
+      throw new VerificationInvariantException(
+        `Verification request ${requestPublicId.value} was not found in verification ${verificationPublicId.value}.`,
+      );
+    }
+
+    // -----------------------------------------------------------------------
+    // 3. Apply request rejection through the aggregate
+    // -----------------------------------------------------------------------
 
     aggregate.rejectRequest(
-      command.requestPublicId,
+      requestPublicId,
       command.reviewedByPublicId,
       command.reason,
       command.correlationId,
       command.reviewedAt,
     );
 
-    // -------------------------------------------------------------------------
-    // 8. Persist aggregate
-    // -------------------------------------------------------------------------
-    //
-    // VerificationAggregate remains the unit of persistence.
-    //
-    // The rejected VerificationRequest is persisted as part of its owning
-    // aggregate.
-    // -------------------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // 4. Persist the complete aggregate
+    // -----------------------------------------------------------------------
 
     await this.verificationRepository.save(aggregate);
+
+    // -----------------------------------------------------------------------
+    // 5. Reload the persisted aggregate
+    // -----------------------------------------------------------------------
+
+    const savedAggregate =
+      await this.verificationRepository.findByPublicId(verificationPublicId);
+
+    if (savedAggregate === null) {
+      throw new VerificationInvariantException(
+        'Verification could not be reloaded after request rejection.',
+      );
+    }
+
+    // -----------------------------------------------------------------------
+    // 6. Verify the reloaded aggregate is the same aggregate
+    // -----------------------------------------------------------------------
+
+    if (!savedAggregate.publicId.equals(verificationPublicId)) {
+      throw new VerificationInvariantException(
+        'The reloaded verification does not match the rejected request verification.',
+      );
+    }
+
+    // -----------------------------------------------------------------------
+    // 7. Resolve the updated request from the saved aggregate
+    // -----------------------------------------------------------------------
+
+    const savedRequest = savedAggregate.getRequest(requestPublicId);
+
+    if (savedRequest === null || savedRequest === undefined) {
+      throw new VerificationInvariantException(
+        'The rejected verification request could not be reloaded.',
+      );
+    }
+
+    // -----------------------------------------------------------------------
+    // 8. Return the persisted request for response mapping
+    // -----------------------------------------------------------------------
+
+    return savedRequest;
   }
 }
-
-// -----------------------------------------------------------------------------
-// Default Export
-// -----------------------------------------------------------------------------
 
 export default RejectVerificationRequestHandler;

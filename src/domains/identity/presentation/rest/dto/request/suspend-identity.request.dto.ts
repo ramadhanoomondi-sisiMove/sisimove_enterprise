@@ -1,26 +1,55 @@
+
 // -----------------------------------------------------------------------------
 // Identity — Suspend Identity Request DTO
 // -----------------------------------------------------------------------------
 //
 // REST request DTO for suspending an Identity aggregate.
 //
-// The application handler maps this transport DTO to:
+// Route:
+//
+//     PATCH /identities/:identityPublicId/suspend
+//
+// Request body:
+//
+//     {}
+//
+// TRANSPORT BOUNDARY
+//
+// The application layer establishes:
+//
+// - identityPublicId from the validated route parameter;
+// - correlationId from the established request-correlation context;
+// - causationId from the existing command/event context, when available.
+//
+// These application-owned values are not required in the HTTP request body.
+//
+// The application handler maps the request to:
 //
 //     SuspendIdentityCommand
 //
+// It loads the IdentityAggregate, invokes:
+//
+//     identityAggregate.suspend(correlationId)
+//
+// and persists the aggregate.
+//
+// The aggregate determines suspendedAt and records the resulting
+// IdentitySuspendedEvent when the lifecycle transition occurs.
+//
 // The DTO does NOT:
+//
+// - identify the aggregate independently of the route;
+// - generate correlation or causation identifiers;
 // - resolve the Identity;
 // - perform lifecycle validation;
 // - determine suspendedAt;
-// - mutate the Identity aggregate;
+// - mutate IdentityEntity directly;
 // - revoke authentication credentials;
 // - terminate sessions;
 // - revoke verification;
 // - perform persistence;
-// - emit domain events.
-//
-// The suspension timestamp is a domain fact determined by
-// IdentityAggregate.suspend() when the lifecycle mutation occurs.
+// - emit domain events directly;
+// - perform external side effects.
 //
 // -----------------------------------------------------------------------------
 
@@ -28,39 +57,6 @@
 // NestJS Swagger
 // -----------------------------------------------------------------------------
 
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-
-// -----------------------------------------------------------------------------
-// Class Transformer
-// -----------------------------------------------------------------------------
-
-import { Transform, type TransformFnParams } from 'class-transformer';
-
-// -----------------------------------------------------------------------------
-// Class Validator
-// -----------------------------------------------------------------------------
-
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
-
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
-
-const trimString = ({ value }: TransformFnParams): unknown =>
-  typeof value === 'string' ? value.trim() : value;
-
-// -----------------------------------------------------------------------------
-// Constants
-// -----------------------------------------------------------------------------
-
-const MIN_PUBLIC_ID_LENGTH = 1;
-const MAX_PUBLIC_ID_LENGTH = 128;
-
-const MIN_CORRELATION_ID_LENGTH = 1;
-const MAX_CORRELATION_ID_LENGTH = 128;
-
-const MIN_CAUSATION_ID_LENGTH = 1;
-const MAX_CAUSATION_ID_LENGTH = 128;
 
 // -----------------------------------------------------------------------------
 // DTO
@@ -69,130 +65,24 @@ const MAX_CAUSATION_ID_LENGTH = 128;
 /**
  * REST request for suspending an Identity aggregate.
  *
- * Represents the transport-level intent to transition an Identity into the
- * SUSPENDED lifecycle state.
+ * This DTO intentionally contains no request-body properties.
  *
- * Required transport input:
+ * The Identity is identified by the route parameter:
  *
- * - identityPublicId;
- * - correlationId.
+ *     :identityPublicId
  *
- * Optional transport input:
+ * Correlation and causation metadata are established at the
+ * controller/application boundary.
  *
- * - causationId.
- *
- * The suspension timestamp is intentionally NOT supplied by the caller.
- * IdentityAggregate determines suspendedAt when the lifecycle mutation occurs.
- *
- * The following values are intentionally NOT supplied:
- *
- * - identity status;
- * - lifecycle state;
- * - suspendedAt;
- * - domain events.
- *
- * Those values are controlled by IdentityAggregate and the application
- * workflow.
+ * IdentityAggregate remains authoritative for lifecycle validation,
+ * suspension timestamps and domain-event recording.
  */
 export class SuspendIdentityRequestDto {
-  // ===========================================================================
-  // Identity Public ID
-  // ===========================================================================
-
   /**
-   * Public identifier of the Identity aggregate to suspend.
+   * No body properties are required for this operation.
    *
-   * This is an opaque public identifier and not a persistence/database
-   * identifier.
+   * Retain this class if the existing controller uses a request DTO
+   * for lifecycle endpoints. Otherwise, the controller may omit @Body()
+   * for this endpoint.
    */
-  @ApiProperty({
-    example: 'IDN-01K3R8Y7Q2',
-    description:
-      'Opaque public identifier of the Identity aggregate to suspend.',
-    minLength: MIN_PUBLIC_ID_LENGTH,
-    maxLength: MAX_PUBLIC_ID_LENGTH,
-  })
-  @Transform(trimString)
-  @IsString({
-    message: 'identityPublicId must be a string.',
-  })
-  @MinLength(MIN_PUBLIC_ID_LENGTH, {
-    message: 'identityPublicId must not be empty.',
-  })
-  @MaxLength(MAX_PUBLIC_ID_LENGTH, {
-    message: `identityPublicId must not exceed ${MAX_PUBLIC_ID_LENGTH} characters.`,
-  })
-  identityPublicId!: string;
-
-  // ===========================================================================
-  // Correlation
-  // ===========================================================================
-
-  /**
-   * Correlation identifier for the suspension operation and resulting
-   * IdentitySuspendedEvent.
-   */
-  @ApiProperty({
-    example: 'COR-01K3R8Z1M4',
-    description:
-      'Correlation identifier for the suspension operation and resulting domain event.',
-    minLength: MIN_CORRELATION_ID_LENGTH,
-    maxLength: MAX_CORRELATION_ID_LENGTH,
-  })
-  @Transform(trimString)
-  @IsString({
-    message: 'correlationId must be a string.',
-  })
-  @MinLength(MIN_CORRELATION_ID_LENGTH, {
-    message: 'correlationId must not be empty.',
-  })
-  @MaxLength(MAX_CORRELATION_ID_LENGTH, {
-    message: `correlationId must not exceed ${MAX_CORRELATION_ID_LENGTH} characters.`,
-  })
-  correlationId!: string;
-
-  // ===========================================================================
-  // Causation
-  // ===========================================================================
-
-  /**
-   * Optional identifier of the command or operation that caused this
-   * suspension request.
-   *
-   * When supplied, this value is propagated through the application workflow
-   * and may be included in the resulting domain event metadata.
-   */
-  @ApiPropertyOptional({
-    example: 'CMD-01K3R8Y6M4',
-    description:
-      'Optional identifier of the command or operation that caused this suspension request.',
-    nullable: true,
-    minLength: MIN_CAUSATION_ID_LENGTH,
-    maxLength: MAX_CAUSATION_ID_LENGTH,
-  })
-  @Transform(trimString)
-  @IsOptional()
-  @IsString({
-    message: 'causationId must be a string.',
-  })
-  @MinLength(MIN_CAUSATION_ID_LENGTH, {
-    message: 'causationId must not be empty.',
-  })
-  @MaxLength(MAX_CAUSATION_ID_LENGTH, {
-    message: `causationId must not exceed ${MAX_CAUSATION_ID_LENGTH} characters.`,
-  })
-  causationId?: string;
 }
-
-// -----------------------------------------------------------------------------
-// Exported Constants
-// -----------------------------------------------------------------------------
-
-export {
-  MIN_PUBLIC_ID_LENGTH as IDENTITY_SUSPEND_PUBLIC_ID_MIN_LENGTH,
-  MAX_PUBLIC_ID_LENGTH as IDENTITY_SUSPEND_PUBLIC_ID_MAX_LENGTH,
-  MIN_CORRELATION_ID_LENGTH as IDENTITY_SUSPEND_CORRELATION_ID_MIN_LENGTH,
-  MAX_CORRELATION_ID_LENGTH as IDENTITY_SUSPEND_CORRELATION_ID_MAX_LENGTH,
-  MIN_CAUSATION_ID_LENGTH as IDENTITY_SUSPEND_CAUSATION_ID_MIN_LENGTH,
-  MAX_CAUSATION_ID_LENGTH as IDENTITY_SUSPEND_CAUSATION_ID_MAX_LENGTH,
-};

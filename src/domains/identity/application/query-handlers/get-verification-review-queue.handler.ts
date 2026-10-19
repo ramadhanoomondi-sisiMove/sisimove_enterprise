@@ -19,7 +19,7 @@ export class GetVerificationReviewQueueHandler implements QueryHandler<
   ) {}
 
   public async execute(): Promise<VerificationAggregate[]> {
-    return this.verificationRepository.findWithPendingRequests();
+    return this.verificationRepository.findForReviewQueue();
   }
 }
 

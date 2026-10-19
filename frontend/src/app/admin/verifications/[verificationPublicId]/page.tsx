@@ -6,8 +6,11 @@ import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
 import { ADMIN_ROUTES } from "@/foundation/routing/admin-routes";
+
 import { verificationsApi } from "@/features/admin/verifications/api/verifications.api";
 import { useVerificationActions } from "@/features/admin/verifications/hooks/use-verification-actions";
+import { useVerificationPermissions } from "@/features/admin/verifications/hooks/use-verification-permissions";
+import { verificationsKeys } from "@/features/admin/verifications/queries/verifications.keys";
 
 import type {
   VerificationApiResponse,
@@ -29,14 +32,20 @@ import {
   VerificationDetailSkeleton,
 } from "@/components/admin/verifications";
 
+interface VerificationDetailPageProps {
+  /**
+   * Permission codes supplied by the authenticated admin permission source.
+   * Pass the current administrator's actual permissions here.
+   */
+  grantedPermissions: readonly string[];
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
 function isForbiddenError(error: unknown): boolean {
-  if (!isRecord(error)) {
-    return false;
-  }
+  if (!isRecord(error)) return false;
 
   if (
     error.status === 403 ||
@@ -46,9 +55,7 @@ function isForbiddenError(error: unknown): boolean {
     return true;
   }
 
-  if (!isRecord(error.response)) {
-    return false;
-  }
+  if (!isRecord(error.response)) return false;
 
   const response = error.response;
 
@@ -56,9 +63,7 @@ function isForbiddenError(error: unknown): boolean {
     return true;
   }
 
-  if (!isRecord(response.data)) {
-    return false;
-  }
+  if (!isRecord(response.data)) return false;
 
   return (
     response.data.statusCode === 403 ||
@@ -66,15 +71,26 @@ function isForbiddenError(error: unknown): boolean {
   );
 }
 
-export default function VerificationDetailPage() {
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.trim()
+    ? error.message
+    : fallback;
+}
+
+export default function VerificationDetailPage({
+  grantedPermissions,
+}: VerificationDetailPageProps) {
   const params = useParams<{ verificationPublicId: string }>();
   const router = useRouter();
+
   const verificationPublicId = params.verificationPublicId;
 
   const actions = useVerificationActions();
+  const permissions = useVerificationPermissions(grantedPermissions);
 
   const [submittingRequestPublicId, setSubmittingRequestPublicId] =
     useState<string | null>(null);
+
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [isAccessDenied, setIsAccessDenied] = useState(false);
@@ -86,9 +102,9 @@ export default function VerificationDetailPage() {
     error: verificationError,
     refetch,
   } = useQuery<VerificationApiResponse, Error>({
-    queryKey: ["verifications", "detail", verificationPublicId],
+    queryKey: verificationsKeys.detail(verificationPublicId),
     queryFn: () => verificationsApi.getByPublicId(verificationPublicId),
-    enabled: Boolean(verificationPublicId),
+    enabled: verificationPublicId.trim().length > 0,
   });
 
   function handleApprove(request: VerificationRequestApiResponse) {
@@ -113,9 +129,10 @@ export default function VerificationDetailPage() {
           }
 
           setActionError(
-            error instanceof Error
-              ? error.message
-              : "Unable to approve this evidence request.",
+            getErrorMessage(
+              error,
+              "Unable to approve this evidence request.",
+            ),
           );
         },
         onSettled: () => {
@@ -158,9 +175,10 @@ export default function VerificationDetailPage() {
           }
 
           setActionError(
-            error instanceof Error
-              ? error.message
-              : "Unable to reject this evidence request.",
+            getErrorMessage(
+              error,
+              "Unable to reject this evidence request.",
+            ),
           );
         },
         onSettled: () => {
@@ -237,10 +255,19 @@ export default function VerificationDetailPage() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <VerificationMemberSummary verification={verification} />
+
         <VerificationStatusPanel verification={verification} />
-        <VerificationLevelPanel verification={verification} />
+
+        <VerificationLevelPanel
+          verification={verification}
+          canGrantMember={permissions.canGrantMember}
+          canGrantDriver={permissions.canGrantDriver}
+        />
+
         <VerificationResultsPanel verification={verification} />
+
         <VerificationDatesPanel verification={verification} />
+
         <VerificationReviewerPanel verification={verification} />
       </div>
 

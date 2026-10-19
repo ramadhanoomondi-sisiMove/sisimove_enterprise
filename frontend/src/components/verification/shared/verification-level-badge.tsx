@@ -46,7 +46,7 @@ interface LevelPresentation {
 
 const LEVEL_PRESENTATION: Record<VerificationLevel, LevelPresentation> = {
   NONE: {
-    label: 'Not verified',
+    label: 'NONE-Not ready to book or drive',
     className: [
       'border-[var(--border)]',
       'bg-[var(--background-subtle)]',

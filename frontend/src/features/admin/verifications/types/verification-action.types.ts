@@ -13,9 +13,11 @@
  * Important:
  * - Aggregate-level actions are different from request-level review actions.
  * - Granting MEMBER or DRIVER verification is not the same as approving
- *   a submitted evidence request.
+ *   an evidence request.
+ * - The grant endpoints require the public ID of the verification request
+ *   used as the basis for the grant.
  * - The backend remains authoritative for permissions and state transitions.
- * - These types do not expose internal persistence identifiers.
+ * - Internal persistence identifiers must not cross the API boundary.
  * -----------------------------------------------------------------------------
  */
 
@@ -29,11 +31,6 @@ import type {
 // AGGREGATE ACTIONS
 // =============================================================================
 
-/**
- * Aggregate-level operations supported by the verification controller.
- *
- * These names correspond to the backend action endpoints.
- */
 export type VerificationAction =
   | "grant-member"
   | "grant-driver"
@@ -42,21 +39,29 @@ export type VerificationAction =
   | "expire"
   | "revoke";
 
+// =============================================================================
+// AGGREGATE ACTION PAYLOADS
+// =============================================================================
+
+/**
+ * Shared payload for granting a verification level.
+ *
+ * The backend grant endpoints require a verification request public ID.
+ * This identifies the submitted evidence request supporting the grant.
+ */
+export interface GrantVerificationPayload {
+  verificationRequestPublicId: string;
+}
+
 /**
  * Grant MEMBER verification.
- *
- * Keep the payload empty unless the actual backend DTO defines additional
- * required fields.
  */
-export type GrantMemberVerificationPayload = Record<string, never>;
+export type GrantMemberVerificationPayload = GrantVerificationPayload;
 
 /**
  * Grant DRIVER verification.
- *
- * Keep the payload empty unless the actual backend DTO defines additional
- * required fields.
  */
-export type GrantDriverVerificationPayload = Record<string, never>;
+export type GrantDriverVerificationPayload = GrantVerificationPayload;
 
 /**
  * Reject an aggregate-level verification.
@@ -67,15 +72,11 @@ export interface RejectVerificationPayload {
 
 /**
  * Reopen a previously rejected or expired verification.
- *
- * Confirm the backend request DTO before adding payload fields.
  */
 export type ReopenVerificationPayload = Record<string, never>;
 
 /**
  * Expire an aggregate-level verification.
- *
- * Confirm the backend request DTO before adding payload fields.
  */
 export type ExpireVerificationPayload = Record<string, never>;
 
@@ -90,12 +91,6 @@ export interface RevokeVerificationPayload {
 // ACTION PAYLOAD UNION
 // =============================================================================
 
-/**
- * Union of payloads that can accompany aggregate-level actions.
- *
- * Prefer the specific payload type for each API method rather than relying
- * on this union to validate action/payload combinations.
- */
 export type VerificationActionPayload =
   | GrantMemberVerificationPayload
   | GrantDriverVerificationPayload
@@ -109,11 +104,8 @@ export type VerificationActionPayload =
 // =============================================================================
 
 /**
- * Expected result when an aggregate action endpoint returns the updated
- * VerificationResponse.
- *
- * Verify each controller endpoint's actual return contract before using
- * this alias as its declared HTTP response type.
+ * Aggregate-level grant and lifecycle actions return the updated
+ * Verification aggregate when confirmed by their controller contracts.
  */
 export type VerificationActionResponse = VerificationApiResponse;
 
@@ -121,19 +113,13 @@ export type VerificationActionResponse = VerificationApiResponse;
 // ACTION STATE
 // =============================================================================
 
-/**
- * Aggregate states used when presenting verification actions.
- *
- * This type describes available state values; it does not replace backend
- * authorization or lifecycle validation.
- */
 export interface VerificationActionState {
   status: VerificationApiStatus;
   level: VerificationApiLevel;
 }
 
 /**
- * Identifies an aggregate-level action that is currently being submitted.
+ * Identifies an aggregate-level action currently being submitted.
  */
 export interface VerificationActionExecution {
   verificationPublicId: string;

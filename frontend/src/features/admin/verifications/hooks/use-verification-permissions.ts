@@ -2,43 +2,69 @@
 "use client";
 
 /**
+ * -----------------------------------------------------------------------------
  * sisiMove — Verification Permissions Hook
+ * -----------------------------------------------------------------------------
+ *
+ * Path:
+ * src/features/admin/verifications/hooks/use-verification-permissions.ts
+ *
+ * Purpose:
+ * Exposes frontend capability checks for verification actions.
+ *
+ * Important:
+ * - Granting MEMBER and DRIVER verification uses separate permissions.
+ * - Evidence review actions use verification:review.
+ * - Other aggregate management actions use verification:manage.
+ * - The backend remains the authorization boundary.
+ * -----------------------------------------------------------------------------
  */
 
 const VERIFICATION_PERMISSIONS = {
   read: "verification:read",
+  submit: "verification:submit",
+
+  // Aggregate-level verification grants
   grantMember: "verification:grant-member",
   grantDriver: "verification:grant-driver",
-  reject: "verification:reject",
-  reopen: "verification:reopen",
-  expire: "verification:expire",
-  revoke: "verification:revoke",
-  approveRequest: "verification-request:approve",
-  rejectRequest: "verification-request:reject",
-  submit: "verification:submit",
+
+  // Request-level evidence review
+  review: "verification:review",
+
+  // Other aggregate-level actions
+  manage: "verification:manage",
 } as const;
 
 export const useVerificationPermissions = (
   grantedPermissions: readonly string[],
 ) => {
+  const permissionSet = new Set(grantedPermissions);
+
   const hasPermission = (permission: string): boolean =>
-    grantedPermissions.includes(permission);
+    permissionSet.has(permission);
+
+  const canReview = hasPermission(VERIFICATION_PERMISSIONS.review);
+  const canManage = hasPermission(VERIFICATION_PERMISSIONS.manage);
 
   return {
     canRead: hasPermission(VERIFICATION_PERMISSIONS.read),
-    canGrantMember: hasPermission(VERIFICATION_PERMISSIONS.grantMember),
-    canGrantDriver: hasPermission(VERIFICATION_PERMISSIONS.grantDriver),
-    canReject: hasPermission(VERIFICATION_PERMISSIONS.reject),
-    canReopen: hasPermission(VERIFICATION_PERMISSIONS.reopen),
-    canExpire: hasPermission(VERIFICATION_PERMISSIONS.expire),
-    canRevoke: hasPermission(VERIFICATION_PERMISSIONS.revoke),
-    canApproveRequest: hasPermission(
-      VERIFICATION_PERMISSIONS.approveRequest,
-    ),
-    canRejectRequest: hasPermission(
-      VERIFICATION_PERMISSIONS.rejectRequest,
-    ),
     canSubmit: hasPermission(VERIFICATION_PERMISSIONS.submit),
+
+    canGrantMember: hasPermission(
+      VERIFICATION_PERMISSIONS.grantMember,
+    ),
+    canGrantDriver: hasPermission(
+      VERIFICATION_PERMISSIONS.grantDriver,
+    ),
+
+    canApproveRequest: canReview,
+    canRejectRequest: canReview,
+    canCancelRequest: canReview,
+
+    canReject: canManage,
+    canReopen: canManage,
+    canExpire: canManage,
+    canRevoke: canManage,
   };
 };
 

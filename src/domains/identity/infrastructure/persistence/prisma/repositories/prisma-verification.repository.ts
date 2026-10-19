@@ -828,6 +828,33 @@ export class PrismaVerificationRepository implements VerificationRepository {
     );
   }
 
+  public async findForReviewQueue(): Promise<VerificationAggregate[]> {
+    const records = await this.prisma.verification.findMany({
+      where: {
+        OR: [
+          {
+            status: $Enums.VerificationStatus.PENDING,
+          },
+          {
+            requests: {
+              some: {
+                status: $Enums.VerificationRequestStatus.PENDING,
+              },
+            },
+          },
+        ],
+      },
+
+      include: verificationAggregateInclude,
+
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return records.map((record) => this.toAggregate(record));
+  }
+
   public async findByRequestType(
     type: VerificationRequestType,
   ): Promise<VerificationAggregate[]> {

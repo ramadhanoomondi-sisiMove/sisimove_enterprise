@@ -368,6 +368,17 @@ export interface VerificationRepository {
   findWithPendingRequests(): Promise<VerificationAggregate[]>;
 
   /**
+   * Finds Verification aggregates that require review.
+   *
+   * Includes:
+   * - PENDING Verification aggregates, regardless of verification level
+   *   or whether they have any requests yet.
+   * - Any Verification aggregate containing a PENDING request, including
+   *   driver-upgrade requests belonging to existing verified members.
+   */
+  findForReviewQueue(): Promise<VerificationAggregate[]>;
+
+  /**
    * Finds complete Verification aggregates containing at least one
    * VerificationRequestEntity of the supplied type.
    */

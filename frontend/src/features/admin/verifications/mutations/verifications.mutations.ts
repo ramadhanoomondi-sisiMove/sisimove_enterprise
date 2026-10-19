@@ -11,14 +11,38 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { verificationRequestsApi } from "../api/verification-requests.api";
 import { verificationsApi } from "../api/verifications.api";
 import { verificationsKeys } from "../queries/verifications.keys";
+import { membersKeys } from "@/features/admin/members/queries/members.keys";
+
+interface VerificationMutationVariables {
+  verificationPublicId: string;
+  identityPublicId?: string;
+}
+
+interface VerificationRequestMutationVariables
+  extends VerificationMutationVariables {
+  verificationRequestPublicId: string;
+}
+
+interface RejectVerificationVariables
+  extends VerificationMutationVariables {
+  requestPublicId: string;
+  reason: string;
+}
+
+interface RevokeVerificationVariables
+  extends VerificationMutationVariables {
+  reason: string;
+}
 
 export const useVerificationMutations = () => {
   const queryClient = useQueryClient();
 
   const invalidateVerification = async (
     verificationPublicId: string,
+    identityPublicId?: string,
   ): Promise<void> => {
-    await Promise.all([
+    const invalidations = [
+      // Refresh the specific verification and its requests.
       queryClient.invalidateQueries({
         queryKey: verificationsKeys.detail(verificationPublicId),
       }),
@@ -31,23 +55,41 @@ export const useVerificationMutations = () => {
       queryClient.invalidateQueries({
         queryKey: verificationsKeys.requests(verificationPublicId),
       }),
-    ]);
+
+      // Refresh verification-related lists, including the review queue.
+      queryClient.invalidateQueries({
+        queryKey: verificationsKeys.all,
+      }),
+    ];
+
+    // Refresh the verification displayed on the member detail page,
+    // when the member's identity ID is supplied.
+    if (identityPublicId?.trim()) {
+      invalidations.push(
+        queryClient.invalidateQueries({
+          queryKey: membersKeys.verification(identityPublicId),
+        }),
+      );
+    }
+
+    await Promise.all(invalidations);
   };
 
   const grantMember = useMutation({
     mutationFn: ({
       verificationPublicId,
       verificationRequestPublicId,
-    }: {
-      verificationPublicId: string;
-      verificationRequestPublicId: string;
-    }) =>
+    }: VerificationRequestMutationVariables) =>
       verificationsApi.grantMember(
         verificationPublicId,
         verificationRequestPublicId,
       ),
+
     onSuccess: async (_, variables) => {
-      await invalidateVerification(variables.verificationPublicId);
+      await invalidateVerification(
+        variables.verificationPublicId,
+        variables.identityPublicId,
+      );
     },
   });
 
@@ -55,16 +97,17 @@ export const useVerificationMutations = () => {
     mutationFn: ({
       verificationPublicId,
       verificationRequestPublicId,
-    }: {
-      verificationPublicId: string;
-      verificationRequestPublicId: string;
-    }) =>
+    }: VerificationRequestMutationVariables) =>
       verificationsApi.grantDriver(
         verificationPublicId,
         verificationRequestPublicId,
       ),
+
     onSuccess: async (_, variables) => {
-      await invalidateVerification(variables.verificationPublicId);
+      await invalidateVerification(
+        variables.verificationPublicId,
+        variables.identityPublicId,
+      );
     },
   });
 
@@ -73,26 +116,46 @@ export const useVerificationMutations = () => {
       verificationPublicId,
       requestPublicId,
       reason,
-    }: {
-      verificationPublicId: string;
-      requestPublicId: string;
-      reason: string;
-    }) =>
+    }: RejectVerificationVariables) =>
       verificationsApi.reject(
         verificationPublicId,
         requestPublicId,
         reason,
       ),
+
     onSuccess: async (_, variables) => {
-      await invalidateVerification(variables.verificationPublicId);
+      await invalidateVerification(
+        variables.verificationPublicId,
+        variables.identityPublicId,
+      );
     },
   });
 
   const reopen = useMutation({
-    mutationFn: (verificationPublicId: string) =>
+    mutationFn: ({
+      verificationPublicId,
+    }: VerificationMutationVariables) =>
       verificationsApi.reopen(verificationPublicId),
-    onSuccess: async (_, verificationPublicId) => {
-      await invalidateVerification(verificationPublicId);
+
+    onSuccess: async (_, variables) => {
+      await invalidateVerification(
+        variables.verificationPublicId,
+        variables.identityPublicId,
+      );
+    },
+  });
+
+  const expire = useMutation({
+    mutationFn: ({
+      verificationPublicId,
+    }: VerificationMutationVariables) =>
+      verificationsApi.expire(verificationPublicId),
+
+    onSuccess: async (_, variables) => {
+      await invalidateVerification(
+        variables.verificationPublicId,
+        variables.identityPublicId,
+      );
     },
   });
 
@@ -100,12 +163,14 @@ export const useVerificationMutations = () => {
     mutationFn: ({
       verificationPublicId,
       reason,
-    }: {
-      verificationPublicId: string;
-      reason: string;
-    }) => verificationsApi.revoke(verificationPublicId, reason),
+    }: RevokeVerificationVariables) =>
+      verificationsApi.revoke(verificationPublicId, reason),
+
     onSuccess: async (_, variables) => {
-      await invalidateVerification(variables.verificationPublicId);
+      await invalidateVerification(
+        variables.verificationPublicId,
+        variables.identityPublicId,
+      );
     },
   });
 
@@ -113,16 +178,17 @@ export const useVerificationMutations = () => {
     mutationFn: ({
       verificationPublicId,
       verificationRequestPublicId,
-    }: {
-      verificationPublicId: string;
-      verificationRequestPublicId: string;
-    }) =>
+    }: VerificationRequestMutationVariables) =>
       verificationRequestsApi.approve(
         verificationPublicId,
         verificationRequestPublicId,
       ),
+
     onSuccess: async (_, variables) => {
-      await invalidateVerification(variables.verificationPublicId);
+      await invalidateVerification(
+        variables.verificationPublicId,
+        variables.identityPublicId,
+      );
     },
   });
 
@@ -131,18 +197,18 @@ export const useVerificationMutations = () => {
       verificationPublicId,
       verificationRequestPublicId,
       reason,
-    }: {
-      verificationPublicId: string;
-      verificationRequestPublicId: string;
-      reason: string;
-    }) =>
+    }: VerificationRequestMutationVariables & { reason: string }) =>
       verificationRequestsApi.reject(
         verificationPublicId,
         verificationRequestPublicId,
         reason,
       ),
+
     onSuccess: async (_, variables) => {
-      await invalidateVerification(variables.verificationPublicId);
+      await invalidateVerification(
+        variables.verificationPublicId,
+        variables.identityPublicId,
+      );
     },
   });
 
@@ -150,16 +216,17 @@ export const useVerificationMutations = () => {
     mutationFn: ({
       verificationPublicId,
       verificationRequestPublicId,
-    }: {
-      verificationPublicId: string;
-      verificationRequestPublicId: string;
-    }) =>
+    }: VerificationRequestMutationVariables) =>
       verificationRequestsApi.cancel(
         verificationPublicId,
         verificationRequestPublicId,
       ),
+
     onSuccess: async (_, variables) => {
-      await invalidateVerification(variables.verificationPublicId);
+      await invalidateVerification(
+        variables.verificationPublicId,
+        variables.identityPublicId,
+      );
     },
   });
 
@@ -168,6 +235,7 @@ export const useVerificationMutations = () => {
     grantDriver,
     rejectVerification,
     reopen,
+    expire,
     revoke,
     approveRequest,
     rejectRequest,

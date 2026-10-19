@@ -615,7 +615,7 @@ export class VerificationsController {
   @ApiOperation({
     summary: 'Get verification review queue',
     description:
-      'Returns verification aggregates containing pending verification requests.',
+      'Returns pending verification aggregates and aggregates containing pending verification requests, regardless of verification level.',
   })
   @Get('review-queue')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -937,10 +937,6 @@ export class VerificationsController {
   // Reviewer — Verification
   // ===========================================================================
 
-  // ---------------------------------------------------------------------------
-  // Grant Member Verification
-  // ---------------------------------------------------------------------------
-
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Grant member verification',
@@ -956,7 +952,7 @@ export class VerificationsController {
   })
   @Patch(':verificationPublicId/grant-member')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('verification:grant-member')
+  @RequirePermissions('verification:review')
   public async grantMember(
     @Param('verificationPublicId') verificationPublicId: string,
     @Req() req: AuthenticatedRequest,
@@ -964,9 +960,20 @@ export class VerificationsController {
   ): Promise<VerificationResponse> {
     const reviewerPublicId = new IdentityPublicId(req.user.identityPublicId);
 
+    const verificationId = new VerificationPublicId(verificationPublicId);
+
+    // Resolve the target verification, not the administrator's verification.
+    const targetVerification =
+      await this.getVerificationByPublicIdHandler.execute(
+        new GetVerificationByPublicIdQuery(verificationId),
+      );
+
+    // Use the identity that actually owns the target verification.
+    const targetIdentityPublicId = targetVerification.identityPublicId;
+
     const command = new GrantMemberVerificationCommand(
-      reviewerPublicId,
-      new VerificationPublicId(verificationPublicId),
+      targetIdentityPublicId,
+      verificationId,
       new VerificationRequestPublicId(dto.verificationRequestPublicId),
       reviewerPublicId,
       randomUUID(),
@@ -977,10 +984,6 @@ export class VerificationsController {
 
     return VerificationResponseMapper.toResponse(aggregate);
   }
-
-  // ---------------------------------------------------------------------------
-  // Grant Driver Verification
-  // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -997,7 +1000,7 @@ export class VerificationsController {
   })
   @Patch(':verificationPublicId/grant-driver')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('verification:grant-driver')
+  @RequirePermissions('verification:review')
   public async grantDriver(
     @Param('verificationPublicId') verificationPublicId: string,
     @Req() req: AuthenticatedRequest,
@@ -1005,9 +1008,18 @@ export class VerificationsController {
   ): Promise<VerificationResponse> {
     const reviewerPublicId = new IdentityPublicId(req.user.identityPublicId);
 
+    const verificationId = new VerificationPublicId(verificationPublicId);
+
+    const targetVerification =
+      await this.getVerificationByPublicIdHandler.execute(
+        new GetVerificationByPublicIdQuery(verificationId),
+      );
+
+    const targetIdentityPublicId = targetVerification.identityPublicId;
+
     const command = new GrantDriverVerificationCommand(
-      reviewerPublicId,
-      new VerificationPublicId(verificationPublicId),
+      targetIdentityPublicId,
+      verificationId,
       new VerificationRequestPublicId(dto.verificationRequestPublicId),
       reviewerPublicId,
       randomUUID(),
@@ -1020,7 +1032,7 @@ export class VerificationsController {
   }
 
   // ---------------------------------------------------------------------------
-  // Reject Verification
+  // Reject Verification Aggregate
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -1037,15 +1049,27 @@ export class VerificationsController {
   })
   @Patch(':verificationPublicId/reject')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('verification:reject')
+  @RequirePermissions('verification:review')
   public async reject(
+    @Param('verificationPublicId') verificationPublicId: string,
     @Req() req: AuthenticatedRequest,
     @Body() dto: RejectVerificationRequestDto,
   ): Promise<VerificationResponse> {
+    const verificationId = new VerificationPublicId(verificationPublicId);
+
+    // Resolve the target Verification aggregate using the route ID.
+    const targetVerification =
+      await this.getVerificationByPublicIdHandler.execute(
+        new GetVerificationByPublicIdQuery(verificationId),
+      );
+
+    // The target identity and reviewer identity must remain distinct.
+    const targetIdentityPublicId = targetVerification.identityPublicId;
+
     const reviewerPublicId = new IdentityPublicId(req.user.identityPublicId);
 
     const command = new RejectVerificationCommand(
-      reviewerPublicId,
+      targetIdentityPublicId,
       new VerificationRequestPublicId(dto.requestPublicId),
       reviewerPublicId,
       dto.reason,
@@ -1059,6 +1083,11 @@ export class VerificationsController {
 
   // ---------------------------------------------------------------------------
   // Reopen Verification
+  // ---------------------------------------------------------------------------
+  //
+  // The handler must return the saved/reloaded VerificationAggregate.
+  // Returning void here would cause VerificationResponseMapper.toResponse()
+  // to receive undefined after the mutation has already been persisted.
   // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
@@ -1076,7 +1105,7 @@ export class VerificationsController {
   })
   @Patch(':verificationPublicId/reopen')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('verification:reopen')
+  @RequirePermissions('verification:review')
   public async reopen(
     @Param('verificationPublicId') verificationPublicId: string,
   ): Promise<VerificationResponse> {
@@ -1093,28 +1122,40 @@ export class VerificationsController {
   // ---------------------------------------------------------------------------
   // Expire Verification
   // ---------------------------------------------------------------------------
+  //
+  // Resolve the target aggregate first so the command is scoped to the
+  // Identity that owns this verification. The handler returns the updated
+  // VerificationAggregate for response mapping.
+  // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Expire verification',
     description:
-      'Expires a verification according to the application workflow.',
+      'Expires the target member verification according to the application workflow.',
   })
   @ApiParam({
     name: 'verificationPublicId',
     type: String,
     required: true,
     description: 'Public ID of the Verification aggregate.',
-    example: 'VER-8VBLAO',
   })
   @Patch(':verificationPublicId/expire')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('verification:expire')
   public async expire(
-    @Req() req: AuthenticatedRequest,
+    @Param('verificationPublicId') verificationPublicId: string,
   ): Promise<VerificationResponse> {
+    const verificationId = new VerificationPublicId(verificationPublicId);
+
+    // Resolve the member who owns the target verification.
+    const targetVerification =
+      await this.getVerificationByPublicIdHandler.execute(
+        new GetVerificationByPublicIdQuery(verificationId),
+      );
+
     const command = new ExpireVerificationCommand(
-      new IdentityPublicId(req.user.identityPublicId),
+      targetVerification.identityPublicId,
       randomUUID(),
     );
 
@@ -1126,30 +1167,42 @@ export class VerificationsController {
   // ---------------------------------------------------------------------------
   // Revoke Verification
   // ---------------------------------------------------------------------------
+  //
+  // Resolve the target aggregate first; never use the reviewer's Identity as
+  // the target. The handler must return the updated VerificationAggregate.
+  // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Revoke verification',
-    description: 'Revokes an existing verification.',
+    description:
+      'Revokes the target member verification using the supplied reason.',
   })
   @ApiParam({
     name: 'verificationPublicId',
     type: String,
     required: true,
     description: 'Public ID of the Verification aggregate.',
-    example: 'VER-8VBLAO',
   })
   @Patch(':verificationPublicId/revoke')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('verification:revoke')
+  @RequirePermissions('verification:review')
   public async revoke(
+    @Param('verificationPublicId') verificationPublicId: string,
     @Req() req: AuthenticatedRequest,
     @Body() dto: RevokeVerificationRequestDto,
   ): Promise<VerificationResponse> {
+    const targetVerification =
+      await this.getVerificationByPublicIdHandler.execute(
+        new GetVerificationByPublicIdQuery(
+          new VerificationPublicId(verificationPublicId),
+        ),
+      );
+
     const actorPublicId = new IdentityPublicId(req.user.identityPublicId);
 
     const command = new RevokeVerificationCommand(
-      actorPublicId,
+      targetVerification.identityPublicId,
       actorPublicId,
       dto.reason,
       randomUUID(),
@@ -1189,8 +1242,10 @@ export class VerificationsController {
   })
   @Patch(':verificationPublicId/requests/:verificationRequestPublicId/approve')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('request:approve')
+  @RequirePermissions('verification:review')
   public async approveRequest(
+    @Param('verificationPublicId')
+    verificationPublicId: string,
     @Param('verificationRequestPublicId')
     verificationRequestPublicId: string,
     @Req() req: AuthenticatedRequest,
@@ -1198,7 +1253,7 @@ export class VerificationsController {
     const reviewerPublicId = new IdentityPublicId(req.user.identityPublicId);
 
     const command = new ApproveVerificationRequestCommand(
-      reviewerPublicId,
+      new VerificationPublicId(verificationPublicId),
       new VerificationRequestPublicId(verificationRequestPublicId),
       reviewerPublicId,
       randomUUID(),
@@ -1235,8 +1290,10 @@ export class VerificationsController {
   })
   @Patch(':verificationPublicId/requests/:verificationRequestPublicId/reject')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('request:reject')
+  @RequirePermissions('verification:review')
   public async rejectRequest(
+    @Param('verificationPublicId')
+    verificationPublicId: string,
     @Param('verificationRequestPublicId')
     verificationRequestPublicId: string,
     @Req() req: AuthenticatedRequest,
@@ -1245,7 +1302,7 @@ export class VerificationsController {
     const reviewerPublicId = new IdentityPublicId(req.user.identityPublicId);
 
     const command = new RejectVerificationRequestCommand(
-      reviewerPublicId,
+      new VerificationPublicId(verificationPublicId),
       new VerificationRequestPublicId(verificationRequestPublicId),
       reviewerPublicId,
       dto.reason,
