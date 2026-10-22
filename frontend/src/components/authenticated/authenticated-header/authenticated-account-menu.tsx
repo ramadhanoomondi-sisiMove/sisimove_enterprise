@@ -131,6 +131,7 @@ const ACCOUNT_MENU_ITEMS = [
     href: AUTHENTICATED_ROUTES.PROFILE,
     icon: UserRound,
   },
+  
   {
     label: 'Messages',
     href: AUTHENTICATED_ROUTES.MESSAGES,

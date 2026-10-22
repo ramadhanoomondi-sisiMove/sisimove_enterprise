@@ -11,7 +11,7 @@
 // - Validate credentials with authenticateLoginSchema.
 // - Present field-level validation errors.
 // - Invoke useAuthenticateLogin for authentication.
-// - Present authentication errors.
+// - Present safe, classified authentication errors.
 // - Expose successful authentication to the parent through onSuccess.
 // - Present the password-recovery entry point.
 //
@@ -91,15 +91,6 @@ interface MutableLoginFieldErrors {
 // =============================================================================
 // Local Form State
 // =============================================================================
-//
-// The authentication feature contract is readonly.
-//
-// React-controlled form state must be mutable because the values change as
-// the user types. Therefore the form owns this separate mutable presentation
-// state.
-//
-// The readonly authentication contract is created only when calling login().
-// =============================================================================
 
 interface LoginFormState {
   emailOrPhoneNumber: string;
@@ -125,11 +116,6 @@ function getFieldErrors(
     readonly message: string;
   }[],
 ): LoginFieldErrors {
-  /**
-   * This object is intentionally mutable while we construct it.
-   *
-   * It is returned as the readonly LoginFieldErrors contract.
-   */
   const errors: MutableLoginFieldErrors = {};
 
   for (const issue of issues) {
@@ -172,9 +158,7 @@ export function LoginForm({
   );
 
   const [fieldErrors, setFieldErrors] =
-    useState<LoginFieldErrors>(
-      createInitialFieldErrors,
-    );
+    useState<LoginFieldErrors>(createInitialFieldErrors);
 
   // ===========================================================================
   // Authentication Hook
@@ -185,6 +169,7 @@ export function LoginForm({
     isLoading,
     data,
     error,
+    errorCategory,
     reset,
   } = useAuthenticateLogin();
 
@@ -269,14 +254,10 @@ export function LoginForm({
       // Validate
       // -----------------------------------------------------------------------
 
-      const result =
-        authenticateLoginSchema.safeParse(values);
+      const result = authenticateLoginSchema.safeParse(values);
 
       if (!result.success) {
-        setFieldErrors(
-          getFieldErrors(result.error.issues),
-        );
-
+        setFieldErrors(getFieldErrors(result.error.issues));
         return;
       }
 
@@ -285,18 +266,9 @@ export function LoginForm({
       // -----------------------------------------------------------------------
 
       try {
-        /*
-         * result.data is already validated by authenticateLoginSchema.
-         *
-         * We create a fresh object here instead of modifying the readonly
-         * feature contract.
-         */
         const response = await login({
-          emailOrPhoneNumber:
-            result.data.emailOrPhoneNumber,
-
-          password:
-            result.data.password,
+          emailOrPhoneNumber: result.data.emailOrPhoneNumber,
+          password: result.data.password,
         });
 
         // ---------------------------------------------------------------------
@@ -307,35 +279,17 @@ export function LoginForm({
           await onSuccess(response);
         }
       } catch {
-        // ---------------------------------------------------------------------
-        // Authentication errors are normalized by useAuthenticateLogin().
+        // The hook exposes a normalized error and safe category through state.
+        // LoginError renders the appropriate safe user-facing message.
         //
-        // The normalized error is exposed through the hook's `error` state
-        // and presented by LoginError.
-        //
-        // Raw transport/backend details are intentionally not handled here.
-        // ---------------------------------------------------------------------
+        // Raw backend and transport errors are intentionally not handled here.
       }
     },
-    [
-      isLoading,
-      login,
-      onSuccess,
-      reset,
-      values,
-    ],
+    [isLoading, login, onSuccess, reset, values],
   );
 
   // ===========================================================================
   // Successful Authentication
-  // ===========================================================================
-  //
-  // The authentication hook has already established the authentication
-  // session.
-  //
-  // The parent page receives the successful response through onSuccess and
-  // owns navigation.
-  //
   // ===========================================================================
 
   if (data?.success === true) {
@@ -355,9 +309,7 @@ export function LoginForm({
       <LoginFormHeader />
 
       <div className="space-y-5">
-        {/* -------------------------------------------------------------------
-            Credentials
-            ------------------------------------------------------------------- */}
+        {/* Credentials */}
 
         <LoginCredentials
           value={values.emailOrPhoneNumber}
@@ -366,9 +318,7 @@ export function LoginForm({
           disabled={isLoading}
         />
 
-        {/* -------------------------------------------------------------------
-            Password
-            ------------------------------------------------------------------- */}
+        {/* Password */}
 
         <LoginPasswordField
           value={values.password}
@@ -377,9 +327,7 @@ export function LoginForm({
           disabled={isLoading}
         />
 
-        {/* -------------------------------------------------------------------
-            Password Recovery
-            ------------------------------------------------------------------- */}
+        {/* Password Recovery */}
 
         <div className="flex justify-end">
           <LoginForgotPassword
@@ -388,19 +336,16 @@ export function LoginForm({
           />
         </div>
 
-        {/* -------------------------------------------------------------------
-            Authentication Error
-            ------------------------------------------------------------------- */}
+        {/* Authentication Error */}
 
-        <LoginError error={error} />
-
-        {/* -------------------------------------------------------------------
-            Submit
-            ------------------------------------------------------------------- */}
-
-        <LoginSubmit
-          isLoading={isLoading}
+        <LoginError
+          error={error}
+          category={errorCategory ?? undefined}
         />
+
+        {/* Submit */}
+
+        <LoginSubmit isLoading={isLoading} />
       </div>
     </form>
   );

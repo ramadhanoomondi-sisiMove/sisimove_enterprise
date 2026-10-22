@@ -1,11 +1,16 @@
 // -----------------------------------------------------------------------------
-// Journey Boarding Provider Summary
+// sisiMove — Journey Boarding Shared Components Barrel
+// -----------------------------------------------------------------------------
+//
+// Public exports for shared Journey Boarding components.
+//
 // -----------------------------------------------------------------------------
 
+// Journey Boarding Participant Summary
 export {
-  JourneyBoardingProviderSummary,
-} from './journey-boarding-participant-summary';
+  JourneyBoardingParticipantSummary,
+} from "./journey-boarding-participant-summary";
 
 export type {
-  JourneyBoardingProviderSummaryProps,
-} from './journey-boarding-participant-summary';
+  JourneyBoardingParticipantSummaryProps,
+} from "./journey-boarding-participant-summary";

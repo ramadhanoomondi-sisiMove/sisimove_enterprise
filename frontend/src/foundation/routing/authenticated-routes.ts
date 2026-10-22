@@ -238,6 +238,13 @@ export const AUTHENTICATED_ROUTES = {
    */
   PROFILE_VERIFICATION: "/profile/verification",
 
+    /**
+   * Authenticated member account settings.
+   *
+   * Includes account contact information and security settings.
+   */
+  SETTINGS: "/profile/settings",
+
   // ===========================================================================
   // Financial / Wallet
   // ===========================================================================
@@ -309,8 +316,7 @@ export const AUTHENTICATED_ROUTES = {
   /**
    * Authenticated application settings.
    */
-  SETTINGS: "/settings",
-} as const;
+  } as const;
 
 // -----------------------------------------------------------------------------
 // Route Type

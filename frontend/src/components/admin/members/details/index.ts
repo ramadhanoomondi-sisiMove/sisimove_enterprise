@@ -1,4 +1,3 @@
-
 /**
  * sisiMove — Admin Member Details Barrel
  *
@@ -46,7 +45,6 @@ export {
 
 export type {
   MemberProfileCardProps,
-  MemberProfileCardData,
 } from "./member-profile-card";
 
 // -----------------------------------------------------------------------------
@@ -59,7 +57,6 @@ export {
 
 export type {
   MemberVerificationPanelProps,
-  MemberVerificationRecord,
 } from "./member-verification-panel";
 
 export {
@@ -68,7 +65,6 @@ export {
 
 export type {
   MemberTrustPanelProps,
-  MemberTrustPanelData,
 } from "./member-trust-panel";
 
 // -----------------------------------------------------------------------------
@@ -115,8 +111,6 @@ export {
   MemberBookingPanel,
 } from "./member-booking-panel";
 
-
-
 // -----------------------------------------------------------------------------
 // Activity, Sessions & Devices
 // -----------------------------------------------------------------------------
@@ -124,8 +118,6 @@ export {
 export {
   MemberActivityTimeline,
 } from "./member-activity-timeline";
-
-
 
 export {
   MemberSessionList,
@@ -135,8 +127,6 @@ export {
   MemberDeviceList,
 } from "./member-device-list";
 
-
-
 // -----------------------------------------------------------------------------
 // Member Actions & Dialogs
 // -----------------------------------------------------------------------------
@@ -145,9 +135,6 @@ export {
   MemberContactChangeDialog,
 } from "./member-contact-change-dialog";
 
-
-
 export {
   MemberStatusChangeDialog,
 } from "./member-status-change-dialog";
-

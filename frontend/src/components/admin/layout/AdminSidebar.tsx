@@ -1,18 +1,23 @@
 
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Activity,
+  Award,
   BadgeCheck,
   BriefcaseBusiness,
+  ChevronDown,
+  ChevronRight,
   ClipboardList,
   CreditCard,
   FileSearch,
   LayoutDashboard,
   LogOut,
   Route,
+  ShieldAlert,
   ShieldCheck,
   Store,
   Users,
@@ -147,6 +152,24 @@ const NAVIGATION_GROUPS = [
   },
 ] as const;
 
+const TRUST_CHILDREN = [
+  {
+    label: "Trust Profiles",
+    href: ADMIN_ROUTES.TRUST_PROFILES,
+    icon: Users,
+  },
+  {
+    label: "Badges",
+    href: ADMIN_ROUTES.TRUST_BADGES,
+    icon: Award,
+  },
+  {
+    label: "Moderation",
+    href: ADMIN_ROUTES.TRUST_MODERATION,
+    icon: ShieldAlert,
+  },
+] as const;
+
 function isNavigationActive(pathname: string, href: string) {
   if (href === ADMIN_ROUTES.HOME) {
     return pathname === href;
@@ -168,6 +191,10 @@ export default function AdminSidebar({
 }: AdminSidebarProps) {
   const router = useRouter();
   const { logout, isLoggingOut } = useLogout();
+
+  const isTrustRoute = isNavigationActive(pathname, ADMIN_ROUTES.TRUST);
+
+  const [trustExpanded, setTrustExpanded] = useState(isTrustRoute);
 
   const handleLogout = async () => {
     try {
@@ -197,9 +224,7 @@ export default function AdminSidebar({
             <p className="truncate text-sm font-bold text-slate-900">
               sisiMove
             </p>
-            <p className="text-xs text-slate-500">
-              Super Admin
-            </p>
+            <p className="text-xs text-slate-500">Super Admin</p>
           </div>
         )}
       </div>
@@ -220,10 +245,107 @@ export default function AdminSidebar({
             <div className="space-y-1">
               {group.items.map((item) => {
                 const Icon = item.icon;
-                const active = isNavigationActive(
-                  pathname,
-                  item.href,
-                );
+                const active = isNavigationActive(pathname, item.href);
+                const isTrustParent = item.href === ADMIN_ROUTES.TRUST;
+
+                if (isTrustParent) {
+                  return (
+                    <div key={item.href} className="space-y-1">
+                      <div className="flex items-center gap-1">
+                        <Link
+                          href={item.href}
+                          onClick={onNavigate}
+                          title={collapsed ? item.label : undefined}
+                          aria-current={
+                            pathname === item.href ? "page" : undefined
+                          }
+                          className={[
+                            "flex min-h-10 min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                            collapsed ? "justify-center" : "",
+                            active
+                              ? "bg-blue-50 font-semibold text-blue-700"
+                              : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
+                          ].join(" ")}
+                        >
+                          <Icon className="h-[18px] w-[18px] shrink-0" />
+
+                          {!collapsed && (
+                            <span className="truncate">{item.label}</span>
+                          )}
+                        </Link>
+
+                        {!collapsed && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setTrustExpanded((expanded) => !expanded)
+                            }
+                            aria-label={
+                              trustExpanded
+                                ? "Collapse Trust & Reputation submenu"
+                                : "Expand Trust & Reputation submenu"
+                            }
+                            aria-expanded={trustExpanded}
+                            aria-controls="trust-navigation-children"
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                          >
+                            {trustExpanded ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                          </button>
+                        )}
+                      </div>
+
+                      {(trustExpanded || collapsed) && (
+                        <div
+                          id="trust-navigation-children"
+                          className={
+                            collapsed
+                              ? "space-y-1"
+                              : "ml-5 space-y-1 border-l border-slate-200 pl-3"
+                          }
+                        >
+                          {TRUST_CHILDREN.map((child) => {
+                            const ChildIcon = child.icon;
+                            const childActive = isNavigationActive(
+                              pathname,
+                              child.href,
+                            );
+
+                            return (
+                              <Link
+                                key={child.href}
+                                href={child.href}
+                                onClick={onNavigate}
+                                title={collapsed ? child.label : undefined}
+                                aria-current={
+                                  childActive ? "page" : undefined
+                                }
+                                className={[
+                                  "flex min-h-9 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                                  collapsed ? "justify-center" : "",
+                                  childActive
+                                    ? "bg-blue-50 font-semibold text-blue-700"
+                                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900",
+                                ].join(" ")}
+                              >
+                                <ChildIcon className="h-4 w-4 shrink-0" />
+
+                                {!collapsed && (
+                                  <span className="truncate">
+                                    {child.label}
+                                  </span>
+                                )}
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
 
                 return (
                   <Link
@@ -243,9 +365,7 @@ export default function AdminSidebar({
                     <Icon className="h-[18px] w-[18px] shrink-0" />
 
                     {!collapsed && (
-                      <span className="truncate">
-                        {item.label}
-                      </span>
+                      <span className="truncate">{item.label}</span>
                     )}
                   </Link>
                 );
@@ -299,9 +419,7 @@ export default function AdminSidebar({
           <LogOut className="h-[18px] w-[18px] shrink-0" />
 
           {!collapsed && (
-            <span>
-              {isLoggingOut ? "Logging out..." : "Log out"}
-            </span>
+            <span>{isLoggingOut ? "Logging out..." : "Log out"}</span>
           )}
         </button>
       </div>

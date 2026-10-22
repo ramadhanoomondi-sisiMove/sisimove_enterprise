@@ -25,5 +25,5 @@ export {
 } from './journey-boarding.mapper';
 
 export {
-  journeyBoardingProviderSummaryMapper,
+  journeyBoardingParticipantSummaryMapper,
 } from "./journey-boarding-participant-summary.mapper";

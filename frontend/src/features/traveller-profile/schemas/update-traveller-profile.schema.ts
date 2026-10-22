@@ -1,24 +1,15 @@
+
+import { z } from 'zod';
+
 // -----------------------------------------------------------------------------
 // sisiMove — Update Traveller Profile Schema
 // -----------------------------------------------------------------------------
 //
-// Validation schema for authenticated Traveller Profile updates.
+// Validates partial updates to user-editable Traveller Profile fields.
 //
-// Responsibilities:
-// - Validate user-editable Traveller Profile fields.
-// - Define the frontend write contract for profile details.
-// - Keep server-owned fields out of the mutation payload.
-//
-// Non-responsibilities:
-// - Loading the current profile.
-// - Updating profile visibility.
-// - Updating travel preferences.
-// - Managing verification.
-// - Managing travel corridors.
-//
+// Only supplied fields are validated and included in the mutation input.
+// Omitted fields remain unchanged.
 // -----------------------------------------------------------------------------
-
-import { z } from "zod";
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -39,13 +30,7 @@ export const updateTravellerProfileSchema = z.object({
   /**
    * Public traveller handle.
    *
-   * The handle is user-editable but must remain suitable for use as a
-   * public identifier.
-   *
-   * Examples:
-   * - john_doe
-   * - mary.wanjiku
-   * - traveller_254
+   * Omit this field when the handle has not changed.
    */
   handle: z
     .string()
@@ -60,14 +45,15 @@ export const updateTravellerProfileSchema = z.object({
     )
     .regex(
       /^[a-zA-Z0-9._-]+$/,
-      "Handle may contain only letters, numbers, dots, underscores, and hyphens.",
-    ),
+      'Handle may contain only letters, numbers, dots, underscores, and hyphens.',
+    )
+    .optional(),
 
   /**
    * Optional traveller biography.
    *
-   * Empty input is normalized to null so the API receives an explicit
-   * representation of "no biography".
+   * An empty string is normalized to null.
+   * Omit the field entirely when the biography has not changed.
    */
   bio: z
     .string()
@@ -77,16 +63,15 @@ export const updateTravellerProfileSchema = z.object({
       `Bio must not exceed ${BIO_MAX_LENGTH} characters.`,
     )
     .transform((value) => (value.length > 0 ? value : null))
-    .nullable(),
+    .nullable()
+    .optional(),
 
   /**
    * ISO 3166-1 alpha-2 country code.
    *
-   * Example:
-   *   KE
+   * Example: KE
    *
-   * The backend remains authoritative for whether the supplied country code
-   * is actually supported.
+   * Omit this field when the country has not changed.
    */
   countryCode: z
     .string()
@@ -97,9 +82,10 @@ export const updateTravellerProfileSchema = z.object({
     )
     .regex(
       /^[A-Za-z]{2}$/,
-      "Country code must be a valid two-letter country code.",
+      'Country code must be a valid two-letter country code.',
     )
-    .transform((value) => value.toUpperCase()),
+    .transform((value) => value.toUpperCase())
+    .optional(),
 });
 
 // -----------------------------------------------------------------------------

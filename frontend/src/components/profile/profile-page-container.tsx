@@ -1,121 +1,20 @@
-// -----------------------------------------------------------------------------
-// sisiMove — Profile Page Container
-// -----------------------------------------------------------------------------
-//
-// Authenticated traveller profile data composition boundary.
-//
-// Responsibilities:
-// - Resolve the authenticated TravellerProfile.
-// - Resolve the authenticated Verification aggregate.
-// - Resolve verification request state.
-// - Project verification request state into VerificationRequirement[].
-// - Resolve the authenticated Identity/account data.
-// - Resolve the public avatar Asset referenced by TravellerProfile.
-// - Compose presentation-level navigation callbacks.
-// - Orchestrate the profile-photo upload workflow.
-// - Associate an uploaded Asset with the TravellerProfile as its avatar.
-// - Refresh TravellerProfile state after a successful avatar change.
-// - Pass the complete composition into ProfilePage.
-//
-// Non-responsibilities:
-// - Rendering profile sections.
-// - Owning profile presentation.
-// - Implementing profile business rules.
-// - Implementing verification policy.
-// - Performing Trust queries.
-// - Performing Trust persistence.
-// - Calculating Traveller Profile statistics.
-// - Implementing account persistence.
-// - Performing HTTP requests directly.
-// - Uploading physical files directly.
-// - Resolving public Asset URLs directly.
-// - Owning Asset lifecycle rules.
-//
-// Architecture:
-//
-//     Authenticated Route
-//            │
-//            ▼
-//     ProfilePageContainer
-//            │
-//       ┌────┼──────────────────────────────┐
-//       │    │            │                 │
-//       ▼    ▼            ▼                 ▼
-//    Profile Verification Identity       Avatar
-//       │    │            │                 │
-//       │    └─ Requests   │                 │
-//       │                 │                 │
-//       └─────────────────┴─────────────────┘
-//                         │
-//                         ▼
-//                    ProfilePage
-//
-// Profile photo workflow:
-//
-//     ProfileHeader
-//          │
-//          │ onChangePhoto
-//          ▼
-//     ProfilePageContainer
-//          │
-//          ▼
-//     AssetUploadDialog
-//          │
-//          │ Asset
-//          ▼
-//     useTravellerProfileAvatar
-//          │
-//          ▼
-//     TravellerProfile avatar association
-//          │
-//          ▼
-//     refetch TravellerProfile
-//          │
-//          ▼
-//     usePublicAsset
-//          │
-//          ▼
-//     ProfilePage
-//          │
-//          ▼
-//     ProfileAvatar priority
-//
-// Important:
-//
-// ProfilePage remains a presentation composition boundary.
-//
-// Trust is deliberately NOT loaded here. TrustSection owns its own Trust
-// feature read because Trust is an independent bounded context.
-//
-// Traveller Profile remains authoritative for:
-// - handle;
-// - bio;
-// - country;
-// - status;
-// - visibility;
-// - memberPublicId;
-// - avatarAssetPublicId;
-// - journey statistics;
-// - corridors;
-// - preferences.
-//
-// Verification remains authoritative for verification state.
-//
-// Identity remains authoritative for account contact information and
-// account lifecycle status.
-//
-// Asset remains authoritative for physical file storage and Asset lifecycle.
-//
-// Avatar loading is intentionally non-blocking for the profile page.
-// If the public Asset reference is unavailable, ProfileAvatar renders its
-// initials fallback rather than preventing the profile from rendering.
-//
-// -----------------------------------------------------------------------------
 
 'use client';
 
 // -----------------------------------------------------------------------------
-// React
+// sisiMove — Profile Page Container
+// -----------------------------------------------------------------------------
+// Authenticated traveller profile data composition boundary.
+//
+// Responsibilities:
+// - Resolve authenticated TravellerProfile, Verification and Identity data.
+// - Resolve verification requests and project their presentation state.
+// - Resolve the public avatar Asset.
+// - Compose presentation-level navigation callbacks.
+// - Orchestrate profile-photo upload and avatar association.
+// - Pass the composed data into ProfilePage.
+//
+// ProfilePage remains presentation-only.
 // -----------------------------------------------------------------------------
 
 import {
@@ -125,36 +24,17 @@ import {
   type ReactNode,
 } from 'react';
 
-// -----------------------------------------------------------------------------
-// Next.js
-// -----------------------------------------------------------------------------
-
 import { useRouter } from 'next/navigation';
 
-// -----------------------------------------------------------------------------
-// UI
-// -----------------------------------------------------------------------------
-
 import { Container } from '@/components/ui/container';
-
-// -----------------------------------------------------------------------------
-// Profile Presentation
-// -----------------------------------------------------------------------------
+import { AssetUploadDialog } from '@/components/assets/asset-upload-dialog';
 
 import { ProfilePage } from './profile-page';
-
-// -----------------------------------------------------------------------------
-// Traveller Profile
-// -----------------------------------------------------------------------------
 
 import {
   useCurrentTravellerProfile,
   useTravellerProfileAvatar,
 } from '@/features/traveller-profile/hooks';
-
-// -----------------------------------------------------------------------------
-// Verification
-// -----------------------------------------------------------------------------
 
 import {
   useVerification,
@@ -169,54 +49,18 @@ import type {
   VerificationRequestType,
 } from '@/features/verification/models';
 
-// -----------------------------------------------------------------------------
-// Assets
-// -----------------------------------------------------------------------------
-
 import {
   usePublicAsset,
   type Asset,
 } from '@/features/assets';
 
-import {
-  AssetUploadDialog,
-} from '@/components/assets/asset-upload-dialog';
-
-// -----------------------------------------------------------------------------
-// Identity
-// -----------------------------------------------------------------------------
-//
-// Identity is NOT owned by Authentication.
-//
-// Authentication owns:
-// - authentication state;
-// - login;
-// - logout;
-// - authenticated session;
-// - authentication storage.
-//
-// Identity owns:
-// - Identity profile;
-// - account contact information;
-// - account lifecycle state;
-// - authenticated self Identity query.
-//
-// -----------------------------------------------------------------------------
-
-import {
-  useCurrentIdentity,
-} from '@/features/identity/hooks';
+import { useCurrentIdentity } from '@/features/identity/hooks';
+import { AUTHENTICATED_ROUTES } from '@/foundation/routing';
 
 // =============================================================================
 // Helpers
 // =============================================================================
 
-/**
- * Normalizes an absent account phone number for presentation.
- *
- * AccountSection expects a string, while the Identity boundary may legitimately
- * contain no phone number.
- */
 function resolvePhoneNumber(
   phoneNumber: string | null | undefined,
 ): string {
@@ -231,14 +75,6 @@ function resolvePhoneNumber(
   return phoneNumber;
 }
 
-/**
- * Resolves the current presentation status for one verification requirement.
- *
- * This function deliberately does not determine whether a requirement is
- * required.
- *
- * Verification policy remains a backend concern.
- */
 function resolveRequirementStatus(
   verification: Verification,
   type: VerificationRequestType,
@@ -289,18 +125,9 @@ function resolveRequirementStatus(
   return 'NOT_STARTED';
 }
 
-/**
- * Finds the most recent request for each verification request type.
- *
- * VerificationRequest.createdAt is used only to select the latest request
- * for presentation. It is not used to derive verification policy.
- */
 function getLatestRequestsByType(
   requests: readonly VerificationRequest[],
-): ReadonlyMap<
-  VerificationRequestType,
-  VerificationRequest
-> {
+): ReadonlyMap<VerificationRequestType, VerificationRequest> {
   const latest = new Map<
     VerificationRequestType,
     VerificationRequest
@@ -321,20 +148,6 @@ function getLatestRequestsByType(
   return latest;
 }
 
-/**
- * Projects Verification + VerificationRequest state into the presentation
- * model consumed by VerificationSection.
- *
- * IMPORTANT:
- *
- * `required` is deliberately not inferred here.
- *
- * MEMBER verification uses an OR relationship between profile photo and
- * government ID. Marking both fields as required in the frontend would
- * incorrectly duplicate backend verification policy.
- *
- * Backend verification policy remains authoritative.
- */
 function buildVerificationRequirements(
   verification: Verification,
   requests: readonly VerificationRequest[],
@@ -352,29 +165,17 @@ function buildVerificationRequirements(
 
     return {
       type,
-
       required: false,
-
       status: resolveRequirementStatus(
         verification,
         type,
         request,
       ),
-
-      requestPublicId:
-        request?.publicId ?? null,
-
-      assetPublicId:
-        request?.assetPublicId ?? null,
-
-      submittedAt:
-        request?.submittedAt ?? null,
-
-      reviewedAt:
-        request?.reviewedAt ?? null,
-
-      rejectionReason:
-        request?.rejectionReason ?? null,
+      requestPublicId: request?.publicId ?? null,
+      assetPublicId: request?.assetPublicId ?? null,
+      submittedAt: request?.submittedAt ?? null,
+      reviewedAt: request?.reviewedAt ?? null,
+      rejectionReason: request?.rejectionReason ?? null,
     };
   });
 }
@@ -390,55 +191,23 @@ function ProfileLoadingState(): ReactNode {
         <div className="py-6 sm:py-8 lg:py-10">
           <div className="mb-7 space-y-2">
             <div className="h-7 w-28 animate-pulse rounded-lg bg-[var(--border-subtle)] sm:h-8" />
-
             <div className="h-4 w-64 animate-pulse rounded-md bg-[var(--border-subtle)]" />
           </div>
 
           <div className="space-y-4">
-            <div
-              className="
-                overflow-hidden
-                rounded-[var(--radius-2xl)]
-                border
-                border-[var(--border)]
-                bg-[var(--surface)]
-                shadow-[var(--shadow-sm)]
-              "
-            >
+            <div className="overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-sm)]">
               <div className="h-32 animate-pulse bg-[var(--background-subtle)] sm:h-40" />
 
               <div className="space-y-4 p-5 sm:p-6">
                 <div className="h-7 w-40 animate-pulse rounded-lg bg-[var(--border-subtle)]" />
-
                 <div className="h-4 w-72 max-w-full animate-pulse rounded-md bg-[var(--border-subtle)]" />
-
                 <div className="h-10 w-32 animate-pulse rounded-lg bg-[var(--border-subtle)]" />
               </div>
             </div>
 
-            <div
-              className="
-                h-44
-                animate-pulse
-                rounded-[var(--radius-2xl)]
-                border
-                border-[var(--border)]
-                bg-[var(--surface)]
-                shadow-[var(--shadow-sm)]
-              "
-            />
+            <div className="h-44 animate-pulse rounded-[var(--radius-2xl)] border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-sm)]" />
 
-            <div
-              className="
-                h-44
-                animate-pulse
-                rounded-[var(--radius-2xl)]
-                border
-                border-[var(--border)]
-                bg-[var(--surface)]
-                shadow-[var(--shadow-sm)]
-              "
-            />
+            <div className="h-44 animate-pulse rounded-[var(--radius-2xl)] border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-sm)]" />
           </div>
         </div>
       </Container>
@@ -473,32 +242,11 @@ function ProfileState({
             </h1>
           </div>
 
-          <section
-            className="
-              overflow-hidden
-              rounded-[var(--radius-2xl)]
-              border
-              border-[var(--border)]
-              bg-[var(--surface)]
-              shadow-[var(--shadow-sm)]
-            "
-          >
+          <section className="overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-sm)]">
             <div className="border-b border-[var(--border-subtle)] bg-[var(--background-subtle)] px-5 py-4 sm:px-6">
               <div className="flex items-center gap-3">
                 <span
-                  className="
-                    flex
-                    h-9
-                    w-9
-                    shrink-0
-                    items-center
-                    justify-center
-                    rounded-full
-                    bg-[var(--danger-soft)]
-                    text-sm
-                    font-semibold
-                    text-[var(--danger)]
-                  "
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--danger-soft)] text-sm font-semibold text-[var(--danger)]"
                   aria-hidden="true"
                 >
                   !
@@ -524,27 +272,7 @@ function ProfileState({
               <button
                 type="button"
                 onClick={onRetry}
-                className="
-                  mt-5
-                  inline-flex
-                  min-h-10
-                  items-center
-                  justify-center
-                  rounded-[var(--radius-md)]
-                  bg-[var(--brand)]
-                  px-4
-                  text-sm
-                  font-semibold
-                  text-[var(--brand-foreground)]
-                  shadow-[var(--shadow-sm)]
-                  transition
-                  hover:bg-[var(--brand-hover)]
-                  active:translate-y-px
-                  focus-visible:outline-none
-                  focus-visible:ring-2
-                  focus-visible:ring-[var(--brand)]
-                  focus-visible:ring-offset-2
-                "
+                className="mt-5 inline-flex min-h-10 items-center justify-center rounded-[var(--radius-md)] bg-[var(--brand)] px-4 text-sm font-semibold text-[var(--brand-foreground)] shadow-[var(--shadow-sm)] transition hover:bg-[var(--brand-hover)] active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)] focus-visible:ring-offset-2"
               >
                 Try again
               </button>
@@ -557,25 +285,10 @@ function ProfileState({
 }
 
 // =============================================================================
-// Component
+// Profile Page Container
 // =============================================================================
 
-/**
- * Authenticated traveller profile composition container.
- *
- * This component composes independently owned server-state boundaries and
- * passes the resulting presentation model into ProfilePage.
- *
- * It also owns the orchestration boundary for changing the TravellerProfile
- * avatar.
- *
- * It intentionally does not perform imperative data loading.
- */
 export function ProfilePageContainer(): ReactNode {
-  // ---------------------------------------------------------------------------
-  // Routing
-  // ---------------------------------------------------------------------------
-
   const router = useRouter();
 
   // ---------------------------------------------------------------------------
@@ -601,18 +314,12 @@ export function ProfilePageContainer(): ReactNode {
     reload: reloadVerification,
   } = useVerification();
 
-  // ---------------------------------------------------------------------------
-  // Verification Requests
-  // ---------------------------------------------------------------------------
-
   const {
     requests,
     isLoading: requestsLoading,
     error: requestsError,
     reload: reloadVerificationRequests,
-  } = useVerificationRequests(
-    verification?.publicId ?? null,
-  );
+  } = useVerificationRequests(verification?.publicId ?? null);
 
   // ---------------------------------------------------------------------------
   // Identity / Account
@@ -629,40 +336,18 @@ export function ProfilePageContainer(): ReactNode {
   // ---------------------------------------------------------------------------
   // Avatar Asset
   // ---------------------------------------------------------------------------
-  //
-  // TravellerProfile owns the reference.
-  //
-  // Asset owns:
-  // - storage;
-  // - lifecycle;
-  // - visibility;
-  // - public delivery.
-  //
-  // The container simply composes the two read boundaries.
-  //
-  // ---------------------------------------------------------------------------
 
-  const avatarAssetPublicId =
-    profile?.avatarAssetPublicId ?? null;
+  const avatarAssetPublicId = profile?.avatarAssetPublicId ?? null;
 
-  const {
-    asset: avatarAsset,
-  } = usePublicAsset(
+  const { asset: avatarAsset } = usePublicAsset(
     avatarAssetPublicId,
   );
 
   // ---------------------------------------------------------------------------
-  // Profile Photo Dialog
+  // Profile Photo Upload
   // ---------------------------------------------------------------------------
 
-  const [
-    isPhotoUploadOpen,
-    setIsPhotoUploadOpen,
-  ] = useState(false);
-
-  // ---------------------------------------------------------------------------
-  // Traveller Profile Avatar Mutation
-  // ---------------------------------------------------------------------------
+  const [isPhotoUploadOpen, setIsPhotoUploadOpen] = useState(false);
 
   const {
     changeAvatar,
@@ -675,10 +360,7 @@ export function ProfilePageContainer(): ReactNode {
 
   const verificationRequirements =
     useMemo<readonly VerificationRequirement[]>(() => {
-      if (
-        verification === null ||
-        verification === undefined
-      ) {
+      if (verification === null || verification === undefined) {
         return [];
       }
 
@@ -686,29 +368,10 @@ export function ProfilePageContainer(): ReactNode {
         verification,
         requests ?? [],
       );
-    }, [
-      verification,
-      requests,
-    ]);
+    }, [verification, requests]);
 
   // ---------------------------------------------------------------------------
-  // Loading
-  // ---------------------------------------------------------------------------
-  //
-  // IMPORTANT:
-  //
-  // Avatar loading is deliberately excluded from the blocking page loading
-  // state.
-  //
-  // The profile should render immediately with the Avatar fallback while the
-  // public Asset reference is resolving.
-  //
-  // Once `avatarAsset.url` becomes available, ProfileAvatar receives the URL
-  // and its shared Avatar primitive loads the image with `priority`.
-  //
-  // This prevents a slow Asset reference request from delaying the entire
-  // profile page.
-  //
+  // Loading / Error
   // ---------------------------------------------------------------------------
 
   const isLoading =
@@ -717,27 +380,11 @@ export function ProfilePageContainer(): ReactNode {
     requestsLoading ||
     identityLoading;
 
-  // ---------------------------------------------------------------------------
-  // Error
-  // ---------------------------------------------------------------------------
-  //
-  // Avatar reference failures are intentionally NOT included here.
-  //
-  // A broken/missing public avatar should degrade to initials rather than
-  // making the authenticated profile unusable.
-  //
-  // ---------------------------------------------------------------------------
-
-  const error =
-    profileIsError
-      ? profileError
-      : identityIsError
-        ? identityError
-        : verificationError ?? requestsError;
-
-  // ---------------------------------------------------------------------------
-  // Retry
-  // ---------------------------------------------------------------------------
+  const error = profileIsError
+    ? profileError
+    : identityIsError
+      ? identityError
+      : verificationError ?? requestsError;
 
   const handleRetry = useCallback((): void => {
     void refetchProfile();
@@ -757,65 +404,29 @@ export function ProfilePageContainer(): ReactNode {
   ]);
 
   // ---------------------------------------------------------------------------
-  // Profile Photo — Open
+  // Profile Photo
   // ---------------------------------------------------------------------------
 
   const handleChangePhoto = useCallback((): void => {
     clearAvatarChangeError();
     setIsPhotoUploadOpen(true);
-  }, [
-    clearAvatarChangeError,
-  ]);
-
-  // ---------------------------------------------------------------------------
-  // Profile Photo — Uploaded Asset
-  // ---------------------------------------------------------------------------
-  //
-  // AssetUploadDialog owns the physical upload.
-  //
-  // Once the Asset exists, this container gives its public ID meaning in the
-  // Traveller Profile bounded context by associating it as the avatar.
-  //
-  // The Asset itself remains generic and does not know that it is a profile
-  // avatar.
-  //
-  // IMPORTANT:
-  //
-  // This callback deliberately does NOT close the upload dialog.
-  //
-  // AssetUploadDialog awaits this callback and closes itself only after this
-  // complete workflow succeeds.
-  //
-  // If the TravellerProfile association fails, the callback throws and the
-  // AssetUploadDialog remains open so the user can see the error.
-  //
-  // ---------------------------------------------------------------------------
+  }, [clearAvatarChangeError]);
 
   const handleProfilePhotoUploaded = useCallback(
     async (asset: Asset): Promise<void> => {
-      if (
-        profile === null ||
-        profile === undefined
-      ) {
+      if (profile === null || profile === undefined) {
         throw new Error(
           'Your traveller profile could not be loaded. Please try again.',
         );
       }
 
-      await changeAvatar(
-        profile.publicId,
-        {
-          avatarAssetPublicId: asset.publicId,
-        },
-      );
+      await changeAvatar(profile.publicId, {
+        avatarAssetPublicId: asset.publicId,
+      });
 
       await refetchProfile();
     },
-    [
-      profile,
-      changeAvatar,
-      refetchProfile,
-    ],
+    [profile, changeAvatar, refetchProfile],
   );
 
   // ---------------------------------------------------------------------------
@@ -846,9 +457,13 @@ export function ProfilePageContainer(): ReactNode {
     // No dedicated preferences route is established here.
   }, []);
 
-  const handleAccountSettings = useCallback((): void => {
-    // No account-settings route is invented here.
-  }, []);
+  // Settings is a dedicated route. Keep routing in the container rather
+  // than placing Next.js navigation logic inside AccountSection.
+
+const handleAccountSettings = useCallback((): void => {
+  router.push(AUTHENTICATED_ROUTES.SETTINGS);
+}, [router]);
+
 
   // ---------------------------------------------------------------------------
   // Loading State
@@ -872,7 +487,7 @@ export function ProfilePageContainer(): ReactNode {
   }
 
   // ---------------------------------------------------------------------------
-  // Missing Profile
+  // Missing Data
   // ---------------------------------------------------------------------------
 
   if (profile === null || profile === undefined) {
@@ -884,14 +499,7 @@ export function ProfilePageContainer(): ReactNode {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Missing Verification
-  // ---------------------------------------------------------------------------
-
-  if (
-    verification === null ||
-    verification === undefined
-  ) {
+  if (verification === null || verification === undefined) {
     return (
       <ProfileState
         message="Your verification profile could not be loaded."
@@ -899,10 +507,6 @@ export function ProfilePageContainer(): ReactNode {
       />
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Missing Identity
-  // ---------------------------------------------------------------------------
 
   if (identity === null || identity === undefined) {
     return (
@@ -913,37 +517,21 @@ export function ProfilePageContainer(): ReactNode {
     );
   }
 
-  // =============================================================================
+  // ---------------------------------------------------------------------------
   // Presentation Composition
-  // =============================================================================
+  // ---------------------------------------------------------------------------
 
   return (
     <>
       <ProfilePage
         profile={profile}
-
         verification={verification}
-
-        verificationRequirements={
-          verificationRequirements
-        }
-
-
-        avatarUrl={
-          avatarAsset?.url ?? null
-        }
-
+        verificationRequirements={verificationRequirements}
+        avatarUrl={avatarAsset?.url ?? null}
         avatarAlt={
-          avatarAsset?.alt ??
-          `@${profile.handle} profile photo`
+          avatarAsset?.alt ?? `@${profile.handle} profile photo`
         }
-
-        avatarFallback={
-          profile.handle
-            .charAt(0)
-            .toUpperCase()
-        }
-
+        avatarFallback={profile.handle.charAt(0).toUpperCase()}
         visibilityDescription={
           profile.visibility === 'PUBLIC'
             ? 'Your public traveller profile is visible according to your visibility settings.'
@@ -951,63 +539,18 @@ export function ProfilePageContainer(): ReactNode {
               ? 'Your profile is visible in a limited way according to your visibility settings.'
               : 'Your profile is currently private.'
         }
-
         email={identity.email}
-
-        phoneNumber={
-          resolvePhoneNumber(
-            identity.phoneNumber,
-          )
-        }
-
+        phoneNumber={resolvePhoneNumber(identity.phoneNumber)}
         accountStatus={identity.status}
-
-        onChangePhoto={
-          handleChangePhoto
-        }
-
-        onManageVerification={
-          handleManageVerification
-        }
-
-        onManageMemberVerification={
-          handleManageMemberVerification
-        }
-
-        onManageDriverVerification={
-          handleManageDriverVerification
-        }
-
-        onViewReputation={
-          handleViewReputation
-        }
-
-        onManageCorridors={
-          handleManageCorridors
-        }
-
-        onEditPreferences={
-          handleEditPreferences
-        }
-
-        onAccountSettings={
-          handleAccountSettings
-        }
+        onChangePhoto={handleChangePhoto}
+        onManageVerification={handleManageVerification}
+        onManageMemberVerification={handleManageMemberVerification}
+        onManageDriverVerification={handleManageDriverVerification}
+        onViewReputation={handleViewReputation}
+        onManageCorridors={handleManageCorridors}
+        onEditPreferences={handleEditPreferences}
+        onAccountSettings={handleAccountSettings}
       />
-
-      {/* -----------------------------------------------------------------------
-          Profile Photo Upload
-
-          This is deliberately outside ProfilePage.
-
-          ProfilePage remains presentation-only while this container owns the
-          workflow that gives an uploaded Asset its TravellerProfile meaning.
-
-          The dialog remains open until:
-          1. the Asset upload succeeds;
-          2. the TravellerProfile avatar association succeeds;
-          3. the TravellerProfile is refreshed.
-         ----------------------------------------------------------------------- */}
 
       <AssetUploadDialog
         open={isPhotoUploadOpen}
@@ -1022,9 +565,5 @@ export function ProfilePageContainer(): ReactNode {
     </>
   );
 }
-
-// -----------------------------------------------------------------------------
-// Default Export
-// -----------------------------------------------------------------------------
 
 export default ProfilePageContainer;

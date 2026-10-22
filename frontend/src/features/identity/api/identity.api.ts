@@ -146,3 +146,44 @@ export async function getCurrentIdentity(): Promise<Identity | null> {
 
   return mapIdentityResponse(response);
 }
+// =============================================================================
+// Change Email
+// =============================================================================
+//
+// PATCH /identities/:identityPublicId/email
+//
+// Request body:
+//     { email: string }
+//
+// -----------------------------------------------------------------------------
+
+export async function changeIdentityEmail(
+  identityPublicId: string,
+  email: string,
+): Promise<void> {
+  await authenticatedApiClient.patch(
+    `${IDENTITIES_API_PATH}/${encodeURIComponent(identityPublicId)}/email`,
+    { email },
+  );
+}
+
+// =============================================================================
+// Change Phone Number
+// =============================================================================
+//
+// PATCH /identities/:identityPublicId/phone-number
+//
+// Request body:
+//     { phoneNumber: string }
+//
+// -----------------------------------------------------------------------------
+
+export async function changeIdentityPhoneNumber(
+  identityPublicId: string,
+  phoneNumber: string,
+): Promise<void> {
+  await authenticatedApiClient.patch(
+    `${IDENTITIES_API_PATH}/${encodeURIComponent(identityPublicId)}/phone-number`,
+    { phoneNumber },
+  );
+}

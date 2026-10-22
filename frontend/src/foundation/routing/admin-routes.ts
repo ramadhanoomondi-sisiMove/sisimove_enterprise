@@ -1,4 +1,4 @@
-//src/foundation/routing/admin-routes
+
 /* -----------------------------------------------------------------------------
  * sisiMove — Admin Routes
  * -----------------------------------------------------------------------------
@@ -81,6 +81,8 @@ export const ADMIN_ROUTES = {
   TRUST_REVIEWS: '/admin/trust/reviews',
 
   TRUST_BADGES: '/admin/trust/badges',
+
+  TRUST_MODERATION: '/admin/trust/moderation',
 
   TRUST_EVENTS: '/admin/trust/events',
 
@@ -181,7 +183,6 @@ export const ADMIN_ROUTES = {
   // ---------------------------------------------------------------------------
 
   AUDIT_LOG: '/admin/audit-log',
-
 } as const;
 
 // -----------------------------------------------------------------------------

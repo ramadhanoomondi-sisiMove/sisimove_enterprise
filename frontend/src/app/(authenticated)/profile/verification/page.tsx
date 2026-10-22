@@ -92,6 +92,7 @@ import type {
   VerificationRequirementStatus,
   VerificationRequirementType,
 } from '@/features/verification/models';
+import { AUTHENTICATED_ROUTES } from '@/foundation/routing';
 
 // =============================================================================
 // Helpers
@@ -1009,13 +1010,15 @@ export default function VerificationPage() {
                   Submit the evidence required for your verification level.
                 </p>
               </div>
-
+                         
               <Link
-                href="/profile/verification/requests"
-                className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800"
+                href={AUTHENTICATED_ROUTES.VERIFICATION}
+                aria-label="Complete verification"
+                className="inline-flex min-h-11 min-w-40 shrink-0 items-center justify-center rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               >
-                Manage verification
+                <span className="text-white">Complete verification</span>
               </Link>
+
             </div>
           </section>
         )}

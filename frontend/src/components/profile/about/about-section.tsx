@@ -1,3 +1,4 @@
+
 'use client';
 
 // -----------------------------------------------------------------------------
@@ -9,7 +10,8 @@
 // Responsibilities:
 // - Receive the already-resolved authenticated Traveller Profile.
 // - Present the current handle, biography, and country.
-// - Own the profile-details update workflow.
+// - Submit only fields that have changed.
+// - Translate presentation field names into API input names.
 // - Expose mutation feedback at the section boundary.
 // - Delegate field rendering to ProfileDetailsForm.
 //
@@ -35,51 +37,20 @@
 //                    AboutSection
 //                         │
 //                         └── useUpdateTravellerProfile()
-//                                 └── update(profile.publicId, input)
+//                                 └── update(profile.publicId, changedFields)
 //
-// Architectural reason:
-//
-// The authenticated profile page has one authoritative TravellerProfile read.
-// AboutSection must not independently call useCurrentTravellerProfile(), because
-// ProfilePageContainer already owns that read for the profile composition.
-//
-// This prevents:
-// - duplicate profile requests;
-// - multiple profile read states;
-// - competing sources of truth;
-// - unnecessary network traffic;
-// - stale values between ProfileHeader and AboutSection.
-//
-// The section still owns its mutation workflow because updating profile details
-// is an interaction specific to this section.
-//
-// -----------------------------------------------------------------------------
+// Architectural decisions:
+// - The profile composition boundary owns the authoritative profile read.
+// - This component does not fetch the profile independently.
+// - Unchanged fields are omitted from mutation input.
+// - An unchanged form submits no API request.
 //
 // Field mapping:
 //
-//     TravellerProfile.handle
-//         → ProfileDetailsForm.handle
-//
-//     TravellerProfile.bio
-//         → ProfileDetailsForm.bio
-//
-//     TravellerProfile.countryCode
-//         → ProfileDetailsForm.country
-//
-//     ProfileDetailsForm.country
-//         → UpdateTravellerProfileInput.countryCode
-//
-// The form intentionally uses `country` as a human-facing field name while
-// the API write contract uses the domain-specific `countryCode` name.
-//
-// -----------------------------------------------------------------------------
-//
-// Visual language:
-// - Compact mobile-first profile section.
-// - sisiMove blue accent for section identity.
-// - Mutation feedback remains close to the form.
-// - Saving state is informational and non-alarming.
-// - Errors use the profile's semantic danger treatment.
+//     TravellerProfile.handle      → ProfileDetailsForm.handle
+//     TravellerProfile.bio         → ProfileDetailsForm.bio
+//     TravellerProfile.countryCode → ProfileDetailsForm.country
+//     ProfileDetailsForm.country   → UpdateTravellerProfileInput.countryCode
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
@@ -120,8 +91,6 @@ export interface AboutSectionProps {
   /**
    * Authenticated Traveller Profile resolved by the profile composition
    * boundary.
-   *
-   * The section does not fetch this model itself.
    */
   readonly profile: TravellerProfile;
 }
@@ -133,8 +102,8 @@ export interface AboutSectionProps {
 /**
  * Authenticated "About You" profile section.
  *
- * The section receives the current Traveller Profile from its parent and owns
- * only the mutation workflow for editable profile details.
+ * Compares the submitted draft against the authoritative profile props and
+ * sends only changed fields to the feature mutation.
  */
 export function AboutSection({
   profile,
@@ -146,25 +115,47 @@ export function AboutSection({
   } = useUpdateTravellerProfile();
 
   // ---------------------------------------------------------------------------
-  // Save
+  // Save changed profile fields
   // ---------------------------------------------------------------------------
-  //
-  // The form emits presentation-oriented values.
-  //
-  // The feature mutation expects the domain/API field `countryCode`.
-  //
-  // That translation belongs here at the feature/presentation boundary.
-  //
 
   const handleSave = useCallback(
     async (values: ProfileDetailsFormValues): Promise<void> => {
-      await update(profile.publicId, {
-        handle: values.handle,
-        bio: values.bio,
-        countryCode: values.country,
-      });
+      const nextHandle = values.handle.trim();
+      const nextBio = values.bio.trim();
+      const nextCountryCode = values.country.trim();
+
+      const input: {
+        handle?: string;
+        bio?: string;
+        countryCode?: string;
+      } = {};
+
+      if (nextHandle !== profile.handle) {
+        input.handle = nextHandle;
+      }
+
+      if (nextBio !== (profile.bio ?? '')) {
+        input.bio = nextBio;
+      }
+
+      if (nextCountryCode !== profile.countryCode) {
+        input.countryCode = nextCountryCode;
+      }
+
+      // Avoid unnecessary requests when the form has no changes.
+      if (Object.keys(input).length === 0) {
+        return;
+      }
+
+      await update(profile.publicId, input);
     },
-    [profile.publicId, update],
+    [
+      profile.publicId,
+      profile.handle,
+      profile.bio,
+      profile.countryCode,
+      update,
+    ],
   );
 
   // ---------------------------------------------------------------------------
@@ -173,9 +164,7 @@ export function AboutSection({
 
   return (
     <section className="space-y-5">
-      {/* ---------------------------------------------------------------------
-          Section header
-          --------------------------------------------------------------------- */}
+      {/* Section header */}
       <div>
         <div className="flex items-center gap-2">
           <span
@@ -193,9 +182,7 @@ export function AboutSection({
         </p>
       </div>
 
-      {/* ---------------------------------------------------------------------
-          Profile details form
-          --------------------------------------------------------------------- */}
+      {/* Profile details form */}
       <ProfileDetailsForm
         initialValues={{
           handle: profile.handle,
@@ -205,10 +192,7 @@ export function AboutSection({
         onSave={handleSave}
       />
 
-      {/* ---------------------------------------------------------------------
-          Mutation feedback
-          --------------------------------------------------------------------- */}
-
+      {/* Saving feedback */}
       {isUpdating ? (
         <div
           className="flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--background-subtle)] px-3.5 py-3"
@@ -226,6 +210,7 @@ export function AboutSection({
         </div>
       ) : null}
 
+      {/* Mutation error feedback */}
       {updateError !== null ? (
         <div
           className="rounded-[var(--radius-lg)] border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3.5 py-3"

@@ -5,37 +5,24 @@
 // Feature hook for the complete client-side login operation.
 //
 // Responsibilities:
-//
-//     Login Form
-//         │
-//         ▼
-//     useAuthenticateLogin()
-//         │
-//         ├── authenticateLogin()
-//         │       └── HTTP API
-//         │
-//         ├── map successful response → AuthSession
-//         │
-//         └── AuthenticationContext.authenticate()
-//                 ├── persist session
-//                 └── update authentication state
+// - Execute the login API request.
+// - Normalize errors into safe presentation categories.
+// - Map the successful response to AuthSession.
+// - Delegate session persistence and authentication state to
+//   AuthenticationContext.
+// - Expose request state, result, and safe error classification.
 //
 // This hook intentionally does NOT:
-//
 // - validate form values;
-// - construct device fingerprints;
-// - construct HTTP headers;
-// - persist directly to localStorage;
-// - manipulate AuthenticationContext state directly;
+// - construct device fingerprints or HTTP headers;
+// - persist sessions directly;
+// - manipulate authentication context state directly;
 // - navigate the application;
 // - decode JWTs;
 // - refresh tokens;
-// - perform registration.
+// - perform registration;
+// - expose raw backend or transport messages to the presentation layer.
 //
-// Those responsibilities belong to the appropriate feature boundaries.
-//
-// -----------------------------------------------------------------------------
-// Client Component
 // -----------------------------------------------------------------------------
 
 'use client';
@@ -74,6 +61,110 @@ import type { AuthSession } from '../../session';
 import { useAuthentication } from '../../state';
 
 // =============================================================================
+// Error Categories
+// =============================================================================
+
+/**
+ * Safe categories consumed by the login presentation layer.
+ *
+ * These categories must not reveal whether an identity exists or disclose
+ * identity lifecycle state, device state, or internal backend details.
+ */
+export type LoginErrorCategory =
+  | 'INVALID_CREDENTIALS'
+  | 'NETWORK'
+  | 'SERVICE_UNAVAILABLE'
+  | 'UNKNOWN';
+
+interface NormalizedLoginError {
+  readonly error: Error;
+  readonly category: LoginErrorCategory;
+}
+
+// =============================================================================
+// Error Normalization
+// =============================================================================
+
+/**
+ * Reads a numeric HTTP status from common HTTP-client error shapes without
+ * depending on a particular HTTP client implementation.
+ *
+ * This function does not inspect backend messages or response bodies.
+ */
+function getHttpStatus(error: unknown): number | undefined {
+  if (
+    typeof error !== 'object' ||
+    error === null ||
+    !('response' in error)
+  ) {
+    return undefined;
+  }
+
+  const response = error.response;
+
+  if (
+    typeof response !== 'object' ||
+    response === null ||
+    !('status' in response)
+  ) {
+    return undefined;
+  }
+
+  return typeof response.status === 'number'
+    ? response.status
+    : undefined;
+}
+
+/**
+ * Converts an unknown failure into a safe error and presentation category.
+ *
+ * Classification rules:
+ * - Confirmed 502, 503, and 504 responses indicate temporary service issues.
+ * - A TypeError without an HTTP response is treated as a likely network error.
+ * - Other HTTP statuses remain UNKNOWN until the API contract defines them.
+ * - Unknown errors never expose their original messages.
+ *
+ * INVALID_CREDENTIALS is intentionally not inferred from HTTP status alone.
+ * Map that category only after the backend's generic credential-failure
+ * contract has been confirmed.
+ */
+function normalizeLoginError(
+  caughtError: unknown,
+): NormalizedLoginError {
+  const status = getHttpStatus(caughtError);
+
+  if (
+    status === 502 ||
+    status === 503 ||
+    status === 504
+  ) {
+    return {
+      error: new Error('Login service temporarily unavailable.'),
+      category: 'SERVICE_UNAVAILABLE',
+    };
+  }
+
+  if (status !== undefined) {
+    return {
+      error: new Error('Unable to sign in.'),
+      category: 'UNKNOWN',
+    };
+  }
+
+  if (caughtError instanceof TypeError) {
+    return {
+      error: new Error('Connection failed.'),
+      category: 'NETWORK',
+    };
+  }
+
+  return {
+    error: new Error('Unable to sign in.'),
+    category: 'UNKNOWN',
+  };
+}
+
+// =============================================================================
 // Hook State
 // =============================================================================
 
@@ -85,16 +176,20 @@ export interface UseAuthenticateLoginState {
 
   /**
    * Successful backend login response.
-   *
-   * This remains available after authentication state has been established
-   * and allows the caller to access the backend login result when required.
    */
   readonly data: AuthenticateLoginResponse | null;
 
   /**
-   * Normalized login error.
+   * Safe normalized error.
+   *
+   * The original transport or backend error is not exposed here.
    */
   readonly error: Error | null;
+
+  /**
+   * Safe presentation category for LoginError.
+   */
+  readonly errorCategory: LoginErrorCategory | null;
 }
 
 // =============================================================================
@@ -104,25 +199,19 @@ export interface UseAuthenticateLoginState {
 export interface UseAuthenticateLoginResult
   extends UseAuthenticateLoginState {
   /**
-   * Executes the login operation.
+   * Executes login and establishes the frontend authentication session.
    *
-   * On success:
-   *
-   * 1. The backend response is converted to AuthSession.
-   * 2. AuthenticationContext.authenticate() persists the session.
-   * 3. AuthenticationContext transitions to AUTHENTICATED.
-   *
-   * The successful backend response is returned to the caller.
+   * The promise rejects with a safe normalized Error when login or session
+   * establishment fails.
    */
   readonly login: (
     request: AuthenticateLoginRequest,
   ) => Promise<AuthenticateLoginResponse>;
 
   /**
-   * Clears the hook's transient request state.
+   * Clears transient request state.
    *
-   * This does not log the user out and does not modify the global
-   * authentication state.
+   * This does not log the user out or modify global authentication state.
    */
   readonly reset: () => void;
 }
@@ -132,12 +221,9 @@ export interface UseAuthenticateLoginResult
 // =============================================================================
 
 /**
- * Converts the backend login response into the frontend authentication
- * session contract.
+ * Converts the backend login response into the frontend AuthSession contract.
  *
- * The mapping is intentionally explicit rather than spreading the response.
- * This keeps the AuthSession contract independent from the HTTP response
- * representation.
+ * Explicit mapping keeps the session model independent from the HTTP response.
  */
 function toAuthSession(
   response: AuthenticateLoginResponse,
@@ -160,12 +246,6 @@ function toAuthSession(
 // Hook
 // =============================================================================
 
-/**
- * Provides the client-side login workflow.
- *
- * Authentication state and session persistence are delegated to the existing
- * AuthenticationContext rather than being reimplemented here.
- */
 export function useAuthenticateLogin(): UseAuthenticateLoginResult {
   // ---------------------------------------------------------------------------
   // Authentication State Boundary
@@ -184,6 +264,9 @@ export function useAuthenticateLogin(): UseAuthenticateLoginResult {
 
   const [error, setError] = useState<Error | null>(null);
 
+  const [errorCategory, setErrorCategory] =
+    useState<LoginErrorCategory | null>(null);
+
   // ---------------------------------------------------------------------------
   // Login
   // ---------------------------------------------------------------------------
@@ -195,15 +278,11 @@ export function useAuthenticateLogin(): UseAuthenticateLoginResult {
       setIsLoading(true);
       setData(null);
       setError(null);
+      setErrorCategory(null);
 
       try {
         // ---------------------------------------------------------------------
         // HTTP Authentication
-        // ---------------------------------------------------------------------
-        //
-        // The API boundary adds the required device headers. The hook only
-        // supplies the user credential request.
-        //
         // ---------------------------------------------------------------------
 
         const response = await authenticateLogin(request);
@@ -211,21 +290,13 @@ export function useAuthenticateLogin(): UseAuthenticateLoginResult {
         // ---------------------------------------------------------------------
         // Establish Frontend Authentication Session
         // ---------------------------------------------------------------------
-        //
-        // AuthenticationContext owns:
-        //
-        // - session persistence;
-        // - authenticated state;
-        // - subsequent consumers of authentication state.
-        //
-        // ---------------------------------------------------------------------
 
         const session = toAuthSession(response);
 
         await authenticate(session);
 
         // ---------------------------------------------------------------------
-        // Store Successful Request Result
+        // Store Successful Result
         // ---------------------------------------------------------------------
 
         setData(response);
@@ -233,26 +304,16 @@ export function useAuthenticateLogin(): UseAuthenticateLoginResult {
         return response;
       } catch (caughtError: unknown) {
         // ---------------------------------------------------------------------
-        // Normalize Unknown Errors
+        // Normalize Failure
         // ---------------------------------------------------------------------
 
-        const normalizedError =
-          caughtError instanceof Error
-            ? caughtError
-            : new Error('Unable to sign in.');
+        const normalized = normalizeLoginError(caughtError);
 
-        setError(normalizedError);
+        setError(normalized.error);
+        setErrorCategory(normalized.category);
 
-        // ---------------------------------------------------------------------
-        // Preserve Failure Semantics
-        // ---------------------------------------------------------------------
-        //
-        // The caller may use the rejected promise for form-level handling,
-        // while the hook also exposes the error through its state.
-        //
-        // ---------------------------------------------------------------------
-
-        throw normalizedError;
+        // Preserve rejected-promise semantics for the caller.
+        throw normalized.error;
       } finally {
         setIsLoading(false);
       }
@@ -268,6 +329,7 @@ export function useAuthenticateLogin(): UseAuthenticateLoginResult {
     setIsLoading(false);
     setData(null);
     setError(null);
+    setErrorCategory(null);
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -278,8 +340,8 @@ export function useAuthenticateLogin(): UseAuthenticateLoginResult {
     isLoading,
     data,
     error,
+    errorCategory,
     login,
     reset,
   };
 }
-
