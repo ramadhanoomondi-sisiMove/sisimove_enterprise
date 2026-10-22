@@ -1,18 +1,4 @@
-// -----------------------------------------------------------------------------
-// sisiMove — Change Traveller Profile Handle Handler
-// -----------------------------------------------------------------------------
-//
-// Application command handler for changing a Traveller Profile handle.
-//
-// Dependency injection:
-//
-// - TravellerProfileRepository is a domain abstraction.
-// - The repository is injected through the existing Traveller Profile
-//   application token because the repository is a TypeScript interface.
-//
-// -----------------------------------------------------------------------------
-
-import { Inject } from '@nestjs/common';
+import { ForbiddenException, Inject } from '@nestjs/common';
 
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 
@@ -28,7 +14,7 @@ import {
 import type { TravellerProfileRepository } from '../../domain/repositories/traveller-profile.repository';
 
 import { TravellerHandle } from '../../domain/value-objects/traveller-handle.vo';
-import { TravellerProfileId } from '../../domain/value-objects/traveller-profile-id.vo';
+import { TravellerProfilePublicId } from '../../domain/value-objects/traveller-profile-public-id.vo';
 
 // =============================================================================
 // Change Traveller Profile Handle Handler
@@ -40,17 +26,21 @@ export class ChangeTravellerProfileHandleHandler implements CommandHandler<Chang
     private readonly repository: TravellerProfileRepository,
   ) {}
 
-  // ---------------------------------------------------------------------------
-  // Execute
-  // ---------------------------------------------------------------------------
-
   async execute(command: ChangeTravellerProfileHandleCommand): Promise<void> {
-    const profileId = new TravellerProfileId(command.travellerProfileId);
-
-    const aggregate = await this.repository.findById(profileId);
+    // The URL carries the profile PUBLIC ID, not its internal ID.
+    const aggregate = await this.repository.findByPublicId(
+      new TravellerProfilePublicId(command.travellerProfileId),
+    );
 
     if (aggregate === null) {
       throw new TravellerProfileNotFoundException();
+    }
+
+    // Never trust the profile ID supplied by the client as proof of ownership.
+    if (aggregate.profile.memberPublicId.value !== command.memberPublicId) {
+      throw new ForbiddenException(
+        'You are not allowed to update this traveller profile.',
+      );
     }
 
     const handle = new TravellerHandle(command.handle);

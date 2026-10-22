@@ -455,7 +455,43 @@ export class PrismaTrustProfileRepository implements TrustProfileRepository {
 
     return records.map((record) => TrustProfilePrismaMapper.toDomain(record));
   }
+  async findProfilesPage(options: {
+    skip: number;
+    take: number;
+    status?: TrustProfileStatusValueObject;
+    verificationLevel?: TrustVerificationLevelValueObject;
+  }): Promise<{
+    profiles: TrustProfileEntity[];
+    total: number;
+  }> {
+    const where: Prisma.TrustProfileWhereInput = {
+      ...(options.status ? { status: options.status.value } : {}),
+      ...(options.verificationLevel
+        ? { verificationLevel: options.verificationLevel.value }
+        : {}),
+    };
 
+    const [records, total] = await Promise.all([
+      this.prisma.trustProfile.findMany({
+        where,
+        skip: options.skip,
+        take: options.take,
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
+      this.prisma.trustProfile.count({
+        where,
+      }),
+    ]);
+
+    return {
+      profiles: records.map((record) =>
+        TrustProfilePrismaMapper.toDomain(record),
+      ),
+      total,
+    };
+  }
   // ===========================================================================
   // Ratings
   // ===========================================================================

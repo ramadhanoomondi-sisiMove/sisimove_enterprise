@@ -479,12 +479,14 @@ export class TravellerProfileController {
   public async changeHandle(
     @Param('travellerProfileId') travellerProfileId: string,
     @Body() dto: ChangeTravellerProfileHandleDto,
+    @CurrentIdentity() identity: AuthenticatedIdentity,
   ): Promise<void> {
     await this.changeTravellerProfileHandleHandler.execute(
       new ChangeTravellerProfileHandleCommand(
         travellerProfileId,
         dto.handle,
         randomUUID(),
+        identity.identityPublicId,
       ),
     );
   }

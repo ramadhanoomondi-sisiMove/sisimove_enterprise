@@ -24,6 +24,8 @@ export * from './trust-profile/get-trust-profile-review.query';
 
 export * from './trust-profile/get-trust-profile-badge.query';
 
+export * from './trust-profile/get-trust-profiles-page.query';
+
 // -----------------------------------------------------------------------------
 // Trust Badge Queries
 // -----------------------------------------------------------------------------
@@ -37,3 +39,7 @@ export * from './trust-badge/get-trust-badge-by-name.query';
 export * from './trust-badge/get-active-trust-badges.query';
 
 export * from './trust-badge/get-trust-badges-by-asset.query';
+
+export * from './trust-badge/get-trust-badge-by-public-id.query';
+
+export * from './trust-badge/get-trust-badges.query';

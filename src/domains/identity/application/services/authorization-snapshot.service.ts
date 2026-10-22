@@ -5,12 +5,13 @@
 //
 // sisiMove — Authorization Snapshot Service
 //
-// Resolves the current authorization state of an Identity for consumption by
-// authentication/token workflows.
+// Resolves the current Identity lifecycle and authorization state for
+// authentication and token workflows.
 //
 // Authorization snapshot:
 //
 //     Identity
+//         ├── lifecycle status
 //         │
 //         └── active IdentityRole assignments
 //                    │
@@ -26,11 +27,19 @@
 //                                        │
 //                                        └── active Permission codes
 //
-// Notes:
-// - `roles` retains role public IDs for existing JWT compatibility.
-// - `roleCodes` exposes stable role codes such as ADMIN and SUPER_ADMIN.
-// - `permissions` retains active permission codes.
-// - Backend guards remain responsible for authorization.
+// Lifecycle policy:
+//
+// - ACTIVE identities may proceed to authorization resolution.
+// - PENDING identities must not authenticate.
+// - SUSPENDED identities must not authenticate.
+// - CLOSED identities must not authenticate.
+// - A missing Identity is represented by identityStatus: null.
+//
+// IMPORTANT:
+//
+// This service reports the current Identity status. Authentication and token
+// workflows must enforce that status before issuing or refreshing tokens.
+// Returning an empty authorization snapshot is not sufficient to deny login.
 //
 // -----------------------------------------------------------------------------
 
@@ -45,6 +54,8 @@ import { Inject } from '@nestjs/common';
 // =============================================================================
 
 import type { IdentityPublicId } from '../../domain/value-objects/identity-public-id.vo';
+
+import type { IdentityStatusValue } from '../../domain/value-objects/identity-status.vo';
 
 // =============================================================================
 // Repositories
@@ -75,6 +86,15 @@ import { PermissionPublicId } from '../../domain/value-objects/permission-public
 // =============================================================================
 
 export interface AuthorizationSnapshot {
+  /**
+   * Current lifecycle status of the Identity.
+   *
+   * `null` means the Identity could not be found.
+   *
+   * Consumers responsible for authentication must require `ACTIVE`.
+   */
+  readonly identityStatus: IdentityStatusValue | null;
+
   /**
    * Role public IDs.
    *
@@ -109,9 +129,9 @@ export interface AuthorizationSnapshotService {
 // =============================================================================
 
 export class AuthorizationSnapshotServiceImpl implements AuthorizationSnapshotService {
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Constructor
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public constructor(
     @Inject(IDENTITY_TOKENS.REPOSITORIES.IDENTITY)
@@ -127,24 +147,60 @@ export class AuthorizationSnapshotServiceImpl implements AuthorizationSnapshotSe
     private readonly roleRepository: RoleRepository,
   ) {}
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Resolve
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public async resolve(
     identityPublicId: IdentityPublicId,
   ): Promise<AuthorizationSnapshot> {
+    // -------------------------------------------------------------------------
+    // 1. Resolve Identity
+    // -------------------------------------------------------------------------
+
     const identity =
       await this.identityRepository.findByPublicId(identityPublicId);
 
+    // -------------------------------------------------------------------------
+    // 2. Represent a missing Identity explicitly
+    // -------------------------------------------------------------------------
+
     if (identity === null) {
-      return AuthorizationSnapshotServiceImpl.emptySnapshot();
+      return AuthorizationSnapshotServiceImpl.emptySnapshot(null);
+    }
+
+    // -------------------------------------------------------------------------
+    // 3. Capture the current lifecycle status
+    // -------------------------------------------------------------------------
+    //
+    // The Identity aggregate is authoritative for lifecycle status.
+    //
+    // This service exposes the status to authentication/token workflows.
+    // It does not independently change Identity lifecycle state.
+    //
+    // -------------------------------------------------------------------------
+
+    const identityStatus = identity.status.value;
+
+    // -------------------------------------------------------------------------
+    // 4. Do not resolve permissions for unusable Identity states
+    // -------------------------------------------------------------------------
+    //
+    // This is an optimization and defense-in-depth measure, not a substitute
+    // for the explicit status check required by the login/refresh handlers.
+    //
+    // Only ACTIVE identities receive a populated authorization snapshot.
+    //
+    // -------------------------------------------------------------------------
+
+    if (identityStatus !== 'ACTIVE') {
+      return AuthorizationSnapshotServiceImpl.emptySnapshot(identityStatus);
     }
 
     const referenceDate = new Date();
 
     // -------------------------------------------------------------------------
-    // Active Identity Role Assignments
+    // 5. Resolve active Identity Role assignments
     // -------------------------------------------------------------------------
 
     const activeIdentityRoles = identity.identityRoles.filter((identityRole) =>
@@ -152,18 +208,18 @@ export class AuthorizationSnapshotServiceImpl implements AuthorizationSnapshotSe
     );
 
     if (activeIdentityRoles.length === 0) {
-      return AuthorizationSnapshotServiceImpl.emptySnapshot();
+      return AuthorizationSnapshotServiceImpl.emptySnapshot(identityStatus);
     }
 
     // -------------------------------------------------------------------------
-    // Role Public IDs and Role Codes
+    // 6. Collect Role public IDs and Role codes
     // -------------------------------------------------------------------------
 
     const rolePublicIds = new Set<string>();
     const roleCodes = new Set<string>();
 
     // -------------------------------------------------------------------------
-    // Permission References
+    // 7. Collect Permission references
     // -------------------------------------------------------------------------
 
     const permissionPublicIdValues = new Set<string>();
@@ -190,11 +246,12 @@ export class AuthorizationSnapshotServiceImpl implements AuthorizationSnapshotSe
     }
 
     // -------------------------------------------------------------------------
-    // No Permission Assignments
+    // 8. Return when there are no Permission assignments
     // -------------------------------------------------------------------------
 
     if (permissionPublicIdValues.size === 0) {
       return {
+        identityStatus,
         roles: Object.freeze([...rolePublicIds]),
         roleCodes: Object.freeze([...roleCodes]),
         permissions: Object.freeze([]),
@@ -202,7 +259,7 @@ export class AuthorizationSnapshotServiceImpl implements AuthorizationSnapshotSe
     }
 
     // -------------------------------------------------------------------------
-    // Permission Resolution
+    // 9. Resolve active Permission codes
     // -------------------------------------------------------------------------
 
     const permissionCodes = new Set<string>();
@@ -223,22 +280,26 @@ export class AuthorizationSnapshotServiceImpl implements AuthorizationSnapshotSe
     }
 
     // -------------------------------------------------------------------------
-    // Immutable Snapshot
+    // 10. Return immutable authorization snapshot
     // -------------------------------------------------------------------------
 
     return {
+      identityStatus,
       roles: Object.freeze([...rolePublicIds]),
       roleCodes: Object.freeze([...roleCodes]),
       permissions: Object.freeze([...permissionCodes]),
     };
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Empty Snapshot
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
-  private static emptySnapshot(): AuthorizationSnapshot {
+  private static emptySnapshot(
+    identityStatus: IdentityStatusValue | null,
+  ): AuthorizationSnapshot {
     return {
+      identityStatus,
       roles: Object.freeze([]),
       roleCodes: Object.freeze([]),
       permissions: Object.freeze([]),

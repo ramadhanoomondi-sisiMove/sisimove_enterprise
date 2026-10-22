@@ -113,6 +113,21 @@ export interface TrustProfileRepository {
   // ===========================================================================
   // Profile Queries
   // ===========================================================================
+  /**
+   * Find a paginated collection of Trust Profiles.
+   *
+   * Optional filters are combined when both are supplied.
+   * The total represents all matching profiles before pagination.
+   */
+  findProfilesPage(options: {
+    skip: number;
+    take: number;
+    status?: TrustProfileStatusValueObject;
+    verificationLevel?: TrustVerificationLevelValueObject;
+  }): Promise<{
+    profiles: TrustProfileEntity[];
+    total: number;
+  }>;
 
   /**
    * Find only the Trust Profile entity by internal identifier.

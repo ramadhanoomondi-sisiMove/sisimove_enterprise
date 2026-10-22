@@ -1087,7 +1087,6 @@ export class IdentitiesController {
       'The authenticated identity does not have the required permission or target-identity authority.',
   })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('identity:change-email')
   public async changeEmail(
     @Param('identityPublicId') identityPublicId: string,
     @Body() dto: ChangeIdentityEmailRequestDto,
@@ -1139,7 +1138,6 @@ export class IdentitiesController {
       'The authenticated identity does not have the required permission or target-identity authority.',
   })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('identity:change-phone-number')
   public async changePhoneNumber(
     @Param('identityPublicId') identityPublicId: string,
     @Body() dto: ChangeIdentityPhoneNumberRequestDto,

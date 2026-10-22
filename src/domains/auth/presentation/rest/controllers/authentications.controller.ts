@@ -1208,28 +1208,44 @@ export class AuthenticationsController {
   //
   // ---------------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------------
+  // Change Password
+  // ---------------------------------------------------------------------------
+  //
+  // PATCH /authentications/:authenticationPublicId/password
+  //
+  // The user supplies only the new password.
+  //
+  // The backend generates operational metadata and hashes the password
+  // before constructing the application command.
+  //
+  // The existing authorization flow must verify that the authenticated
+  // principal is authorized to change this Authentication's password.
+  //
+  // ---------------------------------------------------------------------------
+
   @ApiBearerAuth('access-token')
   @Patch(':authenticationPublicId/password')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('authentication:change-password')
   public async changePassword(
     @Param('authenticationPublicId')
     authenticationPublicId: string,
     @Body()
     dto: ChangePasswordRequestDto,
   ): Promise<AuthenticationResponse> {
+    const correlationId = randomUUID();
+
     const hashedPassword = await this.passwordHasher.hash(dto.password);
 
     const passwordHash = AuthenticationPasswordHash.create(hashedPassword);
 
+    const changedAt = AuthenticationPasswordChangedAt.create(new Date());
+
     const command = new ChangePasswordCommand(
       new AuthenticationPublicId(authenticationPublicId),
-
       passwordHash,
-
-      AuthenticationPasswordChangedAt.create(new Date(dto.changedAt)),
-
-      randomUUID(),
+      changedAt,
+      correlationId,
     );
 
     const aggregate = await this.changePasswordHandler.execute(command);

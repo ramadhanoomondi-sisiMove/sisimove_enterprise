@@ -68,8 +68,10 @@ import {
 import {
   GetActiveTrustBadgesQuery,
   GetTrustBadgeByNameQuery,
+  GetTrustBadgeByPublicIdQuery,
   GetTrustBadgeByTypeQuery,
   GetTrustBadgesByAssetQuery,
+  GetTrustBadgesQuery,
   GetTrustBadgeQuery,
 } from '../../../application/queries';
 
@@ -110,94 +112,14 @@ import {
 // =============================================================================
 // Trust Badge HTTP Controller
 // =============================================================================
-//
-// This controller exposes two categories of Trust Badge endpoints:
-//
-// 1. PUBLIC DISCOVERY
-//
-//    These endpoints support:
-//
-//    - public Trust Profiles;
-//    - public traveller reputation surfaces;
-//    - landing-page presentation;
-//    - displaying available Trust Badge definitions;
-//    - resolving badge information without authentication.
-//
-//    Public queries:
-//      GET /trust-badges/active
-//      GET /trust-badges/name/:name
-//      GET /trust-badges/type/:type
-//      GET /trust-badges/asset/:assetPublicId
-//      GET /trust-badges/:trustBadgeId
-//
-// 2. ADMINISTRATIVE MANAGEMENT
-//
-//    These endpoints mutate the Trust Badge catalogue and therefore require
-//    authentication plus the appropriate Trust Badge permission.
-//
-//    Protected commands:
-//      POST  /trust-badges
-//      PATCH /trust-badges/:trustBadgeId
-//      PATCH /trust-badges/:trustBadgeId/type
-//      PATCH /trust-badges/:trustBadgeId/name
-//      PATCH /trust-badges/:trustBadgeId/description
-//      PATCH /trust-badges/:trustBadgeId/asset
-//      POST  /trust-badges/:trustBadgeId/activate
-//      POST  /trust-badges/:trustBadgeId/deactivate
-//
-// Security model for protected operations:
-//
-//   Access Token
-//        ↓
-//   JwtAuthGuard
-//        ↓
-//   PermissionsGuard
-//        ↓
-//   Required trust-badge permission
-//        ↓
-//   Application Command Handler
-//        ↓
-//   TrustBadgeAggregate
-//
-// Public query model:
-//
-//   HTTP Request
-//        ↓
-//   Application Query Handler
-//        ↓
-//   TrustBadgeAggregate
-//        ↓
-//   TrustBadgeResponseMapper
-//        ↓
-//   Public HTTP Response
-//
-// Responsibilities:
-//
-// - HTTP transport;
-// - DTO binding;
-// - command/query construction;
-// - dispatching application handlers;
-// - mapping domain/application results to HTTP responses;
-// - declaring authorization requirements for protected operations.
-//
-// The controller contains no business rules.
-//
-// Domain behavior remains in:
-//
-// - TrustBadgeAggregate;
-// - Trust Badge entities/value objects;
-// - application command handlers;
-// - application query handlers.
-//
-// =============================================================================
 
 @ApiTags('Trust Badges')
 @Controller('trust-badges')
 export class TrustBadgeController {
   constructor(
-    // ========================================================================
+    // =========================================================================
     // Commands
-    // ========================================================================
+    // =========================================================================
 
     @Inject(TRUST_BADGE_TOKENS.COMMAND_HANDLERS.CREATE)
     private readonly createTrustBadgeHandler: CommandHandler<
@@ -226,14 +148,26 @@ export class TrustBadgeController {
     @Inject(TRUST_BADGE_TOKENS.COMMAND_HANDLERS.DEACTIVATE)
     private readonly deactivateTrustBadgeHandler: CommandHandler<DeactivateTrustBadgeCommand>,
 
-    // ========================================================================
+    // =========================================================================
     // Queries
-    // ========================================================================
+    // =========================================================================
 
     @Inject(TRUST_BADGE_TOKENS.QUERY_HANDLERS.GET)
     private readonly getTrustBadgeHandler: QueryHandler<
       GetTrustBadgeQuery,
       TrustBadgeAggregate | null
+    >,
+
+    @Inject(TRUST_BADGE_TOKENS.QUERY_HANDLERS.GET_BY_PUBLIC_ID)
+    private readonly getTrustBadgeByPublicIdHandler: QueryHandler<
+      GetTrustBadgeByPublicIdQuery,
+      TrustBadgeAggregate | null
+    >,
+
+    @Inject(TRUST_BADGE_TOKENS.QUERY_HANDLERS.GET_ALL)
+    private readonly getTrustBadgesHandler: QueryHandler<
+      GetTrustBadgesQuery,
+      readonly TrustBadgeAggregate[]
     >,
 
     @Inject(TRUST_BADGE_TOKENS.QUERY_HANDLERS.GET_ACTIVE)
@@ -264,18 +198,27 @@ export class TrustBadgeController {
   // ===========================================================================
   // PUBLIC QUERIES
   // ===========================================================================
-  //
-  // These endpoints intentionally do NOT use:
-  //
-  //   @ApiBearerAuth()
-  //   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  //   @RequirePermissions(...)
-  //
-  // Trust Badge definitions are public catalogue/discovery information.
-  // Public Trust Profiles and landing-page surfaces may need to resolve
-  // badge definitions without requiring an authenticated session.
-  //
-  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Get All Trust Badges
+  // ---------------------------------------------------------------------------
+
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get all trust badges.',
+    description: 'Returns all Trust Badge definitions in the catalogue.',
+  })
+  @ApiOkResponse({
+    description: 'Trust badges retrieved successfully.',
+  })
+  async getAll(): Promise<TrustBadgeResponse[]> {
+    const aggregates = await this.getTrustBadgesHandler.execute(
+      new GetTrustBadgesQuery(),
+    );
+
+    return TrustBadgeResponseMapper.fromAggregates([...aggregates]);
+  }
 
   // ---------------------------------------------------------------------------
   // Get Active Trust Badges
@@ -382,15 +325,44 @@ export class TrustBadgeController {
   }
 
   // ---------------------------------------------------------------------------
-  // Get Trust Badge
+  // Get Trust Badge By Public ID
+  // ---------------------------------------------------------------------------
+
+  @Get('public/:publicId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get a trust badge by public ID.',
+    description:
+      'Returns a Trust Badge definition using its public identifier.',
+  })
+  @ApiOkResponse({
+    description: 'Trust badge retrieved successfully.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Trust badge was not found.',
+  })
+  async getByPublicId(
+    @Param('publicId') publicId: string,
+  ): Promise<TrustBadgeResponse | null> {
+    const aggregate = await this.getTrustBadgeByPublicIdHandler.execute(
+      new GetTrustBadgeByPublicIdQuery(publicId),
+    );
+
+    return aggregate === null
+      ? null
+      : TrustBadgeResponseMapper.fromAggregate(aggregate);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Get Trust Badge By Internal ID
   // ---------------------------------------------------------------------------
 
   @Get(':trustBadgeId')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Get a trust badge.',
+    summary: 'Get a trust badge by internal ID.',
     description:
-      'Returns a public Trust Badge definition by its public identifier.',
+      'Returns a Trust Badge definition using its internal identifier.',
   })
   @ApiOkResponse({
     description: 'Trust badge retrieved successfully.',
@@ -412,14 +384,6 @@ export class TrustBadgeController {
 
   // ===========================================================================
   // PROTECTED COMMANDS
-  // ===========================================================================
-  //
-  // Every mutation explicitly declares its authentication and authorization
-  // requirements at method level.
-  //
-  // This is intentional because the controller contains public GET endpoints.
-  // Class-level authentication would incorrectly protect those public routes.
-  //
   // ===========================================================================
 
   // ---------------------------------------------------------------------------

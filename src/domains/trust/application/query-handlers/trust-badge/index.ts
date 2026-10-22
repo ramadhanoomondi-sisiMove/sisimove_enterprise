@@ -5,3 +5,5 @@ export * from './get-trust-badge-by-type.query-handler';
 export * from './get-trust-badge-by-name.query-handler';
 export * from './get-active-trust-badges.query-handler';
 export * from './get-trust-badges-by-asset.query-handler';
+export * from './get-trust-badge-by-public-id.query-handler';
+export * from './get-trust-badges.query-handler';

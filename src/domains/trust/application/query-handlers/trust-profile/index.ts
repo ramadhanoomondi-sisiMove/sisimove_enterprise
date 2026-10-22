@@ -31,3 +31,5 @@ export * from './get-trust-profile-badges.query-handler';
 export * from './get-trust-profile-badge.query-handler';
 
 export * from './get-trust-profile-events.query-handler';
+
+export * from './get-trust-profiles-page.query-handler';

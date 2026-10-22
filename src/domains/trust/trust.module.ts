@@ -13,45 +13,9 @@
 // - Trust journey projections;
 // - Trust dispute projections.
 //
-// The public marketplace Trust representation is implemented as a dedicated
-// application query handler:
-//
-//     GetPublicTrustProfileByMemberQueryHandler
-//
-// That handler composes a reduced public Trust result and consumes Asset's
-// public-reference capability when a public Trust Badge has associated
-// artwork.
-//
-// -----------------------------------------------------------------------------
-//
-// CROSS-DOMAIN ASSET DEPENDENCY
-//
-// Trust does NOT access Asset infrastructure directly.
-//
-// Trust does NOT:
-//
-// - inject AssetStoragePort;
-// - inject AssetDeliveryPort;
-// - construct Asset URLs;
-// - access Asset storage;
-// - register Asset infrastructure providers;
-// - register GetPublicAssetReferenceQueryHandler locally.
-//
-// Instead, Trust imports AssetsModule and consumes the application capability
-// exported by that module:
-//
-//     ASSET_TOKENS.QUERY_HANDLERS.GET_PUBLIC_ASSET_REFERENCE
-//
-// The dependency therefore remains:
-//
-//     Trust
-//       │
-//       └── imports AssetsModule
-//                    │
-//                    └── exports public Asset-reference capability
-//
-// This keeps the bounded-context boundary explicit and prevents Trust from
-// depending on Asset infrastructure details.
+// Public marketplace Trust representations use dedicated application query
+// handlers. Trust consumes AssetsModule's public Asset-reference capability
+// without accessing Asset infrastructure directly.
 //
 // =============================================================================
 
@@ -69,15 +33,6 @@ import { IdentityModule } from '../identity/identity.module';
 
 // =============================================================================
 // Assets — Public Application Capability
-// =============================================================================
-//
-// Trust consumes the public Asset-reference query capability for Trust Badge
-// artwork.
-//
-// AssetsModule owns the provider and exports the corresponding application
-// token. Trust therefore imports the module rather than registering or
-// instantiating any Asset provider itself.
-//
 // =============================================================================
 
 import { AssetsModule } from '../assets/assets.module';
@@ -131,8 +86,10 @@ import {
 import {
   GetActiveTrustBadgesQueryHandler,
   GetTrustBadgeByNameQueryHandler,
+  GetTrustBadgeByPublicIdQueryHandler,
   GetTrustBadgeByTypeQueryHandler,
   GetTrustBadgesByAssetQueryHandler,
+  GetTrustBadgesQueryHandler,
   GetTrustBadgeQueryHandler,
 } from './application/query-handlers/trust-badge';
 
@@ -177,6 +134,7 @@ import {
   GetTrustProfileRatingsQueryHandler,
   GetTrustProfileReviewQueryHandler,
   GetTrustProfileReviewsQueryHandler,
+  GetTrustProfilesPageQueryHandler,
 } from './application/query-handlers/trust-profile';
 
 // =============================================================================
@@ -188,74 +146,13 @@ import {
   // Imports
   // ===========================================================================
 
-  imports: [
-    // =========================================================================
-    // Identity / Authorization
-    //
-    // Required by cross-domain authorization infrastructure such as:
-    //
-    //   PermissionsGuard
-    //     -> GetIdentityPermissionsHandler
-    //     -> GetIdentityRolesHandler
-    //
-    // IdentityModule exports both handlers.
-    // =========================================================================
-
-    IdentityModule,
-
-    // =========================================================================
-    // Assets / Public Asset Reference
-    // =========================================================================
-    //
-    // Trust's public Trust-profile query may expose artwork for active Trust
-    // Badges.
-    //
-    // The Trust application handler consumes:
-    //
-    //   ASSET_TOKENS.QUERY_HANDLERS.GET_PUBLIC_ASSET_REFERENCE
-    //
-    // AssetsModule owns that provider and explicitly exports the token.
-    //
-    // Importing AssetsModule is therefore the correct Nest module boundary.
-    //
-    // We intentionally do NOT:
-    //
-    // - register GetPublicAssetReferenceQueryHandler here;
-    // - register AssetDeliveryPort here;
-    // - register AssetStoragePort here;
-    // - register LocalAssetDeliveryService here;
-    // - register BunnyAssetDeliveryService here.
-    //
-    // Assets remains responsible for its own infrastructure and public Asset
-    // delivery behavior.
-    // =========================================================================
-
-    AssetsModule,
-
-    // =========================================================================
-    // Prisma
-    // =========================================================================
-
-    PrismaModule,
-  ],
+  imports: [IdentityModule, AssetsModule, PrismaModule],
 
   // ===========================================================================
   // Controllers
   // ===========================================================================
 
-  controllers: [
-    // =========================================================================
-    // Trust Badge
-    // =========================================================================
-
-    TrustBadgeController,
-
-    // =========================================================================
-    // Trust Profile
-    // =========================================================================
-
-    TrustProfileController,
-  ],
+  controllers: [TrustBadgeController, TrustProfileController],
 
   // ===========================================================================
   // Providers
@@ -277,37 +174,30 @@ import {
       provide: TRUST_BADGE_TOKENS.COMMAND_HANDLERS.CREATE,
       useClass: CreateTrustBadgeHandler,
     },
-
     {
       provide: TRUST_BADGE_TOKENS.COMMAND_HANDLERS.UPDATE,
       useClass: UpdateTrustBadgeHandler,
     },
-
     {
       provide: TRUST_BADGE_TOKENS.COMMAND_HANDLERS.CHANGE_TYPE,
       useClass: ChangeTrustBadgeTypeHandler,
     },
-
     {
       provide: TRUST_BADGE_TOKENS.COMMAND_HANDLERS.CHANGE_NAME,
       useClass: ChangeTrustBadgeNameHandler,
     },
-
     {
       provide: TRUST_BADGE_TOKENS.COMMAND_HANDLERS.CHANGE_DESCRIPTION,
       useClass: ChangeTrustBadgeDescriptionHandler,
     },
-
     {
       provide: TRUST_BADGE_TOKENS.COMMAND_HANDLERS.SET_ASSET,
       useClass: SetTrustBadgeAssetHandler,
     },
-
     {
       provide: TRUST_BADGE_TOKENS.COMMAND_HANDLERS.ACTIVATE,
       useClass: ActivateTrustBadgeHandler,
     },
-
     {
       provide: TRUST_BADGE_TOKENS.COMMAND_HANDLERS.DEACTIVATE,
       useClass: DeactivateTrustBadgeHandler,
@@ -321,22 +211,26 @@ import {
       provide: TRUST_BADGE_TOKENS.QUERY_HANDLERS.GET,
       useClass: GetTrustBadgeQueryHandler,
     },
-
+    {
+      provide: TRUST_BADGE_TOKENS.QUERY_HANDLERS.GET_BY_PUBLIC_ID,
+      useClass: GetTrustBadgeByPublicIdQueryHandler,
+    },
     {
       provide: TRUST_BADGE_TOKENS.QUERY_HANDLERS.GET_BY_TYPE,
       useClass: GetTrustBadgeByTypeQueryHandler,
     },
-
     {
       provide: TRUST_BADGE_TOKENS.QUERY_HANDLERS.GET_BY_NAME,
       useClass: GetTrustBadgeByNameQueryHandler,
     },
-
+    {
+      provide: TRUST_BADGE_TOKENS.QUERY_HANDLERS.GET_ALL,
+      useClass: GetTrustBadgesQueryHandler,
+    },
     {
       provide: TRUST_BADGE_TOKENS.QUERY_HANDLERS.GET_ACTIVE,
       useClass: GetActiveTrustBadgesQueryHandler,
     },
-
     {
       provide: TRUST_BADGE_TOKENS.QUERY_HANDLERS.GET_BY_ASSET,
       useClass: GetTrustBadgesByAssetQueryHandler,
@@ -350,22 +244,18 @@ import {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.CREATE,
       useClass: CreateTrustProfileHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.CHANGE_STATUS,
       useClass: ChangeTrustProfileStatusHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.RESTRICT,
       useClass: ChangeTrustProfileStatusHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.SUSPEND,
       useClass: ChangeTrustProfileStatusHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.RESTORE,
       useClass: ChangeTrustProfileStatusHandler,
@@ -379,7 +269,6 @@ import {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.GRANT_VERIFICATION,
       useClass: GrantTrustVerificationHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.REVOKE_VERIFICATION,
       useClass: RevokeTrustVerificationHandler,
@@ -393,22 +282,18 @@ import {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.RECEIVE_RATING,
       useClass: ReceiveTrustRatingHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.CHANGE_RATING_SCORE,
       useClass: ChangeTrustRatingScoreHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.HIDE_RATING,
       useClass: HideTrustRatingHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.REMOVE_RATING,
       useClass: RemoveTrustRatingHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.RESTORE_RATING,
       useClass: RestoreTrustRatingHandler,
@@ -422,12 +307,10 @@ import {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.CREATE_REVIEW,
       useClass: CreateTrustReviewHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.UPDATE_REVIEW,
       useClass: UpdateTrustReviewHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.REMOVE_REVIEW,
       useClass: RemoveTrustReviewHandler,
@@ -441,7 +324,6 @@ import {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.AWARD_BADGE,
       useClass: AwardTrustBadgeHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.REVOKE_BADGE,
       useClass: RevokeTrustBadgeHandler,
@@ -455,7 +337,6 @@ import {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.APPLY_JOURNEY_COMPLETED,
       useClass: ApplyJourneyCompletedHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.APPLY_JOURNEY_CANCELLED,
       useClass: ApplyJourneyCancelledHandler,
@@ -469,7 +350,6 @@ import {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.APPLY_DISPUTE_OPENED,
       useClass: ApplyTrustDisputeOpenedHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.COMMAND_HANDLERS.APPLY_DISPUTE_RESOLVED,
       useClass: ApplyTrustDisputeResolvedHandler,
@@ -492,24 +372,22 @@ import {
       provide: TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET,
       useClass: GetTrustProfileQueryHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_BY_MEMBER_PUBLIC_ID,
       useClass: GetTrustProfileByMemberQueryHandler,
     },
 
     // =========================================================================
-    // Trust Profile — Public Marketplace Query
+    // Trust Profile — Paginated Collection Query
     // =========================================================================
-    //
-    // This is the reduced public Trust read capability consumed by anonymous
-    // marketplace experiences.
-    //
-    // The handler has its own exposure boundary and is therefore separate from
-    // the broader Trust Profile query.
-    //
-    // The handler consumes AssetsModule's exported public Asset-reference
-    // capability for optional Trust Badge artwork.
+
+    {
+      provide: TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_PAGE,
+      useClass: GetTrustProfilesPageQueryHandler,
+    },
+
+    // =========================================================================
+    // Trust Profile — Public Marketplace Query
     // =========================================================================
 
     {
@@ -517,37 +395,30 @@ import {
         TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_PUBLIC_BY_MEMBER_PUBLIC_ID,
       useClass: GetPublicTrustProfileByMemberQueryHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_RATINGS,
       useClass: GetTrustProfileRatingsQueryHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_RATING,
       useClass: GetTrustProfileRatingQueryHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_REVIEWS,
       useClass: GetTrustProfileReviewsQueryHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_REVIEW,
       useClass: GetTrustProfileReviewQueryHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_BADGES,
       useClass: GetTrustProfileBadgesQueryHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_BADGE,
       useClass: GetTrustProfileBadgeQueryHandler,
     },
-
     {
       provide: TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_EVENTS,
       useClass: GetTrustProfileEventsQueryHandler,
@@ -584,8 +455,10 @@ import {
     // =========================================================================
 
     TRUST_BADGE_TOKENS.QUERY_HANDLERS.GET,
+    TRUST_BADGE_TOKENS.QUERY_HANDLERS.GET_BY_PUBLIC_ID,
     TRUST_BADGE_TOKENS.QUERY_HANDLERS.GET_BY_TYPE,
     TRUST_BADGE_TOKENS.QUERY_HANDLERS.GET_BY_NAME,
+    TRUST_BADGE_TOKENS.QUERY_HANDLERS.GET_ALL,
     TRUST_BADGE_TOKENS.QUERY_HANDLERS.GET_ACTIVE,
     TRUST_BADGE_TOKENS.QUERY_HANDLERS.GET_BY_ASSET,
 
@@ -657,23 +530,17 @@ import {
 
     TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET,
     TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_BY_MEMBER_PUBLIC_ID,
+    TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_PAGE,
 
     // =========================================================================
     // Public Marketplace Query Token
     // =========================================================================
-    //
-    // Exported so other bounded contexts/read compositions can consume the
-    // reduced public Trust capability through the Trust module boundary.
-    // =========================================================================
 
     TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_PUBLIC_BY_MEMBER_PUBLIC_ID,
-
     TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_RATINGS,
     TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_RATING,
-
     TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_REVIEWS,
     TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_REVIEW,
-
     TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_BADGES,
     TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_BADGE,
     TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_EVENTS,

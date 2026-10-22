@@ -498,6 +498,7 @@ import {
   GetAssetsByOwnerQuery,
   GetAssetsByStatusQuery,
   GetAssetsQuery,
+  GetPrivateAssetContentQuery,
   GetPublicAssetContentQuery,
   GetPublicAssetReferenceQuery,
 } from '../../../application/queries';
@@ -677,6 +678,11 @@ export class AssetsController {
     @Inject(ASSET_TOKENS.QUERY_HANDLERS.GET_PUBLIC_ASSET_CONTENT)
     private readonly getPublicAssetContentHandler: QueryHandler<
       GetPublicAssetContentQuery,
+      AssetStorageObjectContent
+    >,
+    @Inject(ASSET_TOKENS.QUERY_HANDLERS.GET_PRIVATE_ASSET_CONTENT)
+    private readonly getPrivateAssetContentHandler: QueryHandler<
+      GetPrivateAssetContentQuery,
       AssetStorageObjectContent
     >,
   ) {}
@@ -899,6 +905,35 @@ export class AssetsController {
     const query = new GetPublicAssetContentQuery(publicId);
 
     const content = await this.getPublicAssetContentHandler.execute(query);
+
+    return new StreamableFile(content.content, {
+      type: content.mimeType.value,
+      length: content.sizeBytes.value,
+      disposition: 'inline',
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // GET /assets/:assetPublicId/content
+  // ---------------------------------------------------------------------------
+
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Retrieve asset content for authorized administration',
+    description:
+      'Streams usable asset content to authenticated callers with the asset:read permission. The route is protected; the application handler resolves the asset and retrieves its physical content.',
+  })
+  @Get(':assetPublicId/content')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('asset:read')
+  public async getPrivateContent(
+    @Param('assetPublicId') assetPublicId: string,
+  ): Promise<StreamableFile> {
+    const publicId = new AssetPublicId(assetPublicId);
+
+    const query = new GetPrivateAssetContentQuery(publicId);
+
+    const content = await this.getPrivateAssetContentHandler.execute(query);
 
     return new StreamableFile(content.content, {
       type: content.mimeType.value,

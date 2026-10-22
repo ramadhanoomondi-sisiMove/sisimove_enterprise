@@ -15,7 +15,8 @@
 // - load AuthenticationAggregate;
 // - derive the next password version;
 // - invoke aggregate.changePassword();
-// - persist the aggregate.
+// - persist the aggregate;
+// - return the persisted aggregate to the caller.
 //
 // This handler does NOT:
 //
@@ -76,6 +77,14 @@
 // The handler does not construct or dispatch the event directly.
 //
 // -----------------------------------------------------------------------------
+//
+// Result contract:
+//
+// - Missing aggregate: throw AuthenticationNotFoundException.
+// - Successful password change: persist and return the aggregate.
+// - Persistence failure: propagate the repository error.
+//
+// -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
 // NestJS
@@ -100,6 +109,12 @@ import { AUTH_TOKENS } from '../auth.tokens';
 // -----------------------------------------------------------------------------
 
 import type { ChangePasswordCommand } from '../commands/change-password.command';
+
+// -----------------------------------------------------------------------------
+// Aggregate
+// -----------------------------------------------------------------------------
+
+import type { AuthenticationAggregate } from '../../domain/aggregates/authentication.aggregate';
 
 // -----------------------------------------------------------------------------
 // Repository
@@ -143,9 +158,15 @@ import { AuthenticationNotFoundException } from '../../domain/exceptions/authent
  *              │
  *              ▼
  *     repository.save()
+ *              │
+ *              ▼
+ *     return aggregate
  */
 @Injectable()
-export class ChangePasswordHandler implements CommandHandler<ChangePasswordCommand> {
+export class ChangePasswordHandler implements CommandHandler<
+  ChangePasswordCommand,
+  AuthenticationAggregate
+> {
   // ===========================================================================
   // Constructor
   // ===========================================================================
@@ -161,8 +182,13 @@ export class ChangePasswordHandler implements CommandHandler<ChangePasswordComma
 
   /**
    * Changes the password of an existing Authentication aggregate.
+   *
+   * @returns The aggregate after the repository save succeeds.
+   * @throws AuthenticationNotFoundException if the aggregate does not exist.
    */
-  public async execute(command: ChangePasswordCommand): Promise<void> {
+  public async execute(
+    command: ChangePasswordCommand,
+  ): Promise<AuthenticationAggregate> {
     // -------------------------------------------------------------------------
     // 1. Load Authentication aggregate
     // -------------------------------------------------------------------------
@@ -224,10 +250,19 @@ export class ChangePasswordHandler implements CommandHandler<ChangePasswordComma
     // 4. Persist aggregate
     // -------------------------------------------------------------------------
     //
-    // AuthenticationAggregate is the persistence boundary.
+    // Do not return until persistence succeeds.
     // -------------------------------------------------------------------------
 
     await this.authenticationRepository.save(aggregate);
+
+    // -------------------------------------------------------------------------
+    // 5. Return aggregate
+    // -------------------------------------------------------------------------
+    //
+    // The controller can now map the result without reloading the aggregate.
+    // -------------------------------------------------------------------------
+
+    return aggregate;
   }
 }
 

@@ -8,6 +8,7 @@ import {
   Get,
   Inject,
   Param,
+  Query,
   Patch,
   Post,
   UseGuards,
@@ -59,6 +60,7 @@ import {
 
 import {
   GetTrustProfileQuery,
+  GetTrustProfilesPageQuery,
   GetTrustProfileByMemberQuery,
   GetPublicTrustProfileByMemberQuery,
   GetTrustProfileRatingsQuery,
@@ -82,6 +84,7 @@ import type { QueryHandler } from '../../../../../foundation/kernel/application/
 // -----------------------------------------------------------------------------
 
 import type { PublicTrustProfile } from '../../../application/query-handlers/trust-profile/get-public-trust-profile-by-member.query-handler';
+import type { TrustProfilesPage } from '../../../application/query-handlers/trust-profile/get-trust-profiles-page.query-handler';
 
 // -----------------------------------------------------------------------------
 // Domain Aggregate
@@ -318,6 +321,12 @@ export class TrustProfileController {
       TrustProfileAggregate | null
     >,
 
+    @Inject(TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_PAGE)
+    private readonly getTrustProfilesPageQueryHandler: QueryHandler<
+      GetTrustProfilesPageQuery,
+      TrustProfilesPage
+    >,
+
     @Inject(TRUST_PROFILE_TOKENS.QUERY_HANDLERS.GET_BY_MEMBER_PUBLIC_ID)
     private readonly getTrustProfileByMemberPublicIdQueryHandler: QueryHandler<
       GetTrustProfileByMemberQuery,
@@ -407,6 +416,52 @@ export class TrustProfileController {
   // ===========================================================================
   // PUBLIC TRUST PROFILE DISCOVERY
   // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Get Paginated Trust Profiles
+  // ---------------------------------------------------------------------------
+  //
+  // Returns profile summary fields only. Nested ratings, reviews, badges, and
+  // events are intentionally omitted to keep collection responses lightweight.
+  //
+  // Example:
+  // GET /trust-profiles?page=1&pageSize=20
+  //
+  // ---------------------------------------------------------------------------
+
+  @Get()
+  public async getPage(
+    @Query('page') pageParam?: string,
+    @Query('pageSize') pageSizeParam?: string,
+  ): Promise<{
+    profiles: Array<
+      Omit<
+        TrustProfileResponse,
+        'ratings' | 'reviews' | 'badges' | 'profileBadges' | 'events'
+      >
+    >;
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  }> {
+    const page = pageParam === undefined ? 1 : Number(pageParam);
+    const pageSize = pageSizeParam === undefined ? 20 : Number(pageSizeParam);
+
+    const result = await this.getTrustProfilesPageQueryHandler.execute(
+      new GetTrustProfilesPageQuery(page, pageSize),
+    );
+
+    return {
+      profiles: result.profiles.map((profile) =>
+        TrustProfileResponseMapper.fromEntity(profile),
+      ),
+      page: result.page,
+      pageSize: result.pageSize,
+      total: result.total,
+      totalPages: result.totalPages,
+    };
+  }
 
   // ---------------------------------------------------------------------------
   // Get Trust Profile By Public ID
