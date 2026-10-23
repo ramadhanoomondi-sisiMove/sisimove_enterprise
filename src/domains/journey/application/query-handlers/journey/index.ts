@@ -39,3 +39,7 @@ export { CountActiveJourneysQueryHandler } from './count-active-journeys.query-h
 export * from './get-detailed-journeys.handler';
 
 export { GetDetailedJourneysHandler } from './get-detailed-journeys.handler';
+
+export * from './get-all-detailed-journeys.handler';
+
+export * from './get-detailed-journey-by-public-id.query-handler';

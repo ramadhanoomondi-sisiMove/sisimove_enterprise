@@ -312,7 +312,7 @@ export class JourneyCompletionController {
   // ---------------------------------------------------------------------------
 
   @Get()
-  @RequirePermissions('journey-completion:read')
+  @RequirePermissions('completion:read')
   public async list(
     @Query() dto: ListJourneyCompletionsQueryDto,
   ): Promise<JourneyCompletionEntity[]> {
@@ -353,7 +353,7 @@ export class JourneyCompletionController {
   // ---------------------------------------------------------------------------
 
   @Get('by-provider')
-  @RequirePermissions('journey-completion:read')
+  @RequirePermissions('completion:read')
   public async listByProvider(
     @Query() dto: ListJourneyCompletionsByProviderQueryDto,
   ): Promise<JourneyCompletionEntity[]> {
@@ -370,7 +370,7 @@ export class JourneyCompletionController {
   // ---------------------------------------------------------------------------
 
   @Get('by-status')
-  @RequirePermissions('journey-completion:read')
+  @RequirePermissions('completion:read')
   public async listByStatus(
     @Query() dto: ListJourneyCompletionsByStatusQueryDto,
   ): Promise<JourneyCompletionEntity[]> {
@@ -392,7 +392,7 @@ export class JourneyCompletionController {
   // ---------------------------------------------------------------------------
 
   @Get('by-journey/:journeyPublicId')
-  @RequirePermissions('journey-completion:read')
+  @RequirePermissions('completion:read')
   public async getByJourney(
     @Param('journeyPublicId') journeyPublicId: string,
   ): Promise<JourneyCompletionEntity | null> {
@@ -408,7 +408,7 @@ export class JourneyCompletionController {
   // ---------------------------------------------------------------------------
 
   @Get(':journeyCompletionPublicId/confirmations')
-  @RequirePermissions('journey-completion:read')
+  @RequirePermissions('completion:read')
   public async getConfirmations(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Query() dto: GetJourneyCompletionConfirmationsQueryDto,
@@ -433,7 +433,7 @@ export class JourneyCompletionController {
   // ---------------------------------------------------------------------------
 
   @Get(':journeyCompletionPublicId/confirmations/:confirmationPublicId')
-  @RequirePermissions('journey-completion:read')
+  @RequirePermissions('completion:read')
   public async getConfirmation(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Param('confirmationPublicId') confirmationPublicId: string,
@@ -451,7 +451,7 @@ export class JourneyCompletionController {
   // ---------------------------------------------------------------------------
 
   @Get(':journeyCompletionPublicId/disputes')
-  @RequirePermissions('journey-completion:read')
+  @RequirePermissions('completion:read')
   public async getDisputes(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Query() dto: GetJourneyCompletionDisputesQueryDto,
@@ -473,7 +473,7 @@ export class JourneyCompletionController {
   // ---------------------------------------------------------------------------
 
   @Get(':journeyCompletionPublicId/disputes/:disputePublicId')
-  @RequirePermissions('journey-completion:read')
+  @RequirePermissions('completion:read')
   public async getDispute(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Param('disputePublicId') disputePublicId: string,
@@ -491,7 +491,7 @@ export class JourneyCompletionController {
   // ---------------------------------------------------------------------------
 
   @Get(':journeyCompletionPublicId')
-  @RequirePermissions('journey-completion:read')
+  @RequirePermissions('completion:read')
   public async get(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Query() dto: GetJourneyCompletionQueryDto,
@@ -514,7 +514,7 @@ export class JourneyCompletionController {
   // ===========================================================================
 
   @Post()
-  @RequirePermissions('journey-completion:create')
+  @RequirePermissions('completion:create')
   public async create(
     @Body() dto: CreateJourneyCompletionDto,
   ): Promise<JourneyCompletionAggregate> {
@@ -534,7 +534,7 @@ export class JourneyCompletionController {
   // ===========================================================================
 
   @Post(':journeyCompletionPublicId/request')
-  @RequirePermissions('journey-completion:request')
+  @RequirePermissions('completion:request')
   public async requestCompletion(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Body() dto: RequestJourneyCompletionDto,
@@ -554,7 +554,7 @@ export class JourneyCompletionController {
   // ===========================================================================
 
   @Post(':journeyCompletionPublicId/confirm')
-  @RequirePermissions('journey-completion:confirm')
+  @RequirePermissions('completion:confirm')
   public async confirm(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Body() dto: ConfirmJourneyCompletionDto,
@@ -576,7 +576,7 @@ export class JourneyCompletionController {
   @Post(
     ':journeyCompletionPublicId/confirmations/:confirmationPublicId/withdraw',
   )
-  @RequirePermissions('journey-completion:confirmation:withdraw')
+  @RequirePermissions('completion:confirmation:withdraw')
   public async withdrawConfirmation(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Param('confirmationPublicId') confirmationPublicId: string,
@@ -600,7 +600,7 @@ export class JourneyCompletionController {
   // ===========================================================================
 
   @Post(':journeyCompletionPublicId/disputes')
-  @RequirePermissions('journey-completion:dispute:open')
+  @RequirePermissions('completion:dispute:open')
   public async openDispute(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Body() dto: OpenJourneyCompletionDisputeDto,
@@ -627,7 +627,7 @@ export class JourneyCompletionController {
   // ===========================================================================
 
   @Post(':journeyCompletionPublicId/disputes/:disputePublicId/review')
-  @RequirePermissions('journey-completion:dispute:review')
+  @RequirePermissions('completion:dispute:review')
   public async reviewDispute(
     @Param('disputePublicId') disputePublicId: string,
     @Body() dto: ReviewJourneyCompletionDisputeDto,
@@ -649,7 +649,7 @@ export class JourneyCompletionController {
   // ===========================================================================
 
   @Post(':journeyCompletionPublicId/disputes/:disputePublicId/resolve')
-  @RequirePermissions('journey-completion:dispute:resolve')
+  @RequirePermissions('completion:dispute:resolve')
   public async resolveDispute(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Param('disputePublicId') disputePublicId: string,
@@ -676,7 +676,7 @@ export class JourneyCompletionController {
   // ===========================================================================
 
   @Post(':journeyCompletionPublicId/disputes/:disputePublicId/reject')
-  @RequirePermissions('journey-completion:dispute:reject')
+  @RequirePermissions('completion:dispute:reject')
   public async rejectDispute(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Param('disputePublicId') disputePublicId: string,
@@ -703,7 +703,7 @@ export class JourneyCompletionController {
   // ===========================================================================
 
   @Post(':journeyCompletionPublicId/disputes/:disputePublicId/withdraw')
-  @RequirePermissions('journey-completion:dispute:withdraw')
+  @RequirePermissions('completion:dispute:withdraw')
   public async withdrawDispute(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Param('disputePublicId') disputePublicId: string,
@@ -730,7 +730,7 @@ export class JourneyCompletionController {
   // ===========================================================================
 
   @Post(':journeyCompletionPublicId/cancel')
-  @RequirePermissions('journey-completion:cancel')
+  @RequirePermissions('completion:cancel')
   public async cancel(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Body() dto: CancelJourneyCompletionDto,

@@ -857,6 +857,8 @@ export class PrismaJourneyBookingRepository implements JourneyBookingRepository 
         journeyPublicId: journeyPublicId.value,
       },
 
+      include: this.include,
+
       orderBy: {
         createdAt: 'desc',
       },

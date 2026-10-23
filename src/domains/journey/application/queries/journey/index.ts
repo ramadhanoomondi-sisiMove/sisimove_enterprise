@@ -18,6 +18,9 @@ export * from './search-published-journeys.query';
 
 export * from './get-detailed-journeys.query';
 
+export * from './get-all-detailed-journeys.query';
+
+export * from './get-detailed-journey-by-public-id.query';
 // -----------------------------------------------------------------------------
 // Public Journey
 // -----------------------------------------------------------------------------

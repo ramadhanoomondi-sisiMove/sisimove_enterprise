@@ -674,6 +674,17 @@ export class PrismaJourneyRepository implements JourneyRepository {
     return record === null ? null : this.toAggregate(record);
   }
 
+  public async findAllAggregates(): Promise<JourneyAggregate[]> {
+    const records = await this.prisma.journey.findMany({
+      include: this.include,
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return records.map((record) => this.toAggregate(record));
+  }
+
   public async findByProviderPublicId(
     providerPublicId: JourneyProviderPublicId,
   ): Promise<JourneyAggregate[]> {

@@ -12,11 +12,11 @@
 // - Command handlers
 // - Query handlers
 //
-// Public Journey queries are kept distinct from general Journey queries.
+// Public Journey queries remain distinct from general Journey queries.
 //
-// Detailed Journey reads are intended for the administrative Journey panel.
-// They retrieve composed Journey data without changing the public marketplace
-// discovery boundary.
+// Detailed Journey reads are separated into:
+// - Provider-scoped detailed reads;
+// - Platform-wide detailed reads for authorized administration.
 //
 // -----------------------------------------------------------------------------
 
@@ -37,15 +37,10 @@ export const JOURNEY_TOKENS = {
     // -------------------------------------------------------------------------
 
     CREATE: Symbol('CreateJourneyHandler'),
-
     PUBLISH: Symbol('PublishJourneyHandler'),
-
     START: Symbol('StartJourneyHandler'),
-
     COMPLETE: Symbol('CompleteJourneyHandler'),
-
     CANCEL: Symbol('CancelJourneyHandler'),
-
     EXPIRE: Symbol('ExpireJourneyHandler'),
 
     // -------------------------------------------------------------------------
@@ -53,7 +48,6 @@ export const JOURNEY_TOKENS = {
     // -------------------------------------------------------------------------
 
     ATTACH_CORRIDOR: Symbol('AttachJourneyCorridorHandler'),
-
     REMOVE_CORRIDOR: Symbol('RemoveJourneyCorridorHandler'),
 
     // -------------------------------------------------------------------------
@@ -61,7 +55,6 @@ export const JOURNEY_TOKENS = {
     // -------------------------------------------------------------------------
 
     ADD_WAYPOINT: Symbol('AddJourneyWaypointHandler'),
-
     REMOVE_WAYPOINT: Symbol('RemoveJourneyWaypointHandler'),
 
     // -------------------------------------------------------------------------
@@ -69,7 +62,6 @@ export const JOURNEY_TOKENS = {
     // -------------------------------------------------------------------------
 
     ATTACH_SCHEDULE: Symbol('AttachJourneyScheduleHandler'),
-
     REMOVE_SCHEDULE: Symbol('RemoveJourneyScheduleHandler'),
 
     // -------------------------------------------------------------------------
@@ -77,7 +69,6 @@ export const JOURNEY_TOKENS = {
     // -------------------------------------------------------------------------
 
     ATTACH_VEHICLE: Symbol('AttachJourneyVehicleHandler'),
-
     REMOVE_VEHICLE: Symbol('RemoveJourneyVehicleHandler'),
 
     // -------------------------------------------------------------------------
@@ -85,7 +76,6 @@ export const JOURNEY_TOKENS = {
     // -------------------------------------------------------------------------
 
     ATTACH_CAPACITY: Symbol('AttachJourneyCapacityHandler'),
-
     REMOVE_CAPACITY: Symbol('RemoveJourneyCapacityHandler'),
 
     // -------------------------------------------------------------------------
@@ -93,7 +83,6 @@ export const JOURNEY_TOKENS = {
     // -------------------------------------------------------------------------
 
     ATTACH_PRICING: Symbol('AttachJourneyPricingHandler'),
-
     REMOVE_PRICING: Symbol('RemoveJourneyPricingHandler'),
 
     // -------------------------------------------------------------------------
@@ -101,7 +90,6 @@ export const JOURNEY_TOKENS = {
     // -------------------------------------------------------------------------
 
     ATTACH_PREFERENCES: Symbol('AttachJourneyPreferencesHandler'),
-
     REMOVE_PREFERENCES: Symbol('RemoveJourneyPreferencesHandler'),
 
     // -------------------------------------------------------------------------
@@ -109,7 +97,6 @@ export const JOURNEY_TOKENS = {
     // -------------------------------------------------------------------------
 
     ATTACH_ASSET: Symbol('AttachJourneyAssetHandler'),
-
     REMOVE_ASSET: Symbol('RemoveJourneyAssetHandler'),
   },
 
@@ -128,9 +115,7 @@ export const JOURNEY_TOKENS = {
     GET: Symbol('GetJourneyQueryHandler'),
 
     GET_BY_PROVIDER: Symbol('GetJourneyByProviderQueryHandler'),
-
     GET_BY_STATUS: Symbol('GetJourneysByStatusQueryHandler'),
-
     COUNT_ACTIVE: Symbol('CountActiveJourneysQueryHandler'),
 
     GET_BY_PROVIDER_AND_STATUS: Symbol(
@@ -138,12 +123,28 @@ export const JOURNEY_TOKENS = {
     ),
 
     /**
-     * Retrieves detailed, composed Journeys for the administrative
-     * Journey panel.
+     * Retrieves complete Journey aggregates for one provider.
      *
-     * This is distinct from public marketplace discovery and search.
+     * This remains provider-scoped and must not be used as a
+     * platform-wide administrative query.
      */
     GET_DETAILED: Symbol('GetDetailedJourneysHandler'),
+
+    /**
+     * Retrieves complete Journey aggregates across all providers.
+     *
+     * Intended for the authorized platform-wide Journey Control Center.
+     * Endpoint authorization must enforce administrative access.
+     */
+    GET_ALL_DETAILED: Symbol('GetAllDetailedJourneysHandler'),
+
+    /**
+     * Retrieves one complete Journey aggregate by its public identifier.
+     *
+     * Used by the administrative Journey detail page. Unlike public
+     * discovery, this lookup must also support unpublished journeys.
+     */
+    GET_DETAILED_BY_PUBLIC_ID: Symbol('GetDetailedJourneyByPublicIdHandler'),
 
     /**
      * Searches published Journeys using the explicit Journey search
@@ -158,7 +159,6 @@ export const JOURNEY_TOKENS = {
     // -------------------------------------------------------------------------
 
     GET_PUBLIC: Symbol('GetPublicJourneyQueryHandler'),
-
     GET_PUBLIC_MANY: Symbol('GetPublicJourneysQueryHandler'),
 
     // -------------------------------------------------------------------------
@@ -172,7 +172,6 @@ export const JOURNEY_TOKENS = {
     // -------------------------------------------------------------------------
 
     GET_WAYPOINT: Symbol('GetJourneyWaypointQueryHandler'),
-
     GET_WAYPOINTS: Symbol('GetJourneyWaypointsQueryHandler'),
 
     // -------------------------------------------------------------------------
@@ -210,7 +209,6 @@ export const JOURNEY_TOKENS = {
     // -------------------------------------------------------------------------
 
     GET_ASSET: Symbol('GetJourneyAssetQueryHandler'),
-
     GET_ASSETS: Symbol('GetJourneyAssetsQueryHandler'),
 
     GET_ASSET_BY_REFERENCE: Symbol('GetJourneyAssetByReferenceQueryHandler'),

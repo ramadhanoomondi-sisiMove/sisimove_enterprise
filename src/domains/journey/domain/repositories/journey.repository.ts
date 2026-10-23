@@ -199,6 +199,19 @@ export interface JourneyRepository {
   findByPublicId(publicId: JourneyPublicId): Promise<JourneyAggregate | null>;
 
   /**
+   * Find all Journey aggregates across all providers.
+   *
+   * This query returns complete aggregates, including their composed
+   * corridor, ordered waypoints, schedule, vehicle, capacity, pricing,
+   * preferences, and assets.
+   *
+   * This is a general administrative read and does not imply public
+   * marketplace visibility. Access must be controlled by the application
+   * and API authorization layers.
+   */
+  findAllAggregates(): Promise<JourneyAggregate[]>;
+
+  /**
    * Find all Journey aggregates belonging to a provider.
    */
   findByProviderPublicId(

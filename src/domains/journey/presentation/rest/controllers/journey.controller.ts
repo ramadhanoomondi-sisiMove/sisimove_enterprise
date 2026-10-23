@@ -42,6 +42,7 @@ import {
   Delete,
   Get,
   Inject,
+  NotFoundException,
   Param,
   Post,
   Query,
@@ -148,6 +149,8 @@ import {
   GetPublicJourneysQuery,
   SearchPublishedJourneysQuery,
   GetDetailedJourneysQuery,
+  GetAllDetailedJourneysQuery,
+  GetDetailedJourneyByPublicIdQuery,
 } from '../../../application/queries/journey';
 
 // -----------------------------------------------------------------------------
@@ -522,6 +525,16 @@ export class JourneyController {
       GetDetailedJourneysQuery,
       readonly JourneyAggregate[]
     >,
+    @Inject(JOURNEY_TOKENS.QUERY_HANDLERS.GET_ALL_DETAILED)
+    private readonly getAllDetailedJourneysQueryHandler: QueryHandler<
+      GetAllDetailedJourneysQuery,
+      readonly JourneyAggregate[]
+    >,
+    @Inject(JOURNEY_TOKENS.QUERY_HANDLERS.GET_DETAILED_BY_PUBLIC_ID)
+    private readonly getDetailedJourneyByPublicIdQueryHandler: QueryHandler<
+      GetDetailedJourneyByPublicIdQuery,
+      JourneyAggregate | null
+    >,
   ) {}
 
   // ===========================================================================
@@ -740,7 +753,30 @@ export class JourneyController {
       ),
     );
   }
+  // ---------------------------------------------------------------------------
+  // Get All Detailed Journeys — Platform Admin
+  // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get all detailed journeys',
+    description:
+      'Returns complete journey details across all providers for authorized administrative views.',
+  })
+  @Get('admin/detailed')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:read')
+  public async getAllDetailedJourneys(): Promise<
+    readonly ReturnType<typeof JourneyResponseMapper.fromAggregate>[]
+  > {
+    const journeys = await this.getAllDetailedJourneysQueryHandler.execute(
+      new GetAllDetailedJourneysQuery(),
+    );
+
+    return journeys.map((journey) =>
+      JourneyResponseMapper.fromAggregate(journey),
+    );
+  }
   // ---------------------------------------------------------------------------
   // Get Journeys By Provider And Status
   // ---------------------------------------------------------------------------
@@ -828,6 +864,38 @@ export class JourneyController {
     return this.countActiveJourneysQueryHandler.execute(
       new CountActiveJourneysQuery(),
     );
+  }
+  // ---------------------------------------------------------------------------
+  // Get Detailed Journey By Public ID — Platform Admin
+  // ---------------------------------------------------------------------------
+
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get detailed journey by public ID',
+    description:
+      'Returns the complete journey aggregate for administrative inspection, including journeys that are not publicly discoverable.',
+  })
+  @ApiParam({
+    name: 'journeyPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the Journey.',
+  })
+  @Get('admin/detailed/:journeyPublicId')
+  @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
+  @auth.RequirePermissions('journey:read')
+  public async getDetailedJourneyByPublicId(
+    @Param('journeyPublicId') journeyPublicId: string,
+  ): Promise<ReturnType<typeof JourneyResponseMapper.fromAggregate>> {
+    const journey = await this.getDetailedJourneyByPublicIdQueryHandler.execute(
+      new GetDetailedJourneyByPublicIdQuery(journeyPublicId),
+    );
+
+    if (journey === null) {
+      throw new NotFoundException(`Journey ${journeyPublicId} was not found.`);
+    }
+
+    return JourneyResponseMapper.fromAggregate(journey);
   }
   // ---------------------------------------------------------------------------
   // Get Public Journey

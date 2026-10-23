@@ -133,6 +133,8 @@ import {
   GetPublicJourneysQueryHandler,
   SearchPublishedJourneysQueryHandler,
   GetDetailedJourneysHandler,
+  GetAllDetailedJourneysHandler,
+  GetDetailedJourneyByPublicIdHandler,
 } from './application/query-handlers/journey';
 
 // =============================================================================
@@ -502,6 +504,14 @@ import {
     {
       provide: JOURNEY_TOKENS.QUERY_HANDLERS.GET_DETAILED,
       useClass: GetDetailedJourneysHandler,
+    },
+    {
+      provide: JOURNEY_TOKENS.QUERY_HANDLERS.GET_ALL_DETAILED,
+      useClass: GetAllDetailedJourneysHandler,
+    },
+    {
+      provide: JOURNEY_TOKENS.QUERY_HANDLERS.GET_DETAILED_BY_PUBLIC_ID,
+      useClass: GetDetailedJourneyByPublicIdHandler,
     },
   ],
 

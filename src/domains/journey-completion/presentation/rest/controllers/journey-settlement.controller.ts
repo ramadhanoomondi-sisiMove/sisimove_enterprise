@@ -211,7 +211,7 @@ export class JourneySettlementController {
   // ---------------------------------------------------------------------------
 
   @Get()
-  @RequirePermissions('journey-settlement:read')
+  @RequirePermissions('settlement:read')
   public async list(
     @Query() dto: ListJourneySettlementsQueryDto,
   ): Promise<JourneySettlementEntity[]> {
@@ -254,7 +254,7 @@ export class JourneySettlementController {
   // ---------------------------------------------------------------------------
 
   @Get('by-completion')
-  @RequirePermissions('journey-settlement:read')
+  @RequirePermissions('settlement:read')
   public async getByCompletion(
     @Query() dto: GetJourneySettlementByCompletionQueryDto,
   ): Promise<JourneySettlementEntity | null> {
@@ -270,7 +270,7 @@ export class JourneySettlementController {
   // ---------------------------------------------------------------------------
 
   @Get(':journeySettlementPublicId')
-  @RequirePermissions('journey-settlement:read')
+  @RequirePermissions('settlement:read')
   public async get(
     @Param('journeySettlementPublicId') journeySettlementPublicId: string,
   ): Promise<JourneySettlementAggregate | null> {
@@ -286,7 +286,7 @@ export class JourneySettlementController {
   // ===========================================================================
 
   @Post()
-  @RequirePermissions('journey-settlement:create')
+  @RequirePermissions('settlement:create')
   public async create(
     @Body() dto: CreateJourneySettlementDto,
   ): Promise<JourneySettlementAggregate> {
@@ -306,7 +306,7 @@ export class JourneySettlementController {
   // ===========================================================================
 
   @Post(':journeySettlementPublicId/submit')
-  @RequirePermissions('journey-settlement:submit')
+  @RequirePermissions('settlement:submit')
   public async submit(
     @Param('journeySettlementPublicId') journeySettlementPublicId: string,
     @Body() dto: SubmitJourneySettlementDto,
@@ -326,7 +326,7 @@ export class JourneySettlementController {
   // ===========================================================================
 
   @Post(':journeySettlementPublicId/process')
-  @RequirePermissions('journey-settlement:process')
+  @RequirePermissions('settlement:process')
   public async process(
     @Param('journeySettlementPublicId') journeySettlementPublicId: string,
     @Body() dto: ProcessJourneySettlementDto,
@@ -346,7 +346,7 @@ export class JourneySettlementController {
   // ===========================================================================
 
   @Post(':journeySettlementPublicId/complete')
-  @RequirePermissions('journey-settlement:complete')
+  @RequirePermissions('settlement:complete')
   public async complete(
     @Param('journeySettlementPublicId') journeySettlementPublicId: string,
     @Body() dto: CompleteJourneySettlementDto,
@@ -369,7 +369,7 @@ export class JourneySettlementController {
   // ===========================================================================
 
   @Post(':journeySettlementPublicId/fail')
-  @RequirePermissions('journey-settlement:fail')
+  @RequirePermissions('settlement:fail')
   public async fail(
     @Param('journeySettlementPublicId') journeySettlementPublicId: string,
     @Body() dto: FailJourneySettlementDto,
@@ -390,7 +390,7 @@ export class JourneySettlementController {
   // ===========================================================================
 
   @Post(':journeySettlementPublicId/hold')
-  @RequirePermissions('journey-settlement:hold')
+  @RequirePermissions('settlement:hold')
   public async hold(
     @Param('journeySettlementPublicId') journeySettlementPublicId: string,
     @Body() dto: HoldJourneySettlementDto,
@@ -410,7 +410,7 @@ export class JourneySettlementController {
   // ===========================================================================
 
   @Post(':journeySettlementPublicId/cancel')
-  @RequirePermissions('journey-settlement:cancel')
+  @RequirePermissions('settlement:cancel')
   public async cancel(
     @Param('journeySettlementPublicId') journeySettlementPublicId: string,
     @Body() dto: CancelJourneySettlementDto,
