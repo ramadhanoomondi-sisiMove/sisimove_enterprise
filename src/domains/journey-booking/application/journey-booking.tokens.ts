@@ -20,6 +20,7 @@
 //   - Journey Booking queries
 //   - Detail/read-model queries
 //   - Discovery queries
+//   - Global booking collection queries
 //
 // Detail queries have dedicated handlers because they are purpose-specific
 // application read use cases that compose:
@@ -130,6 +131,20 @@ export const JOURNEY_BOOKING_TOKENS = {
     GET_MY: Symbol('GetMyJourneyBookingsQueryHandler'),
 
     // -------------------------------------------------------------------------
+    // Global Booking Collection
+    // -------------------------------------------------------------------------
+    //
+    // FIND_ALL:
+    //   Returns all booking aggregates, including their available snapshot,
+    //   pricing, payment, and cancellation components.
+    //
+    // Access must be controlled at the controller boundary.
+    //
+    // -------------------------------------------------------------------------
+
+    FIND_ALL: Symbol('FindAllJourneyBookingsQueryHandler'),
+
+    // -------------------------------------------------------------------------
     // Detail
     // -------------------------------------------------------------------------
     //
@@ -165,6 +180,7 @@ export const JOURNEY_BOOKING_TOKENS = {
     ),
 
     FIND_BY_TRANSACTION: Symbol('FindJourneyBookingByTransactionQueryHandler'),
+
     FIND_DETAILED_BY_PASSENGER: Symbol(
       'FindDetailedJourneyBookingsByPassengerHandler',
     ),

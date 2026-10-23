@@ -1,11 +1,10 @@
-
 /**
  * sisiMove — Journey Completions API
  *
  * HTTP adapter for the Journey Completion REST API.
  *
  * Responsibilities:
- * - Expose confirmed completion, confirmation, and dispute endpoints.
+ * - Expose completion, confirmation, and dispute endpoints.
  * - Use the authenticated API client.
  * - Encode path parameters safely.
  * - Keep HTTP transport separate from response mapping.
@@ -18,7 +17,9 @@
 
 import { authenticatedApiClient } from '@/features/authentication/http/authenticated-api-client';
 
-import type { JourneyCompletionBackendResponse } from '../mappers/journey-completion.mapper';
+import type {
+  JourneyCompletionResponseModel,
+} from '../mappers/journey-completion.mapper';
 
 // -----------------------------------------------------------------------------
 // Query contracts
@@ -138,7 +139,10 @@ export interface CancelJourneyCompletionRequest {
 
 const BASE_PATH = '/journey-completions';
 
-function encodePathSegment(value: string, fieldName: string): string {
+function encodePathSegment(
+  value: string,
+  fieldName: string,
+): string {
   const normalized = value.trim();
 
   if (!normalized) {
@@ -184,7 +188,9 @@ export const journeyCompletionsApi = {
   /**
    * GET /journey-completions
    */
-  async list<TResponse = JourneyCompletionBackendResponse>(
+  async list<
+    TResponse = JourneyCompletionResponseModel,
+  >(
     query: ListJourneyCompletionsQuery = {},
   ): Promise<readonly TResponse[]> {
     const queryString = buildQueryString({
@@ -212,7 +218,9 @@ export const journeyCompletionsApi = {
   /**
    * GET /journey-completions/by-provider?providerPublicId=...&status=...
    */
-  async listByProvider<TResponse = JourneyCompletionBackendResponse>(
+  async listByProvider<
+    TResponse = JourneyCompletionResponseModel,
+  >(
     query: ListJourneyCompletionsByProviderQuery,
   ): Promise<readonly TResponse[]> {
     const queryString = buildQueryString({
@@ -228,7 +236,9 @@ export const journeyCompletionsApi = {
   /**
    * GET /journey-completions/by-status?status=...&providerPublicId=...&journeyPublicId=...
    */
-  async listByStatus<TResponse = JourneyCompletionBackendResponse>(
+  async listByStatus<
+    TResponse = JourneyCompletionResponseModel,
+  >(
     query: ListJourneyCompletionsByStatusQuery,
   ): Promise<readonly TResponse[]> {
     const queryString = buildQueryString({
@@ -245,10 +255,15 @@ export const journeyCompletionsApi = {
   /**
    * GET /journey-completions/by-journey/:journeyPublicId
    */
-  async getByJourney<TResponse = JourneyCompletionBackendResponse>(
+  async getByJourney<
+    TResponse = JourneyCompletionResponseModel,
+  >(
     journeyPublicId: string,
   ): Promise<TResponse | null> {
-    const id = encodePathSegment(journeyPublicId, 'journeyPublicId');
+    const id = encodePathSegment(
+      journeyPublicId,
+      'journeyPublicId',
+    );
 
     return authenticatedApiClient.get<TResponse | null>(
       `${BASE_PATH}/by-journey/${id}`,
@@ -258,7 +273,9 @@ export const journeyCompletionsApi = {
   /**
    * GET /journey-completions/:journeyCompletionPublicId
    */
-  async getByPublicId<TResponse = JourneyCompletionBackendResponse>(
+  async getByPublicId<
+    TResponse = JourneyCompletionResponseModel,
+  >(
     journeyCompletionPublicId: string,
     query: GetJourneyCompletionQuery = {},
   ): Promise<TResponse | null> {
@@ -312,6 +329,7 @@ export const journeyCompletionsApi = {
       journeyCompletionPublicId,
       'journeyCompletionPublicId',
     );
+
     const confirmationId = encodePathSegment(
       confirmationPublicId,
       'confirmationPublicId',
@@ -356,7 +374,11 @@ export const journeyCompletionsApi = {
       journeyCompletionPublicId,
       'journeyCompletionPublicId',
     );
-    const disputeId = encodePathSegment(disputePublicId, 'disputePublicId');
+
+    const disputeId = encodePathSegment(
+      disputePublicId,
+      'disputePublicId',
+    );
 
     return authenticatedApiClient.get<TResponse | null>(
       `${BASE_PATH}/${completionId}/disputes/${disputeId}`,
@@ -370,16 +392,23 @@ export const journeyCompletionsApi = {
   /**
    * POST /journey-completions
    */
-  async create<TResponse = JourneyCompletionBackendResponse>(
+  async create<
+    TResponse = JourneyCompletionResponseModel,
+  >(
     request: CreateJourneyCompletionRequest,
   ): Promise<TResponse> {
-    return authenticatedApiClient.post<TResponse>(BASE_PATH, request);
+    return authenticatedApiClient.post<TResponse>(
+      BASE_PATH,
+      request,
+    );
   },
 
   /**
    * POST /journey-completions/:journeyCompletionPublicId/request
    */
-  async requestCompletion<TResponse = JourneyCompletionBackendResponse>(
+  async requestCompletion<
+    TResponse = JourneyCompletionResponseModel,
+  >(
     journeyCompletionPublicId: string,
     request: RequestJourneyCompletionRequest = {},
   ): Promise<TResponse> {
@@ -397,7 +426,9 @@ export const journeyCompletionsApi = {
   /**
    * POST /journey-completions/:journeyCompletionPublicId/confirm
    */
-  async confirm<TResponse = JourneyCompletionBackendResponse>(
+  async confirm<
+    TResponse = JourneyCompletionResponseModel,
+  >(
     journeyCompletionPublicId: string,
     request: ConfirmJourneyCompletionRequest = {},
   ): Promise<TResponse> {
@@ -415,7 +446,9 @@ export const journeyCompletionsApi = {
   /**
    * POST /journey-completions/:journeyCompletionPublicId/confirmations/:confirmationPublicId/withdraw
    */
-  async withdrawConfirmation<TResponse = JourneyCompletionBackendResponse>(
+  async withdrawConfirmation<
+    TResponse = JourneyCompletionResponseModel,
+  >(
     journeyCompletionPublicId: string,
     confirmationPublicId: string,
     request: WithdrawJourneyCompletionConfirmationRequest = {},
@@ -424,6 +457,7 @@ export const journeyCompletionsApi = {
       journeyCompletionPublicId,
       'journeyCompletionPublicId',
     );
+
     const confirmationId = encodePathSegment(
       confirmationPublicId,
       'confirmationPublicId',
@@ -438,7 +472,9 @@ export const journeyCompletionsApi = {
   /**
    * POST /journey-completions/:journeyCompletionPublicId/cancel
    */
-  async cancel<TResponse = JourneyCompletionBackendResponse>(
+  async cancel<
+    TResponse = JourneyCompletionResponseModel,
+  >(
     journeyCompletionPublicId: string,
     request: CancelJourneyCompletionRequest = {},
   ): Promise<TResponse> {
@@ -460,7 +496,9 @@ export const journeyCompletionsApi = {
   /**
    * POST /journey-completions/:journeyCompletionPublicId/disputes
    */
-  async openDispute<TResponse = JourneyCompletionBackendResponse>(
+  async openDispute<
+    TResponse = JourneyCompletionResponseModel,
+  >(
     journeyCompletionPublicId: string,
     request: OpenJourneyCompletionDisputeRequest,
   ): Promise<TResponse> {
@@ -478,7 +516,9 @@ export const journeyCompletionsApi = {
   /**
    * POST /journey-completions/:journeyCompletionPublicId/disputes/:disputePublicId/review
    */
-  async reviewDispute<TResponse = JourneyCompletionBackendResponse>(
+  async reviewDispute<
+    TResponse = JourneyCompletionResponseModel,
+  >(
     journeyCompletionPublicId: string,
     disputePublicId: string,
     request: ReviewJourneyCompletionDisputeRequest = {},
@@ -487,7 +527,11 @@ export const journeyCompletionsApi = {
       journeyCompletionPublicId,
       'journeyCompletionPublicId',
     );
-    const disputeId = encodePathSegment(disputePublicId, 'disputePublicId');
+
+    const disputeId = encodePathSegment(
+      disputePublicId,
+      'disputePublicId',
+    );
 
     return authenticatedApiClient.post<TResponse>(
       `${BASE_PATH}/${completionId}/disputes/${disputeId}/review`,
@@ -498,7 +542,9 @@ export const journeyCompletionsApi = {
   /**
    * POST /journey-completions/:journeyCompletionPublicId/disputes/:disputePublicId/resolve
    */
-  async resolveDispute<TResponse = JourneyCompletionBackendResponse>(
+  async resolveDispute<
+    TResponse = JourneyCompletionResponseModel,
+  >(
     journeyCompletionPublicId: string,
     disputePublicId: string,
     request: ResolveJourneyCompletionDisputeRequest,
@@ -507,7 +553,11 @@ export const journeyCompletionsApi = {
       journeyCompletionPublicId,
       'journeyCompletionPublicId',
     );
-    const disputeId = encodePathSegment(disputePublicId, 'disputePublicId');
+
+    const disputeId = encodePathSegment(
+      disputePublicId,
+      'disputePublicId',
+    );
 
     return authenticatedApiClient.post<TResponse>(
       `${BASE_PATH}/${completionId}/disputes/${disputeId}/resolve`,
@@ -518,7 +568,9 @@ export const journeyCompletionsApi = {
   /**
    * POST /journey-completions/:journeyCompletionPublicId/disputes/:disputePublicId/reject
    */
-  async rejectDispute<TResponse = JourneyCompletionBackendResponse>(
+  async rejectDispute<
+    TResponse = JourneyCompletionResponseModel,
+  >(
     journeyCompletionPublicId: string,
     disputePublicId: string,
     request: RejectJourneyCompletionDisputeRequest,
@@ -527,7 +579,11 @@ export const journeyCompletionsApi = {
       journeyCompletionPublicId,
       'journeyCompletionPublicId',
     );
-    const disputeId = encodePathSegment(disputePublicId, 'disputePublicId');
+
+    const disputeId = encodePathSegment(
+      disputePublicId,
+      'disputePublicId',
+    );
 
     return authenticatedApiClient.post<TResponse>(
       `${BASE_PATH}/${completionId}/disputes/${disputeId}/reject`,
@@ -538,7 +594,9 @@ export const journeyCompletionsApi = {
   /**
    * POST /journey-completions/:journeyCompletionPublicId/disputes/:disputePublicId/withdraw
    */
-  async withdrawDispute<TResponse = JourneyCompletionBackendResponse>(
+  async withdrawDispute<
+    TResponse = JourneyCompletionResponseModel,
+  >(
     journeyCompletionPublicId: string,
     disputePublicId: string,
     request: WithdrawJourneyCompletionDisputeRequest = {},
@@ -547,7 +605,11 @@ export const journeyCompletionsApi = {
       journeyCompletionPublicId,
       'journeyCompletionPublicId',
     );
-    const disputeId = encodePathSegment(disputePublicId, 'disputePublicId');
+
+    const disputeId = encodePathSegment(
+      disputePublicId,
+      'disputePublicId',
+    );
 
     return authenticatedApiClient.post<TResponse>(
       `${BASE_PATH}/${completionId}/disputes/${disputeId}/withdraw`,

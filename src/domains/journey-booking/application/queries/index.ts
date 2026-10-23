@@ -19,6 +19,8 @@ export { GetMyJourneyBookingsQuery } from './get-my-journey-bookings.query';
 export { GetJourneyBookingDetailQuery } from './get-journey-booking-detail.query';
 
 export { GetMyJourneyBookingDetailsQuery } from './get-my-journey-booking-details.query';
+
+export { FindAllJourneyBookingsQuery } from './find-all-journey-bookings.query';
 // -----------------------------------------------------------------------------
 // Discovery
 // -----------------------------------------------------------------------------

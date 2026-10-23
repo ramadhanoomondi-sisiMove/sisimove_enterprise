@@ -90,8 +90,8 @@ export {
 } from './hooks/useJourneyCompletion';
 
 export {
-  useJourneySettlement,
-  journeySettlementQueryKeys,
+  useJourneySettlementsByJourney,
+  journeySettlementsByJourneyQueryKeys,
 } from './hooks/useJourneySettlement';
 
 // -----------------------------------------------------------------------------

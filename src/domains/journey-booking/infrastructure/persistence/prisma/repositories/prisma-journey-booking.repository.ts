@@ -599,6 +599,23 @@ export class PrismaJourneyBookingRepository implements JourneyBookingRepository 
     return record === null ? null : this.toAggregate(record);
   }
 
+  /**
+   * Finds and rehydrates all Journey Booking aggregates.
+   *
+   * Includes every available aggregate-owned component and returns
+   * bookings ordered by creation date, newest first.
+   */
+  public async findAll(): Promise<JourneyBookingAggregate[]> {
+    const records = await this.prisma.journeyBooking.findMany({
+      include: this.include,
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return records.map((record) => this.toAggregate(record));
+  }
+
   public async findByJourneyPublicId(
     journeyPublicId: JourneyBookingJourneyPublicId,
   ): Promise<JourneyBookingAggregate[]> {

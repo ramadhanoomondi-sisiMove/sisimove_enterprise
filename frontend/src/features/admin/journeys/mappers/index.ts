@@ -58,9 +58,6 @@ export {
   JourneyCompletionResponseMapper,
 } from './journey-completion.mapper';
 
-export type {
-  JourneyCompletionBackendResponse,
-} from './journey-completion.mapper';
 
 // -----------------------------------------------------------------------------
 // Journey settlement

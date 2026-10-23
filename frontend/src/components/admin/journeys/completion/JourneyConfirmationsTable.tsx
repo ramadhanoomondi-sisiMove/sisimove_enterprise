@@ -1,3 +1,12 @@
+// -----------------------------------------------------------------------------
+// Journey Completion — Confirmations Table
+// -----------------------------------------------------------------------------
+
+'use client';
+
+// -----------------------------------------------------------------------------
+// Icons
+// -----------------------------------------------------------------------------
 
 import {
   CheckCircle2,
@@ -6,16 +15,34 @@ import {
   XCircle,
 } from 'lucide-react';
 
+// -----------------------------------------------------------------------------
+// Models and Utilities
+// -----------------------------------------------------------------------------
+
 import type { JourneyCompletionConfirmation } from '@/features/admin/journeys/models/journey-completion.model';
 import { cn } from '@/foundation/utils/cn';
+
+// -----------------------------------------------------------------------------
+// Props
+// -----------------------------------------------------------------------------
 
 interface JourneyConfirmationsTableProps {
   confirmations: readonly JourneyCompletionConfirmation[];
   className?: string;
   loading?: boolean;
+  timezone?: string;
+}
+
+interface ConfirmationRowProps {
+  confirmation: JourneyCompletionConfirmation;
+  timezone?: string;
 }
 
 type StatusTone = 'success' | 'warning' | 'danger' | 'neutral';
+
+// -----------------------------------------------------------------------------
+// Formatting
+// -----------------------------------------------------------------------------
 
 function normalizeStatus(status: string): string {
   return status.trim().toUpperCase().replace(/[\s-]+/g, '_');
@@ -32,18 +59,35 @@ function formatLabel(value: string | null | undefined): string {
     .join(' ');
 }
 
-function formatDate(value: string | null | undefined): string {
+function formatDate(
+  value: string | null | undefined,
+  timezone?: string,
+): string {
   if (!value) return '—';
 
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) return 'Invalid date';
 
-  return new Intl.DateTimeFormat('en-KE', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date);
+  try {
+    return new Intl.DateTimeFormat('en-KE', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      ...(timezone ? { timeZone: timezone } : {}),
+    }).format(date);
+  } catch {
+    // Fall back to the runtime's local timezone if the supplied timezone
+    // is invalid. A malformed timezone must not break the table.
+    return new Intl.DateTimeFormat('en-KE', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(date);
+  }
 }
+
+// -----------------------------------------------------------------------------
+// Status Presentation
+// -----------------------------------------------------------------------------
 
 function getStatusTone(status: string): StatusTone {
   const normalized = normalizeStatus(status);
@@ -123,11 +167,14 @@ function ConfirmationStatusBadge({ status }: { status: string }) {
   );
 }
 
+// -----------------------------------------------------------------------------
+// Confirmation Row
+// -----------------------------------------------------------------------------
+
 function ConfirmationRow({
   confirmation,
-}: {
-  confirmation: JourneyCompletionConfirmation;
-}) {
+  timezone,
+}: ConfirmationRowProps) {
   return (
     <tr className="border-b border-[var(--border-subtle)] last:border-b-0">
       <td className="px-4 py-4 align-top">
@@ -162,12 +209,12 @@ function ConfirmationRow({
 
       <td className="px-4 py-4 align-top">
         <p className="text-sm text-[var(--foreground)]">
-          {formatDate(confirmation.confirmedAt)}
+          {formatDate(confirmation.confirmedAt, timezone)}
         </p>
 
         {confirmation.withdrawnAt && (
           <p className="mt-1 text-xs text-[var(--warning)]">
-            Withdrawn: {formatDate(confirmation.withdrawnAt)}
+            Withdrawn: {formatDate(confirmation.withdrawnAt, timezone)}
           </p>
         )}
       </td>
@@ -175,10 +222,15 @@ function ConfirmationRow({
   );
 }
 
+// -----------------------------------------------------------------------------
+// Table
+// -----------------------------------------------------------------------------
+
 export default function JourneyConfirmationsTable({
   confirmations,
   className,
   loading = false,
+  timezone,
 }: JourneyConfirmationsTableProps) {
   if (loading) {
     return (
@@ -266,6 +318,7 @@ export default function JourneyConfirmationsTable({
               <ConfirmationRow
                 key={confirmation.publicId}
                 confirmation={confirmation}
+                timezone={timezone}
               />
             ))}
           </tbody>

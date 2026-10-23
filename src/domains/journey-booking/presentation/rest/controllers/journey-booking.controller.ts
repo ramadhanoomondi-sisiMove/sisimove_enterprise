@@ -71,6 +71,7 @@ import {
 
 import {
   CountJourneyBookingsQuery,
+  FindAllJourneyBookingsQuery,
   FindJourneyBookingByTransactionQuery,
   FindJourneyBookingsByJourneyAndPassengerQuery,
   FindJourneyBookingsByJourneyQuery,
@@ -347,6 +348,11 @@ export class JourneyBookingController {
     private readonly findDetailedJourneyBookingsByPassengerHandler: QueryHandler<
       FindDetailedJourneyBookingsByPassengerQuery,
       JourneyBookingDetailResponse[]
+    >,
+    @Inject(JOURNEY_BOOKING_TOKENS.QUERY_HANDLERS.FIND_ALL)
+    private readonly findAllJourneyBookingsHandler: QueryHandler<
+      FindAllJourneyBookingsQuery,
+      JourneyBookingAggregate[]
     >,
   ) {}
 
@@ -670,7 +676,27 @@ export class JourneyBookingController {
 
     return JourneyBookingDetailResponseMapper.toResponse(response);
   }
+  // ---------------------------------------------------------------------------
+  // Find All Journey Bookings
+  // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Find all journey bookings',
+    description:
+      'Returns all journey bookings with their available aggregate components.',
+  })
+  @Get('all')
+  @auth.RequirePermissions('booking:read')
+  public async findAll(): Promise<JourneyBookingResponse[]> {
+    const bookings = await this.findAllJourneyBookingsHandler.execute(
+      new FindAllJourneyBookingsQuery(),
+    );
+
+    return bookings.map((booking) =>
+      JourneyBookingResponseMapper.toResponse(booking),
+    );
+  }
   // ---------------------------------------------------------------------------
   // Get Journey Booking By Public ID
   // ---------------------------------------------------------------------------

@@ -74,6 +74,14 @@ export interface JourneyBookingRepository {
   ): Promise<JourneyBookingAggregate | null>;
 
   /**
+   * Finds and rehydrates all Journey Booking aggregates.
+   *
+   * Every returned aggregate includes its available snapshot, pricing,
+   * payment, and cancellation components.
+   */
+  findAll(): Promise<JourneyBookingAggregate[]>;
+
+  /**
    * Deletes a Journey Booking aggregate by its internal ID.
    */
   delete(id: UniqueEntityId): Promise<void>;

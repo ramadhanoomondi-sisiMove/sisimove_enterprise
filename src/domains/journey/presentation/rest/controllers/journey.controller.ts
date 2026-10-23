@@ -1066,7 +1066,7 @@ export class JourneyController {
   })
   @Post(':journeyPublicId/cancel')
   @UseGuards(auth.JwtAuthGuard, auth.PermissionsGuard)
-  @auth.RequirePermissions('journey:cancel')
+  @auth.RequirePermissions('journey:manage')
   public async cancel(
     @Param('journeyPublicId') journeyPublicId: string,
     @Body() dto: CancelJourneyDto,
