@@ -28,6 +28,8 @@
 
 export * from './get-financial-account.query';
 
+export * from './get-financial-accounts.query';
+
 // -----------------------------------------------------------------------------
 // Financial Account Balance
 // -----------------------------------------------------------------------------

@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -10,6 +9,8 @@ import {
   XCircle,
 } from 'lucide-react';
 
+import type { LucideIcon } from 'lucide-react';
+
 import type { AdminBoarding } from '@/features/admin/boardings/models';
 import {
   AdminBoardingParticipantRole,
@@ -17,6 +18,10 @@ import {
   AdminBoardingStatus,
 } from '@/features/admin/boardings/models';
 import { cn } from '@/foundation/utils/cn';
+
+// -----------------------------------------------------------------------------
+// Types
+// -----------------------------------------------------------------------------
 
 export type BoardingOperation =
   | 'open'
@@ -29,6 +34,18 @@ interface BoardingActionsMenuProps {
   onSelect: (operation: BoardingOperation) => void;
   disabled?: boolean;
 }
+
+interface BoardingAction {
+  label: string;
+  operation: BoardingOperation;
+  Icon: LucideIcon;
+  destructive?: boolean;
+  visible: boolean;
+}
+
+// -----------------------------------------------------------------------------
+// Component
+// -----------------------------------------------------------------------------
 
 export function BoardingActionsMenu({
   boarding,
@@ -45,13 +62,7 @@ export function BoardingActionsMenu({
   const providerBoarded =
     provider?.status === AdminBoardingParticipantStatus.BOARDED;
 
-  const actions: {
-    label: string;
-    operation: BoardingOperation;
-    Icon: typeof Play;
-    destructive?: boolean;
-    visible: boolean;
-  }[] = [
+  const allActions: BoardingAction[] = [
     {
       label: 'Open boarding',
       operation: 'open',
@@ -83,9 +94,15 @@ export function BoardingActionsMenu({
         boarding.status !== AdminBoardingStatus.STARTED &&
         boarding.status !== AdminBoardingStatus.CANCELLED,
     },
-  ].filter((action) => action.visible);
+  ];
 
-  if (actions.length === 0) return null;
+  const actions = allActions.filter(
+    (action) => action.visible,
+  );
+
+  if (actions.length === 0) {
+    return null;
+  }
 
   return (
     <div className="relative inline-block text-left">
@@ -106,37 +123,44 @@ export function BoardingActionsMenu({
           <button
             type="button"
             aria-label="Close actions menu"
+            tabIndex={-1}
             className="fixed inset-0 z-10 cursor-default"
             onClick={() => setOpen(false)}
           />
 
           <div
             role="menu"
+            aria-label="Boarding operations"
             className="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1.5 shadow-xl"
           >
-            {actions.map(({ label, operation, Icon, destructive }) => (
-              <button
-                key={operation}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setOpen(false);
-                  onSelect(operation);
-                }}
-                className={cn(
-                  'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition hover:bg-[var(--muted)]',
-                  destructive
-                    ? 'text-[var(--danger)]'
-                    : 'text-[var(--foreground)]',
-                )}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                {label}
-              </button>
-            ))}
+            {actions.map(
+              ({ label, operation, Icon, destructive }) => (
+                <button
+                  key={operation}
+                  type="button"
+                  role="menuitem"
+                  disabled={disabled}
+                  onClick={() => {
+                    setOpen(false);
+                    onSelect(operation);
+                  }}
+                  className={cn(
+                    'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-50',
+                    destructive
+                      ? 'text-[var(--danger)]'
+                      : 'text-[var(--foreground)]',
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {label}
+                </button>
+              ),
+            )}
           </div>
         </>
       )}
     </div>
   );
 }
+
+export default BoardingActionsMenu;

@@ -34,6 +34,8 @@ export * from './get-financial-account.handler';
 
 export * from './get-my-financial-account.handler';
 
+export * from './get-financial-accounts.handler';
+
 // -----------------------------------------------------------------------------
 // Financial Account Balance
 // -----------------------------------------------------------------------------

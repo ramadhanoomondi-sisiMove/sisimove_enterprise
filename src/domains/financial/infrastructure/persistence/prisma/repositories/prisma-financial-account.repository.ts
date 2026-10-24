@@ -412,7 +412,20 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
       FinancialAccountPrismaMapper.accountToDomain(record),
     );
   }
+  /**
+   * Finds and rehydrates all Financial Account aggregates,
+   * including their aggregate-owned balances.
+   */
+  public async findAllAggregates(): Promise<FinancialAccountAggregate[]> {
+    const records = await this.prisma.financialAccount.findMany({
+      include: this.include,
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
 
+    return records.map((record) => this.toAggregate(record));
+  }
   // ===========================================================================
   // Delete / Exists
   // ===========================================================================

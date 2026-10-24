@@ -189,6 +189,7 @@ import {
   GetFinancialAccountHandler,
   GetMyFinancialAccountHandler,
   GetFinancialAccountTransactionsHandler,
+  GetFinancialAccountsHandler,
 
   // ---------------------------------------------------------------------------
   // Financial Account Hold
@@ -319,6 +320,10 @@ import {
     {
       provide: FINANCIAL_ACCOUNT_TOKENS.QUERY_HANDLERS.GET_BALANCE,
       useClass: GetFinancialAccountBalanceHandler,
+    },
+    {
+      provide: FINANCIAL_ACCOUNT_TOKENS.QUERY_HANDLERS.GET_ALL,
+      useClass: GetFinancialAccountsHandler,
     },
 
     // =========================================================================

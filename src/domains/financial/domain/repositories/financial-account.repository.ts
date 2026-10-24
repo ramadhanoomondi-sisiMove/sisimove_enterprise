@@ -169,6 +169,12 @@ export interface FinancialAccountRepository {
    */
   findAccounts(): Promise<FinancialAccountEntity[]>;
 
+  /**
+   * Finds and rehydrates all Financial Account aggregates,
+   * including their aggregate-owned balances.
+   */
+  findAllAggregates(): Promise<FinancialAccountAggregate[]>;
+
   // ===========================================================================
   // Owner Queries
   // ===========================================================================

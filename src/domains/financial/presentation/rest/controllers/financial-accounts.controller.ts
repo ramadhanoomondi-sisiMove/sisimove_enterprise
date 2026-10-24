@@ -186,6 +186,7 @@ import {
 import {
   GetFinancialAccountBalanceQuery,
   GetFinancialAccountQuery,
+  GetFinancialAccountsQuery,
   GetMyFinancialAccountQuery,
 } from '../../../application/queries';
 
@@ -284,8 +285,40 @@ export class FinancialAccountsController {
       GetFinancialAccountBalanceQuery,
       FinancialAccountAggregate
     >,
+    @Inject(FINANCIAL_ACCOUNT_TOKENS.QUERY_HANDLERS.GET_ALL)
+    private readonly getFinancialAccountsHandler: QueryHandler<
+      GetFinancialAccountsQuery,
+      FinancialAccountAggregate[]
+    >,
   ) {}
+  // ===========================================================================
+  // Financial Account Queries — All Accounts
+  // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // Get All Financial Accounts
+  // ---------------------------------------------------------------------------
+
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get all financial accounts',
+    description:
+      'Returns all Financial Account aggregates, including their balances.',
+  })
+  @Get()
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('financial-account:read')
+  public async getAll(): Promise<
+    ReturnType<typeof FinancialAccountResponseMapper.toResponse>[]
+  > {
+    const aggregates = await this.getFinancialAccountsHandler.execute(
+      new GetFinancialAccountsQuery(),
+    );
+
+    return aggregates.map((aggregate) =>
+      FinancialAccountResponseMapper.toResponse(aggregate),
+    );
+  }
   // ===========================================================================
   // Financial Account Queries — Authenticated Owner
   // ===========================================================================

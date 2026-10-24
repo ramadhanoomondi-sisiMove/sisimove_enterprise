@@ -44,6 +44,11 @@ export const FINANCIAL_ACCOUNT_TOKENS = {
     GET: Symbol('GetFinancialAccountHandler'),
 
     /**
+     * Retrieves all Financial Account aggregates, including balances.
+     */
+    GET_ALL: Symbol('GetFinancialAccountsHandler'),
+
+    /**
      * Retrieves the Financial Account belonging to the
      * currently authenticated owner.
      */
