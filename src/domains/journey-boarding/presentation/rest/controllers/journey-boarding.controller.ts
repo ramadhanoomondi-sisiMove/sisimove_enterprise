@@ -65,9 +65,10 @@ import {
 } from '../../../application/queries';
 
 import type { JourneyBoardingAggregate } from '../../../domain/aggregates/journey-boarding.aggregate';
-import type { JourneyBoardingEntity } from '../../../domain/entities/journey-boarding.entity';
 import type { JourneyBoardingParticipantEntity } from '../../../domain/entities/journey-boarding-participant.entity';
-
+import { JOURNEY_TOKENS } from '../../../../journey/application/journey.tokens';
+import type { JourneyRepository } from '../../../../journey/domain/repositories/journey.repository';
+import { JourneyId } from '../../../../journey/domain/value-objects/journey-id.vo';
 import {
   JourneyBoardingJourneyId,
   JourneyBoardingMemberPublicId,
@@ -175,7 +176,7 @@ export class JourneyBoardingController {
     @Inject(JOURNEY_BOARDING_TOKENS.QUERY_HANDLERS.LIST)
     private readonly listJourneyBoardingsHandler: QueryHandler<
       ListJourneyBoardingsQuery,
-      JourneyBoardingEntity[]
+      JourneyBoardingAggregate[]
     >,
 
     @Inject(JOURNEY_BOARDING_TOKENS.QUERY_HANDLERS.GET_PARTICIPANTS)
@@ -194,6 +195,8 @@ export class JourneyBoardingController {
       CountAllJourneyBoardingParticipantsQuery,
       number
     >,
+    @Inject(JOURNEY_TOKENS.REPOSITORY)
+    private readonly journeyRepository: JourneyRepository,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -224,10 +227,49 @@ export class JourneyBoardingController {
     summary: 'List journey boardings',
     description: 'Returns journey boarding records accessible to the caller.',
   })
-  public async list(): Promise<JourneyBoardingEntity[]> {
-    return this.listJourneyBoardingsHandler.execute(
+  public async list(): Promise<JourneyBoardingResponse[]> {
+    const boardings = await this.listJourneyBoardingsHandler.execute(
       new ListJourneyBoardingsQuery(),
     );
+
+    // Resolve each distinct journey ID once. Boarding aggregates already
+    // contain their participants and event history, so no per-boarding
+    // aggregate rehydration is needed here.
+    const journeyIds = [
+      ...new Set(boardings.map((boarding) => boarding.journeyId.value)),
+    ];
+    const journeyPublicIds = new Map<string, string>();
+
+    await Promise.all(
+      journeyIds.map(async (journeyId) => {
+        const journey = await this.journeyRepository.findById(
+          new JourneyId(journeyId),
+        );
+
+        if (journey === null) {
+          throw new NotFoundException(
+            `Journey "${journeyId}" referenced by a boarding record was not found.`,
+          );
+        }
+
+        journeyPublicIds.set(journeyId, journey.journey.publicId.value);
+      }),
+    );
+
+    return boardings.map((boarding) => {
+      const journeyPublicId = journeyPublicIds.get(boarding.journeyId.value);
+
+      if (journeyPublicId === undefined) {
+        throw new NotFoundException(
+          `Public Journey ID mapping for boarding "${boarding.publicId.value}" was not found.`,
+        );
+      }
+
+      return JourneyBoardingResponseMapper.toResponse(
+        boarding,
+        journeyPublicId,
+      );
+    });
   }
 
   @Get('journey/:journeyId')
@@ -385,7 +427,8 @@ export class JourneyBoardingController {
   @RequirePermissions('boarding:read')
   @ApiOperation({
     summary: 'Get journey boarding',
-    description: 'Returns a journey boarding aggregate by its public ID.',
+    description:
+      'Returns a mapped Journey Boarding response by its public ID, including the Journey public ID.',
   })
   @ApiParam({
     name: 'journeyBoardingPublicId',
@@ -395,11 +438,27 @@ export class JourneyBoardingController {
   })
   public async getByPublicId(
     @Param('journeyBoardingPublicId') journeyBoardingPublicId: string,
-  ): Promise<JourneyBoardingAggregate> {
-    return this.getJourneyBoardingHandler.execute(
+  ): Promise<JourneyBoardingResponse> {
+    const aggregate = await this.getJourneyBoardingHandler.execute(
       new GetJourneyBoardingQuery(
         new JourneyBoardingPublicId(journeyBoardingPublicId),
       ),
+    );
+
+    const journeyId = aggregate.journeyId.value;
+    const journey = await this.journeyRepository.findById(
+      new JourneyId(journeyId),
+    );
+
+    if (journey === null) {
+      throw new NotFoundException(
+        `Journey "${journeyId}" referenced by boarding "${journeyBoardingPublicId}" was not found.`,
+      );
+    }
+
+    return JourneyBoardingResponseMapper.toResponse(
+      aggregate,
+      journey.journey.publicId.value,
     );
   }
 

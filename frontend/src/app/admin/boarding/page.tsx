@@ -20,8 +20,6 @@ import {
   AdminBoardingParticipantStatus,
 } from '@/features/admin/boardings';
 
-import { ADMIN_ROUTES } from '@/foundation/routing/admin-routes';
-
 export default function AdminBoardingsPage() {
   const router = useRouter();
   const boardingsQuery = useAdminBoardings();
@@ -102,12 +100,14 @@ const boardings = useMemo(
     };
   }, [boardings, boardingsQuery.dataUpdatedAt]);
 
-  const handleViewBoarding = useCallback(
-    (boarding: AdminBoarding) => {
-      router.push(ADMIN_ROUTES.BOARDING_JOURNEY(boarding.journeyId));
-    },
-    [router],
-  );
+const handleViewBoarding = useCallback(
+  (boarding: AdminBoarding) => {
+    router.push(
+      `/admin/boarding/${encodeURIComponent(boarding.publicId)}`,
+    );
+  },
+  [router],
+);
 
   return (
     <BoardingPageContainer>

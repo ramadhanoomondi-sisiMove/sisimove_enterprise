@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -8,15 +7,20 @@ import {
   Activity,
   Award,
   BadgeCheck,
+  Banknote,
   BriefcaseBusiness,
+  Building2,
   ChevronDown,
   ChevronRight,
   ClipboardList,
   CreditCard,
   FileSearch,
+  Landmark,
   LayoutDashboard,
   LogOut,
+  ReceiptText,
   Route,
+  Scale,
   ShieldAlert,
   ShieldCheck,
   Store,
@@ -94,14 +98,9 @@ const NAVIGATION_GROUPS = [
     label: "Finance & Transactions",
     items: [
       {
-        label: "Payments",
-        href: ADMIN_ROUTES.PAYMENTS,
+        label: "Finance Control Center",
+        href: ADMIN_ROUTES.FINANCE_HOME,
         icon: Wallet,
-      },
-      {
-        label: "Transactions",
-        href: ADMIN_ROUTES.TRANSACTIONS,
-        icon: CreditCard,
       },
     ],
   },
@@ -159,6 +158,16 @@ const TRUST_CHILDREN = [
     icon: Users,
   },
   {
+    label: "Ratings",
+    href: ADMIN_ROUTES.TRUST_RATINGS,
+    icon: Award,
+  },
+  {
+    label: "Reviews",
+    href: ADMIN_ROUTES.TRUST_REVIEWS,
+    icon: ClipboardList,
+  },
+  {
     label: "Badges",
     href: ADMIN_ROUTES.TRUST_BADGES,
     icon: Award,
@@ -167,6 +176,74 @@ const TRUST_CHILDREN = [
     label: "Moderation",
     href: ADMIN_ROUTES.TRUST_MODERATION,
     icon: ShieldAlert,
+  },
+  {
+    label: "Trust Events",
+    href: ADMIN_ROUTES.TRUST_EVENTS,
+    icon: Activity,
+  },
+] as const;
+
+const FINANCE_CHILDREN = [
+  {
+    label: "Overview",
+    href: ADMIN_ROUTES.FINANCE_HOME,
+    icon: LayoutDashboard,
+  },
+  {
+    label: "Accounts & Balances",
+    href: ADMIN_ROUTES.FINANCE_ACCOUNTS,
+    icon: Building2,
+  },
+  {
+    label: "Payments",
+    href: ADMIN_ROUTES.FINANCE_PAYMENTS,
+    icon: Wallet,
+  },
+  {
+    label: "Transactions & Ledger",
+    href: ADMIN_ROUTES.FINANCE_TRANSACTIONS,
+    icon: CreditCard,
+  },
+  {
+    label: "Booking Payments",
+    href: ADMIN_ROUTES.FINANCE_BOOKING_PAYMENTS,
+    icon: ReceiptText,
+  },
+  {
+    label: "Commissions",
+    href: ADMIN_ROUTES.FINANCE_COMMISSIONS,
+    icon: Banknote,
+  },
+  {
+    label: "Settlements",
+    href: ADMIN_ROUTES.FINANCE_SETTLEMENTS,
+    icon: Scale,
+  },
+  {
+    label: "Provider Settlements",
+    href: ADMIN_ROUTES.FINANCE_PROVIDER_SETTLEMENTS,
+    icon: Users,
+  },
+  {
+    label: "Disbursements",
+    href: ADMIN_ROUTES.FINANCE_DISBURSEMENTS,
+    icon: Banknote,
+  },
+  {
+    label: "Withdrawals",
+    href: ADMIN_ROUTES.FINANCE_WITHDRAWALS,
+    icon: Wallet,
+  },
+  {
+    label: "Account Holds",
+    href: ADMIN_ROUTES.FINANCE_HOLDS,
+    icon: ShieldAlert,
+  },
+  {
+    label: "Accounting",
+    href: ADMIN_ROUTES.FINANCE_ACCOUNTING,
+    icon: Landmark,
   },
 ] as const;
 
@@ -193,8 +270,10 @@ export default function AdminSidebar({
   const { logout, isLoggingOut } = useLogout();
 
   const isTrustRoute = isNavigationActive(pathname, ADMIN_ROUTES.TRUST);
+  const isFinanceRoute = isNavigationActive(pathname, ADMIN_ROUTES.FINANCE_HOME);
 
   const [trustExpanded, setTrustExpanded] = useState(isTrustRoute);
+  const [financeExpanded, setFinanceExpanded] = useState(isFinanceRoute);
 
   const handleLogout = async () => {
     try {
@@ -221,9 +300,7 @@ export default function AdminSidebar({
 
         {!collapsed && (
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold text-slate-900">
-              sisiMove
-            </p>
+            <p className="truncate text-sm font-bold text-slate-900">sisiMove</p>
             <p className="text-xs text-slate-500">Super Admin</p>
           </div>
         )}
@@ -247,8 +324,15 @@ export default function AdminSidebar({
                 const Icon = item.icon;
                 const active = isNavigationActive(pathname, item.href);
                 const isTrustParent = item.href === ADMIN_ROUTES.TRUST;
+                const isFinanceParent = item.href === ADMIN_ROUTES.FINANCE_HOME;
 
-                if (isTrustParent) {
+                if (isTrustParent || isFinanceParent) {
+                  const children = isTrustParent ? TRUST_CHILDREN : FINANCE_CHILDREN;
+                  const expanded = isTrustParent ? trustExpanded : financeExpanded;
+                  const setExpanded = isTrustParent ? setTrustExpanded : setFinanceExpanded;
+                  const parentLabel = isTrustParent ? "Trust & Reputation" : "Finance Control Center";
+                  const childrenId = isTrustParent ? "trust-navigation-children" : "finance-navigation-children";
+
                   return (
                     <div key={item.href} className="space-y-1">
                       <div className="flex items-center gap-1">
@@ -256,9 +340,7 @@ export default function AdminSidebar({
                           href={item.href}
                           onClick={onNavigate}
                           title={collapsed ? item.label : undefined}
-                          aria-current={
-                            pathname === item.href ? "page" : undefined
-                          }
+                          aria-current={pathname === item.href ? "page" : undefined}
                           className={[
                             "flex min-h-10 min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
                             collapsed ? "justify-center" : "",
@@ -268,51 +350,34 @@ export default function AdminSidebar({
                           ].join(" ")}
                         >
                           <Icon className="h-[18px] w-[18px] shrink-0" />
-
-                          {!collapsed && (
-                            <span className="truncate">{item.label}</span>
-                          )}
+                          {!collapsed && <span className="truncate">{item.label}</span>}
                         </Link>
 
                         {!collapsed && (
                           <button
                             type="button"
-                            onClick={() =>
-                              setTrustExpanded((expanded) => !expanded)
-                            }
-                            aria-label={
-                              trustExpanded
-                                ? "Collapse Trust & Reputation submenu"
-                                : "Expand Trust & Reputation submenu"
-                            }
-                            aria-expanded={trustExpanded}
-                            aria-controls="trust-navigation-children"
+                            onClick={() => setExpanded((value) => !value)}
+                            aria-label={expanded ? `Collapse ${parentLabel} submenu` : `Expand ${parentLabel} submenu`}
+                            aria-expanded={expanded}
+                            aria-controls={childrenId}
                             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                           >
-                            {trustExpanded ? (
-                              <ChevronDown className="h-4 w-4" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4" />
-                            )}
+                            {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                           </button>
                         )}
                       </div>
 
-                      {(trustExpanded || collapsed) && (
+                      {(expanded || collapsed) && (
                         <div
-                          id="trust-navigation-children"
-                          className={
-                            collapsed
-                              ? "space-y-1"
-                              : "ml-5 space-y-1 border-l border-slate-200 pl-3"
-                          }
+                          id={childrenId}
+                          className={collapsed ? "space-y-1" : "ml-5 space-y-1 border-l border-slate-200 pl-3"}
                         >
-                          {TRUST_CHILDREN.map((child) => {
+                          {children.map((child) => {
                             const ChildIcon = child.icon;
-                            const childActive = isNavigationActive(
-                              pathname,
-                              child.href,
-                            );
+                            const childActive =
+                              child.href === ADMIN_ROUTES.FINANCE_HOME
+                                ? pathname === child.href
+                                : isNavigationActive(pathname, child.href);
 
                             return (
                               <Link
@@ -320,9 +385,7 @@ export default function AdminSidebar({
                                 href={child.href}
                                 onClick={onNavigate}
                                 title={collapsed ? child.label : undefined}
-                                aria-current={
-                                  childActive ? "page" : undefined
-                                }
+                                aria-current={childActive ? "page" : undefined}
                                 className={[
                                   "flex min-h-9 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
                                   collapsed ? "justify-center" : "",
@@ -332,12 +395,7 @@ export default function AdminSidebar({
                                 ].join(" ")}
                               >
                                 <ChildIcon className="h-4 w-4 shrink-0" />
-
-                                {!collapsed && (
-                                  <span className="truncate">
-                                    {child.label}
-                                  </span>
-                                )}
+                                {!collapsed && <span className="truncate">{child.label}</span>}
                               </Link>
                             );
                           })}
@@ -363,10 +421,7 @@ export default function AdminSidebar({
                     ].join(" ")}
                   >
                     <Icon className="h-[18px] w-[18px] shrink-0" />
-
-                    {!collapsed && (
-                      <span className="truncate">{item.label}</span>
-                    )}
+                    {!collapsed && <span className="truncate">{item.label}</span>}
                   </Link>
                 );
               })}
@@ -389,10 +444,7 @@ export default function AdminSidebar({
           ].join(" ")}
         >
           <Store className="h-[18px] w-[18px] shrink-0" />
-
-          {!collapsed && (
-            <span className="truncate">Open Main App</span>
-          )}
+          {!collapsed && <span className="truncate">Open Main App</span>}
         </Link>
 
         {!collapsed && (
@@ -417,10 +469,7 @@ export default function AdminSidebar({
           ].join(" ")}
         >
           <LogOut className="h-[18px] w-[18px] shrink-0" />
-
-          {!collapsed && (
-            <span>{isLoggingOut ? "Logging out..." : "Log out"}</span>
-          )}
+          {!collapsed && <span>{isLoggingOut ? "Logging out..." : "Log out"}</span>}
         </button>
       </div>
     </aside>

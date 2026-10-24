@@ -1,4 +1,3 @@
-
 /* -----------------------------------------------------------------------------
  * sisiMove — Admin Routes
  * -----------------------------------------------------------------------------
@@ -11,7 +10,7 @@
  * - Verification and trust management
  * - Journey operations
  * - Booking and boarding operations
- * - Financial oversight
+ * - Financial oversight and accounting
  * - Asset management
  * - Authentication and session oversight
  * - Access control
@@ -22,15 +21,8 @@
  *
  * This file defines URL construction only.
  *
- * It does NOT:
- * - authenticate users;
- * - restore sessions;
- * - enforce administrator authorization;
- * - enforce permissions;
- * - perform navigation;
- * - redirect users;
- * - fetch or mutate application data.
- *
+ * It does NOT authenticate users, authorize administrators, enforce permissions,
+ * perform navigation, redirect users, or fetch/mutate application data.
  * Those responsibilities belong to their respective application boundaries.
  *
  * -------------------------------------------------------------------------- */
@@ -116,8 +108,86 @@ export const ADMIN_ROUTES = {
     `/admin/boarding/${encodeURIComponent(journeyPublicId)}`,
 
   // ---------------------------------------------------------------------------
-  // Financial Oversight
+  // Finance Control Center
   // ---------------------------------------------------------------------------
+  // These routes are grouped under /admin/finance to keep financial oversight
+  // distinct from booking operations. Route declarations do not imply that the
+  // corresponding page, query, or command already exists.
+
+  FINANCE_HOME: '/admin/finance',
+
+  FINANCE_ACCOUNTS: '/admin/finance/accounts',
+
+  FINANCE_ACCOUNT: (accountPublicId: string) =>
+    `/admin/finance/accounts/${encodeURIComponent(accountPublicId)}`,
+
+  FINANCE_PAYMENTS: '/admin/finance/payments',
+
+  FINANCE_PAYMENT: (paymentPublicId: string) =>
+    `/admin/finance/payments/${encodeURIComponent(paymentPublicId)}`,
+
+  FINANCE_PAYMENT_ATTEMPTS: (paymentPublicId: string) =>
+    `/admin/finance/payments/${encodeURIComponent(paymentPublicId)}/attempts`,
+
+  FINANCE_TRANSACTIONS: '/admin/finance/transactions',
+
+  FINANCE_TRANSACTION: (transactionPublicId: string) =>
+    `/admin/finance/transactions/${encodeURIComponent(transactionPublicId)}`,
+
+  FINANCE_BOOKING_PAYMENTS: '/admin/finance/booking-payments',
+
+  FINANCE_BOOKING_PAYMENT: (bookingPaymentPublicId: string) =>
+    `/admin/finance/booking-payments/${encodeURIComponent(bookingPaymentPublicId)}`,
+
+  FINANCE_COMMISSIONS: '/admin/finance/commissions',
+
+  FINANCE_COMMISSION_RULES: '/admin/finance/commissions/rules',
+
+  FINANCE_BOOKING_COMMISSIONS: '/admin/finance/commissions/bookings',
+
+  FINANCE_EARNING_COMMISSIONS: '/admin/finance/commissions/earnings',
+
+  FINANCE_SETTLEMENTS: '/admin/finance/settlements',
+
+  FINANCE_SETTLEMENT: (settlementPublicId: string) =>
+    `/admin/finance/settlements/${encodeURIComponent(settlementPublicId)}`,
+
+  FINANCE_PROVIDER_SETTLEMENTS: '/admin/finance/provider-settlements',
+
+  FINANCE_PROVIDER_SETTLEMENT: (settlementPublicId: string) =>
+    `/admin/finance/provider-settlements/${encodeURIComponent(settlementPublicId)}`,
+
+  FINANCE_DISBURSEMENTS: '/admin/finance/disbursements',
+
+  FINANCE_DISBURSEMENT: (disbursementPublicId: string) =>
+    `/admin/finance/disbursements/${encodeURIComponent(disbursementPublicId)}`,
+
+  FINANCE_WITHDRAWALS: '/admin/finance/withdrawals',
+
+  FINANCE_WITHDRAWAL: (withdrawalPublicId: string) =>
+    `/admin/finance/withdrawals/${encodeURIComponent(withdrawalPublicId)}`,
+
+  FINANCE_HOLDS: '/admin/finance/holds',
+
+  FINANCE_HOLD: (holdPublicId: string) =>
+    `/admin/finance/holds/${encodeURIComponent(holdPublicId)}`,
+
+  FINANCE_ACCOUNTING: '/admin/finance/accounting',
+
+  FINANCE_ACCOUNTING_ACCOUNTS: '/admin/finance/accounting/accounts',
+
+  FINANCE_ACCOUNTING_PERIODS: '/admin/finance/accounting/periods',
+
+  FINANCE_ACCOUNTING_JOURNALS: '/admin/finance/accounting/journals',
+
+  FINANCE_ACCOUNTING_JOURNAL: (journalPublicId: string) =>
+    `/admin/finance/accounting/journals/${encodeURIComponent(journalPublicId)}`,
+
+  // ---------------------------------------------------------------------------
+  // Backwards-compatible financial routes
+  // ---------------------------------------------------------------------------
+  // Retained so existing pages and callers are not silently broken while the
+  // nested Finance Control Center pages are introduced.
 
   PAYMENTS: '/admin/payments',
 
@@ -189,7 +259,6 @@ export const ADMIN_ROUTES = {
 // Route Type
 // -----------------------------------------------------------------------------
 
-type AdminRouteValue =
-  (typeof ADMIN_ROUTES)[keyof typeof ADMIN_ROUTES];
+type AdminRouteValue = (typeof ADMIN_ROUTES)[keyof typeof ADMIN_ROUTES];
 
 export type AdminRoute = Extract<AdminRouteValue, string>;

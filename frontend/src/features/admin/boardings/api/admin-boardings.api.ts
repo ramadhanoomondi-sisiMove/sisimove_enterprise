@@ -6,7 +6,7 @@
  *
  * Responsibilities:
  * - Retrieve normalized boarding records.
- * - Retrieve an individual boarding.
+ * - Retrieve an individual boarding by boarding public ID.
  * - Retrieve boarding by journey public ID.
  * - Retrieve participants and participant counts.
  * - Create and open boarding.
@@ -14,6 +14,9 @@
  * - Manage participant lifecycle.
  * - Start or cancel a journey boarding.
  *
+ * Flat REST responses are normalized by the canonical response mapper.
+ * Legacy aggregate responses remain supported where older mutation endpoints
+ * have not yet adopted the canonical REST contract.
  * Backend authorization and boarding lifecycle rules remain authoritative.
  */
 
@@ -100,8 +103,8 @@ class AdminBoardingsApi {
   /**
    * GET /journey-boardings
    *
-   * The collection endpoint returns domain aggregates with nested props
-   * and value objects.
+   * Returns flat REST DTOs. The mapper temporarily supports legacy aggregate
+   * entries while older backend responses are being migrated.
    */
   public async getAll(): Promise<AdminBoarding[]> {
     const responses =
@@ -113,30 +116,35 @@ class AdminBoardingsApi {
   }
 
   /**
-   * GET /journey-boardings/:journeyBoardingPublicId
+   * GET /journey-boardings/:boardingPublicId
    *
-   * The endpoint is expected to return a raw JourneyBoardingAggregate.
+   * The identifier must be the boarding public ID, for example:
+   * JBD-MTOZQO
+   *
+   * The endpoint returns a canonical flat REST DTO. Do not pass the associated
+   * journey public ID or an internal database ID.
    */
   public async getByPublicId(
-    journeyBoardingPublicId: string,
+    boardingPublicId: string,
   ): Promise<AdminBoarding> {
     const publicId = this.requirePublicId(
-      journeyBoardingPublicId,
+      boardingPublicId,
       'Boarding public ID',
     );
 
     const response =
-      await authenticatedApiClient.get<BoardingAggregateResponse>(
+      await authenticatedApiClient.get<AdminBoardingApiResponse>(
         `${this.basePath}/${encodeURIComponent(publicId)}`,
       );
 
-    return mapAdminBoardingAggregate(response);
+    return mapAdminBoarding(response);
   }
 
   /**
-   * GET /journey-boardings/journey/:journeyId
+   * GET /journey-boardings/journey/:journeyPublicId
    *
-   * Returns the canonical JourneyBoardingResponse.
+   * The identifier must be the associated journey's public ID.
+   * This endpoint returns a canonical REST response.
    */
   public async getByJourney(
     journeyPublicId: string,
@@ -155,13 +163,15 @@ class AdminBoardingsApi {
   }
 
   /**
-   * GET /journey-boardings/:journeyBoardingPublicId/participants
+   * GET /journey-boardings/:boardingPublicId/participants
+   *
+   * Returns canonical participant responses.
    */
   public async getParticipants(
-    journeyBoardingPublicId: string,
+    boardingPublicId: string,
   ): Promise<AdminBoardingParticipant[]> {
     const publicId = this.requirePublicId(
-      journeyBoardingPublicId,
+      boardingPublicId,
       'Boarding public ID',
     );
 
@@ -191,7 +201,11 @@ class AdminBoardingsApi {
   /**
    * POST /journey-boardings
    *
-   * The endpoint is expected to return a raw JourneyBoardingAggregate.
+   * Returns a domain aggregate.
+   *
+   * Note: journeyId must match the identifier expected by the backend's
+   * create-boarding contract. Confirm whether that contract requires the
+   * journey public ID or internal journey ID.
    */
   public async create(
     request: CreateAdminBoardingRequest,
@@ -214,16 +228,16 @@ class AdminBoardingsApi {
   }
 
   /**
-   * POST /journey-boardings/:journeyBoardingPublicId/open
+   * POST /journey-boardings/:boardingPublicId/open
    *
-   * The endpoint is expected to return a raw JourneyBoardingAggregate.
+   * Returns a domain aggregate.
    */
   public async open(
-    journeyBoardingPublicId: string,
+    boardingPublicId: string,
     request: OpenAdminBoardingRequest = {},
   ): Promise<AdminBoarding> {
     const publicId = this.requirePublicId(
-      journeyBoardingPublicId,
+      boardingPublicId,
       'Boarding public ID',
     );
 
@@ -241,16 +255,16 @@ class AdminBoardingsApi {
   // ---------------------------------------------------------------------------
 
   /**
-   * POST /journey-boardings/:journeyBoardingPublicId/start
+   * POST /journey-boardings/:boardingPublicId/start
    *
-   * Returns the canonical REST response.
+   * Returns a canonical REST response.
    */
   public async startJourney(
-    journeyBoardingPublicId: string,
+    boardingPublicId: string,
     request: StartAdminJourneyRequest = {},
   ): Promise<AdminBoarding> {
     const publicId = this.requirePublicId(
-      journeyBoardingPublicId,
+      boardingPublicId,
       'Boarding public ID',
     );
 
@@ -264,14 +278,16 @@ class AdminBoardingsApi {
   }
 
   /**
-   * POST /journey-boardings/:journeyBoardingPublicId/cancel
+   * POST /journey-boardings/:boardingPublicId/cancel
+   *
+   * Returns a canonical REST response.
    */
   public async cancel(
-    journeyBoardingPublicId: string,
+    boardingPublicId: string,
     request: CancelAdminBoardingRequest = {},
   ): Promise<AdminBoarding> {
     const publicId = this.requirePublicId(
-      journeyBoardingPublicId,
+      boardingPublicId,
       'Boarding public ID',
     );
 
@@ -289,16 +305,16 @@ class AdminBoardingsApi {
   // ---------------------------------------------------------------------------
 
   /**
-   * POST /journey-boardings/:journeyBoardingPublicId/provider/board
+   * POST /journey-boardings/:boardingPublicId/provider/board
    *
-   * The endpoint is expected to return a raw JourneyBoardingAggregate.
+   * Returns a domain aggregate.
    */
   public async boardProvider(
-    journeyBoardingPublicId: string,
+    boardingPublicId: string,
     request: BoardAdminProviderRequest = {},
   ): Promise<AdminBoarding> {
     const publicId = this.requirePublicId(
-      journeyBoardingPublicId,
+      boardingPublicId,
       'Boarding public ID',
     );
 
@@ -316,15 +332,17 @@ class AdminBoardingsApi {
   // ---------------------------------------------------------------------------
 
   /**
-   * POST /journey-boardings/:journeyBoardingPublicId/participants/:participantPublicId/board
+   * POST /journey-boardings/:boardingPublicId/participants/:participantPublicId/board
+   *
+   * Returns a canonical REST response.
    */
   public async boardPassenger(
-    journeyBoardingPublicId: string,
+    boardingPublicId: string,
     participantPublicId: string,
     request: BoardAdminPassengerRequest = {},
   ): Promise<AdminBoarding> {
     const boardingId = this.requirePublicId(
-      journeyBoardingPublicId,
+      boardingPublicId,
       'Boarding public ID',
     );
 
@@ -343,15 +361,17 @@ class AdminBoardingsApi {
   }
 
   /**
-   * POST /journey-boardings/:journeyBoardingPublicId/participants/:participantPublicId/no-show
+   * POST /journey-boardings/:boardingPublicId/participants/:participantPublicId/no-show
+   *
+   * Returns a canonical REST response.
    */
   public async markPassengerNoShow(
-    journeyBoardingPublicId: string,
+    boardingPublicId: string,
     participantPublicId: string,
     request: MarkAdminPassengerNoShowRequest = {},
   ): Promise<AdminBoarding> {
     const boardingId = this.requirePublicId(
-      journeyBoardingPublicId,
+      boardingPublicId,
       'Boarding public ID',
     );
 
@@ -374,15 +394,17 @@ class AdminBoardingsApi {
   // ---------------------------------------------------------------------------
 
   /**
-   * POST /journey-boardings/:journeyBoardingPublicId/participants/:participantPublicId/withdraw
+   * POST /journey-boardings/:boardingPublicId/participants/:participantPublicId/withdraw
+   *
+   * Returns a canonical REST response.
    */
   public async withdrawParticipant(
-    journeyBoardingPublicId: string,
+    boardingPublicId: string,
     participantPublicId: string,
     request: WithdrawAdminBoardingParticipantRequest = {},
   ): Promise<AdminBoarding> {
     const boardingId = this.requirePublicId(
-      journeyBoardingPublicId,
+      boardingPublicId,
       'Boarding public ID',
     );
 
@@ -401,15 +423,17 @@ class AdminBoardingsApi {
   }
 
   /**
-   * POST /journey-boardings/:journeyBoardingPublicId/participants/:participantPublicId/remove
+   * POST /journey-boardings/:boardingPublicId/participants/:participantPublicId/remove
+   *
+   * Returns a canonical REST response.
    */
   public async removeParticipant(
-    journeyBoardingPublicId: string,
+    boardingPublicId: string,
     participantPublicId: string,
     request: RemoveAdminBoardingParticipantRequest = {},
   ): Promise<AdminBoarding> {
     const boardingId = this.requirePublicId(
-      journeyBoardingPublicId,
+      boardingPublicId,
       'Boarding public ID',
     );
 

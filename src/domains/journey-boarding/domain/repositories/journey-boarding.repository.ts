@@ -112,6 +112,15 @@ export interface JourneyBoardingRepository {
   ): Promise<JourneyBoardingAggregate | null>;
 
   /**
+   * Finds and rehydrates all Journey Boarding aggregates for collection reads.
+   *
+   * Infrastructure must load each aggregate's root, participants, and event
+   * history through a bulk query rather than issuing one lookup per boarding.
+   * Results are ordered newest first by creation time.
+   */
+  findJourneyBoardingAggregates(): Promise<JourneyBoardingAggregate[]>;
+
+  /**
    * Deletes a Journey Boarding aggregate by internal ID.
    *
    * Infrastructure is responsible for deleting all aggregate-owned

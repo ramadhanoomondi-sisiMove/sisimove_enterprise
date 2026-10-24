@@ -411,6 +411,26 @@ export class PrismaJourneyBoardingRepository implements JourneyBoardingRepositor
     return record === null ? null : this.toAggregate(record);
   }
 
+  /**
+   * Loads the full boarding collection and its owned child collections in bulk.
+   *
+   * Keep this as a single root collection query with the aggregate include
+   * graph. Do not implement this by calling findByPublicId/findById in a loop:
+   * that would create an N+1 query pattern.
+   */
+  public async findJourneyBoardingAggregates(): Promise<
+    JourneyBoardingAggregate[]
+  > {
+    const records = await this.prisma.journeyBoarding.findMany({
+      include: this.include,
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return records.map((record) => this.toAggregate(record));
+  }
+
   // ===========================================================================
   // Root Journey Boarding Queries
   // ===========================================================================
