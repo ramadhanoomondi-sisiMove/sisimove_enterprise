@@ -1,3 +1,4 @@
+
 'use client';
 
 import Link from 'next/link';
@@ -9,7 +10,9 @@ import { TransactionPublicId } from '../shared/TransactionPublicId';
 import { TransactionStatusBadge } from '../shared/TransactionStatusBadge';
 import { TransactionTypeBadge } from '../shared/TransactionTypeBadge';
 
-import type { AdminFinancialTransaction } from '@/features/admin/finance/transactions/models';
+import type {
+  AdminFinancialTransaction,
+} from '@/features/admin/finance/transactions/models';
 
 export interface TransactionTableRowProps {
   transaction: AdminFinancialTransaction;
@@ -19,31 +22,38 @@ export interface TransactionTableRowProps {
 
 export function TransactionTableRow({
   transaction,
-  detailHref = (publicId) => `/admin/financial-transactions/${encodeURIComponent(publicId)}`,
+  detailHref = (publicId) =>
+    `/admin/finance/transactions/${encodeURIComponent(publicId)}`,
   onViewTransaction,
 }: TransactionTableRowProps) {
   const href = detailHref(transaction.publicId);
+
+  const viewActionClassName =
+    'inline-flex min-h-9 items-center gap-1 rounded-[var(--radius-md)] px-2 text-sm font-medium text-[var(--brand)] hover:bg-[var(--brand-soft)] focus-visible:outline-2 focus-visible:outline-[var(--brand)]';
 
   return (
     <tr className="transition-colors hover:bg-[var(--background-subtle)]">
       <td className="px-4 py-4 align-middle">
         <div className="flex min-w-0 flex-col gap-1">
-          {onViewTransaction ? (
-            <button
-              type="button"
-              onClick={() => onViewTransaction(transaction)}
-              className="w-fit max-w-full text-left focus-visible:rounded-sm"
-            >
-              <TransactionPublicId publicId={transaction.publicId} copyable />
-            </button>
-          ) : (
-            <Link
-              href={href}
-              className="w-fit max-w-full rounded-sm focus-visible:outline-2 focus-visible:outline-[var(--brand)]"
-            >
-              <TransactionPublicId publicId={transaction.publicId} />
-            </Link>
-          )}
+          <div className="w-fit max-w-full text-left">
+            {onViewTransaction ? (
+              <TransactionPublicId
+                publicId={transaction.publicId}
+                copyable
+              />
+            ) : (
+              <Link
+                href={href}
+                className="block w-fit max-w-full rounded-sm focus-visible:outline-2 focus-visible:outline-[var(--brand)]"
+              >
+                <TransactionPublicId
+                  publicId={transaction.publicId}
+                  copyable
+                />
+              </Link>
+            )}
+          </div>
+
           {transaction.reference ? (
             <span
               className="max-w-56 truncate text-xs text-[var(--foreground-muted)]"
@@ -60,7 +70,10 @@ export function TransactionTableRow({
       </td>
 
       <td className="px-4 py-4 text-right align-middle">
-        <TransactionAmount amount={transaction.amount} currency={transaction.currency} />
+        <TransactionAmount
+          amount={transaction.amount}
+          currency={transaction.currency}
+        />
       </td>
 
       <td className="px-4 py-4 align-middle">
@@ -69,11 +82,18 @@ export function TransactionTableRow({
 
       <td className="px-4 py-4 align-middle">
         <div className="flex min-w-0 flex-col gap-1 text-xs">
-          <span className="max-w-44 truncate text-[var(--foreground-secondary)]" title={transaction.sourceAccountPublicId ?? ''}>
+          <span
+            className="max-w-44 truncate text-[var(--foreground-secondary)]"
+            title={transaction.sourceAccountPublicId ?? ''}
+          >
             <span className="text-[var(--foreground-muted)]">From </span>
             {transaction.sourceAccountPublicId || '—'}
           </span>
-          <span className="max-w-44 truncate text-[var(--foreground-secondary)]" title={transaction.destinationAccountPublicId ?? ''}>
+
+          <span
+            className="max-w-44 truncate text-[var(--foreground-secondary)]"
+            title={transaction.destinationAccountPublicId ?? ''}
+          >
             <span className="text-[var(--foreground-muted)]">To </span>
             {transaction.destinationAccountPublicId || '—'}
           </span>
@@ -89,15 +109,12 @@ export function TransactionTableRow({
           <button
             type="button"
             onClick={() => onViewTransaction(transaction)}
-            className="inline-flex min-h-9 items-center gap-1 rounded-[var(--radius-md)] px-2 text-sm font-medium text-[var(--brand)] hover:bg-[var(--brand-soft)]"
+            className={viewActionClassName}
           >
             View <ArrowUpRight size={15} aria-hidden="true" />
           </button>
         ) : (
-          <Link
-            href={href}
-            className="inline-flex min-h-9 items-center gap-1 rounded-[var(--radius-md)] px-2 text-sm font-medium text-[var(--brand)] hover:bg-[var(--brand-soft)]"
-          >
+          <Link href={href} className={viewActionClassName}>
             View <ArrowUpRight size={15} aria-hidden="true" />
           </Link>
         )}

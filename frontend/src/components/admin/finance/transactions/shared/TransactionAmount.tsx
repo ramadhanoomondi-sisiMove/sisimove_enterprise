@@ -2,13 +2,12 @@
 import { cn } from '@/foundation/utils/cn';
 
 export interface TransactionAmountProps {
-  /** Amount stored in integer minor units. */
+  /** Amount returned by the API in major currency units. */
   amount: number;
   currency: string;
   className?: string;
   locale?: string;
 }
-
 
 export function formatTransactionAmount(
   amount: number,
@@ -17,20 +16,15 @@ export function formatTransactionAmount(
 ): string {
   const normalizedCurrency = currency.trim().toUpperCase();
 
-  if (!Number.isSafeInteger(amount) || !normalizedCurrency) {
+  if (!Number.isFinite(amount) || !normalizedCurrency) {
     return `${amount} ${normalizedCurrency}`;
   }
 
   try {
-    const formatter = new Intl.NumberFormat(locale, {
+    return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: normalizedCurrency,
-    });
-
-    const fractionDigits =
-      formatter.resolvedOptions().maximumFractionDigits ?? 2;
-
-    return formatter.format(amount / 10 ** fractionDigits);
+    }).format(amount);
   } catch {
     return `${amount} ${normalizedCurrency}`;
   }
@@ -54,7 +48,7 @@ export function TransactionAmount({
         'whitespace-nowrap tabular-nums font-medium text-[var(--foreground)]',
         className,
       )}
-      title={`${amount} minor units (${currency})`}
+      title={`${amount} ${currency}`}
     >
       {formattedAmount}
     </span>

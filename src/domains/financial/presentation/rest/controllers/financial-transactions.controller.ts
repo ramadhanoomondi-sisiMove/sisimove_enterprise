@@ -201,7 +201,7 @@ export class FinancialTransactionsController {
   // ---------------------------------------------------------------------------
 
   @Get()
-  @RequirePermissions('financial-transaction:read')
+  @RequirePermissions('admin:read')
   public async getAll(): Promise<
     ReturnType<typeof FinancialTransactionResponseMapper.toResponse>[]
   > {
@@ -219,7 +219,7 @@ export class FinancialTransactionsController {
   // ---------------------------------------------------------------------------
 
   @Get(':transactionPublicId')
-  @RequirePermissions('financial-transaction:read')
+  @RequirePermissions('admin:read')
   public async get(
     @Param('transactionPublicId') transactionPublicId: string,
   ): Promise<ReturnType<
