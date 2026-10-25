@@ -2,12 +2,16 @@
 // sisiMove Admin — Financial Account Metric Card
 // -----------------------------------------------------------------------------
 //
-// Small reusable metric surface for the finance control center.
-// The component is presentation-only and does not fetch or aggregate data.
+// Presentation-only metric surface for the finance control center.
 // -----------------------------------------------------------------------------
 
 import type { ReactNode } from 'react';
+
 import { Card } from '@/components/ui';
+
+// -----------------------------------------------------------------------------
+// Types
+// -----------------------------------------------------------------------------
 
 export interface FinancialAccountMetricCardProps {
   label: string;
@@ -18,6 +22,10 @@ export interface FinancialAccountMetricCardProps {
   className?: string;
 }
 
+// -----------------------------------------------------------------------------
+// Component
+// -----------------------------------------------------------------------------
+
 export function FinancialAccountMetricCard({
   label,
   value,
@@ -27,10 +35,7 @@ export function FinancialAccountMetricCard({
   className,
 }: FinancialAccountMetricCardProps) {
   return (
-    <Card
-      padding="md"
-      className={className}
-    >
+    <Card padding="md" className={className}>
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-medium text-[var(--foreground-secondary)]">
           {label}

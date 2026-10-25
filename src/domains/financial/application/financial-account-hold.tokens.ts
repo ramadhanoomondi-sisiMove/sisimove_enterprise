@@ -39,5 +39,6 @@ export const FINANCIAL_ACCOUNT_HOLD_TOKENS = {
 
   QUERY_HANDLERS: {
     GET: Symbol('GetFinancialAccountHoldsHandler'),
+    GET_ALL: Symbol('GetAllFinancialAccountHoldsHandler'),
   } as const,
 } as const;

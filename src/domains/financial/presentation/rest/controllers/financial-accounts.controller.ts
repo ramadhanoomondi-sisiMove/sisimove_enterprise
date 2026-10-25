@@ -136,6 +136,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
+import { randomUUID } from 'node:crypto';
+
 // -----------------------------------------------------------------------------
 // Swagger
 // -----------------------------------------------------------------------------
@@ -307,7 +309,7 @@ export class FinancialAccountsController {
   })
   @Get()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('financial-account:read')
+  @RequirePermissions('financial:read')
   public async getAll(): Promise<
     ReturnType<typeof FinancialAccountResponseMapper.toResponse>[]
   > {
@@ -371,7 +373,7 @@ export class FinancialAccountsController {
   })
   @Get(':accountPublicId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('financial-account:read')
+  @RequirePermissions('financial:read')
   public async get(
     @Param('accountPublicId') accountPublicId: string,
   ): Promise<ReturnType<
@@ -483,7 +485,7 @@ export class FinancialAccountsController {
   })
   @Post(':accountPublicId/activate')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('financial-account:activate')
+  @RequirePermissions('admin:read')
   public async activate(
     @Param('accountPublicId') accountPublicId: string,
     @Body() dto: ActivateFinancialAccountDto,
@@ -491,12 +493,8 @@ export class FinancialAccountsController {
     const aggregate = await this.activateFinancialAccountHandler.execute(
       new ActivateFinancialAccountCommand(
         new FinancialAccountPublicId(accountPublicId),
-
         new Date(dto.activatedAt),
-
-        dto.correlationId,
-
-        dto.causationId,
+        randomUUID(),
       ),
     );
 
@@ -514,7 +512,7 @@ export class FinancialAccountsController {
   })
   @Post(':accountPublicId/suspend')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('financial-account:suspend')
+  @RequirePermissions('admin:read')
   public async suspend(
     @Param('accountPublicId') accountPublicId: string,
     @Body() dto: SuspendFinancialAccountDto,
@@ -522,12 +520,8 @@ export class FinancialAccountsController {
     const aggregate = await this.suspendFinancialAccountHandler.execute(
       new SuspendFinancialAccountCommand(
         new FinancialAccountPublicId(accountPublicId),
-
         new Date(dto.suspendedAt),
-
-        dto.correlationId,
-
-        dto.causationId,
+        randomUUID(),
       ),
     );
 
@@ -545,7 +539,7 @@ export class FinancialAccountsController {
   })
   @Post(':accountPublicId/close')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('financial-account:close')
+  @RequirePermissions('admin:read')
   public async close(
     @Param('accountPublicId') accountPublicId: string,
     @Body() dto: CloseFinancialAccountDto,
@@ -553,12 +547,8 @@ export class FinancialAccountsController {
     const aggregate = await this.closeFinancialAccountHandler.execute(
       new CloseFinancialAccountCommand(
         new FinancialAccountPublicId(accountPublicId),
-
         new Date(dto.closedAt),
-
-        dto.correlationId,
-
-        dto.causationId,
+        randomUUID(),
       ),
     );
 

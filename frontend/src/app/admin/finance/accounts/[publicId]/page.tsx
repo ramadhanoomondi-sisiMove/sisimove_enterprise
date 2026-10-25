@@ -53,7 +53,7 @@ function formatAmount(minorUnits: number, currency: string): string {
   return new Intl.NumberFormat('en-KE', {
     style: 'currency',
     currency,
-  }).format(minorUnits / 100);
+  }).format(minorUnits);
 }
 
 // -----------------------------------------------------------------------------
@@ -156,7 +156,9 @@ export default function FinancialAccountDetailPage() {
           title: 'Account operation completed',
           message: `The ${selectedOperation} request completed successfully for account ${account.publicId}.`,
         });
-      } catch (error: unknown) {
+         } catch (error: unknown) {
+        setSelectedOperation(null);
+
         setFeedback({
           kind: 'error',
           title: 'Account operation failed',

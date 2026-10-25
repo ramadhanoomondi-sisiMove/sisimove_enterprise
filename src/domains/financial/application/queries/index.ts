@@ -89,6 +89,8 @@ export * from './get-financial-account-payments.query';
 
 export * from './get-financial-account-holds.query';
 
+export * from './get-all-financial-account-holds.query';
+
 // -----------------------------------------------------------------------------
 // Financial Account Withdrawals
 // -----------------------------------------------------------------------------

@@ -130,6 +130,18 @@ export interface FinancialAccountHoldRepository {
   findByPublicId(
     publicId: FinancialAccountHoldPublicId,
   ): Promise<FinancialAccountHoldAggregate | null>;
+  /**
+   * Finds all Financial Account Hold aggregates across all Financial Accounts.
+   *
+   * Includes every lifecycle state:
+   * - ACTIVE
+   * - RELEASED
+   * - CAPTURED
+   * - CANCELLED
+   *
+   * Results are ordered newest first.
+   */
+  findAll(): Promise<FinancialAccountHoldAggregate[]>;
 
   /**
    * Finds all Financial Account Hold aggregates belonging to a

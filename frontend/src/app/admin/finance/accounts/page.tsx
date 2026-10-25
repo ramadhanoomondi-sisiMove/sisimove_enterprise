@@ -1,27 +1,25 @@
-
 'use client';
 
 // -----------------------------------------------------------------------------
 // sisiMove Admin — Financial Accounts Page
 // -----------------------------------------------------------------------------
-// Parent control center composing:
-// - Financial Account page container
-// - Control center header and toolbar
-// - Financial account directory
-// - Selected financial account overview
 //
-// The directory remains visible when an account is selected.
+// Platform finance control center composing:
+// - Financial Accounts header and toolbar
+// - Platform-wide financial account overview
+// - Financial account directory
+//
+// The platform overview summarizes the supplied account collection.
+// The directory supports account selection and navigation to account details.
 // Account navigation uses canonical routes and public identifiers.
 // -----------------------------------------------------------------------------
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { ADMIN_ROUTES } from '@/foundation/routing/admin-routes';
 
 import { useAdminFinancialAccountsList } from '@/features/admin/finance/accounts/hooks';
-
-import type { AdminFinancialAccount } from '@/features/admin/finance/accounts/models';
 
 import {
   FinancialAccountDirectory,
@@ -46,25 +44,22 @@ export default function FinancialAccountsPage() {
     refetch,
   } = useAdminFinancialAccountsList();
 
-  const [selectedAccountPublicId, setSelectedAccountPublicId] =
-    useState<string | null>(null);
-
-  const selectedAccount = useMemo<AdminFinancialAccount | null>(
-    () =>
-      accounts.find(
-        (account) => account.publicId === selectedAccountPublicId,
-      ) ?? null,
-    [accounts, selectedAccountPublicId],
-  );
+  // ---------------------------------------------------------------------------
+  // Formatting
+  // ---------------------------------------------------------------------------
 
   const formatAmount = useCallback(
     (minorUnits: number, currency: string) =>
       new Intl.NumberFormat('en-KE', {
         style: 'currency',
         currency,
-      }).format(minorUnits / 100),
+      }).format(minorUnits),
     [],
   );
+
+  // ---------------------------------------------------------------------------
+  // Navigation and actions
+  // ---------------------------------------------------------------------------
 
   const handleOpenAccount = useCallback(
     (accountPublicId: string) => {
@@ -73,22 +68,13 @@ export default function FinancialAccountsPage() {
     [router],
   );
 
-  const handleSelectAccount = useCallback(
-    (accountPublicId: string) => {
-      setSelectedAccountPublicId((current) =>
-        current === accountPublicId ? null : accountPublicId,
-      );
-    },
-    [],
-  );
-
-  const handleCloseOverview = useCallback(() => {
-    setSelectedAccountPublicId(null);
-  }, []);
-
   const handleRefresh = useCallback(() => {
     void refetch();
   }, [refetch]);
+
+  // ---------------------------------------------------------------------------
+  // Collection state
+  // ---------------------------------------------------------------------------
 
   const errorMessage = isError
     ? error instanceof Error
@@ -98,24 +84,21 @@ export default function FinancialAccountsPage() {
 
   const collectionIsComplete = !isLoading && !isError;
 
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+
   return (
     <FinancialAccountPageContainer size="2xl">
       <main className="space-y-6">
+        {/* Page header */}
+
         <FinancialAccountControlCenterHeader
           title="Financial Accounts"
           description="Inspect account details, review balances, and monitor account status across the platform."
-          actions={
-            selectedAccount ? (
-              <button
-                type="button"
-                onClick={handleCloseOverview}
-                className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--background-muted)]"
-              >
-                Close account overview
-              </button>
-            ) : undefined
-          }
         />
+
+        {/* Collection toolbar */}
 
         <FinancialAccountPageToolbar
           leading={
@@ -142,6 +125,18 @@ export default function FinancialAccountsPage() {
           }
         />
 
+        {/* Platform-wide overview */}
+
+        <FinancialAccountOverview
+          accounts={accounts}
+          isLoading={isLoading}
+          isError={isError}
+          collectionIsComplete={collectionIsComplete}
+          formatAmount={formatAmount}
+        />
+
+        {/* Individual account directory */}
+
         <FinancialAccountDirectory
           accounts={accounts}
           collectionIsComplete={collectionIsComplete}
@@ -149,42 +144,12 @@ export default function FinancialAccountsPage() {
           error={errorMessage}
           onRefresh={handleRefresh}
           onOpenAccount={handleOpenAccount}
-          onSelectAccount={handleSelectAccount}
+          onSelectAccount={() => {
+            // The overview is platform-wide and does not depend on selection.
+            // The directory can still use its own selection behavior.
+          }}
           formatAmount={formatAmount}
         />
-
-        {selectedAccount && (
-          <section
-            aria-label="Selected financial account overview"
-            className="space-y-4 border-t border-[var(--border)] pt-6"
-          >
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--foreground)]">
-                  Selected Account Overview
-                </h2>
-                <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
-                  Review the selected account’s status, balance, and ownership.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  handleOpenAccount(selectedAccount.publicId)
-                }
-                className="self-start rounded-lg bg-[var(--brand)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 sm:self-auto"
-              >
-                Open account details
-              </button>
-            </div>
-
-            <FinancialAccountOverview
-              account={selectedAccount}
-              formatAmount={formatAmount}
-            />
-          </section>
-        )}
       </main>
     </FinancialAccountPageContainer>
   );

@@ -490,7 +490,33 @@ export class PrismaFinancialAccountHoldRepository implements FinancialAccountHol
 
     return FinancialAccountHoldPrismaMapper.toDomain(record);
   }
+  // ===========================================================================
+  // Find All Aggregates
+  // ===========================================================================
 
+  /**
+   * Finds all Financial Account Hold aggregates across all accounts.
+   *
+   * No lifecycle status or account filter is applied.
+   * Every record is rehydrated through the domain mapper.
+   */
+  public async findAll(): Promise<FinancialAccountHoldAggregate[]> {
+    const records = await this.prisma.financialAccountHold.findMany({
+      include: {
+        account: true,
+      },
+
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return records.map((record) =>
+      FinancialAccountHoldPrismaMapper.toDomain(
+        record as FinancialAccountHoldWithAccount,
+      ),
+    );
+  }
   // ===========================================================================
   // Find By Account Public ID
   // ===========================================================================

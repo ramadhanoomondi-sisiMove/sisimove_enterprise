@@ -93,6 +93,8 @@ export * from './get-default-financial-payment-method.handler';
 
 export * from './get-financial-account-holds.handler';
 
+export * from './get-all-financial-account-holds.handler';
+
 // -----------------------------------------------------------------------------
 // Financial Settlement
 // -----------------------------------------------------------------------------
