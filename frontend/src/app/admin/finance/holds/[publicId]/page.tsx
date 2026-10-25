@@ -20,15 +20,15 @@ import { ADMIN_ROUTES } from '@/foundation/routing/admin-routes';
 import {
   useAdminAccountHold,
   useAdminAccountHoldOperations,
-} from '@/features/admin/finance/account-holds/hooks';
+} from '@/features/admin/finance/holds/hooks';
 
-import { AdminAccountHoldOperation } from '@/features/admin/finance/account-holds/models';
+import { AdminAccountHoldOperation } from '@/features/admin/finance/holds/models';
 
 import type {
   CaptureAdminAccountHoldRequest,
   ReleaseAdminAccountHoldRequest,
   CancelAdminAccountHoldRequest,
-} from '@/features/admin/finance/account-holds/models';
+} from '@/features/admin/finance/holds/models';
 
 import {
   AccountHoldLoadingState,
@@ -44,11 +44,11 @@ import {
   AccountHoldActionsMenu,
   AccountHoldOperationDialog,
   AccountHoldOperationFeedback,
-} from '@/components/admin/finance/account-holds';
+} from '@/components/admin/finance/holds';
 
 import type {
   AccountHoldOperationFeedbackStatus,
-} from '@/components/admin/finance/account-holds/operations';
+} from '@/components/admin/finance/holds/operations';
 
 // -----------------------------------------------------------------------------
 // Types and helpers

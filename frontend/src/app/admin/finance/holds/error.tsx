@@ -5,7 +5,7 @@
 
 import { useEffect } from 'react';
 
-import { AccountHoldErrorState } from '@/components/admin/finance/account-holds/shared/AccountHoldErrorState';
+import { AccountHoldErrorState } from '@/components/admin/finance/holds/shared/AccountHoldErrorState';
 
 interface AccountHoldsErrorProps {
   error: Error & { digest?: string };

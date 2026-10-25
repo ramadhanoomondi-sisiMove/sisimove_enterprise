@@ -1,6 +1,6 @@
 import {
   AccountHoldLoadingState,
-} from '@/components/admin/finance/account-holds/shared';
+} from '@/components/admin/finance/holds/shared';
 
 export default function AccountHoldDetailLoading() {
   return (

@@ -530,7 +530,20 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
 
     return record === null ? null : this.toAggregate(record);
   }
+  /**
+   * Finds all Financial Transaction aggregates, newest first.
+   *
+   * Includes source/destination accounts and aggregate-owned entries
+   * so the response mapper receives the complete transaction.
+   */
+  public async findAll(): Promise<FinancialTransactionAggregate[]> {
+    const records = await this.prisma.financialTransaction.findMany({
+      include: this.include,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
 
+    return records.map((record) => this.toAggregate(record));
+  }
   // ===========================================================================
   // Exists
   // ===========================================================================

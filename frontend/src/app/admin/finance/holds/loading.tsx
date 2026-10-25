@@ -1,4 +1,4 @@
-import { AccountHoldLoadingState } from '@/components/admin/finance/account-holds/shared/AccountHoldLoadingState';
+import { AccountHoldLoadingState } from '@/components/admin/finance/holds/shared/AccountHoldLoadingState';
 
 export default function AccountHoldsLoading() {
   return (

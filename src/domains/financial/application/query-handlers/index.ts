@@ -48,6 +48,8 @@ export * from './get-financial-account-balance.handler';
 
 export * from './get-financial-transaction.handler';
 
+export * from './get-all-financial-transactions.handler';
+
 // -----------------------------------------------------------------------------
 // Financial Account Transactions
 // -----------------------------------------------------------------------------

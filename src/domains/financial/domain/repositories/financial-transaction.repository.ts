@@ -91,8 +91,6 @@ import type { FinancialTransactionAggregate } from '../aggregates/financial-tran
 // Domain Entities
 // -----------------------------------------------------------------------------
 
-import type { FinancialTransactionEntity } from '../entities/financial-transaction.entity';
-
 import type { FinancialTransactionEntryEntity } from '../entities/financial-transaction-entry.entity';
 
 // -----------------------------------------------------------------------------
@@ -168,6 +166,10 @@ export interface FinancialTransactionRepository {
   findByPublicId(
     publicId: FinancialTransactionPublicId,
   ): Promise<FinancialTransactionAggregate | null>;
+  /**
+   * Finds all Financial Transaction aggregates, newest first.
+   */
+  findAll(): Promise<FinancialTransactionAggregate[]>;
 
   /**
    * Determines whether a Financial Transaction exists by internal identity.

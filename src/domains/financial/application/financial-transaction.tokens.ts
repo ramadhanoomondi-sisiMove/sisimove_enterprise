@@ -25,6 +25,7 @@ export const FINANCIAL_TRANSACTION_TOKENS = {
 
   QUERY_HANDLERS: {
     GET: Symbol('GetFinancialTransactionHandler'),
+    GET_ALL: Symbol('GetAllFinancialTransactionsHandler'),
     GET_ACCOUNT_TRANSACTIONS: Symbol('GetFinancialAccountTransactionsHandler'),
   } as const,
 } as const;

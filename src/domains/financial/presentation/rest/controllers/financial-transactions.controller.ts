@@ -88,8 +88,10 @@ import {
 // Application — Queries
 // -----------------------------------------------------------------------------
 
-import { GetFinancialTransactionQuery } from '../../../application/queries';
-
+import {
+  GetAllFinancialTransactionsQuery,
+  GetFinancialTransactionQuery,
+} from '../../../application/queries';
 // -----------------------------------------------------------------------------
 // Domain — Aggregate
 // -----------------------------------------------------------------------------
@@ -183,11 +185,34 @@ export class FinancialTransactionsController {
       GetFinancialTransactionQuery,
       FinancialTransactionAggregate | null
     >,
+    @Inject(FINANCIAL_TRANSACTION_TOKENS.QUERY_HANDLERS.GET_ALL)
+    private readonly getAllFinancialTransactionsHandler: QueryHandler<
+      GetAllFinancialTransactionsQuery,
+      FinancialTransactionAggregate[]
+    >,
   ) {}
 
   // ===========================================================================
   // Queries
   // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Get All Financial Transactions
+  // ---------------------------------------------------------------------------
+
+  @Get()
+  @RequirePermissions('financial-transaction:read')
+  public async getAll(): Promise<
+    ReturnType<typeof FinancialTransactionResponseMapper.toResponse>[]
+  > {
+    const aggregates = await this.getAllFinancialTransactionsHandler.execute(
+      new GetAllFinancialTransactionsQuery(),
+    );
+
+    return aggregates.map((aggregate) =>
+      FinancialTransactionResponseMapper.toResponse(aggregate),
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // Get Financial Transaction

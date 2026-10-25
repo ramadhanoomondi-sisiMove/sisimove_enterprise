@@ -24,24 +24,24 @@ import { ADMIN_ROUTES } from '@/foundation/routing/admin-routes';
 import {
   AdminAccountHoldStatus,
   DEFAULT_ADMIN_ACCOUNT_HOLD_FILTERS,
-} from '@/features/admin/finance/account-holds/models';
+} from '@/features/admin/finance/holds/models';
 
 import type {
   AdminAccountHold,
   AdminAccountHoldFilters,
   AdminAccountHoldMetrics,
-} from '@/features/admin/finance/account-holds/models';
+} from '@/features/admin/finance/holds/models';
 
-import { useAdminAccountHolds } from '@/features/admin/finance/account-holds/hooks';
+import { useAdminAccountHolds } from '@/features/admin/finance/holds/hooks';
 
 import {
   AccountHoldPageContainer,
   AccountHoldControlCenterHeader,
   AccountHoldPageToolbar,
-} from '@/components/admin/finance/account-holds/layout';
+} from '@/components/admin/finance/holds/layout';
 
-import { AccountHoldOverview } from '@/components/admin/finance/account-holds/overview';
-import { AccountHoldDirectory } from '@/components/admin/finance/account-holds/directory';
+import { AccountHoldOverview } from '@/components/admin/finance/holds/overview';
+import { AccountHoldDirectory } from '@/components/admin/finance/holds/directory';
 
 // -----------------------------------------------------------------------------
 // Metrics

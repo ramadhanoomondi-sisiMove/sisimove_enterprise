@@ -55,6 +55,10 @@ export * from './get-financial-account-transactions.query';
 
 export * from './get-financial-transaction.query';
 
+export * from './get-all-financial-transactions.query';
+
+export * from './get-all-financial-account-holds.query';
+
 // -----------------------------------------------------------------------------
 // Financial Payment Method
 // -----------------------------------------------------------------------------

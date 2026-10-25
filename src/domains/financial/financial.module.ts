@@ -208,6 +208,7 @@ import {
   // Financial Transaction
   // ---------------------------------------------------------------------------
   GetFinancialTransactionHandler,
+  GetAllFinancialTransactionsHandler,
 
   // ---------------------------------------------------------------------------
   // Financial Payment
@@ -435,6 +436,10 @@ import {
     {
       provide: FINANCIAL_TRANSACTION_TOKENS.QUERY_HANDLERS.GET,
       useClass: GetFinancialTransactionHandler,
+    },
+    {
+      provide: FINANCIAL_TRANSACTION_TOKENS.QUERY_HANDLERS.GET_ALL,
+      useClass: GetAllFinancialTransactionsHandler,
     },
 
     {
