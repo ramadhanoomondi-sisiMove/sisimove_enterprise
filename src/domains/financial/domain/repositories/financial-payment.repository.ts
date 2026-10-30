@@ -156,7 +156,15 @@ export interface FinancialPaymentRepository {
   // ===========================================================================
   // Financial Account
   // ===========================================================================
-
+  /**
+   * Finds all Financial Payment aggregates.
+   *
+   * Each result includes the complete payment aggregate and its owned
+   * payment attempts. Cross-aggregate references remain public identities.
+   *
+   * Results are ordered newest first.
+   */
+  findAll(): Promise<FinancialPaymentAggregate[]>;
   /**
    * Finds all Financial Payments associated with a Financial Account.
    *

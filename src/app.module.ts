@@ -459,6 +459,11 @@ import { NotificationModule } from './domains/notification/notification.module';
 
 import { SupportModule } from './domains/support/support.module';
 
+// -----------------------------------------------------------------------------
+// Financial Payment Providers
+// -----------------------------------------------------------------------------
+
+import { FinancialPaymentProvidersModule } from './domains/financial-payment-providers/financial-payment-providers.module';
 // =============================================================================
 // App Module
 // =============================================================================
@@ -656,7 +661,18 @@ import { SupportModule } from './domains/support/support.module';
     // - REST controllers.
     //
     // -------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Financial Payment Providers
+    // -------------------------------------------------------------------------
+    //
+    // Provides the Financial Payment Providers bounded context.
+    //
+    // The module owns its controllers, handlers, repository providers,
+    // and persistence adapters.
+    //
+    // -------------------------------------------------------------------------
 
+    FinancialPaymentProvidersModule,
     AccountingModule,
 
     // -------------------------------------------------------------------------

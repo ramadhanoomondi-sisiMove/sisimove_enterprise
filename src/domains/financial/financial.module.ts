@@ -214,12 +214,14 @@ import {
   // Financial Payment
   // ---------------------------------------------------------------------------
   GetFinancialPaymentHandler,
+  GetAllFinancialPaymentsQueryHandler,
 
   // ---------------------------------------------------------------------------
   // Financial Payment Method
   // ---------------------------------------------------------------------------
   GetDefaultFinancialPaymentMethodHandler,
   GetFinancialPaymentMethodHandler,
+  GetAllFinancialPaymentMethodsHandler,
 
   // ---------------------------------------------------------------------------
   // Financial Settlement
@@ -491,6 +493,10 @@ import {
       provide: FINANCIAL_PAYMENT_TOKENS.QUERY_HANDLERS.GET,
       useClass: GetFinancialPaymentHandler,
     },
+    {
+      provide: FINANCIAL_PAYMENT_TOKENS.QUERY_HANDLERS.GET_ALL,
+      useClass: GetAllFinancialPaymentsQueryHandler,
+    },
 
     // =========================================================================
     // Financial Payment Method
@@ -499,6 +505,10 @@ import {
     {
       provide: FINANCIAL_PAYMENT_METHOD_TOKENS.COMMAND_HANDLERS.ADD,
       useClass: AddFinancialPaymentMethodHandler,
+    },
+    {
+      provide: FINANCIAL_PAYMENT_METHOD_TOKENS.QUERY_HANDLERS.GET_ALL,
+      useClass: GetAllFinancialPaymentMethodsHandler,
     },
 
     {

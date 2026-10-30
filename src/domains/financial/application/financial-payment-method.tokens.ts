@@ -1,5 +1,5 @@
-//src/domains/financial/application/financial-payment-method.tokens
-//-----------------------------------------------------------------------------
+// src/domains/financial/application/financial-payment-method.tokens.ts
+// -----------------------------------------------------------------------------
 // Financial Payment Method Application Tokens
 // -----------------------------------------------------------------------------
 //
@@ -38,6 +38,8 @@ export const FINANCIAL_PAYMENT_METHOD_TOKENS = {
 
   QUERY_HANDLERS: {
     GET: Symbol('GetFinancialPaymentMethodHandler'),
+
+    GET_ALL: Symbol('GetAllFinancialPaymentMethodsHandler'),
 
     GET_DEFAULT: Symbol('GetDefaultFinancialPaymentMethodHandler'),
   } as const,

@@ -62,6 +62,8 @@ export * from './get-financial-account-transactions.handler';
 
 export * from './get-financial-payment.handler';
 
+export * from './get-all-financial-payments.handler';
+
 // -----------------------------------------------------------------------------
 // Financial Account Payments
 // -----------------------------------------------------------------------------
@@ -73,6 +75,8 @@ export * from './get-financial-account-payments.handler';
 // -----------------------------------------------------------------------------
 
 export * from './get-financial-payment-method.handler';
+
+export * from './get-all-financial-payment-methods.handler';
 
 // -----------------------------------------------------------------------------
 // Default Financial Payment Method

@@ -1,3 +1,4 @@
+
 /* -----------------------------------------------------------------------------
  * sisiMove — Admin Routes
  * -----------------------------------------------------------------------------
@@ -110,9 +111,6 @@ export const ADMIN_ROUTES = {
   // ---------------------------------------------------------------------------
   // Finance Control Center
   // ---------------------------------------------------------------------------
-  // These routes are grouped under /admin/finance to keep financial oversight
-  // distinct from booking operations. Route declarations do not imply that the
-  // corresponding page, query, or command already exists.
 
   FINANCE_HOME: '/admin/finance',
 
@@ -120,6 +118,10 @@ export const ADMIN_ROUTES = {
 
   FINANCE_ACCOUNT: (accountPublicId: string) =>
     `/admin/finance/accounts/${encodeURIComponent(accountPublicId)}`,
+
+  // ---------------------------------------------------------------------------
+  // Payments
+  // ---------------------------------------------------------------------------
 
   FINANCE_PAYMENTS: '/admin/finance/payments',
 
@@ -129,15 +131,45 @@ export const ADMIN_ROUTES = {
   FINANCE_PAYMENT_ATTEMPTS: (paymentPublicId: string) =>
     `/admin/finance/payments/${encodeURIComponent(paymentPublicId)}/attempts`,
 
+  // ---------------------------------------------------------------------------
+  // Payment Methods
+  // ---------------------------------------------------------------------------
+
+  FINANCE_PAYMENT_METHODS: '/admin/finance/payment-methods',
+
+  FINANCE_PAYMENT_METHOD: (paymentMethodPublicId: string) =>
+    `/admin/finance/payment-methods/${encodeURIComponent(paymentMethodPublicId)}`,
+
+  // ---------------------------------------------------------------------------
+  // Payment Providers
+  // ---------------------------------------------------------------------------
+
+  FINANCE_PROVIDERS: '/admin/finance/providers',
+
+  FINANCE_PROVIDER: (providerPublicId: string) =>
+    `/admin/finance/providers/${encodeURIComponent(providerPublicId)}`,
+
+  // ---------------------------------------------------------------------------
+  // Transactions
+  // ---------------------------------------------------------------------------
+
   FINANCE_TRANSACTIONS: '/admin/finance/transactions',
 
   FINANCE_TRANSACTION: (transactionPublicId: string) =>
     `/admin/finance/transactions/${encodeURIComponent(transactionPublicId)}`,
 
+  // ---------------------------------------------------------------------------
+  // Booking Payments
+  // ---------------------------------------------------------------------------
+
   FINANCE_BOOKING_PAYMENTS: '/admin/finance/booking-payments',
 
   FINANCE_BOOKING_PAYMENT: (bookingPaymentPublicId: string) =>
     `/admin/finance/booking-payments/${encodeURIComponent(bookingPaymentPublicId)}`,
+
+  // ---------------------------------------------------------------------------
+  // Commissions
+  // ---------------------------------------------------------------------------
 
   FINANCE_COMMISSIONS: '/admin/finance/commissions',
 
@@ -146,6 +178,10 @@ export const ADMIN_ROUTES = {
   FINANCE_BOOKING_COMMISSIONS: '/admin/finance/commissions/bookings',
 
   FINANCE_EARNING_COMMISSIONS: '/admin/finance/commissions/earnings',
+
+  // ---------------------------------------------------------------------------
+  // Settlements
+  // ---------------------------------------------------------------------------
 
   FINANCE_SETTLEMENTS: '/admin/finance/settlements',
 
@@ -157,20 +193,36 @@ export const ADMIN_ROUTES = {
   FINANCE_PROVIDER_SETTLEMENT: (settlementPublicId: string) =>
     `/admin/finance/provider-settlements/${encodeURIComponent(settlementPublicId)}`,
 
+  // ---------------------------------------------------------------------------
+  // Disbursements
+  // ---------------------------------------------------------------------------
+
   FINANCE_DISBURSEMENTS: '/admin/finance/disbursements',
 
   FINANCE_DISBURSEMENT: (disbursementPublicId: string) =>
     `/admin/finance/disbursements/${encodeURIComponent(disbursementPublicId)}`,
+
+  // ---------------------------------------------------------------------------
+  // Withdrawals
+  // ---------------------------------------------------------------------------
 
   FINANCE_WITHDRAWALS: '/admin/finance/withdrawals',
 
   FINANCE_WITHDRAWAL: (withdrawalPublicId: string) =>
     `/admin/finance/withdrawals/${encodeURIComponent(withdrawalPublicId)}`,
 
+  // ---------------------------------------------------------------------------
+  // Holds
+  // ---------------------------------------------------------------------------
+
   FINANCE_HOLDS: '/admin/finance/holds',
 
   FINANCE_HOLD: (holdPublicId: string) =>
     `/admin/finance/holds/${encodeURIComponent(holdPublicId)}`,
+
+  // ---------------------------------------------------------------------------
+  // Accounting
+  // ---------------------------------------------------------------------------
 
   FINANCE_ACCOUNTING: '/admin/finance/accounting',
 
@@ -184,10 +236,8 @@ export const ADMIN_ROUTES = {
     `/admin/finance/accounting/journals/${encodeURIComponent(journalPublicId)}`,
 
   // ---------------------------------------------------------------------------
-  // Backwards-compatible financial routes
+  // Backwards-Compatible Financial Routes
   // ---------------------------------------------------------------------------
-  // Retained so existing pages and callers are not silently broken while the
-  // nested Finance Control Center pages are introduced.
 
   PAYMENTS: '/admin/payments',
 
@@ -259,6 +309,7 @@ export const ADMIN_ROUTES = {
 // Route Type
 // -----------------------------------------------------------------------------
 
-type AdminRouteValue = (typeof ADMIN_ROUTES)[keyof typeof ADMIN_ROUTES];
+type AdminRouteValue =
+  (typeof ADMIN_ROUTES)[keyof typeof ADMIN_ROUTES];
 
 export type AdminRoute = Extract<AdminRouteValue, string>;

@@ -65,6 +65,8 @@ export * from './get-all-financial-account-holds.query';
 
 export * from './get-financial-payment-method.query';
 
+export * from './get-all-financial-payment-methods.query';
+
 export * from './get-default-financial-payment-method.query';
 
 // -----------------------------------------------------------------------------
@@ -72,6 +74,8 @@ export * from './get-default-financial-payment-method.query';
 // -----------------------------------------------------------------------------
 
 export * from './get-financial-payment.query';
+
+export * from './get-all-financial-payments.query';
 
 // -----------------------------------------------------------------------------
 // Financial Account Payments

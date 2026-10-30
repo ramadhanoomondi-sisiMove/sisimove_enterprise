@@ -4131,6 +4131,79 @@ model SupportCaseResolution {
   @@map("support_case_resolutions")
 }
 
+// =============================================================================
+// FINANCIAL PAYMENT PROVIDER
+// =============================================================================
+
+model FinancialPaymentProvider {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // Stable provider identifier, e.g. MPESA, EQUITEL, or a bank code.
+  // This should match the values used by existing provider string fields.
+  code String @unique
+
+  name        String
+  description String?
+
+  type FinancialPaymentProviderType
+
+  integrationStatus FinancialPaymentProviderIntegrationStatus @default(NOT_CONFIGURED)
+  environment       FinancialPaymentProviderEnvironment       @default(SANDBOX)
+
+  // Operational enablement is independent of integration readiness.
+  isEnabled Boolean @default(false)
+
+  // Reference to a secret manager or secure configuration record.
+  // Never store API keys, passwords, or secret tokens directly here.
+  configurationReference String?
+
+  capabilities FinancialPaymentProviderCapability[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([integrationStatus])
+  @@index([environment])
+  @@index([isEnabled])
+  @@map("financial_payment_providers")
+}
+
+// =============================================================================
+// FINANCIAL PAYMENT PROVIDER CAPABILITY
+// =============================================================================
+
+model FinancialPaymentProviderCapability {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  providerId String
+
+  provider FinancialPaymentProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  type FinancialPaymentProviderCapabilityType
+
+  // Whether this provider technically supports the capability.
+  isSupported Boolean @default(false)
+
+  // Whether this capability is enabled for use in the application.
+  isEnabled Boolean @default(false)
+
+  // Optional reference to capability-specific secure configuration.
+  configurationReference String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([providerId, type])
+  @@index([providerId])
+  @@index([type])
+  @@index([isSupported])
+  @@index([isEnabled])
+  @@map("financial_payment_provider_capabilities")
+}
+
 // ============================================================
 // JOURNEY COMPLETION ENUMS
 // ============================================================
@@ -4238,6 +4311,7 @@ enum JourneyDemandStatus {
   CANCELLED
   EXPIRED
 }
+
 // =============================================================================
 // ASSET ENUMS
 // =============================================================================
@@ -4950,4 +5024,41 @@ enum VerificationRequestStatus {
   APPROVED
   REJECTED
   CANCELLED
+}
+
+// -----------------------------------------------------------------------------
+// FINANCIAL PAYMENT PROVIDER
+// -----------------------------------------------------------------------------
+
+enum FinancialPaymentProviderType {
+  MOBILE_MONEY
+  BANK
+  CARD_PROCESSOR
+  PAYMENT_GATEWAY
+  DIGITAL_WALLET
+  OTHER
+}
+
+enum FinancialPaymentProviderIntegrationStatus {
+  NOT_CONFIGURED
+  CONFIGURING
+  READY
+  DEGRADED
+  SUSPENDED
+}
+
+enum FinancialPaymentProviderEnvironment {
+  SANDBOX
+  PRODUCTION
+}
+
+enum FinancialPaymentProviderCapabilityType {
+  INITIATE_PAYMENT
+  VERIFY_PAYMENT
+  QUERY_PAYMENT
+  REFUND_PAYMENT
+  INITIATE_DISBURSEMENT
+  VERIFY_DISBURSEMENT
+  QUERY_BALANCE
+  WEBHOOKS
 }

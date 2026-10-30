@@ -92,8 +92,13 @@ import {
 // Application — Queries
 // -----------------------------------------------------------------------------
 
+// -----------------------------------------------------------------------------
+// Application — Queries
+// -----------------------------------------------------------------------------
+
 import {
   CountFinancialPaymentsQuery,
+  GetAllFinancialPaymentsQuery,
   GetFinancialPaymentQuery,
 } from '../../../application/queries';
 // -----------------------------------------------------------------------------
@@ -215,6 +220,11 @@ export class FinancialPaymentsController {
       CountFinancialPaymentsQuery,
       number
     >,
+    @Inject(FINANCIAL_PAYMENT_TOKENS.QUERY_HANDLERS.GET_ALL)
+    private readonly getAllFinancialPaymentsHandler: QueryHandler<
+      GetAllFinancialPaymentsQuery,
+      FinancialPaymentAggregate[]
+    >,
   ) {}
 
   // ===========================================================================
@@ -229,6 +239,35 @@ export class FinancialPaymentsController {
   public async count(): Promise<number> {
     return this.countFinancialPaymentsHandler.execute(
       new CountFinancialPaymentsQuery(),
+    );
+  }
+  // ---------------------------------------------------------------------------
+  // Get All Financial Payments
+  // ---------------------------------------------------------------------------
+
+  @Get()
+  @RequirePermissions('financial:read')
+  public async getAll(): Promise<
+    ReturnType<typeof FinancialPaymentResponseMapper.toResponse>[]
+  > {
+    // -------------------------------------------------------------------------
+    // 1. Retrieve all payment aggregates
+    // -------------------------------------------------------------------------
+
+    const aggregates = await this.getAllFinancialPaymentsHandler.execute(
+      new GetAllFinancialPaymentsQuery(),
+    );
+
+    // -------------------------------------------------------------------------
+    // 2. Map aggregates to REST responses
+    // -------------------------------------------------------------------------
+    //
+    // Domain aggregates are never exposed directly through the REST boundary.
+    // Each aggregate is converted using the existing response mapper.
+    // -------------------------------------------------------------------------
+
+    return aggregates.map((aggregate) =>
+      FinancialPaymentResponseMapper.toResponse(aggregate),
     );
   }
   // ---------------------------------------------------------------------------

@@ -93,6 +93,19 @@ export interface FinancialPaymentMethodRepository {
   // Aggregate Queries
   // ---------------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------------
+  // Administrative Queries
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Finds all Financial Payment Method aggregates.
+   *
+   * Includes active and inactive methods.
+   *
+   * Results are ordered newest-first.
+   */
+  findAll(): Promise<FinancialPaymentMethodAggregate[]>;
+
   /**
    * Finds a Financial Payment Method aggregate by its public identifier.
    */

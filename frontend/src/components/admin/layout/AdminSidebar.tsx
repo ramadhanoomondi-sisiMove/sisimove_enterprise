@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -18,6 +19,7 @@ import {
   Landmark,
   LayoutDashboard,
   LogOut,
+  Network,
   ReceiptText,
   Route,
   Scale,
@@ -201,6 +203,16 @@ const FINANCE_CHILDREN = [
     icon: Wallet,
   },
   {
+    label: "Payment Methods",
+    href: ADMIN_ROUTES.FINANCE_PAYMENT_METHODS,
+    icon: CreditCard,
+  },
+  {
+    label: "Payment Providers",
+    href: ADMIN_ROUTES.FINANCE_PROVIDERS,
+    icon: Network,
+  },
+  {
     label: "Transactions & Ledger",
     href: ADMIN_ROUTES.FINANCE_TRANSACTIONS,
     icon: CreditCard,
@@ -270,7 +282,10 @@ export default function AdminSidebar({
   const { logout, isLoggingOut } = useLogout();
 
   const isTrustRoute = isNavigationActive(pathname, ADMIN_ROUTES.TRUST);
-  const isFinanceRoute = isNavigationActive(pathname, ADMIN_ROUTES.FINANCE_HOME);
+  const isFinanceRoute = isNavigationActive(
+    pathname,
+    ADMIN_ROUTES.FINANCE_HOME,
+  );
 
   const [trustExpanded, setTrustExpanded] = useState(isTrustRoute);
   const [financeExpanded, setFinanceExpanded] = useState(isFinanceRoute);
@@ -300,7 +315,9 @@ export default function AdminSidebar({
 
         {!collapsed && (
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold text-slate-900">sisiMove</p>
+            <p className="truncate text-sm font-bold text-slate-900">
+              sisiMove
+            </p>
             <p className="text-xs text-slate-500">Super Admin</p>
           </div>
         )}
@@ -324,14 +341,29 @@ export default function AdminSidebar({
                 const Icon = item.icon;
                 const active = isNavigationActive(pathname, item.href);
                 const isTrustParent = item.href === ADMIN_ROUTES.TRUST;
-                const isFinanceParent = item.href === ADMIN_ROUTES.FINANCE_HOME;
+                const isFinanceParent =
+                  item.href === ADMIN_ROUTES.FINANCE_HOME;
 
                 if (isTrustParent || isFinanceParent) {
-                  const children = isTrustParent ? TRUST_CHILDREN : FINANCE_CHILDREN;
-                  const expanded = isTrustParent ? trustExpanded : financeExpanded;
-                  const setExpanded = isTrustParent ? setTrustExpanded : setFinanceExpanded;
-                  const parentLabel = isTrustParent ? "Trust & Reputation" : "Finance Control Center";
-                  const childrenId = isTrustParent ? "trust-navigation-children" : "finance-navigation-children";
+                  const children = isTrustParent
+                    ? TRUST_CHILDREN
+                    : FINANCE_CHILDREN;
+
+                  const expanded = isTrustParent
+                    ? trustExpanded
+                    : financeExpanded;
+
+                  const setExpanded = isTrustParent
+                    ? setTrustExpanded
+                    : setFinanceExpanded;
+
+                  const parentLabel = isTrustParent
+                    ? "Trust & Reputation"
+                    : "Finance Control Center";
+
+                  const childrenId = isTrustParent
+                    ? "trust-navigation-children"
+                    : "finance-navigation-children";
 
                   return (
                     <div key={item.href} className="space-y-1">
@@ -340,7 +372,9 @@ export default function AdminSidebar({
                           href={item.href}
                           onClick={onNavigate}
                           title={collapsed ? item.label : undefined}
-                          aria-current={pathname === item.href ? "page" : undefined}
+                          aria-current={
+                            pathname === item.href ? "page" : undefined
+                          }
                           className={[
                             "flex min-h-10 min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
                             collapsed ? "justify-center" : "",
@@ -350,19 +384,31 @@ export default function AdminSidebar({
                           ].join(" ")}
                         >
                           <Icon className="h-[18px] w-[18px] shrink-0" />
-                          {!collapsed && <span className="truncate">{item.label}</span>}
+                          {!collapsed && (
+                            <span className="truncate">{item.label}</span>
+                          )}
                         </Link>
 
                         {!collapsed && (
                           <button
                             type="button"
-                            onClick={() => setExpanded((value) => !value)}
-                            aria-label={expanded ? `Collapse ${parentLabel} submenu` : `Expand ${parentLabel} submenu`}
+                            onClick={() =>
+                              setExpanded((value) => !value)
+                            }
+                            aria-label={
+                              expanded
+                                ? `Collapse ${parentLabel} submenu`
+                                : `Expand ${parentLabel} submenu`
+                            }
                             aria-expanded={expanded}
                             aria-controls={childrenId}
                             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                           >
-                            {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            {expanded ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
                           </button>
                         )}
                       </div>
@@ -370,10 +416,15 @@ export default function AdminSidebar({
                       {(expanded || collapsed) && (
                         <div
                           id={childrenId}
-                          className={collapsed ? "space-y-1" : "ml-5 space-y-1 border-l border-slate-200 pl-3"}
+                          className={
+                            collapsed
+                              ? "space-y-1"
+                              : "ml-5 space-y-1 border-l border-slate-200 pl-3"
+                          }
                         >
                           {children.map((child) => {
                             const ChildIcon = child.icon;
+
                             const childActive =
                               child.href === ADMIN_ROUTES.FINANCE_HOME
                                 ? pathname === child.href
@@ -385,7 +436,9 @@ export default function AdminSidebar({
                                 href={child.href}
                                 onClick={onNavigate}
                                 title={collapsed ? child.label : undefined}
-                                aria-current={childActive ? "page" : undefined}
+                                aria-current={
+                                  childActive ? "page" : undefined
+                                }
                                 className={[
                                   "flex min-h-9 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
                                   collapsed ? "justify-center" : "",
@@ -395,7 +448,11 @@ export default function AdminSidebar({
                                 ].join(" ")}
                               >
                                 <ChildIcon className="h-4 w-4 shrink-0" />
-                                {!collapsed && <span className="truncate">{child.label}</span>}
+                                {!collapsed && (
+                                  <span className="truncate">
+                                    {child.label}
+                                  </span>
+                                )}
                               </Link>
                             );
                           })}
@@ -421,7 +478,9 @@ export default function AdminSidebar({
                     ].join(" ")}
                   >
                     <Icon className="h-[18px] w-[18px] shrink-0" />
-                    {!collapsed && <span className="truncate">{item.label}</span>}
+                    {!collapsed && (
+                      <span className="truncate">{item.label}</span>
+                    )}
                   </Link>
                 );
               })}
@@ -469,7 +528,9 @@ export default function AdminSidebar({
           ].join(" ")}
         >
           <LogOut className="h-[18px] w-[18px] shrink-0" />
-          {!collapsed && <span>{isLoggingOut ? "Logging out..." : "Log out"}</span>}
+          {!collapsed && (
+            <span>{isLoggingOut ? "Logging out..." : "Log out"}</span>
+          )}
         </button>
       </div>
     </aside>

@@ -373,6 +373,38 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
   }
 
   // ===========================================================================
+  // Find All
+  // ===========================================================================
+
+  /**
+   * Finds all Financial Payment Method aggregates, including inactive methods.
+   *
+   * Rehydrates each record through the existing domain mapper.
+   * Uses the current transaction-aware Prisma client.
+   */
+  public async findAll(): Promise<FinancialPaymentMethodAggregate[]> {
+    const records = await this.prisma.financialPaymentMethod.findMany({
+      include: {
+        account: true,
+      },
+      orderBy: [
+        {
+          createdAt: 'desc',
+        },
+        {
+          id: 'asc',
+        },
+      ],
+    });
+
+    return records.map((record) =>
+      FinancialPaymentMethodPrismaMapper.toDomain(
+        record as FinancialPaymentMethodWithAccount,
+      ),
+    );
+  }
+
+  // ===========================================================================
   // Find By Public ID
   // ===========================================================================
 

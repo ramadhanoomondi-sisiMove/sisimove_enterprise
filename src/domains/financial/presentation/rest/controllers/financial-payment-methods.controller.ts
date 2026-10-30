@@ -106,6 +106,7 @@ import {
 // -----------------------------------------------------------------------------
 
 import {
+  GetAllFinancialPaymentMethodsQuery,
   GetDefaultFinancialPaymentMethodQuery,
   GetFinancialPaymentMethodQuery,
 } from '../../../application/queries';
@@ -194,18 +195,37 @@ export class FinancialPaymentMethodsController {
       GetDefaultFinancialPaymentMethodQuery,
       FinancialPaymentMethodAggregate | null
     >,
+    @Inject(FINANCIAL_PAYMENT_METHOD_TOKENS.QUERY_HANDLERS.GET_ALL)
+    private readonly getAllFinancialPaymentMethodsHandler: QueryHandler<
+      GetAllFinancialPaymentMethodsQuery,
+      FinancialPaymentMethodAggregate[]
+    >,
   ) {}
 
   // ===========================================================================
   // Queries
   // ===========================================================================
+  // -----------------------------------------------------------------------------
+  // Get All Financial Payment Methods
+  // -----------------------------------------------------------------------------
 
+  @Get()
+  @RequirePermissions('admin:read')
+  public async getAll(): Promise<
+    ReturnType<typeof FinancialPaymentMethodResponseMapper.toResponse>[]
+  > {
+    const aggregates = await this.getAllFinancialPaymentMethodsHandler.execute(
+      new GetAllFinancialPaymentMethodsQuery(),
+    );
+
+    return FinancialPaymentMethodResponseMapper.fromAggregates(aggregates);
+  }
   // ---------------------------------------------------------------------------
   // Get Financial Payment Method
   // ---------------------------------------------------------------------------
 
   @Get(':paymentMethodPublicId')
-  @RequirePermissions('financial-payment-method:read')
+  @RequirePermissions('admin:read')
   public async get(
     @Param('paymentMethodPublicId') paymentMethodPublicId: string,
   ): Promise<ReturnType<

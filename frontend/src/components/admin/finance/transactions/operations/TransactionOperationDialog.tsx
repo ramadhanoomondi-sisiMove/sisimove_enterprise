@@ -1,9 +1,13 @@
 
-'use client';
+"use client";
 
-import { Dialog } from '@/components/ui/dialog';
-import { TransactionOperationReasonField } from './TransactionOperationReasonField';
-import type { TransactionOperation } from './TransactionActionsMenu';
+import { Dialog } from "@/components/ui/dialog";
+import { TransactionOperationReasonField } from "./TransactionOperationReasonField";
+import type { TransactionOperation } from "./TransactionActionsMenu";
+
+// -----------------------------------------------------------------------------
+// Types
+// -----------------------------------------------------------------------------
 
 export interface TransactionOperationDialogProps {
   open: boolean;
@@ -17,11 +21,20 @@ export interface TransactionOperationDialogProps {
   onConfirm: (reason: string) => void;
 }
 
+// -----------------------------------------------------------------------------
+// Operation Labels
+// -----------------------------------------------------------------------------
+
 const operationLabels: Record<TransactionOperation, string> = {
-  REVERSE: 'Reverse transaction',
-  CANCEL: 'Cancel transaction',
-  RETRY: 'Retry transaction',
+  COMPLETE: "Complete transaction",
+  FAIL: "Mark transaction failed",
+  CANCEL: "Cancel transaction",
+  REVERSE: "Reverse transaction",
 };
+
+// -----------------------------------------------------------------------------
+// Component
+// -----------------------------------------------------------------------------
 
 export function TransactionOperationDialog({
   open,
@@ -79,7 +92,7 @@ export function TransactionOperationDialog({
             disabled={submitting || !reason.trim()}
             className="inline-flex min-h-10 items-center justify-center rounded-lg bg-[var(--brand)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {submitting ? 'Processing…' : 'Confirm operation'}
+            {submitting ? "Processing…" : "Confirm operation"}
           </button>
         </>
       }
@@ -89,12 +102,14 @@ export function TransactionOperationDialog({
           <p className="text-sm text-[var(--foreground-muted)]">
             Transaction public ID
           </p>
+
           <p className="mt-1 break-all font-mono text-sm font-medium text-[var(--foreground)]">
             {transactionPublicId}
           </p>
+
           <p className="mt-3 text-sm text-[var(--foreground-secondary)]">
-            You are about to perform: <strong>{title}</strong>.
-            The operation will be subject to backend validation and permissions.
+            You are about to perform: <strong>{title}</strong>. The operation
+            will be subject to backend validation and permissions.
           </p>
         </div>
 

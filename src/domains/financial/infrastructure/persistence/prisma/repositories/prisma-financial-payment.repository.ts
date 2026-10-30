@@ -870,7 +870,34 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
 
     return record !== null;
   }
+  // ===========================================================================
+  // Find All
+  // ===========================================================================
 
+  /**
+   * Finds all Financial Payment aggregates, newest first.
+   *
+   * Payment Attempts are loaded with their owning Payment.
+   * No separate aggregate is traversed.
+   */
+  public async findAll(): Promise<FinancialPaymentAggregate[]> {
+    const records = await this.prisma.financialPayment.findMany({
+      include: {
+        account: true,
+        method: true,
+        attempts: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return records.map((record) =>
+      FinancialPaymentPrismaMapper.toDomain(
+        record as FinancialPaymentWithRelations,
+      ),
+    );
+  }
   // ===========================================================================
   // Delete
   // ===========================================================================
