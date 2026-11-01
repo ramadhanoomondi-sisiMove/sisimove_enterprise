@@ -432,6 +432,7 @@ const adminPermissions = [
 
   // Financial and completion
   'financial:read',
+  'financial:manage',
   'completion:read',
   'completion:manage',
 

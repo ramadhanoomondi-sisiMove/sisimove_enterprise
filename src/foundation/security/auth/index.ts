@@ -1,3 +1,4 @@
+//src/foundation/security/auth/index.ts
 export * from './authenticated-identity.interface';
 
 export * from './current-identity.decorator';

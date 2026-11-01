@@ -26,3 +26,16 @@ export interface AdminProviderCapabilityOperationParams
   extends AdminProviderOperationParams {
   capabilityType: string;
 }
+
+export interface AdminConfigureMpesaInput {
+  environment: 'SANDBOX' | 'PRODUCTION';
+  consumerKey: string;
+  consumerSecret: string;
+  shortcode: string;
+  passkey: string;
+}
+
+export interface AdminConfigureMpesaResponse {
+  configurationReference: string;
+  message: string;
+}

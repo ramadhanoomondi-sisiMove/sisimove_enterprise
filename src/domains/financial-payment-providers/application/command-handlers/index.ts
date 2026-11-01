@@ -1,4 +1,3 @@
-
 // -----------------------------------------------------------------------------
 // Financial Payment Provider — Command Handler Exports
 // -----------------------------------------------------------------------------
@@ -37,3 +36,8 @@ export {
   DisableFinancialPaymentProviderCapabilityHandler,
   default as DefaultDisableFinancialPaymentProviderCapabilityHandler,
 } from './disable-financial-payment-provider-capability.handler';
+
+export {
+  ConfigureMpesaHandler,
+  default as DefaultConfigureMpesaHandler,
+} from './configure-mpesa.handler';

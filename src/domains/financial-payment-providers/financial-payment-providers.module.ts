@@ -52,13 +52,15 @@ import { FINANCIAL_PAYMENT_PROVIDER_PROVIDERS } from './infrastructure/dependenc
 // -----------------------------------------------------------------------------
 
 import { FINANCIAL_PAYMENT_PROVIDER_TOKENS } from './application/financial-payment-providers.tokens';
-
+import { MpesaHttpModule } from './infrastructure/mpesa/http/mpesa-http.module';
+import { SecurityModule } from '../../infrastructure/security/security.module';
 // -----------------------------------------------------------------------------
 // Application — Command Handlers
 // -----------------------------------------------------------------------------
 
 import {
   ChangeFinancialPaymentProviderStatusHandler,
+  ConfigureMpesaHandler,
   CreateFinancialPaymentProviderHandler,
   DisableFinancialPaymentProviderCapabilityHandler,
   DisableFinancialPaymentProviderHandler,
@@ -86,8 +88,7 @@ import {
   // Imports
   // ===========================================================================
 
-  imports: [PrismaModule],
-
+  imports: [PrismaModule, SecurityModule, MpesaHttpModule],
   // ===========================================================================
   // Controllers
   // ===========================================================================
@@ -112,6 +113,11 @@ import {
     {
       provide: FINANCIAL_PAYMENT_PROVIDER_TOKENS.COMMAND_HANDLERS.CREATE,
       useClass: CreateFinancialPaymentProviderHandler,
+    },
+    {
+      provide:
+        FINANCIAL_PAYMENT_PROVIDER_TOKENS.COMMAND_HANDLERS.CONFIGURE_MPESA,
+      useClass: ConfigureMpesaHandler,
     },
 
     {

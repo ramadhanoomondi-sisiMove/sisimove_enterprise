@@ -9,6 +9,7 @@
  * - Update provider details.
  * - Enable and disable providers.
  * - Change provider integration status.
+ * - Configure M-PESA credentials securely.
  * - Invalidate provider queries after successful operations.
  *
  * Architecture:
@@ -27,6 +28,7 @@ import { adminProvidersApi } from '../api';
 
 import type {
   AdminChangeProviderStatusInput,
+  AdminConfigureMpesaInput,
   AdminCreateProviderInput,
   AdminProviderOperationParams,
   AdminUpdateProviderInput,
@@ -46,6 +48,11 @@ export interface AdminUpdateProviderVariables {
 export interface AdminChangeProviderStatusVariables {
   params: AdminProviderOperationParams;
   input: AdminChangeProviderStatusInput;
+}
+
+export interface AdminConfigureMpesaVariables {
+  params: AdminProviderOperationParams;
+  input: AdminConfigureMpesaInput;
 }
 
 // -----------------------------------------------------------------------------
@@ -127,6 +134,20 @@ export function useAdminProviderOperations() {
   });
 
   // ---------------------------------------------------------------------------
+  // Configure M-PESA
+  // ---------------------------------------------------------------------------
+
+  const configureMpesa = useMutation({
+    mutationFn: ({
+      params,
+      input,
+    }: AdminConfigureMpesaVariables) =>
+      adminProvidersApi.configureMpesa(params, input),
+
+    onSuccess: invalidateProviderQueries,
+  });
+
+  // ---------------------------------------------------------------------------
   // Return
   // ---------------------------------------------------------------------------
 
@@ -136,18 +157,21 @@ export function useAdminProviderOperations() {
     enableProvider,
     disableProvider,
     changeProviderStatus,
+    configureMpesa,
 
     isCreating: createProvider.isPending,
     isUpdating: updateProvider.isPending,
     isEnabling: enableProvider.isPending,
     isDisabling: disableProvider.isPending,
     isChangingStatus: changeProviderStatus.isPending,
+    isConfiguringMpesa: configureMpesa.isPending,
 
     isLoading:
       createProvider.isPending ||
       updateProvider.isPending ||
       enableProvider.isPending ||
       disableProvider.isPending ||
-      changeProviderStatus.isPending,
+      changeProviderStatus.isPending ||
+      configureMpesa.isPending,
   };
 }

@@ -31,3 +31,7 @@ export type {
 
 export { ProviderOperationFeedback } from './ProviderOperationFeedback';
 export type { ProviderOperationFeedbackProps } from './ProviderOperationFeedback';
+
+export { ProviderMpesaConfigurationForm } from './ProviderMpesaConfigurationForm';
+
+export type { ProviderMpesaConfigurationFormProps } from './ProviderMpesaConfigurationForm';

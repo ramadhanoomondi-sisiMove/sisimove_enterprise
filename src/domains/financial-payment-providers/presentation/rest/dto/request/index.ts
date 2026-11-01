@@ -16,3 +16,8 @@ export {
   ChangeFinancialPaymentProviderStatusRequestDto,
   default as DefaultChangeFinancialPaymentProviderStatusRequestDto,
 } from './change-financial-payment-provider-status.request.dto';
+
+export {
+  ConfigureMpesaRequestDto,
+  default as DefaultConfigureMpesaRequestDto,
+} from './configure-mpesa.request.dto';

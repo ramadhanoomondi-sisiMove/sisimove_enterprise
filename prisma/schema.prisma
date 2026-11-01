@@ -4160,8 +4160,9 @@ model FinancialPaymentProvider {
 
   capabilities FinancialPaymentProviderCapability[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt                              DateTime                                @default(now())
+  updatedAt                              DateTime                                @updatedAt
+  financialPaymentProviderConfigurations FinancialPaymentProviderConfiguration[]
 
   @@index([type])
   @@index([integrationStatus])
@@ -4202,6 +4203,33 @@ model FinancialPaymentProviderCapability {
   @@index([isSupported])
   @@index([isEnabled])
   @@map("financial_payment_provider_capabilities")
+}
+
+// -----------------------------------------------------------------------------
+// FINANCIAL PAYMENT PROVIDER SECURE CONFIGURATION
+// -----------------------------------------------------------------------------
+
+model FinancialPaymentProviderConfiguration {
+  id String @id @default(uuid())
+
+  // Reference stored by FinancialPaymentProvider.configurationReference.
+  reference String @unique @default(uuid())
+
+  providerId String
+  provider   FinancialPaymentProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  environment FinancialPaymentProviderEnvironment
+
+  // AES-256-GCM encrypted JSON payload. Never store plaintext credentials.
+  encryptedPayload String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([providerId, environment])
+  @@index([providerId])
+  @@index([environment])
+  @@map("financial_payment_provider_configurations")
 }
 
 // ============================================================

@@ -1,57 +1,61 @@
 // -----------------------------------------------------------------------------
 // Financial Payment Provider — Dependency Injection Providers
 // -----------------------------------------------------------------------------
-//
-// Infrastructure dependency-injection providers for the Financial Payment
-// Provider domain.
-//
-// The application layer depends on the FinancialPaymentProviderRepository
-// contract.
-//
-// This provider binds that repository abstraction to the concrete Prisma
-// implementation.
-//
-// Command and query handlers are registered separately in the FinancialModule.
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// NestJS
-// -----------------------------------------------------------------------------
 
 import type { Provider } from '@nestjs/common';
 
-// -----------------------------------------------------------------------------
-// Application — Tokens
-// -----------------------------------------------------------------------------
-
 import { FINANCIAL_PAYMENT_PROVIDER_TOKENS } from '../../application/financial-payment-providers.tokens';
 
-// -----------------------------------------------------------------------------
-// Infrastructure — Repository
-// -----------------------------------------------------------------------------
+import { FinancialPaymentProviderConfigurationService } from '../../application/services/financial-payment-provider-configuration.service';
 
 import { PrismaFinancialPaymentProviderRepository } from '../persistence/prisma/repositories/prisma-financial-payment-provider.repository';
 
-// -----------------------------------------------------------------------------
-// Providers
-// -----------------------------------------------------------------------------
+import { PrismaFinancialPaymentProviderConfigurationRepository } from '../persistence/prisma/repositories/prisma-financial-payment-provider-configuration.repository';
 
-/**
- * Dependency-injection providers for the Financial Payment Provider domain.
- *
- * Infrastructure binds the FinancialPaymentProviderRepository abstraction
- * to its concrete Prisma implementation.
- *
- * Command and query handlers remain registered separately in the
- * FinancialModule.
- */
+import type { EncryptionService } from '../../../../foundation/security';
+
+import { SECURITY_ENCRYPTION } from '../../../../infrastructure/security/security.tokens';
+
+// =============================================================================
+// Providers
+// =============================================================================
+
 export const FINANCIAL_PAYMENT_PROVIDER_PROVIDERS: Provider[] = [
   // ===========================================================================
-  // Repository
+  // Provider Aggregate Repository
   // ===========================================================================
 
   {
     provide: FINANCIAL_PAYMENT_PROVIDER_TOKENS.REPOSITORY,
     useClass: PrismaFinancialPaymentProviderRepository,
+  },
+
+  // ===========================================================================
+  // Secure Configuration Repository
+  // ===========================================================================
+
+  {
+    provide: FINANCIAL_PAYMENT_PROVIDER_TOKENS.CONFIGURATION_PORT,
+    useClass: PrismaFinancialPaymentProviderConfigurationRepository,
+  },
+
+  // ===========================================================================
+  // Encryption Service Bridge
+  // ===========================================================================
+
+  {
+    provide: FINANCIAL_PAYMENT_PROVIDER_TOKENS.ENCRYPTION_SERVICE,
+    useFactory: (encryptionService: EncryptionService): EncryptionService =>
+      encryptionService,
+    inject: [SECURITY_ENCRYPTION],
+  },
+
+  // ===========================================================================
+  // Configuration Application Service
+  // ===========================================================================
+
+  {
+    provide: FinancialPaymentProviderConfigurationService,
+    useClass: FinancialPaymentProviderConfigurationService,
   },
 ];

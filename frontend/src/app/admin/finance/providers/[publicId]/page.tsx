@@ -10,6 +10,7 @@ import {
   useAdminProvider,
   useAdminProviderOperations,
   type AdminProviderStatus,
+  type AdminConfigureMpesaInput,
   type AdminUpdateProviderInput,
 } from '@/features/admin/finance/providers';
 
@@ -23,18 +24,37 @@ import {
   ProviderDisableDialog,
   ProviderChangeStatusDialog,
   ProviderUpdateDialog,
+  ProviderMpesaConfigurationForm,
   ProviderOperationFeedback,
   ProviderErrorState,
   ProviderLoadingState,
 } from '@/components/admin/finance/providers';
 
-type ActiveDialog = 'edit' | 'enable' | 'disable' | 'status' | null;
+// -----------------------------------------------------------------------------
+// Dialog State
+// -----------------------------------------------------------------------------
+
+type ActiveDialog =
+  | 'edit'
+  | 'enable'
+  | 'disable'
+  | 'status'
+  | 'mpesa'
+  | null;
+
+// -----------------------------------------------------------------------------
+// Operation Feedback
+// -----------------------------------------------------------------------------
 
 interface OperationFeedback {
   type: 'success' | 'error';
   message: string;
   error?: unknown;
 }
+
+// -----------------------------------------------------------------------------
+// Provider Details Page
+// -----------------------------------------------------------------------------
 
 export default function ProviderDetailsPage() {
   const params = useParams<{ publicId: string }>();
@@ -61,9 +81,17 @@ export default function ProviderDetailsPage() {
   const [feedback, setFeedback] =
     useState<OperationFeedback | null>(null);
 
+  // ---------------------------------------------------------------------------
+  // Dialog Management
+  // ---------------------------------------------------------------------------
+
   const closeDialog = () => {
     setActiveDialog(null);
   };
+
+  // ---------------------------------------------------------------------------
+  // Operation Execution
+  // ---------------------------------------------------------------------------
 
   const runOperation = async (
     operation: () => Promise<unknown>,
@@ -88,6 +116,10 @@ export default function ProviderDetailsPage() {
       });
     }
   };
+
+  // ---------------------------------------------------------------------------
+  // Provider Validation
+  // ---------------------------------------------------------------------------
 
   if (!publicId) {
     return (
@@ -147,13 +179,20 @@ export default function ProviderDetailsPage() {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+
   return (
     <div className="space-y-6">
+
+      {/* Operation Feedback */}
+
       {feedback && (
         <ProviderOperationFeedback
           isSuccess={feedback.type === 'success'}
           isError={feedback.type === 'error'}
-          successTitle="Provider updated"
+          successTitle="Provider operation completed"
           successMessage={feedback.message}
           errorTitle="Operation failed"
           errorMessage={feedback.message}
@@ -162,34 +201,78 @@ export default function ProviderDetailsPage() {
         />
       )}
 
+      {/* Provider Details */}
+
       <ProviderDetailsLayout
         provider={provider}
         onBack={() =>
           router.push(ADMIN_ROUTES.FINANCE_PROVIDERS)
         }
         actions={
-          <ProviderActionsMenu
-            provider={provider}
-            onEdit={() => {
-              setFeedback(null);
-              setActiveDialog('edit');
-            }}
-            onEnable={() => {
-              setFeedback(null);
-              setActiveDialog('enable');
-            }}
-            onDisable={() => {
-              setFeedback(null);
-              setActiveDialog('disable');
-            }}
-            onChangeStatus={() => {
-              setFeedback(null);
-              setActiveDialog('status');
-            }}
-            isLoading={operations.isLoading}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+
+            {provider.code === 'MPESA' && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setFeedback(null);
+                  setActiveDialog('mpesa');
+                }}
+                disabled={operations.isLoading}
+              >
+                Configure M-PESA
+              </Button>
+            )}
+
+            <ProviderActionsMenu
+              provider={provider}
+              onEdit={() => {
+                setFeedback(null);
+                setActiveDialog('edit');
+              }}
+              onEnable={() => {
+                setFeedback(null);
+                setActiveDialog('enable');
+              }}
+              onDisable={() => {
+                setFeedback(null);
+                setActiveDialog('disable');
+              }}
+              onChangeStatus={() => {
+                setFeedback(null);
+                setActiveDialog('status');
+              }}
+              isLoading={operations.isLoading}
+            />
+
+          </div>
         }
       />
+
+      {/* M-PESA Configuration */}
+
+      {provider.code === 'MPESA' && (
+        <ProviderMpesaConfigurationForm
+          provider={provider}
+          isOpen={activeDialog === 'mpesa'}
+          isLoading={operations.isConfiguringMpesa}
+          onConfirm={(input: AdminConfigureMpesaInput) => {
+            void runOperation(
+              () =>
+                operations.configureMpesa.mutateAsync({
+                  params: {
+                    providerPublicId: publicId,
+                  },
+                  input,
+                }),
+              'M-PESA credentials were saved securely. Connection validation is still pending.',
+            );
+          }}
+          onCancel={closeDialog}
+        />
+      )}
+
+      {/* Update Provider */}
 
       <ProviderUpdateDialog
         provider={provider}
@@ -210,6 +293,8 @@ export default function ProviderDetailsPage() {
         onCancel={closeDialog}
       />
 
+      {/* Enable Provider */}
+
       <ProviderEnableDialog
         provider={provider}
         isOpen={activeDialog === 'enable'}
@@ -226,6 +311,8 @@ export default function ProviderDetailsPage() {
         onCancel={closeDialog}
       />
 
+      {/* Disable Provider */}
+
       <ProviderDisableDialog
         provider={provider}
         isOpen={activeDialog === 'disable'}
@@ -241,6 +328,8 @@ export default function ProviderDetailsPage() {
         }}
         onCancel={closeDialog}
       />
+
+      {/* Change Provider Status */}
 
       <ProviderChangeStatusDialog
         provider={provider}
@@ -260,6 +349,7 @@ export default function ProviderDetailsPage() {
         }}
         onCancel={closeDialog}
       />
+
     </div>
   );
 }

@@ -19,6 +19,10 @@ export const FINANCIAL_PAYMENT_PROVIDER_TOKENS = {
 
   REPOSITORY: Symbol('FinancialPaymentProviderRepository'),
 
+  CONFIGURATION_PORT: Symbol('FinancialPaymentProviderConfigurationPort'),
+
+  ENCRYPTION_SERVICE: Symbol('FinancialPaymentProviderEncryptionService'),
+
   // ===========================================================================
   // Command Handlers
   // ===========================================================================
@@ -27,6 +31,8 @@ export const FINANCIAL_PAYMENT_PROVIDER_TOKENS = {
     CREATE: Symbol('CreateFinancialPaymentProviderHandler'),
 
     UPDATE: Symbol('UpdateFinancialPaymentProviderHandler'),
+
+    CONFIGURE_MPESA: Symbol('ConfigureMpesaHandler'),
 
     ENABLE: Symbol('EnableFinancialPaymentProviderHandler'),
 

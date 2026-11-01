@@ -61,6 +61,7 @@ import { FINANCIAL_PAYMENT_PROVIDER_TOKENS } from '../../../application/financia
 
 import {
   ChangeFinancialPaymentProviderStatusCommand,
+  ConfigureMpesaCommand,
   CreateFinancialPaymentProviderCommand,
   DisableFinancialPaymentProviderCapabilityCommand,
   DisableFinancialPaymentProviderCommand,
@@ -107,6 +108,7 @@ import {
 
 import {
   ChangeFinancialPaymentProviderStatusRequestDto,
+  ConfigureMpesaRequestDto,
   CreateFinancialPaymentProviderRequestDto,
   UpdateFinancialPaymentProviderRequestDto,
 } from '../dto/request';
@@ -190,7 +192,11 @@ export class FinancialPaymentProvidersController {
       DisableFinancialPaymentProviderCapabilityCommand,
       FinancialPaymentProviderAggregate
     >,
-
+    @Inject(FINANCIAL_PAYMENT_PROVIDER_TOKENS.COMMAND_HANDLERS.CONFIGURE_MPESA)
+    private readonly configureMpesaHandler: CommandHandler<
+      ConfigureMpesaCommand,
+      string
+    >,
     // -------------------------------------------------------------------------
     // Query Handlers
     // -------------------------------------------------------------------------
@@ -378,7 +384,48 @@ export class FinancialPaymentProvidersController {
 
     return FinancialPaymentProviderResponseMapper.toResponse(aggregate);
   }
+  // ---------------------------------------------------------------------------
+  // Configure M-PESA
+  // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Configure M-PESA credentials',
+    description:
+      'Securely stores M-PESA Daraja credentials for the selected environment. Credentials are encrypted and never returned.',
+  })
+  @ApiParam({
+    name: 'providerPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the M-PESA provider.',
+  })
+  @Post(':providerPublicId/configuration')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('financial:manage')
+  public async configureMpesa(
+    @Param('providerPublicId') providerPublicId: string,
+    @Body() dto: ConfigureMpesaRequestDto,
+  ): Promise<{ configurationReference: string; message: string }> {
+    const command = new ConfigureMpesaCommand(
+      new FinancialPaymentProviderPublicId(providerPublicId),
+      FinancialPaymentProviderEnvironment.create(dto.environment),
+      dto.consumerKey,
+      dto.consumerSecret,
+      dto.shortcode,
+      dto.passkey,
+      new Date(),
+      randomUUID(),
+    );
+
+    const reference = await this.configureMpesaHandler.execute(command);
+
+    return {
+      configurationReference: reference,
+      message:
+        'M-PESA credentials saved securely. Connection validation is still pending.',
+    };
+  }
   // ---------------------------------------------------------------------------
   // Update Provider Details
   // ---------------------------------------------------------------------------

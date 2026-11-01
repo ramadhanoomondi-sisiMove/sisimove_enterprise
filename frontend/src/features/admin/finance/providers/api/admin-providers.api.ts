@@ -9,6 +9,8 @@ import type { AdminProvider } from '../models/admin-provider.model';
 import type { AdminProviderFilters } from '../models/admin-provider-filters.model';
 import type {
   AdminChangeProviderStatusInput,
+  AdminConfigureMpesaInput,
+  AdminConfigureMpesaResponse,
   AdminCreateProviderInput,
   AdminProviderCapabilityOperationParams,
   AdminProviderOperationParams,
@@ -155,7 +157,20 @@ export class AdminProvidersApi {
       options,
     );
   }
-
+  /**
+   * Securely configure M-PESA credentials.
+   */
+  public async configureMpesa(
+    params: AdminProviderOperationParams,
+    input: AdminConfigureMpesaInput,
+    options: RequestOptions = {},
+  ): Promise<AdminConfigureMpesaResponse> {
+    return authenticatedApiClient.post<AdminConfigureMpesaResponse>(
+      ADMIN_PROVIDERS_ENDPOINTS.configureMpesa(params.providerPublicId),
+      input,
+      options,
+    );
+  }
   // ===========================================================================
   // Capability Commands
   // ===========================================================================
