@@ -1,5 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 
+import { EVENT_PUBLISHER } from '../../foundation/events/event-publisher.token';
+
 import { EventBus } from './event-bus';
 import { EventPublisher } from './event-publisher';
 import { EventStore } from './event-store';
@@ -22,6 +24,10 @@ import { OutboxWorker } from '../workers/outbox/outbox.worker';
     OutboxDispatcher,
     OutboxWorker,
     {
+      provide: EVENT_PUBLISHER,
+      useExisting: EventPublisher,
+    },
+    {
       provide: 'IdempotencyStore',
       useExisting: PrismaIdempotencyStore,
     },
@@ -29,6 +35,7 @@ import { OutboxWorker } from '../workers/outbox/outbox.worker';
   exports: [
     EventBus,
     EventPublisher,
+    EVENT_PUBLISHER,
     EventRehydratorRegistry,
     EventStore,
     PrismaIdempotencyStore,

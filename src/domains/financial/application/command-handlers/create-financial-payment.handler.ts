@@ -18,7 +18,8 @@
 // 3. Create the FinancialPaymentAggregate.
 // 4. Record the FinancialPaymentCreatedEvent.
 // 5. Persist the complete aggregate.
-// 6. Return the created aggregate.
+// 6. Persist domain events into the transactional outbox.
+// 7. Return the created aggregate.
 //
 // The handler does NOT:
 //
@@ -34,7 +35,8 @@
 //
 // Domain construction belongs to the domain entity/aggregate.
 // Persistence belongs to the repository.
-// External provider execution belongs to the integration boundary.
+// Event persistence belongs to the EventPublisher port.
+// Transaction coordination belongs to the UnitOfWork port.
 //
 // -----------------------------------------------------------------------------
 
@@ -51,7 +53,23 @@ import { Inject, Injectable } from '@nestjs/common';
 import { FINANCIAL_PAYMENT_TOKENS } from '../financial-payment.tokens';
 
 // -----------------------------------------------------------------------------
-// Foundation
+// Foundation — Unit of Work
+// -----------------------------------------------------------------------------
+
+import { UNIT_OF_WORK } from '../../../../foundation/persistence/unit-of-work.token';
+
+import type { UnitOfWork } from '../../../../foundation/persistence/unit-of-work.interface';
+
+// -----------------------------------------------------------------------------
+// Foundation — Event Publisher
+// -----------------------------------------------------------------------------
+
+import { EVENT_PUBLISHER } from '../../../../foundation/events/event-publisher.token';
+
+import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
+
+// -----------------------------------------------------------------------------
+// Foundation — Command Handler
 // -----------------------------------------------------------------------------
 
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
@@ -96,6 +114,12 @@ export class CreateFinancialPaymentHandler implements CommandHandler<
   public constructor(
     @Inject(FINANCIAL_PAYMENT_TOKENS.REPOSITORY)
     private readonly repository: FinancialPaymentRepository,
+
+    @Inject(UNIT_OF_WORK)
+    private readonly unitOfWork: UnitOfWork,
+
+    @Inject(EVENT_PUBLISHER)
+    private readonly eventPublisher: EventPublisher,
   ) {}
 
   // ===========================================================================
@@ -105,112 +129,84 @@ export class CreateFinancialPaymentHandler implements CommandHandler<
   public async execute(
     command: CreateFinancialPaymentCommand,
   ): Promise<FinancialPaymentAggregate> {
-    // -------------------------------------------------------------------------
-    // 1. Optional business-reference uniqueness check
-    // -------------------------------------------------------------------------
-    //
-    // A Financial Payment may optionally be associated with an originating
-    // business reference.
-    //
-    // When supplied, the reference can be used as an application-level
-    // idempotency/uniqueness boundary.
-    //
-    // The command requires both reference values to be supplied together.
-    // The domain entity also enforces this invariant.
-    // -------------------------------------------------------------------------
+    return this.unitOfWork.execute(async () => {
+      // -----------------------------------------------------------------------
+      // 1. Optional business-reference uniqueness check
+      // -----------------------------------------------------------------------
 
-    if (
-      command.referenceType !== undefined &&
-      command.referencePublicId !== undefined
-    ) {
-      const alreadyExists = await this.repository.existsByReference(
+      if (
+        command.referenceType !== undefined &&
+        command.referencePublicId !== undefined
+      ) {
+        const alreadyExists = await this.repository.existsByReference(
+          command.referenceType,
+          command.referencePublicId,
+        );
+
+        if (alreadyExists) {
+          throw new Error(
+            `A Financial Payment already exists for reference ` +
+              `"${command.referencePublicId.value}"`,
+          );
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // 2. Create Financial Payment Entity
+      // -----------------------------------------------------------------------
+
+      const payment = FinancialPaymentEntity.create(
+        command.accountId,
+        command.amount,
+        command.methodId,
         command.referenceType,
         command.referencePublicId,
       );
 
-      if (alreadyExists) {
-        throw new Error(
-          `A Financial Payment already exists for reference ` +
-            `"${command.referencePublicId.value}"`,
-        );
+      // -----------------------------------------------------------------------
+      // 3. Create aggregate
+      // -----------------------------------------------------------------------
+
+      const aggregate = FinancialPaymentAggregate.create(payment);
+
+      // -----------------------------------------------------------------------
+      // 4. Record creation event
+      // -----------------------------------------------------------------------
+
+      aggregate.emitCreatedEvent(command.correlationId, command.causationId);
+
+      // -----------------------------------------------------------------------
+      // 5. Persist aggregate
+      // -----------------------------------------------------------------------
+
+      await this.repository.create(aggregate);
+
+      // -----------------------------------------------------------------------
+      // 6. Persist domain events into the transactional outbox
+      // -----------------------------------------------------------------------
+      //
+      // pullDomainEvents() returns the pending events and clears the
+      // aggregate's internal event collection.
+      //
+      // EventPublisher persists the events and their outbox records using
+      // the same transaction context established by UnitOfWork.
+      //
+      // No event is dispatched to subscribers directly from this handler.
+      // The OutboxWorker handles dispatch after the transaction commits.
+      // -----------------------------------------------------------------------
+
+      const domainEvents = aggregate.pullDomainEvents();
+
+      if (domainEvents.length > 0) {
+        await this.eventPublisher.publishAll(domainEvents);
       }
-    }
 
-    // -------------------------------------------------------------------------
-    // 2. Create Financial Payment Entity
-    // -------------------------------------------------------------------------
-    //
-    // The entity owns the initial payment state.
-    //
-    // The entity factory establishes:
-    //
-    // - Financial Payment identity;
-    // - PENDING status;
-    // - initiation timestamp;
-    // - audit timestamps;
-    // - empty payment attempts;
-    // - optional payment method;
-    // - optional business reference.
-    //
-    // The handler intentionally does NOT construct any of those values
-    // itself.
-    // -------------------------------------------------------------------------
+      // -----------------------------------------------------------------------
+      // 7. Return aggregate
+      // -----------------------------------------------------------------------
 
-    const payment = FinancialPaymentEntity.create(
-      command.accountId,
-      command.amount,
-      command.methodId,
-      command.referenceType,
-      command.referencePublicId,
-    );
-
-    // -------------------------------------------------------------------------
-    // 3. Create aggregate
-    // -------------------------------------------------------------------------
-    //
-    // The FinancialPaymentAggregate becomes the unit of domain ownership
-    // and persistence.
-    //
-    // FinancialPaymentAttemptEntity instances are intentionally NOT created
-    // here because payment attempts represent actual provider execution.
-    // -------------------------------------------------------------------------
-
-    const aggregate = FinancialPaymentAggregate.create(payment);
-
-    // -------------------------------------------------------------------------
-    // 4. Record creation event
-    // -------------------------------------------------------------------------
-    //
-    // Aggregate creation and event recording are intentionally separate.
-    //
-    // The aggregate owns the FinancialPaymentCreatedEvent.
-    //
-    // correlationId and causationId remain application-level tracing
-    // information and are supplied by the command.
-    // -------------------------------------------------------------------------
-
-    aggregate.emitCreatedEvent(command.correlationId, command.causationId);
-
-    // -------------------------------------------------------------------------
-    // 5. Persist aggregate
-    // -------------------------------------------------------------------------
-    //
-    // The repository persists the complete Financial Payment aggregate:
-    //
-    // FinancialPaymentAggregate
-    // ├── FinancialPaymentEntity
-    // └── FinancialPaymentAttemptEntity[]
-    //
-    // At creation time the attempts collection is empty.
-    // -------------------------------------------------------------------------
-
-    await this.repository.create(aggregate);
-
-    // -------------------------------------------------------------------------
-    // 6. Return aggregate
-    // -------------------------------------------------------------------------
-
-    return aggregate;
+      return aggregate;
+    });
   }
 }
 
