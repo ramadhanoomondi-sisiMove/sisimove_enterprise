@@ -58,7 +58,6 @@ import { FINANCIAL_PAYMENT_PROVIDER_TOKENS } from '../../../application/financia
 // -----------------------------------------------------------------------------
 // Application — Commands
 // -----------------------------------------------------------------------------
-
 import {
   ChangeFinancialPaymentProviderStatusCommand,
   ConfigureMpesaCommand,
@@ -67,6 +66,7 @@ import {
   DisableFinancialPaymentProviderCommand,
   EnableFinancialPaymentProviderCapabilityCommand,
   EnableFinancialPaymentProviderCommand,
+  TestMpesaConnectionCommand,
   UpdateFinancialPaymentProviderCommand,
 } from '../../../application/commands';
 
@@ -130,7 +130,7 @@ import type { FinancialPaymentProviderResponse } from '../mappers/financial-paym
 // -----------------------------------------------------------------------------
 
 import { FinancialPaymentProviderResponseMapper } from '../mappers/financial-payment-provider.response.mapper';
-
+import type { MpesaOAuthAuthenticationResult } from '../../../infrastructure/mpesa/authentication/mpesa-oauth.types';
 // =============================================================================
 // Controller
 // =============================================================================
@@ -196,6 +196,13 @@ export class FinancialPaymentProvidersController {
     private readonly configureMpesaHandler: CommandHandler<
       ConfigureMpesaCommand,
       string
+    >,
+    @Inject(
+      FINANCIAL_PAYMENT_PROVIDER_TOKENS.COMMAND_HANDLERS.TEST_MPESA_CONNECTION,
+    )
+    private readonly testMpesaConnectionHandler: CommandHandler<
+      TestMpesaConnectionCommand,
+      MpesaOAuthAuthenticationResult
     >,
     // -------------------------------------------------------------------------
     // Query Handlers
@@ -425,6 +432,34 @@ export class FinancialPaymentProvidersController {
       message:
         'M-PESA credentials saved securely. Connection validation is still pending.',
     };
+  }
+  // ---------------------------------------------------------------------------
+  // Test M-PESA Connection
+  // ---------------------------------------------------------------------------
+
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Test M-PESA connection',
+    description:
+      'Validates M-PESA Daraja OAuth authentication using the stored credentials. Access tokens and credentials are never returned.',
+  })
+  @ApiParam({
+    name: 'providerPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the M-PESA provider.',
+  })
+  @Post(':providerPublicId/test-connection')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('financial:manage')
+  public async testMpesaConnection(
+    @Param('providerPublicId') providerPublicId: string,
+  ): Promise<MpesaOAuthAuthenticationResult> {
+    const command = new TestMpesaConnectionCommand(
+      new FinancialPaymentProviderPublicId(providerPublicId),
+    );
+
+    return this.testMpesaConnectionHandler.execute(command);
   }
   // ---------------------------------------------------------------------------
   // Update Provider Details

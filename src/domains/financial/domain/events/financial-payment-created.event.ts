@@ -1,48 +1,8 @@
-// -----------------------------------------------------------------------------
-// Financial Payment Created Domain Event
-// -----------------------------------------------------------------------------
-//
-// Emitted when a Financial Payment is created.
-//
-// Aggregate:
-// - FinancialPaymentAggregate
-//
-// Aggregate Root:
-// - FinancialPaymentEntity
-//
-// The aggregate identity is stored in:
-// - DomainEvent.metadata.aggregateId
-//
-// The externally meaningful Financial Payment public identity is included in
-// the event payload.
-//
-// This event does NOT:
-// - Execute a payment.
-// - Call an external provider.
-// - Move funds.
-// - Create a Financial Transaction.
-// - Modify Financial Account balances.
-//
-// Those responsibilities belong to the appropriate application,
-// integration, and transaction boundaries.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// Foundation
-// -----------------------------------------------------------------------------
-
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
 import type { PublicEntityId } from '../../../../foundation/kernel/domain/public-entity-id';
-
-// -----------------------------------------------------------------------------
-// Financial
-// -----------------------------------------------------------------------------
+import { PublicEntityId as PublicEntityIdValue } from '../../../../foundation/kernel/domain/public-entity-id';
 
 import { FinancialDomainEvent } from './financial-domain.event';
-
-// -----------------------------------------------------------------------------
-// Value Objects
-// -----------------------------------------------------------------------------
 
 import type {
   FinancialPaymentMethodPublicId,
@@ -52,23 +12,19 @@ import type {
   Money,
 } from '../value-objects';
 
+import {
+  FinancialPaymentMethodPublicId as FinancialPaymentMethodPublicIdValue,
+  FinancialPaymentStatus as FinancialPaymentStatusValue,
+  FinancialReferencePublicId as FinancialReferencePublicIdValue,
+  FinancialReferenceType as FinancialReferenceTypeValue,
+  Money as MoneyValue,
+} from '../value-objects';
+
 // -----------------------------------------------------------------------------
 // Event
 // -----------------------------------------------------------------------------
 
-/**
- * Emitted when a Financial Payment is created.
- *
- * The aggregate identity is stored in DomainEvent.metadata.aggregateId.
- *
- * The payment public identity is included in the payload because it is the
- * externally meaningful identity consumed by other bounded contexts.
- */
 export class FinancialPaymentCreatedEvent extends FinancialDomainEvent {
-  // ---------------------------------------------------------------------------
-  // Constructor
-  // ---------------------------------------------------------------------------
-
   public constructor(
     aggregateId: string,
     publicId: PublicEntityId,
@@ -82,6 +38,7 @@ export class FinancialPaymentCreatedEvent extends FinancialDomainEvent {
     causationId?: string,
     eventVersion = 1,
     eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       aggregateId,
@@ -91,6 +48,7 @@ export class FinancialPaymentCreatedEvent extends FinancialDomainEvent {
       causationId,
       eventVersion,
       eventSchemaVersion,
+      restoredMetadata,
     );
 
     this.publicId = publicId;
@@ -102,81 +60,82 @@ export class FinancialPaymentCreatedEvent extends FinancialDomainEvent {
     this.referencePublicId = referencePublicId;
   }
 
-  // ---------------------------------------------------------------------------
-  // Properties
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Public identity of the Financial Payment.
-   */
   public readonly publicId: PublicEntityId;
-
-  /**
-   * Public identity of the Financial Account receiving the payment.
-   *
-   * This should be the externally meaningful account identity rather than the
-   * persistence/internal FinancialAccount identifier.
-   */
   public readonly accountId: PublicEntityId;
-
-  /**
-   * Monetary amount of the Financial Payment.
-   *
-   * Money keeps amount and currency inseparable inside the domain event.
-   */
   public readonly amount: Money;
-
-  /**
-   * Initial lifecycle status of the Financial Payment.
-   */
   public readonly status: FinancialPaymentStatus;
-
-  /**
-   * Selected Financial Payment Method, if one was supplied when the payment
-   * was created.
-   */
   public readonly methodId: FinancialPaymentMethodPublicId | undefined;
-
-  /**
-   * Optional originating business reference.
-   */
   public readonly referenceType: FinancialReferenceType | undefined;
-
-  /**
-   * Public identity of the originating business object.
-   */
   public readonly referencePublicId: FinancialReferencePublicId | undefined;
 
-  // ---------------------------------------------------------------------------
-  // Payload
-  // ---------------------------------------------------------------------------
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): FinancialPaymentCreatedEvent {
+    const {
+      publicId,
+      accountId,
+      amount,
+      currency,
+      status,
+      methodId,
+      referenceType,
+      referencePublicId,
+    } = payload;
+
+    if (
+      typeof publicId !== 'string' ||
+      typeof accountId !== 'string' ||
+      typeof amount !== 'number' ||
+      typeof currency !== 'string' ||
+      typeof status !== 'string' ||
+      (methodId !== undefined && typeof methodId !== 'string') ||
+      (referenceType !== undefined && typeof referenceType !== 'string') ||
+      (referencePublicId !== undefined && typeof referencePublicId !== 'string')
+    ) {
+      throw new Error('Invalid payload for FinancialPaymentCreated event');
+    }
+
+    if ((referenceType === undefined) !== (referencePublicId === undefined)) {
+      throw new Error(
+        'FinancialPaymentCreated reference type and public ID must both be present or absent',
+      );
+    }
+
+    return new FinancialPaymentCreatedEvent(
+      metadata.aggregateId,
+      new PublicEntityIdValue(publicId),
+      new PublicEntityIdValue(accountId),
+      MoneyValue.fromCode(amount, currency),
+      FinancialPaymentStatusValue.create(status),
+      typeof methodId === 'string'
+        ? new FinancialPaymentMethodPublicIdValue(methodId)
+        : undefined,
+      typeof referenceType === 'string'
+        ? FinancialReferenceTypeValue.create(referenceType)
+        : undefined,
+      typeof referencePublicId === 'string'
+        ? FinancialReferencePublicIdValue.create(referencePublicId)
+        : undefined,
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      metadata.eventVersion,
+      metadata.eventSchemaVersion,
+      metadata,
+    );
+  }
 
   protected override getPayload(): Record<string, unknown> {
     return {
       ...this.getBasePayload(),
-
       publicId: this.publicId.toString(),
-
       accountId: this.accountId.toString(),
-
       amount: this.amount.amount,
-
       currency: this.amount.currency.toString(),
-
       status: this.status.toString(),
-
-      methodId:
-        this.methodId !== undefined ? this.methodId.toString() : undefined,
-
-      referenceType:
-        this.referenceType !== undefined
-          ? this.referenceType.toString()
-          : undefined,
-
-      referencePublicId:
-        this.referencePublicId !== undefined
-          ? this.referencePublicId.toString()
-          : undefined,
+      methodId: this.methodId?.toString(),
+      referenceType: this.referenceType?.toString(),
+      referencePublicId: this.referencePublicId?.toString(),
     };
   }
 }

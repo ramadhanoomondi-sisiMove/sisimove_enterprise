@@ -1,108 +1,30 @@
-// -----------------------------------------------------------------------------
-// Financial Payment Failed Domain Event
-// -----------------------------------------------------------------------------
-//
-// Emitted when a Financial Payment reaches the FAILED terminal state.
-//
-// Aggregate:
-// - FinancialPaymentAggregate
-//
-// The aggregate identity is stored in DomainEvent.metadata.aggregateId.
-// The payment public identity and failure information are included in the
-// payload because they are meaningful to event consumers.
-//
-// This event does NOT:
-// - Communicate with an external provider.
-// - Modify Financial Account balances.
-// - Create or post a Financial Transaction.
-// - Perform retries.
-//
-// Those responsibilities belong to the appropriate application,
-// integration, transaction, and orchestration boundaries.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// Foundation
-// -----------------------------------------------------------------------------
-
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
 import type { PublicEntityId } from '../../../../foundation/kernel/domain/public-entity-id';
-
-// -----------------------------------------------------------------------------
-// Financial
-// -----------------------------------------------------------------------------
+import { PublicEntityId as PublicEntityIdValue } from '../../../../foundation/kernel/domain/public-entity-id';
 
 import { FinancialDomainEvent } from './financial-domain.event';
 
-// -----------------------------------------------------------------------------
-// Value Objects
-// -----------------------------------------------------------------------------
-
 import type { FinancialPaymentStatus } from '../value-objects/financial-payment-status.vo';
+import { FinancialPaymentStatus as FinancialPaymentStatusValue } from '../value-objects/financial-payment-status.vo';
 
 import type { Money } from '../value-objects/money.vo';
-
-// -----------------------------------------------------------------------------
-// Event
-// -----------------------------------------------------------------------------
+import { Money as MoneyValue } from '../value-objects/money.vo';
 
 export class FinancialPaymentFailedEvent extends FinancialDomainEvent {
-  // ---------------------------------------------------------------------------
-  // Constructor
-  // ---------------------------------------------------------------------------
-
   public constructor(
-    /**
-     * Persistence/domain identity of the Financial Payment aggregate.
-     *
-     * This becomes DomainEvent.metadata.aggregateId.
-     */
     aggregateId: string,
-
-    /**
-     * Public identity of the Financial Payment.
-     */
     publicId: PublicEntityId,
-
-    /**
-     * Payment amount and currency.
-     */
     amount: Money,
-
-    /**
-     * Final payment lifecycle status.
-     *
-     * This should be FAILED.
-     */
     status: FinancialPaymentStatus,
-
-    /**
-     * Provider attempt responsible for the failure, when available.
-     */
     attemptPublicId: PublicEntityId | undefined,
-
-    /**
-     * Provider/domain failure code, when available.
-     */
     failureCode: string | undefined,
-
-    /**
-     * Human-readable failure description, when available.
-     *
-     * This should contain safe diagnostic information and must not expose
-     * provider credentials or other sensitive data.
-     */
     failureMessage: string | undefined,
-
-    /**
-     * Time at which the payment entered the FAILED state.
-     */
     failedAt: Date,
-
     correlationId: string,
     causationId?: string,
     eventVersion = 1,
     eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       aggregateId,
@@ -112,6 +34,7 @@ export class FinancialPaymentFailedEvent extends FinancialDomainEvent {
       causationId,
       eventVersion,
       eventSchemaVersion,
+      restoredMetadata,
     );
 
     this.publicId = publicId;
@@ -123,71 +46,87 @@ export class FinancialPaymentFailedEvent extends FinancialDomainEvent {
     this.failedAt = failedAt;
   }
 
-  // ---------------------------------------------------------------------------
-  // Properties
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Public identity of the Financial Payment aggregate.
-   */
   public readonly publicId: PublicEntityId;
-
-  /**
-   * Payment amount that could not be successfully completed.
-   */
   public readonly amount: Money;
-
-  /**
-   * Final payment status.
-   */
   public readonly status: FinancialPaymentStatus;
-
-  /**
-   * Provider attempt associated with the failure.
-   */
   public readonly attemptPublicId: PublicEntityId | undefined;
-
-  /**
-   * Failure code.
-   */
   public readonly failureCode: string | undefined;
-
-  /**
-   * Safe failure description.
-   */
   public readonly failureMessage: string | undefined;
-
-  /**
-   * Failure timestamp.
-   */
   public readonly failedAt: Date;
 
-  // ---------------------------------------------------------------------------
-  // Payload
-  // ---------------------------------------------------------------------------
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): FinancialPaymentFailedEvent {
+    const {
+      publicId,
+      amount,
+      status,
+      attemptPublicId,
+      failureCode,
+      failureMessage,
+      failedAt,
+    } = payload;
+
+    if (
+      typeof publicId !== 'string' ||
+      typeof amount !== 'object' ||
+      amount === null ||
+      typeof status !== 'string' ||
+      (attemptPublicId !== undefined && typeof attemptPublicId !== 'string') ||
+      (failureCode !== undefined && typeof failureCode !== 'string') ||
+      (failureMessage !== undefined && typeof failureMessage !== 'string') ||
+      typeof failedAt !== 'string'
+    ) {
+      throw new Error('Invalid payload for FinancialPaymentFailed event');
+    }
+
+    const amountPayload = amount as Record<string, unknown>;
+
+    if (
+      typeof amountPayload.amount !== 'number' ||
+      typeof amountPayload.currency !== 'string'
+    ) {
+      throw new Error('Invalid amount in FinancialPaymentFailed payload');
+    }
+
+    const parsedFailedAt = new Date(failedAt);
+
+    if (Number.isNaN(parsedFailedAt.getTime())) {
+      throw new Error('Invalid failedAt in FinancialPaymentFailed payload');
+    }
+
+    return new FinancialPaymentFailedEvent(
+      metadata.aggregateId,
+      new PublicEntityIdValue(publicId),
+      MoneyValue.fromCode(amountPayload.amount, amountPayload.currency),
+      FinancialPaymentStatusValue.create(status),
+      typeof attemptPublicId === 'string'
+        ? new PublicEntityIdValue(attemptPublicId)
+        : undefined,
+      typeof failureCode === 'string' ? failureCode : undefined,
+      typeof failureMessage === 'string' ? failureMessage : undefined,
+      parsedFailedAt,
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      metadata.eventVersion,
+      metadata.eventSchemaVersion,
+      metadata,
+    );
+  }
 
   protected override getPayload(): Record<string, unknown> {
     return {
       ...this.getBasePayload(),
-
       publicId: this.publicId.toString(),
-
       amount: {
         amount: this.amount.amount,
         currency: this.amount.currency.toString(),
       },
-
       status: this.status.toString(),
-
-      attemptPublicId:
-        this.attemptPublicId !== undefined
-          ? this.attemptPublicId.toString()
-          : undefined,
-
+      attemptPublicId: this.attemptPublicId?.toString(),
       failureCode: this.failureCode,
-
       failureMessage: this.failureMessage,
-
       failedAt: this.failedAt.toISOString(),
     };
   }

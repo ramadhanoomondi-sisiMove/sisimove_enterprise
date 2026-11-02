@@ -1,4 +1,8 @@
 
+// -----------------------------------------------------------------------------
+// Admin Providers API
+// -----------------------------------------------------------------------------
+
 import {
   authenticatedApiClient,
 } from '@/features/authentication/http/authenticated-api-client';
@@ -7,6 +11,7 @@ import type { RequestOptions } from '@/foundation/http';
 
 import type { AdminProvider } from '../models/admin-provider.model';
 import type { AdminProviderFilters } from '../models/admin-provider-filters.model';
+
 import type {
   AdminChangeProviderStatusInput,
   AdminConfigureMpesaInput,
@@ -14,6 +19,7 @@ import type {
   AdminCreateProviderInput,
   AdminProviderCapabilityOperationParams,
   AdminProviderOperationParams,
+  AdminTestMpesaConnectionResponse,
   AdminUpdateProviderInput,
 } from '../models/admin-provider-operations.model';
 
@@ -157,6 +163,7 @@ export class AdminProvidersApi {
       options,
     );
   }
+
   /**
    * Securely configure M-PESA credentials.
    */
@@ -171,6 +178,26 @@ export class AdminProvidersApi {
       options,
     );
   }
+
+  /**
+   * Test M-PESA Daraja OAuth authentication.
+   *
+   * Returns authentication status and token expiry only.
+   * The access token and credentials are never returned.
+   */
+  public async testMpesaConnection(
+    params: AdminProviderOperationParams,
+    options: RequestOptions = {},
+  ): Promise<AdminTestMpesaConnectionResponse> {
+    return authenticatedApiClient.post<AdminTestMpesaConnectionResponse>(
+      ADMIN_PROVIDERS_ENDPOINTS.testMpesaConnection(
+        params.providerPublicId,
+      ),
+      undefined,
+      options,
+    );
+  }
+
   // ===========================================================================
   // Capability Commands
   // ===========================================================================

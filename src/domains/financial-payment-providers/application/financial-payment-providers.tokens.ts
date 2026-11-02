@@ -34,6 +34,8 @@ export const FINANCIAL_PAYMENT_PROVIDER_TOKENS = {
 
     CONFIGURE_MPESA: Symbol('ConfigureMpesaHandler'),
 
+    TEST_MPESA_CONNECTION: Symbol('TestMpesaConnectionHandler'),
+
     ENABLE: Symbol('EnableFinancialPaymentProviderHandler'),
 
     DISABLE: Symbol('DisableFinancialPaymentProviderHandler'),

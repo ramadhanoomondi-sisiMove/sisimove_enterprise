@@ -236,7 +236,9 @@ import {
   GetFinancialDisbursementAttemptsHandler,
   CountFinancialPaymentsQueryHandler,
 } from './application/query-handlers';
+import { EventRehydratorRegistry } from '../../infrastructure/events/event-rehydrator.registry';
 
+import { FinancialPaymentEventRegistry } from './domain/events/financial-payment-event.registry';
 // =============================================================================
 // Module
 // =============================================================================
@@ -497,7 +499,17 @@ import {
       provide: FINANCIAL_PAYMENT_TOKENS.QUERY_HANDLERS.GET_ALL,
       useClass: GetAllFinancialPaymentsQueryHandler,
     },
+    {
+      provide: FinancialPaymentEventRegistry,
+      useFactory: (registry: EventRehydratorRegistry) => {
+        const financialPaymentRegistry = new FinancialPaymentEventRegistry();
 
+        registry.register(financialPaymentRegistry);
+
+        return financialPaymentRegistry;
+      },
+      inject: [EventRehydratorRegistry],
+    },
     // =========================================================================
     // Financial Payment Method
     // =========================================================================

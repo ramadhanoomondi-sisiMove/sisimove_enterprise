@@ -67,7 +67,6 @@ export interface IdentityDirectoryCriteria {
   readonly sortDirection: IdentityDirectorySortDirection;
 }
 
-
 /**
  * One paginated result from the Identity directory.
  *

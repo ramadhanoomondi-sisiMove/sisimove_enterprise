@@ -33,7 +33,7 @@ import type { JourneyBookingPassengerPublicId } from '../../domain/value-objects
  * and repository contracts.
  */
 export class GetMyJourneyBookingsQuery extends Query {
-  // =========================================================================== 
+  // ===========================================================================
   // Constructor
   // ===========================================================================
 

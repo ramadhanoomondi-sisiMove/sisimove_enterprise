@@ -1,4 +1,3 @@
-
 import { Query } from '../../../../../foundation/kernel/application/query';
 
 /**

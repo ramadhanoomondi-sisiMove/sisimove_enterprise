@@ -4232,6 +4232,119 @@ model FinancialPaymentProviderConfiguration {
   @@map("financial_payment_provider_configurations")
 }
 
+// =============================================================================
+// SHARED EVENT INFRASTRUCTURE
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Stored Event
+// -----------------------------------------------------------------------------
+// Durable, append-only record of a domain or integration event.
+// Event metadata and payload are preserved for event history and replay.
+
+model StoredEvent {
+  id      String @id @default(uuid())
+  eventId String @unique
+
+  eventName    String
+  eventVersion Int
+
+  aggregateId   String
+  aggregateType String
+
+  correlationId String?
+  causationId   String?
+
+  eventTimestamp     DateTime
+  producerPlatform   String
+  eventSchemaVersion String
+
+  // Complete serialized event: metadata + event-specific payload.
+  payload Json
+
+  createdAt DateTime @default(now())
+
+  // Delivery and consumer tracking.
+  outboxMessage OutboxMessage?
+  processedBy   ProcessedEvent[]
+
+  @@index([aggregateId, eventTimestamp])
+  @@index([eventName, eventTimestamp])
+  @@index([aggregateType, aggregateId])
+  @@index([correlationId])
+  @@map("stored_events")
+}
+
+// -----------------------------------------------------------------------------
+// Outbox Message
+// -----------------------------------------------------------------------------
+// Tracks reliable asynchronous delivery of a stored event.
+// Delivery metadata may change; the stored event itself remains immutable.
+
+model OutboxMessage {
+  id String @id @default(uuid())
+
+  storedEventId String @unique
+
+  storedEvent StoredEvent @relation(fields: [storedEventId], references: [id], onDelete: Restrict)
+
+  status OutboxMessageStatus @default(PENDING)
+
+  attempts Int @default(0)
+
+  availableAt DateTime @default(now())
+
+  lockedAt    DateTime?
+  lockedUntil DateTime?
+
+  lastAttemptAt DateTime?
+  lastError     String?   @db.Text
+
+  publishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, availableAt])
+  @@index([status, lockedUntil])
+  @@map("outbox_messages")
+}
+
+// -----------------------------------------------------------------------------
+// Processed Event
+// -----------------------------------------------------------------------------
+// Records successful processing per consumer.
+// The same event may be processed by multiple independent consumers,
+// but each consumer must process it only once.
+
+model ProcessedEvent {
+  id String @id @default(uuid())
+
+  storedEventId String
+
+  storedEvent StoredEvent @relation(fields: [storedEventId], references: [id], onDelete: Restrict)
+
+  consumerName String
+
+  processedAt DateTime @default(now())
+
+  @@unique([consumerName, storedEventId])
+  @@index([storedEventId])
+  @@index([processedAt])
+  @@map("processed_events")
+}
+
+// =============================================================================
+// SHARED EVENT INFRASTRUCTURE
+// =============================================================================
+
+enum OutboxMessageStatus {
+  PENDING
+  PROCESSING
+  PUBLISHED
+  DEAD_LETTERED
+}
+
 // ============================================================
 // JOURNEY COMPLETION ENUMS
 // ============================================================

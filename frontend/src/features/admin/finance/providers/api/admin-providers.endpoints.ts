@@ -69,6 +69,9 @@ export const ADMIN_PROVIDERS_ENDPOINTS = {
   configureMpesa: (providerPublicId: string): string =>
     `${BASE_PATH}/${encodeURIComponent(providerPublicId)}/configuration`,
 
+  testMpesaConnection: (providerPublicId: string): string =>
+    `${BASE_PATH}/${encodeURIComponent(providerPublicId)}/test-connection`,
+
   // ---------------------------------------------------------------------------
   // Capability Commands
   // ---------------------------------------------------------------------------

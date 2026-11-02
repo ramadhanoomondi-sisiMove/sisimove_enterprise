@@ -1,108 +1,41 @@
 // -----------------------------------------------------------------------------
 // Financial Payment Succeeded Domain Event
 // -----------------------------------------------------------------------------
-//
-// Emitted when a Financial Payment successfully completes.
-//
-// Aggregate:
-// - FinancialPaymentAggregate
-//
-// The aggregate identity is stored in DomainEvent.metadata.aggregateId.
-// The payment public identity and resulting financial references are included
-// in the payload because they are meaningful to event consumers.
-//
-// This event does NOT:
-// - Post the Financial Transaction.
-// - Modify Financial Account balances.
-// - Perform provider communication.
-// - Execute settlement or disbursement.
-//
-// Those responsibilities belong to the appropriate transaction, application,
-// integration, and settlement boundaries.
-//
-// -----------------------------------------------------------------------------
 
-// -----------------------------------------------------------------------------
-// Foundation
-// -----------------------------------------------------------------------------
-
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
 import type { PublicEntityId } from '../../../../foundation/kernel/domain/public-entity-id';
-
-// -----------------------------------------------------------------------------
-// Financial
-// -----------------------------------------------------------------------------
+import { PublicEntityId as PublicEntityIdValue } from '../../../../foundation/kernel/domain/public-entity-id';
 
 import { FinancialDomainEvent } from './financial-domain.event';
 
-// -----------------------------------------------------------------------------
-// Value Objects
-// -----------------------------------------------------------------------------
-
 import type { FinancialPaymentStatus } from '../value-objects/financial-payment-status.vo';
+import { FinancialPaymentStatus as FinancialPaymentStatusValue } from '../value-objects/financial-payment-status.vo';
 
 import type { Money } from '../value-objects/money.vo';
+import { Money as MoneyValue } from '../value-objects/money.vo';
 
 import type { FinancialPaymentMethodPublicId } from '../value-objects/financial-payment-method-public-id.vo';
+import { FinancialPaymentMethodPublicId as FinancialPaymentMethodPublicIdValue } from '../value-objects/financial-payment-method-public-id.vo';
 
 // -----------------------------------------------------------------------------
 // Event
 // -----------------------------------------------------------------------------
 
 export class FinancialPaymentSucceededEvent extends FinancialDomainEvent {
-  // ---------------------------------------------------------------------------
-  // Constructor
-  // ---------------------------------------------------------------------------
-
   public constructor(
-    /**
-     * Persistence/domain identity of the Financial Payment aggregate.
-     *
-     * This becomes DomainEvent.metadata.aggregateId.
-     */
     aggregateId: string,
-
-    /**
-     * Public identity of the Financial Payment.
-     */
     publicId: PublicEntityId,
-
-    /**
-     * Final payment amount and currency.
-     */
     amount: Money,
-
-    /**
-     * Final payment lifecycle status.
-     *
-     * This should be SUCCEEDED.
-     */
     status: FinancialPaymentStatus,
-
-    /**
-     * Payment method used to successfully execute the payment.
-     */
     methodId: FinancialPaymentMethodPublicId | undefined,
-
-    /**
-     * Public identity of the successful provider attempt.
-     */
     attemptPublicId: PublicEntityId,
-
-    /**
-     * Financial Transaction created to represent the financial effect,
-     * when already established by the application/transaction boundary.
-     */
     transactionPublicId: string | undefined,
-
-    /**
-     * Time at which the payment was completed.
-     */
     completedAt: Date,
-
     correlationId: string,
     causationId?: string,
     eventVersion = 1,
     eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       aggregateId,
@@ -112,6 +45,7 @@ export class FinancialPaymentSucceededEvent extends FinancialDomainEvent {
       causationId,
       eventVersion,
       eventSchemaVersion,
+      restoredMetadata,
     );
 
     this.publicId = publicId;
@@ -123,72 +57,88 @@ export class FinancialPaymentSucceededEvent extends FinancialDomainEvent {
     this.completedAt = completedAt;
   }
 
-  // ---------------------------------------------------------------------------
-  // Properties
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Public identity of the Financial Payment aggregate.
-   */
   public readonly publicId: PublicEntityId;
-
-  /**
-   * Successfully received payment amount.
-   */
   public readonly amount: Money;
-
-  /**
-   * Final payment status.
-   */
   public readonly status: FinancialPaymentStatus;
-
-  /**
-   * Payment method used for the successful payment.
-   */
   public readonly methodId: FinancialPaymentMethodPublicId | undefined;
-
-  /**
-   * Provider attempt that successfully executed the payment.
-   */
   public readonly attemptPublicId: PublicEntityId;
-
-  /**
-   * Financial Transaction associated with the successful payment.
-   *
-   * This remains an opaque reference rather than embedding the transaction
-   * aggregate inside the payment aggregate.
-   */
   public readonly transactionPublicId: string | undefined;
-
-  /**
-   * Completion timestamp.
-   */
   public readonly completedAt: Date;
 
-  // ---------------------------------------------------------------------------
-  // Payload
-  // ---------------------------------------------------------------------------
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): FinancialPaymentSucceededEvent {
+    const publicId = payload.publicId;
+    const amount = payload.amount;
+    const status = payload.status;
+    const methodId = payload.methodId;
+    const attemptPublicId = payload.attemptPublicId;
+    const transactionPublicId = payload.transactionPublicId;
+    const completedAt = payload.completedAt;
+
+    if (
+      typeof publicId !== 'string' ||
+      typeof amount !== 'object' ||
+      amount === null ||
+      typeof status !== 'string' ||
+      (methodId !== undefined && typeof methodId !== 'string') ||
+      typeof attemptPublicId !== 'string' ||
+      (transactionPublicId !== undefined &&
+        typeof transactionPublicId !== 'string') ||
+      typeof completedAt !== 'string'
+    ) {
+      throw new Error('Invalid payload for FinancialPaymentSucceeded event');
+    }
+
+    const amountPayload = amount as Record<string, unknown>;
+
+    if (
+      typeof amountPayload.amount !== 'number' ||
+      typeof amountPayload.currency !== 'string'
+    ) {
+      throw new Error('Invalid amount in FinancialPaymentSucceeded payload');
+    }
+
+    const parsedCompletedAt = new Date(completedAt);
+
+    if (Number.isNaN(parsedCompletedAt.getTime())) {
+      throw new Error(
+        'Invalid completedAt in FinancialPaymentSucceeded payload',
+      );
+    }
+
+    return new FinancialPaymentSucceededEvent(
+      metadata.aggregateId,
+      new PublicEntityIdValue(publicId),
+      MoneyValue.fromCode(amountPayload.amount, amountPayload.currency),
+      FinancialPaymentStatusValue.create(status),
+      typeof methodId === 'string'
+        ? new FinancialPaymentMethodPublicIdValue(methodId)
+        : undefined,
+      new PublicEntityIdValue(attemptPublicId),
+      typeof transactionPublicId === 'string' ? transactionPublicId : undefined,
+      parsedCompletedAt,
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      metadata.eventVersion,
+      metadata.eventSchemaVersion,
+      metadata,
+    );
+  }
 
   protected override getPayload(): Record<string, unknown> {
     return {
       ...this.getBasePayload(),
-
       publicId: this.publicId.toString(),
-
       amount: {
         amount: this.amount.amount,
         currency: this.amount.currency.toString(),
       },
-
       status: this.status.toString(),
-
-      methodId:
-        this.methodId !== undefined ? this.methodId.toString() : undefined,
-
+      methodId: this.methodId?.toString(),
       attemptPublicId: this.attemptPublicId.toString(),
-
       transactionPublicId: this.transactionPublicId,
-
       completedAt: this.completedAt.toISOString(),
     };
   }

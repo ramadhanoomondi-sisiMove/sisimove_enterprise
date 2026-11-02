@@ -52,8 +52,19 @@ import { FINANCIAL_PAYMENT_PROVIDER_PROVIDERS } from './infrastructure/dependenc
 // -----------------------------------------------------------------------------
 
 import { FINANCIAL_PAYMENT_PROVIDER_TOKENS } from './application/financial-payment-providers.tokens';
+
+// -----------------------------------------------------------------------------
+// Infrastructure — M-PESA HTTP
+// -----------------------------------------------------------------------------
+
 import { MpesaHttpModule } from './infrastructure/mpesa/http/mpesa-http.module';
+
+// -----------------------------------------------------------------------------
+// Infrastructure — Security
+// -----------------------------------------------------------------------------
+
 import { SecurityModule } from '../../infrastructure/security/security.module';
+
 // -----------------------------------------------------------------------------
 // Application — Command Handlers
 // -----------------------------------------------------------------------------
@@ -66,6 +77,7 @@ import {
   DisableFinancialPaymentProviderHandler,
   EnableFinancialPaymentProviderCapabilityHandler,
   EnableFinancialPaymentProviderHandler,
+  TestMpesaConnectionHandler,
   UpdateFinancialPaymentProviderHandler,
 } from './application/command-handlers';
 
@@ -89,6 +101,7 @@ import {
   // ===========================================================================
 
   imports: [PrismaModule, SecurityModule, MpesaHttpModule],
+
   // ===========================================================================
   // Controllers
   // ===========================================================================
@@ -114,10 +127,18 @@ import {
       provide: FINANCIAL_PAYMENT_PROVIDER_TOKENS.COMMAND_HANDLERS.CREATE,
       useClass: CreateFinancialPaymentProviderHandler,
     },
+
     {
       provide:
         FINANCIAL_PAYMENT_PROVIDER_TOKENS.COMMAND_HANDLERS.CONFIGURE_MPESA,
       useClass: ConfigureMpesaHandler,
+    },
+
+    {
+      provide:
+        FINANCIAL_PAYMENT_PROVIDER_TOKENS.COMMAND_HANDLERS
+          .TEST_MPESA_CONNECTION,
+      useClass: TestMpesaConnectionHandler,
     },
 
     {

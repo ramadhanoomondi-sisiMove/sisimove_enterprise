@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -212,16 +211,38 @@ export default function ProviderDetailsPage() {
           <div className="flex flex-wrap items-center gap-2">
 
             {provider.code === 'MPESA' && (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setFeedback(null);
-                  setActiveDialog('mpesa');
-                }}
-                disabled={operations.isLoading}
-              >
-                Configure M-PESA
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setFeedback(null);
+
+                    void runOperation(
+                      () =>
+                        operations.testMpesaConnection.mutateAsync({
+                          providerPublicId: publicId,
+                        }),
+                      'M-PESA connection authenticated successfully.',
+                    );
+                  }}
+                  disabled={operations.isLoading}
+                >
+                  {operations.isTestingMpesaConnection
+                    ? 'Testing connection...'
+                    : 'Test Connection'}
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setFeedback(null);
+                    setActiveDialog('mpesa');
+                  }}
+                  disabled={operations.isLoading}
+                >
+                  Configure M-PESA
+                </Button>
+              </>
             )}
 
             <ProviderActionsMenu

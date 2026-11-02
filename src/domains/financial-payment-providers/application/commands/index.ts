@@ -6,3 +6,4 @@ export * from './change-financial-payment-provider-status.command';
 export * from './enable-financial-payment-provider-capability.command';
 export * from './disable-financial-payment-provider-capability.command';
 export * from './configure-mpesa.command';
+export * from './test-mpesa-connection.command';

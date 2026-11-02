@@ -1,12 +1,12 @@
 //src/foundation/events/idempotency.interface.ts
 export interface IdempotencyStore {
   /**
-   * Returns true if the event has already been processed.
+   * Returns true if this consumer has already processed the event.
    */
-  exists(eventId: string): Promise<boolean>;
+  exists(consumerName: string, eventId: string): Promise<boolean>;
 
   /**
-   * Marks an event as processed.
+   * Marks this event as processed by this consumer.
    */
-  markProcessed(eventId: string): Promise<void>;
+  markProcessed(consumerName: string, eventId: string): Promise<void>;
 }

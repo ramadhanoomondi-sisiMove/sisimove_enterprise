@@ -41,3 +41,8 @@ export {
   ConfigureMpesaHandler,
   default as DefaultConfigureMpesaHandler,
 } from './configure-mpesa.handler';
+
+export {
+  TestMpesaConnectionHandler,
+  default as DefaultTestMpesaConnectionHandler,
+} from './test-mpesa-connection.handler';

@@ -1,90 +1,27 @@
-// -----------------------------------------------------------------------------
-// Financial Payment Cancelled Domain Event
-// -----------------------------------------------------------------------------
-//
-// Emitted when a Financial Payment is cancelled.
-//
-// Aggregate:
-// - FinancialPaymentAggregate
-//
-// The aggregate identity is stored in DomainEvent.metadata.aggregateId.
-// The payment public identity and cancellation information are included in
-// the payload because they are meaningful to event consumers.
-//
-// This event does NOT:
-// - Communicate with external providers.
-// - Modify Financial Account balances.
-// - Create or post a Financial Transaction.
-// - Cancel provider-side operations directly.
-//
-// Those responsibilities belong to the appropriate application,
-// integration, transaction, and orchestration boundaries.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// Foundation
-// -----------------------------------------------------------------------------
-
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
 import type { PublicEntityId } from '../../../../foundation/kernel/domain/public-entity-id';
-
-// -----------------------------------------------------------------------------
-// Financial
-// -----------------------------------------------------------------------------
+import { PublicEntityId as PublicEntityIdValue } from '../../../../foundation/kernel/domain/public-entity-id';
 
 import { FinancialDomainEvent } from './financial-domain.event';
 
-// -----------------------------------------------------------------------------
-// Value Objects
-// -----------------------------------------------------------------------------
-
 import type { FinancialPaymentStatus } from '../value-objects/financial-payment-status.vo';
+import { FinancialPaymentStatus as FinancialPaymentStatusValue } from '../value-objects/financial-payment-status.vo';
 
 import type { Money } from '../value-objects/money.vo';
-
-// -----------------------------------------------------------------------------
-// Event
-// -----------------------------------------------------------------------------
+import { Money as MoneyValue } from '../value-objects/money.vo';
 
 export class FinancialPaymentCancelledEvent extends FinancialDomainEvent {
-  // ---------------------------------------------------------------------------
-  // Constructor
-  // ---------------------------------------------------------------------------
-
   public constructor(
-    /**
-     * Persistence/domain identity of the Financial Payment aggregate.
-     *
-     * This becomes DomainEvent.metadata.aggregateId.
-     */
     aggregateId: string,
-
-    /**
-     * Public identity of the Financial Payment.
-     */
     publicId: PublicEntityId,
-
-    /**
-     * Payment amount and currency.
-     */
     amount: Money,
-
-    /**
-     * Final payment lifecycle status.
-     *
-     * This should be CANCELLED.
-     */
     status: FinancialPaymentStatus,
-
-    /**
-     * Time at which the payment entered the CANCELLED state.
-     */
     cancelledAt: Date,
-
     correlationId: string,
     causationId?: string,
     eventVersion = 1,
     eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       aggregateId,
@@ -94,6 +31,7 @@ export class FinancialPaymentCancelledEvent extends FinancialDomainEvent {
       causationId,
       eventVersion,
       eventSchemaVersion,
+      restoredMetadata,
     );
 
     this.publicId = publicId;
@@ -102,47 +40,67 @@ export class FinancialPaymentCancelledEvent extends FinancialDomainEvent {
     this.cancelledAt = cancelledAt;
   }
 
-  // ---------------------------------------------------------------------------
-  // Properties
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Public identity of the Financial Payment aggregate.
-   */
   public readonly publicId: PublicEntityId;
-
-  /**
-   * Payment amount that was cancelled.
-   */
   public readonly amount: Money;
-
-  /**
-   * Final payment status.
-   */
   public readonly status: FinancialPaymentStatus;
-
-  /**
-   * Cancellation timestamp.
-   */
   public readonly cancelledAt: Date;
 
-  // ---------------------------------------------------------------------------
-  // Payload
-  // ---------------------------------------------------------------------------
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): FinancialPaymentCancelledEvent {
+    const { publicId, amount, status, cancelledAt } = payload;
+
+    if (
+      typeof publicId !== 'string' ||
+      typeof amount !== 'object' ||
+      amount === null ||
+      typeof status !== 'string' ||
+      typeof cancelledAt !== 'string'
+    ) {
+      throw new Error('Invalid payload for FinancialPaymentCancelled event');
+    }
+
+    const amountPayload = amount as Record<string, unknown>;
+
+    if (
+      typeof amountPayload.amount !== 'number' ||
+      typeof amountPayload.currency !== 'string'
+    ) {
+      throw new Error('Invalid amount in FinancialPaymentCancelled payload');
+    }
+
+    const parsedCancelledAt = new Date(cancelledAt);
+
+    if (Number.isNaN(parsedCancelledAt.getTime())) {
+      throw new Error(
+        'Invalid cancelledAt in FinancialPaymentCancelled payload',
+      );
+    }
+
+    return new FinancialPaymentCancelledEvent(
+      metadata.aggregateId,
+      new PublicEntityIdValue(publicId),
+      MoneyValue.fromCode(amountPayload.amount, amountPayload.currency),
+      FinancialPaymentStatusValue.create(status),
+      parsedCancelledAt,
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      metadata.eventVersion,
+      metadata.eventSchemaVersion,
+      metadata,
+    );
+  }
 
   protected override getPayload(): Record<string, unknown> {
     return {
       ...this.getBasePayload(),
-
       publicId: this.publicId.toString(),
-
       amount: {
         amount: this.amount.amount,
         currency: this.amount.currency.toString(),
       },
-
       status: this.status.toString(),
-
       cancelledAt: this.cancelledAt.toISOString(),
     };
   }

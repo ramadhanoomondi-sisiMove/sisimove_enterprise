@@ -324,7 +324,7 @@
 // -----------------------------------------------------------------------------
 
 import { Module } from '@nestjs/common';
-
+import { ScheduleModule } from '@nestjs/schedule';
 // =============================================================================
 // Infrastructure
 // =============================================================================
@@ -494,7 +494,7 @@ import { FinancialPaymentProvidersModule } from './domains/financial-payment-pro
     // Domain modules consume Prisma through their own infrastructure adapters.
     //
     // -------------------------------------------------------------------------
-
+    ScheduleModule.forRoot(),
     PrismaModule,
 
     // -------------------------------------------------------------------------

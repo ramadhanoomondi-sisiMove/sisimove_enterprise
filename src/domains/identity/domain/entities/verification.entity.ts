@@ -958,11 +958,7 @@ export class VerificationEntity extends AggregateRoot<
     // DRIVER verification is a progressive upgrade from an active MEMBER.
     // Do not require the aggregate to return to PENDING: doing so would erase
     // the member's current verification state and block legitimate upgrades.
-    if (
-      !this.isVerified() ||
-      !this.isMemberLevel() ||
-      !this.isActive(at)
-    ) {
+    if (!this.isVerified() || !this.isMemberLevel() || !this.isActive(at)) {
       throw new VerificationInvalidStatusException(
         `Verification ${this.publicId.value} must be an active VERIFIED / MEMBER verification before it can be upgraded to DRIVER.`,
       );

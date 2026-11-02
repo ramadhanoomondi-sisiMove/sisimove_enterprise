@@ -1,8 +1,8 @@
 {
   "name": "sisimove-enterprise",
   "version": "0.1.0",
-  "description": "SisiMove Enterprise Mobility Platform",
-  "author": "SisiMove",
+  "description": "sisiMove Enterprise Mobility Platform",
+  "author": "sisiMove",
   "private": true,
   "license": "UNLICENSED",
   "engines": {
@@ -40,6 +40,7 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/schedule": "^12.0.2",
     "@nestjs/swagger": "^11.4.6",
     "@prisma/client": "^6.19.3",
     "bcrypt": "^6.0.0",

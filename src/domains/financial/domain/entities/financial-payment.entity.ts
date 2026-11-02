@@ -559,7 +559,9 @@ export class FinancialPaymentEntity extends Entity<
    */
   public canCreateAttempt(): boolean {
     return (
-      (this.isPending() || this.isProcessing()) && !this.hasSuccessfulAttempt()
+      (this.isPending() || this.isProcessing()) &&
+      !this.hasActiveAttempt() &&
+      !this.hasSuccessfulAttempt()
     );
   }
 

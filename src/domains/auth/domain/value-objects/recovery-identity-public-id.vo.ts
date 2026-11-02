@@ -24,7 +24,7 @@ import { PublicEntityId } from '../../../../foundation/kernel/domain/public-enti
 export class RecoveryIdentityPublicId extends PublicEntityId {
   // ---------------------------------------------------------------------------
   // Constructor
-  // --------------------------------------------------------------------------- 
+  // ---------------------------------------------------------------------------
   public constructor(value: string) {
     super(value, 'ID');
   }

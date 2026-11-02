@@ -1,68 +1,14 @@
-// -----------------------------------------------------------------------------
-// Financial Payment Processing Domain Event
-// -----------------------------------------------------------------------------
-//
-// Emitted when a Financial Payment transitions into PROCESSING.
-//
-// Aggregate:
-// - FinancialPaymentAggregate
-//
-// Aggregate Root:
-// - FinancialPaymentEntity
-//
-// The aggregate identity is stored in:
-// - DomainEvent.metadata.aggregateId
-//
-// The payment public identity is included in the payload because it is the
-// externally meaningful identity consumed by other bounded contexts.
-//
-// This event does NOT:
-// - Execute provider APIs.
-// - Communicate with an external provider.
-// - Move funds.
-// - Create ledger entries.
-// - Modify Financial Account balances.
-//
-// Those responsibilities belong to the appropriate application,
-// integration, and transaction boundaries.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// Foundation
-// -----------------------------------------------------------------------------
-
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
 import type { PublicEntityId } from '../../../../foundation/kernel/domain/public-entity-id';
-
-// -----------------------------------------------------------------------------
-// Financial
-// -----------------------------------------------------------------------------
+import { PublicEntityId as PublicEntityIdValue } from '../../../../foundation/kernel/domain/public-entity-id';
 
 import { FinancialDomainEvent } from './financial-domain.event';
-
-// -----------------------------------------------------------------------------
-// Value Objects
-// -----------------------------------------------------------------------------
-
 import type { FinancialPaymentStatus, Money } from '../value-objects';
 
-// -----------------------------------------------------------------------------
-// Event
-// -----------------------------------------------------------------------------
+import { FinancialPaymentStatus as FinancialPaymentStatusValue } from '../value-objects';
+import { Money as MoneyValue } from '../value-objects';
 
-/**
- * Emitted when a Financial Payment begins processing.
- *
- * The aggregate identity is stored in DomainEvent.metadata.aggregateId.
- *
- * The payment public identity, receiving account identity, monetary amount,
- * currency, and resulting status are included in the event payload.
- */
 export class FinancialPaymentProcessingEvent extends FinancialDomainEvent {
-  // ---------------------------------------------------------------------------
-  // Constructor
-  // ---------------------------------------------------------------------------
-
   public constructor(
     aggregateId: string,
     publicId: PublicEntityId,
@@ -73,6 +19,7 @@ export class FinancialPaymentProcessingEvent extends FinancialDomainEvent {
     causationId?: string,
     eventVersion = 1,
     eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       aggregateId,
@@ -82,6 +29,7 @@ export class FinancialPaymentProcessingEvent extends FinancialDomainEvent {
       causationId,
       eventVersion,
       eventSchemaVersion,
+      restoredMetadata,
     );
 
     this.publicId = publicId;
@@ -90,48 +38,52 @@ export class FinancialPaymentProcessingEvent extends FinancialDomainEvent {
     this.status = status;
   }
 
-  // ---------------------------------------------------------------------------
-  // Properties
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Public identity of the Financial Payment.
-   */
   public readonly publicId: PublicEntityId;
-
-  /**
-   * Public identity of the Financial Account receiving the payment.
-   */
   public readonly accountId: PublicEntityId;
-
-  /**
-   * Monetary amount of the Financial Payment.
-   */
   public readonly amount: Money;
-
-  /**
-   * Resulting lifecycle status.
-   *
-   * This should be PROCESSING when the event is emitted.
-   */
   public readonly status: FinancialPaymentStatus;
 
-  // ---------------------------------------------------------------------------
-  // Payload
-  // ---------------------------------------------------------------------------
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): FinancialPaymentProcessingEvent {
+    const publicId = payload.publicId;
+    const accountId = payload.accountId;
+    const amount = payload.amount;
+    const currency = payload.currency;
+    const status = payload.status;
+
+    if (
+      typeof publicId !== 'string' ||
+      typeof accountId !== 'string' ||
+      typeof amount !== 'number' ||
+      typeof currency !== 'string' ||
+      typeof status !== 'string'
+    ) {
+      throw new Error('Invalid payload for FinancialPaymentProcessing event');
+    }
+
+    return new FinancialPaymentProcessingEvent(
+      metadata.aggregateId,
+      new PublicEntityIdValue(publicId),
+      new PublicEntityIdValue(accountId),
+      MoneyValue.fromCode(amount, currency),
+      FinancialPaymentStatusValue.create(status),
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      metadata.eventVersion,
+      metadata.eventSchemaVersion,
+      metadata,
+    );
+  }
 
   protected override getPayload(): Record<string, unknown> {
     return {
       ...this.getBasePayload(),
-
       publicId: this.publicId.toString(),
-
       accountId: this.accountId.toString(),
-
       amount: this.amount.amount,
-
       currency: this.amount.currency.toString(),
-
       status: this.status.toString(),
     };
   }

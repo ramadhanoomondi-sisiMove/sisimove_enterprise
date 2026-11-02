@@ -11,14 +11,7 @@ import type { FinancialPaymentProviderAggregate } from '../../../../domain/aggre
 
 import type { FinancialPaymentProviderEntity } from '../../../../domain/entities/financial-payment-provider.entity';
 
-import {
-  FinancialPaymentProviderPrismaMapper,
-  type FinancialPaymentProviderWithCapabilities,
-} from '../mappers/financial-payment-provider-prisma.mapper';
-
-import { FinancialPaymentProviderCapabilityPrismaMapper } from '../mappers/financial-payment-provider-capability-prisma.mapper';
-
-import type { UniqueEntityId } from '../../../../../../foundation/kernel/domain/unique-entity-id';
+import { FinancialPaymentProviderPrismaMapper } from '../mappers/financial-payment-provider-prisma.mapper';
 
 import type { FinancialPaymentProviderPublicId } from '../../../../domain/value-objects/financial-payment-provider-public-id.vo';
 
@@ -33,6 +26,7 @@ import type { FinancialPaymentProviderEnvironment } from '../../../../domain/val
 import type { FinancialPaymentProviderCapabilityType } from '../../../../domain/value-objects/financial-payment-provider-capability-type.vo';
 
 import { FinancialPaymentProviderException } from '../../../../domain/exceptions/financial-payment-provider.exception';
+import { UniqueEntityId } from '@foundation/kernel/domain/unique-entity-id';
 
 // =============================================================================
 // Repository

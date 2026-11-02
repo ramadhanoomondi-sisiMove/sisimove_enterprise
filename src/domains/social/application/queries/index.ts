@@ -54,4 +54,3 @@ export * from './get-traveller-profile-corridor.query';
 export * from './get-traveller-profile-corridors.query';
 
 export * from './get-traveller-profile-primary-corridor.query';
-
