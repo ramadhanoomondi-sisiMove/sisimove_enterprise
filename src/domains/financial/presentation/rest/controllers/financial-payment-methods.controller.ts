@@ -408,28 +408,28 @@ export class FinancialPaymentMethodsController {
   // ---------------------------------------------------------------------------
   // Set Default Financial Payment Method
   // ---------------------------------------------------------------------------
-
   @Post(':paymentMethodPublicId/default')
-  @RequirePermissions('financial-payment-method:set-default')
   public async setDefault(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
     @Param('paymentMethodPublicId') paymentMethodPublicId: string,
     @Body() dto: SetDefaultFinancialPaymentMethodDto,
   ): Promise<
     ReturnType<typeof FinancialPaymentMethodResponseMapper.toResponse>
   > {
+    // Resolve the account from the authenticated identity.
+    const account = await this.getMyFinancialAccountHandler.execute(
+      new GetMyFinancialAccountQuery(
+        FinancialAccountOwnerPublicId.create(identity.identityPublicId),
+      ),
+    );
+
     const aggregate =
       await this.setDefaultFinancialPaymentMethodHandler.execute(
         new SetDefaultFinancialPaymentMethodCommand(
-          // Payment Method Public ID
           new FinancialPaymentMethodPublicId(paymentMethodPublicId),
-
-          // Correlation
+          account.publicId,
           dto.correlationId,
-
-          // Causation
           dto.causationId,
-
-          // Defaulted At
           dto.defaultedAt !== undefined ? new Date(dto.defaultedAt) : undefined,
         ),
       );
@@ -441,27 +441,31 @@ export class FinancialPaymentMethodsController {
   // Deactivate Financial Payment Method
   // ---------------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------------
+  // Deactivate Financial Payment Method
+  // ---------------------------------------------------------------------------
+
   @Post(':paymentMethodPublicId/deactivate')
-  @RequirePermissions('financial-payment-method:deactivate')
   public async deactivate(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
     @Param('paymentMethodPublicId') paymentMethodPublicId: string,
     @Body() dto: DeactivateFinancialPaymentMethodDto,
   ): Promise<
     ReturnType<typeof FinancialPaymentMethodResponseMapper.toResponse>
   > {
+    const account = await this.getMyFinancialAccountHandler.execute(
+      new GetMyFinancialAccountQuery(
+        FinancialAccountOwnerPublicId.create(identity.identityPublicId),
+      ),
+    );
+
     const aggregate =
       await this.deactivateFinancialPaymentMethodHandler.execute(
         new DeactivateFinancialPaymentMethodCommand(
-          // Payment Method Public ID
           new FinancialPaymentMethodPublicId(paymentMethodPublicId),
-
-          // Correlation
+          account.publicId,
           dto.correlationId,
-
-          // Causation
           dto.causationId,
-
-          // Deactivated At
           dto.deactivatedAt !== undefined
             ? new Date(dto.deactivatedAt)
             : undefined,

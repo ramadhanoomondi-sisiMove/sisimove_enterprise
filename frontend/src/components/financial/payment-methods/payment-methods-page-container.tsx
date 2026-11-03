@@ -29,9 +29,12 @@
 
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui';
+
+import { AUTHENTICATED_ROUTES } from '@/foundation/routing/authenticated-routes';
 
 import { useMyFinancialAccount } from '@/features/financial-account';
 
@@ -43,10 +46,9 @@ import {
   useSetDefaultPaymentMethod,
   type CreatePaymentMethodFormValues,
 } from '@/features/financial-payment-methods';
-import {
-  useMyPaymentMethods,
-  } from '@/features/financial-payment-methods/hooks';
-  
+import { useMyPaymentMethods } from '@/features/financial-payment-methods/hooks';
+
+
 import {
   PaymentMethodActions,
   PaymentMethodForm,
@@ -514,16 +516,25 @@ export function PaymentMethodsPageContainer() {
                   </p>
                 </div>
 
-                {!showForm ? (
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="sm"
-                    onClick={openCreateForm}
+                <div className="flex flex-wrap items-center gap-3">
+                  <Link
+                    href={AUTHENTICATED_ROUTES.WALLET_TOP_UP}
+                    className="inline-flex min-h-10 items-center justify-center rounded-[var(--radius-md)] bg-[var(--brand)] px-4 text-sm font-semibold text-[var(--brand-foreground)] transition hover:bg-[var(--brand-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)] focus-visible:ring-offset-2"
                   >
-                    Add M-PESA number
-                  </Button>
-                ) : null}
+                    Top Up Wallet
+                  </Link>
+
+                  {!showForm ? (
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      onClick={openCreateForm}
+                    >
+                      Add M-PESA number
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             </header>
 

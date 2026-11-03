@@ -4,6 +4,10 @@
 //
 // REST request DTO for deactivating a Financial Payment Method aggregate.
 //
+// The payment method identity is supplied by the URL path parameter, not by
+// the request body. The controller must read it from @Param('paymentMethodPublicId')
+// and pass it separately to the application command.
+//
 // Deactivation is a lifecycle operation. It does NOT delete the payment
 // method from the domain or persistence model.
 //
@@ -17,6 +21,7 @@
 //
 // The DTO does NOT expose or accept:
 //
+// - Financial Payment Method identity (provided by the URL path);
 // - Financial Payment Method entity state;
 // - Financial Account state;
 // - lifecycle status;
@@ -67,30 +72,17 @@ import {
 /**
  * REST request DTO for deactivating a Financial Payment Method.
  *
- * Transport values remain primitives at the HTTP boundary.
+ * The paymentMethodPublicId is deliberately not part of this DTO because
+ * the endpoint identifies the aggregate through its URL path.
  *
  * The presentation/application boundary converts:
  *
- * - paymentMethodPublicId -> FinancialPaymentMethodPublicId
- * - deactivatedAt         -> Date
+ * - paymentMethodPublicId (URL path parameter) -> FinancialPaymentMethodPublicId
+ * - deactivatedAt                         -> Date
  *
  * before constructing DeactivateFinancialPaymentMethodCommand.
  */
 export class DeactivateFinancialPaymentMethodDto {
-  // ===========================================================================
-  // Payment Method Identity
-  // ===========================================================================
-
-  /**
-   * Public identity of the Financial Payment Method aggregate to deactivate.
-   *
-   * This is an opaque public identity and is converted into the corresponding
-   * FinancialPaymentMethodPublicId value object before the command is created.
-   */
-  @IsString()
-  @IsNotEmpty()
-  public readonly paymentMethodPublicId!: string;
-
   // ===========================================================================
   // Correlation
   // ===========================================================================

@@ -85,7 +85,9 @@ import type { FinancialReferencePublicId } from '../value-objects/financial-refe
 import type { FinancialAccountPublicId } from '../value-objects/financial-account-public-id.vo';
 
 import type { FinancialTransactionPublicId } from '../value-objects/financial-transaction-public-id.vo';
+import type { FinancialProvider } from '../value-objects/financial-provider.vo';
 
+import type { FinancialProviderReference } from '../value-objects/financial-provider-reference.vo';
 // =============================================================================
 // Repository
 // =============================================================================
@@ -152,7 +154,26 @@ export interface FinancialPaymentRepository {
   findByPublicId(
     publicId: FinancialPaymentPublicId,
   ): Promise<FinancialPaymentAggregate | null>;
-
+  /**
+   * Finds a complete Financial Payment aggregate using a provider-issued
+   * reference belonging to one of its Financial Payment Attempts.
+   *
+   * The lookup is scoped by both:
+   *
+   * - Financial Provider
+   * - Financial Provider Reference
+   *
+   * This prevents a reference from one provider being matched against
+   * another provider.
+   *
+   * The returned aggregate includes all owned payment attempts.
+   *
+   * Returns null when no matching payment exists.
+   */
+  findByProviderReference(
+    provider: FinancialProvider,
+    providerReference: FinancialProviderReference,
+  ): Promise<FinancialPaymentAggregate | null>;
   // ===========================================================================
   // Financial Account
   // ===========================================================================

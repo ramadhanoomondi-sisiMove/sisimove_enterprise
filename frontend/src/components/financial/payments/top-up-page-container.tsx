@@ -54,7 +54,7 @@
 // -----------------------------------------------------------------------------
 // React
 // -----------------------------------------------------------------------------
-
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { useRouter } from 'next/navigation';
@@ -117,14 +117,6 @@ import { Button } from '@/components/ui';
  * sisiMove currently operates member wallet funding in KES.
  */
 const DEFAULT_CURRENCY = 'KES';
-
-/**
- * Business reference identifying a wallet top-up operation.
- *
- * This is an opaque business reference understood by the backend financial
- * workflow. It is not a database relation.
- */
-const WALLET_TOP_UP_REFERENCE_TYPE = 'WALLET_TOP_UP';
 
 /**
  * Interval used while observing an active payment.
@@ -307,9 +299,7 @@ export function TopUpPageContainer() {
     isError: isDefaultPaymentMethodError,
     error: defaultPaymentMethodError,
     refetch: refetchDefaultPaymentMethod,
-  } = useDefaultPaymentMethod(
-    financialAccount?.publicId,
-  );
+  } = useDefaultPaymentMethod();
 
   // ===========================================================================
   // Create Payment
@@ -442,20 +432,18 @@ export function TopUpPageContainer() {
       return;
     }
 
-    const intervalId =
-      window.setInterval(() => {
-        void refetchPayment();
-      }, PAYMENT_STATUS_POLL_INTERVAL_MS);
+    const intervalId = window.setInterval(() => {
+      void refetchPayment();
+    }, PAYMENT_STATUS_POLL_INTERVAL_MS);
 
     return () => {
       window.clearInterval(intervalId);
     };
   }, [
     paymentPublicId,
-    payment?.status,
+    payment,
     refetchPayment,
   ]);
-
   // ===========================================================================
   // Submit
   // ===========================================================================
@@ -535,8 +523,6 @@ export function TopUpPageContainer() {
         methodPublicId:
           effectivePaymentMethodId,
 
-        referenceType:
-          WALLET_TOP_UP_REFERENCE_TYPE,
       });
 
     if (!parsed.success) {
@@ -920,18 +906,27 @@ export function TopUpPageContainer() {
                 Page heading
             ------------------------------------------------------------------ */}
 
-            <header>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--brand)]">
-                WALLET
-              </p>
+            <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--brand)]">
+                  WALLET
+                </p>
 
-              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[var(--foreground)]">
-                Top up
-              </h1>
+                <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[var(--foreground)]">
+                  Top up
+                </h1>
 
-              <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
-                Add funds to your sisiMove wallet.
-              </p>
+                <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
+                  Add funds to your sisiMove wallet.
+                </p>
+              </div>
+
+              <Link
+                href={AUTHENTICATED_ROUTES.WALLET_PAYMENT_METHODS}
+                className="text-sm font-semibold text-[var(--brand)] transition hover:text-[var(--brand-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)] focus-visible:ring-offset-2"
+              >
+                Manage Payment Methods →
+              </Link>
             </header>
 
             {/* -----------------------------------------------------------------

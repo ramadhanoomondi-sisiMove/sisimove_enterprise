@@ -153,7 +153,15 @@ export class SetDefaultFinancialPaymentMethodHandler implements CommandHandler<
         `Financial Payment Method "${command.paymentMethodPublicId.value}" was not found`,
       );
     }
+    // -------------------------------------------------------------------------
+    // 3. Verify authenticated Financial Account ownership
+    // -------------------------------------------------------------------------
 
+    if (aggregate.accountId.value !== command.accountPublicId.value) {
+      throw new FinancialPaymentMethodException(
+        'You are not authorized to modify this Financial Payment Method.',
+      );
+    }
     // -------------------------------------------------------------------------
     // 3. Resolve current default payment method
     // -------------------------------------------------------------------------

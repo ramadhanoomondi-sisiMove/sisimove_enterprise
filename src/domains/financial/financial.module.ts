@@ -48,6 +48,17 @@ import { IdentityModule } from '../identity/identity.module';
 import { PrismaModule } from '../../infrastructure/database/prisma/prisma.module';
 
 // -----------------------------------------------------------------------------
+// M-PESA Integration
+// -----------------------------------------------------------------------------
+
+import { MpesaModule } from '../financial-payment-providers/infrastructure/mpesa/mpesa.module';
+
+import { MpesaCallbackService } from '../financial-payment-providers/infrastructure/mpesa/payments/mpesa-callback.service';
+
+import { FinancialPaymentProvidersModule } from '../financial-payment-providers/financial-payment-providers.module';
+
+import { FINANCIAL_PAYMENT_CALLBACK_PROVIDERS } from '../financial-payment-providers/infrastructure/dependency-injection';
+// -----------------------------------------------------------------------------
 // Presentation — Controllers
 // -----------------------------------------------------------------------------
 
@@ -61,7 +72,7 @@ import {
   FinancialSettlementsController,
   FinancialDisbursementsController,
 } from './presentation/rest/controllers';
-
+import { MpesaCallbackController } from '../financial-payment-providers/infrastructure/mpesa/payments/mpesa-callback.controller';
 // -----------------------------------------------------------------------------
 // Infrastructure — Dependency Injection
 // -----------------------------------------------------------------------------
@@ -252,8 +263,12 @@ import { FinancialPaymentEventRegistry } from './domain/events/financial-payment
   // Imports
   // ===========================================================================
 
-  imports: [IdentityModule, PrismaModule],
-
+  imports: [
+    IdentityModule,
+    PrismaModule,
+    MpesaModule,
+    FinancialPaymentProvidersModule,
+  ],
   // ===========================================================================
   // Controllers
   // ===========================================================================
@@ -267,6 +282,7 @@ import { FinancialPaymentEventRegistry } from './domain/events/financial-payment
     FinancialPaymentMethodsController,
     FinancialSettlementsController,
     FinancialDisbursementsController,
+    MpesaCallbackController,
   ],
 
   // ===========================================================================
@@ -286,12 +302,18 @@ import { FinancialPaymentEventRegistry } from './domain/events/financial-payment
     ...FINANCIAL_PAYMENT_METHOD_PROVIDERS,
     ...FINANCIAL_SETTLEMENT_PROVIDERS,
     ...FINANCIAL_DISBURSEMENT_PROVIDERS,
+    ...FINANCIAL_PAYMENT_CALLBACK_PROVIDERS,
 
     // =========================================================================
     // Application — System Financial Account Provisioning
     // =========================================================================
 
     PlatformFinancialAccountsProvisioner,
+    // =========================================================================
+    // M-PESA — Callback Processing
+    // =========================================================================
+
+    MpesaCallbackService,
 
     // =========================================================================
     // Financial Account

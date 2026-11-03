@@ -2868,7 +2868,6 @@ model FinancialPaymentMethod {
 
   provider          String
   providerReference String?
-  
 
   // Customer's M-PESA number, stored in normalized format.
   phoneNumber String?
@@ -2922,8 +2921,9 @@ model FinancialPaymentAttempt {
   completedAt DateTime?
   failedAt    DateTime?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  financialPaymentCallbacks FinancialPaymentCallback[]
 
   @@unique([provider, providerReference])
   @@index([paymentId])
@@ -4338,6 +4338,57 @@ model ProcessedEvent {
   @@index([storedEventId])
   @@index([processedAt])
   @@map("processed_events")
+}
+
+// =============================================================================
+// FINANCIAL PAYMENT CALLBACK
+// =============================================================================
+
+model FinancialPaymentCallback {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // Provider identity
+  provider String
+
+  // Safaricom request identifiers
+  merchantRequestId String
+  checkoutRequestId String
+
+  // Optional link to the matching payment attempt
+  attemptId String?
+
+  attempt FinancialPaymentAttempt? @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+
+  // Provider result
+  resultCode Int
+  resultDesc String
+
+  // Original callback payload for audit and reconciliation
+  payload Json
+
+  // Processing lifecycle
+  status FinancialPaymentCallbackStatus @default(PENDING)
+
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+
+  // Audit timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Constraints and indexes
+  @@unique([provider, checkoutRequestId])
+  @@index([attemptId])
+  @@index([status, receivedAt])
+  @@index([merchantRequestId])
+  @@map("financial_payment_callbacks")
+}
+
+enum FinancialPaymentCallbackStatus {
+  PENDING
+  PROCESSED
+  FAILED
 }
 
 // =============================================================================

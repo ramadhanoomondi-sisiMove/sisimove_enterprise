@@ -139,7 +139,9 @@ import type { FinancialPaymentStatus } from '../../../../domain/value-objects/fi
 import type { FinancialReferenceType } from '../../../../domain/value-objects/financial-reference-type.vo';
 
 import type { FinancialReferencePublicId } from '../../../../domain/value-objects/financial-reference-public-id.vo';
+import type { FinancialProvider } from '../../../../domain/value-objects/financial-provider.vo';
 
+import type { FinancialProviderReference } from '../../../../domain/value-objects/financial-provider-reference.vo';
 // -----------------------------------------------------------------------------
 // Exceptions
 // -----------------------------------------------------------------------------
@@ -504,7 +506,56 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
 
     return FinancialPaymentPrismaMapper.toDomain(record);
   }
+  // ===========================================================================
+  // Find By Provider Reference
+  // ===========================================================================
 
+  /**
+   * Finds a complete Financial Payment aggregate using a provider-issued
+   * reference belonging to one of its Payment Attempts.
+   *
+   * The lookup is scoped by provider and provider reference.
+   *
+   * A non-unique lookup is intentionally used because the repository
+   * contract does not expose Prisma composite unique selectors.
+   */
+  public async findByProviderReference(
+    provider: FinancialProvider,
+    providerReference: FinancialProviderReference,
+  ): Promise<FinancialPaymentAggregate | null> {
+    const normalizedProvider = provider.value.trim();
+
+    const normalizedReference = providerReference.value.trim();
+
+    if (!normalizedProvider || !normalizedReference) {
+      throw new FinancialPaymentException(
+        'Financial Provider and Provider Reference must not be empty.',
+      );
+    }
+
+    const record = await this.prisma.financialPayment.findFirst({
+      where: {
+        attempts: {
+          some: {
+            provider: normalizedProvider,
+            providerReference: normalizedReference,
+          },
+        },
+      },
+
+      include: {
+        account: true,
+        method: true,
+        attempts: true,
+      },
+    });
+
+    if (record === null) {
+      return null;
+    }
+
+    return FinancialPaymentPrismaMapper.toDomain(record);
+  }
   // ===========================================================================
   // Find By Account
   // ===========================================================================

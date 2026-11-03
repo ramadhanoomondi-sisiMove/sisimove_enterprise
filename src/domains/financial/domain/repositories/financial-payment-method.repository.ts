@@ -83,7 +83,10 @@ export interface FinancialPaymentMethodRepository {
    * aggregate into its persistence representation.
    */
   save(aggregate: FinancialPaymentMethodAggregate): Promise<void>;
-
+  /**
+   * Persists a brand-new Financial Payment Method aggregate.
+   */
+  create(aggregate: FinancialPaymentMethodAggregate): Promise<void>;
   /**
    * Removes a Financial Payment Method aggregate.
    */

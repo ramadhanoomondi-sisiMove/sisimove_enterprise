@@ -35,6 +35,7 @@
 // -----------------------------------------------------------------------------
 
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -275,7 +276,6 @@ export class FinancialPaymentsController {
   // ---------------------------------------------------------------------------
 
   @Get(':paymentPublicId')
-  @RequirePermissions('financial:read')
   public async get(
     @Param('paymentPublicId') paymentPublicId: string,
   ): Promise<ReturnType<
@@ -303,7 +303,6 @@ export class FinancialPaymentsController {
   // ---------------------------------------------------------------------------
 
   @Post()
-  @RequirePermissions('financial-payment:create')
   public async create(
     @Body() dto: CreateFinancialPaymentDto,
   ): Promise<ReturnType<typeof FinancialPaymentResponseMapper.toResponse>> {
@@ -320,15 +319,22 @@ export class FinancialPaymentsController {
     // Business Reference
     // -------------------------------------------------------------------------
 
-    const referenceType =
-      dto.referenceType !== undefined
-        ? FinancialReferenceType.create(dto.referenceType)
-        : undefined;
+    const hasReferenceType = dto.referenceType !== undefined;
+    const hasReferencePublicId = dto.referencePublicId !== undefined;
 
-    const referencePublicId =
-      dto.referencePublicId !== undefined
-        ? FinancialReferencePublicId.create(dto.referencePublicId)
-        : undefined;
+    if (hasReferenceType !== hasReferencePublicId) {
+      throw new BadRequestException(
+        'Financial Payment reference type and public ID must be provided together',
+      );
+    }
+
+    const referenceType = hasReferenceType
+      ? FinancialReferenceType.create(dto.referenceType)
+      : undefined;
+
+    const referencePublicId = hasReferencePublicId
+      ? FinancialReferencePublicId.create(dto.referencePublicId)
+      : undefined;
 
     // -------------------------------------------------------------------------
     // Payment Amount

@@ -54,6 +54,12 @@ import { FINANCIAL_PAYMENT_PROVIDER_PROVIDERS } from './infrastructure/dependenc
 import { FINANCIAL_PAYMENT_PROVIDER_TOKENS } from './application/financial-payment-providers.tokens';
 
 // -----------------------------------------------------------------------------
+// Application — Services
+// -----------------------------------------------------------------------------
+
+import { FinancialPaymentProviderConfigurationService } from './application/services/financial-payment-provider-configuration.service';
+
+// -----------------------------------------------------------------------------
 // Infrastructure — M-PESA HTTP
 // -----------------------------------------------------------------------------
 
@@ -209,6 +215,12 @@ import {
     // -------------------------------------------------------------------------
 
     FINANCIAL_PAYMENT_PROVIDER_TOKENS.REPOSITORY,
+
+    // -------------------------------------------------------------------------
+    // Financial Payment Provider Configuration Service
+    // -------------------------------------------------------------------------
+
+    FinancialPaymentProviderConfigurationService,
   ],
 })
 export class FinancialPaymentProvidersModule {}
