@@ -61,5 +61,7 @@ export const FINANCIAL_PAYMENT_PROVIDER_TOKENS = {
     GET_ALL: Symbol('GetFinancialPaymentProvidersHandler'),
 
     GET_BY_CODE: Symbol('GetFinancialPaymentProviderByCodeHandler'),
+
+    GET_AVAILABLE: Symbol('GetAvailableFinancialPaymentProvidersHandler'),
   } as const,
 } as const;

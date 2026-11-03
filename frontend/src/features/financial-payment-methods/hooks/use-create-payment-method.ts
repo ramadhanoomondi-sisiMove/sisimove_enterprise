@@ -4,6 +4,9 @@
 //
 // React Query mutation hook for creating a FinancialPaymentMethod.
 //
+// Current supported payment method:
+// - MOBILE_MONEY / MPESA
+//
 // Responsibilities:
 // - coordinate the create-payment-method mutation;
 // - expose mutation state to React components;
@@ -12,7 +15,6 @@
 // This hook does NOT:
 // - perform HTTP requests directly;
 // - validate raw form input;
-// - determine account ownership;
 // - implement payment-method business rules;
 // - modify the Financial Account directly.
 //
@@ -43,18 +45,22 @@ import type { CreatePaymentMethodFormValues } from '../schemas';
 /**
  * Variables required to create a FinancialPaymentMethod.
  *
- * The Financial Account public identifier is kept separate from the request
- * body because it identifies the resource against which the operation is
- * performed.
+ * The Financial Account public identifier is supplied separately from the
+ * payment-method request body.
+ *
+ * This matches the current backend AddFinancialPaymentMethodDto contract,
+ * which still requires accountId.
  */
 export interface CreatePaymentMethodMutationVariables {
   /**
    * API-safe public identifier of the Financial Account.
+   *
+   * This is not a database identifier.
    */
   accountPublicId: string;
 
   /**
-   * Validated payment-method creation data.
+   * Validated M-PESA payment-method creation data.
    */
   request: CreatePaymentMethodFormValues;
 }
@@ -64,7 +70,7 @@ export interface CreatePaymentMethodMutationVariables {
 // -----------------------------------------------------------------------------
 
 /**
- * Creates a FinancialPaymentMethod.
+ * Creates an M-PESA FinancialPaymentMethod.
  *
  * @returns
  * React Query mutation for creating a payment method.
@@ -81,4 +87,3 @@ export function useCreatePaymentMethod() {
       createPaymentMethod(accountPublicId, request),
   });
 }
-

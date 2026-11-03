@@ -28,12 +28,12 @@
 // The frontend transports the command values only.
 //
 // The backend remains responsible for:
-// - ownership validation;
 // - aggregate loading;
 // - deactivation rules;
 // - default-payment-method rules;
 // - persistence;
-// - authorization.
+// - authorization;
+// - ownership enforcement, where implemented by the application workflow.
 //
 // This operation does NOT delete the payment method. It requests the backend
 // to transition the payment method into its inactive state.
@@ -62,8 +62,8 @@ const FINANCIAL_PAYMENT_METHODS_PATH = '/financial-payment-methods';
 /**
  * Request data required to deactivate a payment method.
  *
- * `paymentMethodPublicId` is kept outside this object because it belongs in
- * the URL path.
+ * paymentMethodPublicId belongs in the URL path and is therefore kept
+ * outside this request object.
  */
 export interface DeactivatePaymentMethodRequest {
   /**
@@ -72,13 +72,12 @@ export interface DeactivatePaymentMethodRequest {
   correlationId: string;
 
   /**
-   * Optional causation identifier for tracing the operation that caused this
-   * command.
+   * Optional causation identifier.
    */
   causationId?: string;
 
   /**
-   * Optional explicit timestamp for when the payment method was deactivated.
+   * Optional explicit deactivation timestamp.
    *
    * The backend converts this transport value into a Date.
    */
@@ -90,10 +89,10 @@ export interface DeactivatePaymentMethodRequest {
 // -----------------------------------------------------------------------------
 
 /**
- * Deactivates the specified payment method.
+ * Requests deactivation of the specified payment method.
  *
  * @param paymentMethodPublicId
- * Opaque public identifier of the payment method.
+ * Public identifier of the payment method.
  *
  * @param request
  * Command transport values.
@@ -125,4 +124,3 @@ export async function deactivatePaymentMethod(
 
   return mapFinancialPaymentMethod(response);
 }
-

@@ -84,6 +84,8 @@ export * from './get-all-financial-payment-methods.handler';
 
 export * from './get-default-financial-payment-method.handler';
 
+export * from './get-account-financial-payment-methods.handler';
+
 // -----------------------------------------------------------------------------
 // Financial Account Holds
 // -----------------------------------------------------------------------------

@@ -35,24 +35,34 @@ import type { FinancialPaymentMethod } from '../models';
 // -----------------------------------------------------------------------------
 
 /**
- * Raw member-facing API response for a financial payment method.
+ * Raw API response for a member-facing financial payment method.
  *
- * Nullable backend fields are represented explicitly here because API
- * responses may contain `null`, while the frontend model uses optional
- * properties.
+ * Nullable backend fields are represented explicitly because API responses
+ * may contain null, while the frontend model uses optional properties.
  *
- * This keeps null-normalisation at the mapper boundary.
+ * Only supported member-facing payment provider values are accepted.
  */
 export interface FinancialPaymentMethodApiResponse {
   publicId: string;
+
   type: FinancialPaymentMethod['type'];
-  provider: string;
+
+  provider: FinancialPaymentMethod['provider'];
+
+  phoneNumber: string;
+
   providerReference?: string | null;
+
   displayName?: string | null;
+
   lastFour?: string | null;
+
   isDefault: boolean;
+
   isActive: boolean;
+
   createdAt: string;
+
   updatedAt: string;
 }
 
@@ -70,8 +80,12 @@ export function mapFinancialPaymentMethod(
 ): FinancialPaymentMethod {
   return {
     publicId: response.publicId,
+
     type: response.type,
+
     provider: response.provider,
+
+    phoneNumber: response.phoneNumber,
 
     ...(response.providerReference != null && {
       providerReference: response.providerReference,
@@ -86,9 +100,11 @@ export function mapFinancialPaymentMethod(
     }),
 
     isDefault: response.isDefault,
+
     isActive: response.isActive,
+
     createdAt: response.createdAt,
+
     updatedAt: response.updatedAt,
   };
 }
-

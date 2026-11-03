@@ -13,32 +13,15 @@
 //
 //     JwtAuthGuard
 //     PermissionsGuard
-//     financial-payment-method:read
+//     admin:read
 //
-// -----------------------------------------------------------------------------
+// IMPORTANT:
+// This is an administrative lookup, not the member-facing payment-method
+// retrieval endpoint.
 //
-// Architectural boundary:
+// Members should retrieve their own payment methods through:
 //
-// - HTTP communication belongs here.
-// - Authentication is handled by authenticatedApiClient.
-// - Authorization remains a backend responsibility.
-// - Response translation belongs to mapFinancialPaymentMethod().
-// - Payment-method lifecycle rules remain in the backend.
-//
-// The frontend supplies only the API-safe public identifier.
-//
-// It does not:
-//
-//     - expose the database `id`;
-//     - provide account database IDs;
-//     - perform persistence access;
-//     - implement payment-method business rules;
-//     - determine whether the method belongs to the current member.
-//
-// Ownership and authorization are enforced by the backend.
-//
-// The backend controller returns `null` when no payment method is found.
-// The frontend therefore preserves that nullable contract.
+//     GET /financial-payment-methods/me
 //
 // =============================================================================
 
@@ -58,24 +41,27 @@ import {
 const FINANCIAL_PAYMENT_METHODS_PATH = '/financial-payment-methods';
 
 // -----------------------------------------------------------------------------
-// Get Payment Method
+// Get Financial Payment Method
 // -----------------------------------------------------------------------------
 
 /**
  * Retrieves a FinancialPaymentMethod by its public identifier.
  *
+ * Administrative permission is required by the backend.
+ *
  * @param paymentMethodPublicId
  * API-safe public identifier of the payment method.
  *
  * @returns
- * The mapped frontend FinancialPaymentMethod, or `null` when the backend
- * reports that the payment method does not exist.
+ * The mapped FinancialPaymentMethod, or null when not found.
  */
 export async function getPaymentMethod(
   paymentMethodPublicId: string,
 ): Promise<FinancialPaymentMethod | null> {
   const response =
-    await authenticatedApiClient.get<FinancialPaymentMethodApiResponse | null>(
+    await authenticatedApiClient.get<
+      FinancialPaymentMethodApiResponse | null
+    >(
       `${FINANCIAL_PAYMENT_METHODS_PATH}/${encodeURIComponent(
         paymentMethodPublicId,
       )}`,
@@ -87,4 +73,3 @@ export async function getPaymentMethod(
 
   return mapFinancialPaymentMethod(response);
 }
-

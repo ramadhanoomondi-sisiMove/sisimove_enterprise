@@ -65,6 +65,7 @@ import type { FinancialProvider } from '../value-objects/financial-provider.vo';
 
 import type { FinancialProviderReference } from '../value-objects/financial-provider-reference.vo';
 
+import type { FinancialPaymentMethodPhoneNumber } from '../value-objects/financial-payment-method-phone-number.vo';
 // -----------------------------------------------------------------------------
 // Props
 // -----------------------------------------------------------------------------
@@ -216,7 +217,12 @@ export class FinancialPaymentMethodAggregate extends AggregateRoot<FinancialPaym
   public get lastFour(): string | undefined {
     return this.paymentMethod.lastFour;
   }
-
+  /**
+   * Registered M-PESA phone number.
+   */
+  public get phoneNumber(): FinancialPaymentMethodPhoneNumber | undefined {
+    return this.paymentMethod.phoneNumber;
+  }
   // ===========================================================================
   // Lifecycle State
   // ===========================================================================

@@ -12,10 +12,12 @@
 // Conversion into domain value objects belongs to the
 // presentation/application boundary.
 //
-// A newly added Financial Payment Method consists of:
+// A newly added M-PESA payment method consists of:
 //
 // FinancialPaymentMethodAggregate
 // └── FinancialPaymentMethodEntity
+//
+// It includes the customer's registered Kenyan M-PESA phone number.
 //
 // The initial active lifecycle state is determined by the domain creation
 // policy and is therefore intentionally NOT supplied by this request.
@@ -32,7 +34,7 @@
 // - execute external provider APIs;
 // - communicate with a payment provider;
 // - store raw payment credentials;
-// - store card numbers, bank credentials, PINs, CVVs, or secrets;
+// - store M-PESA PINs, passwords, or authentication secrets;
 // - execute a payment;
 // - modify Financial Account balances;
 // - select a method for an existing Financial Payment;
@@ -67,6 +69,7 @@ import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
  * - accountId -> FinancialAccountPublicId
  * - type -> FinancialPaymentMethodType
  * - provider -> FinancialProvider
+ * - phoneNumber -> FinancialPaymentMethodPhoneNumber
  * - providerReference -> FinancialProviderReference
  *
  * No sensitive payment credentials are accepted by this DTO.
@@ -95,11 +98,7 @@ export class AddFinancialPaymentMethodDto {
   /**
    * Classification of the payment method.
    *
-   * Examples may include:
-   *
-   * - CARD
-   * - BANK_ACCOUNT
-   * - MOBILE_MONEY
+   * For the current M-PESA implementation, use MOBILE_MONEY.
    *
    * The supplied value is converted into FinancialPaymentMethodType at the
    * application boundary.
@@ -115,12 +114,38 @@ export class AddFinancialPaymentMethodDto {
   /**
    * External provider responsible for the payment method.
    *
+   * For the current implementation, this is the M-PESA provider code.
+   *
    * The supplied value is converted into FinancialProvider at the application
    * boundary.
    */
   @IsString()
   @IsNotEmpty()
   public readonly provider!: string;
+
+  // ===========================================================================
+  // Customer Phone Number
+  // ===========================================================================
+
+  /**
+   * Customer's registered Kenyan M-PESA phone number.
+   *
+   * Accepted input formats include:
+   *
+   * - 0712345678
+   * - 0112345678
+   * - 254712345678
+   * - +254712345678
+   *
+   * The application boundary converts this value into
+   * FinancialPaymentMethodPhoneNumber, which normalizes it to international
+   * format.
+   *
+   * Never supply an M-PESA PIN or password.
+   */
+  @IsString()
+  @IsNotEmpty()
+  public readonly phoneNumber!: string;
 
   // ===========================================================================
   // Provider Reference
@@ -156,9 +181,9 @@ export class AddFinancialPaymentMethodDto {
    *
    * Examples:
    *
-   * - My Visa
-   * - Main M-Pesa
-   * - Business Bank
+   * - Main M-PESA
+   * - Business M-PESA
+   * - Personal M-PESA
    */
   @IsOptional()
   @IsString()
@@ -171,11 +196,6 @@ export class AddFinancialPaymentMethodDto {
 
   /**
    * Optional masked identifier suffix.
-   *
-   * Example:
-   *
-   * - last four digits of a card;
-   * - safe account identifier suffix.
    *
    * Only a non-sensitive suffix is permitted. Full payment credentials must
    * never be supplied through this field.

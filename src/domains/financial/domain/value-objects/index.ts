@@ -10,7 +10,7 @@
 
 export * from './money.vo';
 export * from './currency.vo';
-
+export * from './financial-payment-method-phone-number.vo';
 // -----------------------------------------------------------------------------
 // Financial Account
 // -----------------------------------------------------------------------------

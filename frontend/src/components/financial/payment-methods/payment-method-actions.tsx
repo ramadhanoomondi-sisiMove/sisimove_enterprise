@@ -1,34 +1,12 @@
+
 // -----------------------------------------------------------------------------
-// sisiMove — Payment Method Actions
+// sisiMove — M-PESA Payment Method Actions
 // -----------------------------------------------------------------------------
 //
-// Presentation component for actions associated with one saved payment
-// method.
+// Presentation component for actions associated with one saved M-PESA number.
 //
-// Responsibilities:
-// - Present available payment-method actions.
-// - Render actions using the shared Button primitive.
-// - Communicate user intent through callbacks.
-// - Present operation progress through the Button loading state.
-//
-// Architecture:
-//
-//     Payment Methods Container
-//              │
-//              ▼
-//     PaymentMethodActions
-//              │
-//              └── Button[]
-//
-// This component intentionally does NOT:
-// - call payment-method APIs;
-// - own mutation hooks;
-// - navigate;
-// - perform authorization checks;
-// - determine whether an action is permitted.
-//
-// The parent/container owns application orchestration and decides which
-// actions are available.
+// The parent/container owns application orchestration, authorization,
+// eligibility checks, and API mutations.
 //
 // -----------------------------------------------------------------------------
 
@@ -42,31 +20,27 @@ import { Button } from '@/components/ui';
 
 export interface PaymentMethodActionsProps {
   /**
-   * Whether this payment method is already the default.
-   *
-   * When true, the "Set as default" action is not rendered.
+   * Whether this M-PESA number is already the default.
    */
   isDefault?: boolean;
 
   /**
-   * Whether this payment method is currently active.
-   *
-   * Inactive methods do not expose active-method actions.
+   * Whether this M-PESA number is currently active.
    */
   isActive?: boolean;
 
   /**
-   * Whether an operation associated with this payment method is in progress.
+   * Whether an operation associated with this number is in progress.
    */
   isLoading?: boolean;
 
   /**
-   * Called when the member wants to make this method the default.
+   * Called when the member wants to make this number the default.
    */
   onSetDefault?: () => void;
 
   /**
-   * Called when the member wants to deactivate this method.
+   * Called when the member wants to deactivate this number.
    */
   onDeactivate?: () => void;
 }
@@ -97,12 +71,14 @@ export function PaymentMethodActions({
       {/* ------------------------------------------------------------------- */}
       {/* Set default                                                        */}
       {/* ------------------------------------------------------------------- */}
+
       {hasSetDefaultAction ? (
         <Button
           type="button"
           variant="outline"
           size="sm"
           loading={isLoading}
+          disabled={isLoading}
           onClick={onSetDefault}
         >
           Set as default
@@ -112,6 +88,7 @@ export function PaymentMethodActions({
       {/* ------------------------------------------------------------------- */}
       {/* Deactivate                                                         */}
       {/* ------------------------------------------------------------------- */}
+
       {hasDeactivateAction ? (
         <Button
           type="button"
@@ -120,7 +97,7 @@ export function PaymentMethodActions({
           disabled={isLoading}
           onClick={onDeactivate}
         >
-          Deactivate
+          Deactivate number
         </Button>
       ) : null}
     </div>

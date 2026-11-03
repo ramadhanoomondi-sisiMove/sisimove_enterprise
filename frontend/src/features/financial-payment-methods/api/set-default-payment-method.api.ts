@@ -25,15 +25,19 @@
 //     ├── causationId?
 //     └── defaultedAt?
 //
-// The backend remains responsible for:
-// - ownership validation;
-// - aggregate loading;
-// - default-state rules;
+// The frontend transports the command's API-safe values only.
+//
+// The backend is responsible for:
+// - loading the payment method;
+// - verifying account ownership;
+// - ensuring the payment method is active;
+// - enforcing default-state rules;
+// - ensuring only one active default per account;
 // - persistence;
 // - concurrency;
 // - authorization.
 //
-// The frontend only transports the command's API-safe values.
+// The frontend does not implement payment-method lifecycle rules.
 //
 // =============================================================================
 
@@ -59,8 +63,8 @@ const FINANCIAL_PAYMENT_METHODS_PATH = '/financial-payment-methods';
 /**
  * Request data required to make a payment method the default.
  *
- * `paymentMethodPublicId` is deliberately kept outside this request object
- * because it belongs in the URL path.
+ * paymentMethodPublicId belongs in the URL path and is deliberately kept
+ * outside this request object.
  */
 export interface SetDefaultPaymentMethodRequest {
   /**
@@ -69,8 +73,7 @@ export interface SetDefaultPaymentMethodRequest {
   correlationId: string;
 
   /**
-   * Optional causation identifier for tracing the operation that caused this
-   * command.
+   * Optional causation identifier.
    */
   causationId?: string;
 
@@ -90,7 +93,7 @@ export interface SetDefaultPaymentMethodRequest {
  * Sets the specified payment method as the default payment method.
  *
  * @param paymentMethodPublicId
- * Opaque public identifier of the payment method.
+ * Public identifier of the payment method.
  *
  * @param request
  * Command transport values.
@@ -122,4 +125,3 @@ export async function setDefaultPaymentMethod(
 
   return mapFinancialPaymentMethod(response);
 }
-

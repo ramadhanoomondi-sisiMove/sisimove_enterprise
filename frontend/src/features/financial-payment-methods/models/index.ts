@@ -10,6 +10,16 @@
 //
 // =============================================================================
 
+// Financial Payment Method
+
 export type { FinancialPaymentMethod } from './financial-payment-method';
 
 export type { PaymentMethodType } from './payment-method-type';
+
+// Financial Payment Provider
+
+export type { FinancialPaymentProvider } from './financial-payment-provider';
+
+export type {
+  FinancialPaymentProviderType,
+} from './financial-payment-provider-type';

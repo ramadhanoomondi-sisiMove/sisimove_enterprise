@@ -20,6 +20,7 @@
 // - Preserve provider identity.
 // - Preserve provider-issued references.
 // - Preserve safe display metadata.
+// - Preserve M-PESA phone numbers.
 // - Preserve lifecycle state.
 // - Support aggregate queries.
 // - Support entity queries.
@@ -272,6 +273,7 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
         providerReference: persistence.paymentMethod.providerReference,
         displayName: persistence.paymentMethod.displayName,
         lastFour: persistence.paymentMethod.lastFour,
+        phoneNumber: persistence.paymentMethod.phoneNumber,
         isDefault: persistence.paymentMethod.isDefault,
         isActive: persistence.paymentMethod.isActive,
         createdAt: persistence.paymentMethod.createdAt,
@@ -348,6 +350,7 @@ export class PrismaFinancialPaymentMethodRepository implements FinancialPaymentM
         providerReference: persistence.paymentMethod.providerReference,
         displayName: persistence.paymentMethod.displayName,
         lastFour: persistence.paymentMethod.lastFour,
+        phoneNumber: persistence.paymentMethod.phoneNumber,
         isDefault: persistence.paymentMethod.isDefault,
         isActive: persistence.paymentMethod.isActive,
         updatedAt: persistence.paymentMethod.updatedAt,

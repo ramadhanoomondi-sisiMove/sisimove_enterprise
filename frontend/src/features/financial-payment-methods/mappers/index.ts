@@ -9,8 +9,16 @@
 //
 // =============================================================================
 
+// Financial Payment Method
+
 export {
   mapFinancialPaymentMethod,
   type FinancialPaymentMethodApiResponse,
 } from './map-financial-payment-method';
 
+// Financial Payment Provider
+
+export {
+  mapFinancialPaymentProvider,
+  type FinancialPaymentProviderApiResponse,
+} from './map-financial-payment-provider';

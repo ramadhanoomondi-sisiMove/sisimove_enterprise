@@ -37,7 +37,7 @@
 // - Execute external provider APIs.
 // - Communicate with a payment provider.
 // - Store raw payment credentials.
-// - Store card numbers, bank credentials, PINs, CVVs, or secrets.
+// - Store M-PESA PINs or authentication secrets.
 // - Execute a payment.
 // - Modify Financial Account balances.
 // - Select a method for an existing Financial Payment.
@@ -56,14 +56,12 @@
 import type { Command } from '../../../../foundation/kernel/application/command';
 
 // -----------------------------------------------------------------------------
-// Foundation Value Objects
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
 // Financial Value Objects
 // -----------------------------------------------------------------------------
 
 import type { FinancialAccountPublicId } from '../../domain/value-objects/financial-account-public-id.vo';
+
+import type { FinancialPaymentMethodPhoneNumber } from '../../domain/value-objects/financial-payment-method-phone-number.vo';
 
 import type { FinancialPaymentMethodType } from '../../domain/value-objects/financial-payment-method-type.vo';
 
@@ -86,6 +84,8 @@ import type { FinancialProviderReference } from '../../domain/value-objects/fina
  * - accountId
  * - type
  * - provider
+ * - phoneNumber
+ * - correlationId
  *
  * Optional domain inputs:
  *
@@ -114,9 +114,6 @@ export class AddFinancialPaymentMethodCommand implements Command {
 
     /**
      * Classification of the payment method.
-     *
-     * Examples may include card, bank account, mobile money, or another
-     * supported payment instrument.
      */
     public readonly type: FinancialPaymentMethodType,
 
@@ -129,6 +126,13 @@ export class AddFinancialPaymentMethodCommand implements Command {
      * Correlation identifier for the command and resulting domain events.
      */
     public readonly correlationId: string,
+
+    /**
+     * Customer's normalized M-PESA phone number.
+     *
+     * The value object owns Kenyan mobile-number validation and normalization.
+     */
+    public readonly phoneNumber: FinancialPaymentMethodPhoneNumber,
 
     /**
      * Optional safe provider-issued reference.
@@ -145,11 +149,6 @@ export class AddFinancialPaymentMethodCommand implements Command {
 
     /**
      * Optional masked identifier suffix.
-     *
-     * Example:
-     *
-     * - last four digits of a card
-     * - safe account identifier suffix
      */
     public readonly lastFour?: string,
 

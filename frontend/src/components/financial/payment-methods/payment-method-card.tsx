@@ -1,25 +1,18 @@
+
 // -----------------------------------------------------------------------------
-// sisiMove — Payment Method Card
+// sisiMove — M-PESA Payment Method Card
 // -----------------------------------------------------------------------------
 //
-// Presentation component for one saved payment method.
+// Presentation component for one saved M-PESA payment method.
 //
 // Responsibilities:
-// - Present a saved payment method.
-// - Show its type and identifying information.
-// - Indicate whether it is the default method.
+// - Present a saved M-PESA number.
+// - Show its identifying information.
+// - Indicate whether it is the default number.
 // - Indicate inactive state when applicable.
 // - Expose parent-provided actions.
 //
-// Architecture:
-//
-//     Payment Methods Container
-//              │
-//              ▼
-//     PaymentMethodCard
-//              │
-//              ├── Card
-//              └── Badge
+// The parent/container owns application orchestration.
 //
 // This component intentionally does NOT:
 // - fetch payment methods;
@@ -28,14 +21,6 @@
 // - create a payment method;
 // - navigate;
 // - call financial APIs.
-//
-// The parent/container owns application orchestration.
-// Actions are supplied as React nodes so this component remains independent
-// of routing, permissions, and mutation hooks.
-//
-// The payment method public ID belongs to the feature/application model and
-// does not need to be passed into this purely presentational component unless
-// the component itself needs to act on that identity.
 //
 // -----------------------------------------------------------------------------
 
@@ -49,23 +34,14 @@ import { Badge, Card } from '@/components/ui';
 
 export interface PaymentMethodCardProps {
   /**
-   * Human-readable payment method type.
-   *
-   * Examples:
-   * - M-PESA
-   * - Card
-   * - Bank Account
+   * Saved M-PESA phone number, preferably formatted for display.
    */
-  type: string;
+  phoneNumber: string;
 
   /**
-   * Human-readable masked identifier.
-   *
-   * Examples:
-   * - +254 7•• ••• 123
-   * - •••• 4242
+   * Optional member-facing display name.
    */
-  label: string;
+  displayName?: string;
 
   /**
    * Optional supporting description.
@@ -79,18 +55,11 @@ export interface PaymentMethodCardProps {
 
   /**
    * Whether the payment method is currently active.
-   *
-   * Inactive methods may still be displayed when the parent wants to expose
-   * historical or account information.
    */
   isActive?: boolean;
 
   /**
    * Optional parent-provided actions.
-   *
-   * Examples:
-   * - Set default
-   * - Deactivate
    */
   actions?: ReactNode;
 }
@@ -100,29 +69,33 @@ export interface PaymentMethodCardProps {
 // -----------------------------------------------------------------------------
 
 export function PaymentMethodCard({
-  type,
-  label,
+  phoneNumber,
+  displayName,
   description,
   isDefault = false,
   isActive = true,
   actions,
 }: PaymentMethodCardProps) {
   return (
-    <Card
-      variant="default"
-      padding="md"
-    >
+    <Card variant="default" padding="md">
       {/* ------------------------------------------------------------------- */}
-      {/* Method information                                                  */}
+      {/* M-PESA Number Information                                           */}
       {/* ------------------------------------------------------------------- */}
+
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--foreground-muted)]">
-            {type}
+            M-PESA
           </p>
 
+          {displayName ? (
+            <p className="mt-1 text-sm font-semibold text-[var(--foreground)]">
+              {displayName}
+            </p>
+          ) : null}
+
           <p className="mt-1 break-words text-sm font-semibold text-[var(--foreground)]">
-            {label}
+            {phoneNumber}
           </p>
 
           {description ? (
@@ -133,8 +106,9 @@ export function PaymentMethodCard({
         </div>
 
         {/* ----------------------------------------------------------------- */}
-        {/* Status badges                                                     */}
+        {/* Status Badges                                                     */}
         {/* ----------------------------------------------------------------- */}
+
         <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
           {isDefault ? (
             <Badge variant="brand">Default</Badge>
@@ -147,8 +121,9 @@ export function PaymentMethodCard({
       </div>
 
       {/* ------------------------------------------------------------------- */}
-      {/* Parent-provided actions                                             */}
+      {/* Parent-Provided Actions                                             */}
       {/* ------------------------------------------------------------------- */}
+
       {actions ? (
         <div className="mt-4 border-t border-[var(--border-subtle)] pt-3">
           <div className="flex flex-wrap items-center gap-2">

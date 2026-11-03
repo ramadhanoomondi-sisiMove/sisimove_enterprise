@@ -1,3 +1,4 @@
+//src/domain/value-objects/financial-payment-provider-configuration-reference.vo.ts
 // -----------------------------------------------------------------------------
 // Financial Payment Provider Configuration Reference
 // -----------------------------------------------------------------------------

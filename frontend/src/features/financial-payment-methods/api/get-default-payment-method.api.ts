@@ -3,40 +3,23 @@
 // =============================================================================
 //
 // Authenticated HTTP operation for retrieving the default Financial Payment
-// Method belonging to a Financial Account.
+// Method belonging to the currently authenticated member.
 //
 // Backend route:
 //
-//     GET /financial-payment-methods/accounts/:accountPublicId/default
+//     GET /financial-payment-methods/me
 //
 // Backend authorization:
 //
 //     JwtAuthGuard
 //     PermissionsGuard
-//     financial-payment-method:read
 //
-// -----------------------------------------------------------------------------
+// Ownership:
 //
-// Architectural boundary:
-//
-// - HTTP communication belongs here.
-// - Authentication is handled by authenticatedApiClient.
-// - Authorization remains a backend responsibility.
-// - Response translation belongs to mapFinancialPaymentMethod().
-// - Payment-method ownership remains enforced by the backend.
-//
-// The frontend supplies the API-safe Financial Account public identifier.
-//
-// It does not:
-//
-//     - expose database account IDs;
-//     - access persistence;
-//     - determine which method is default;
-//     - implement payment-method business rules;
-//     - modify payment-method state.
-//
-// A member may have no default payment method. Therefore the backend `null`
-// response is represented as `null` rather than inventing an empty model.
+// - The backend resolves the authenticated Identity.
+// - The backend resolves the Identity's Financial Account.
+// - Only payment methods belonging to that account are returned.
+// - The frontend does not supply an account identifier.
 //
 // =============================================================================
 
@@ -53,36 +36,31 @@ import {
 // Constants
 // -----------------------------------------------------------------------------
 
-const FINANCIAL_PAYMENT_METHODS_PATH = '/financial-payment-methods';
+const MY_FINANCIAL_PAYMENT_METHODS_PATH =
+  '/financial-payment-methods/me';
 
 // -----------------------------------------------------------------------------
 // Get Default Payment Method
 // -----------------------------------------------------------------------------
 
 /**
- * Retrieves the default payment method belonging to a financial account.
- *
- * @param accountPublicId
- * API-safe public identifier of the financial account.
+ * Retrieves the active default payment method belonging to the
+ * authenticated member.
  *
  * @returns
- * The mapped default FinancialPaymentMethod, or `null` when the account has
- * no default payment method.
+ * The mapped default FinancialPaymentMethod, or null when the member
+ * has no active default payment method.
  */
-export async function getDefaultPaymentMethod(
-  accountPublicId: string,
-): Promise<FinancialPaymentMethod | null> {
-  const response =
-    await authenticatedApiClient.get<FinancialPaymentMethodApiResponse | null>(
-      `${FINANCIAL_PAYMENT_METHODS_PATH}/accounts/${encodeURIComponent(
-        accountPublicId,
-      )}/default`,
-    );
+export async function getDefaultPaymentMethod(): Promise<
+  FinancialPaymentMethod | null
+> {
+  const response = await authenticatedApiClient.get<
+    FinancialPaymentMethodApiResponse[]
+  >(MY_FINANCIAL_PAYMENT_METHODS_PATH);
 
-  if (response === null) {
-    return null;
-  }
+  const defaultMethod = response
+    .map(mapFinancialPaymentMethod)
+    .find((method) => method.isDefault && method.isActive);
 
-  return mapFinancialPaymentMethod(response);
+  return defaultMethod ?? null;
 }
-

@@ -1,65 +1,29 @@
-// =============================================================================
+
+ // =============================================================================
 // sisiMove — Payment Methods Page Container
 // =============================================================================
 //
-// Application orchestration boundary for the authenticated payment-method
-// management surface.
-//
-// Current frontend payment-method feature exposes:
-//
-// - get a payment method;
-// - get the default payment method;
-// - create a payment method;
-// - set a payment method as default;
-// - deactivate a payment method.
-//
-// There is currently NO member payment-method collection query.
-//
-// Therefore this container intentionally does NOT pretend that the frontend
-// can manage an arbitrary collection of saved payment methods.
-//
-// Current authoritative surface:
-//
-//     Financial Account
-//             │
-//             ▼
-//     Default Payment Method
-//             │
-//       ┌─────┴─────┐
-//       │           │
-//     Create     Deactivate
-//
-// A future collection query can expand this surface to:
-//
-//     PaymentMethodList
-//          ├── PaymentMethodCard
-//          └── PaymentMethodActions
-//
-// without changing the presentation contracts.
+// Application orchestration boundary for the authenticated M-PESA
+// payment-method management surface.
 //
 // Responsibilities:
-// - load the member's financial account;
-// - load the authoritative default payment method;
+// - load the member's financial account for the current create API;
+// - load the member's authoritative payment-method collection;
+// - verify M-PESA provider availability;
 // - own payment-method creation form state;
 // - validate form values with the feature schema;
 // - generate technical correlation IDs;
-// - invoke feature mutations;
-// - translate feature state into presentation props;
+// - invoke create, set-default, and deactivate mutations;
+// - translate backend state into presentation props;
 // - handle loading, error, empty, and mutation states.
 //
 // This component does NOT:
 // - call HTTP APIs directly;
 // - contain backend business rules;
-// - construct financial-account ownership relationships;
 // - invent a payment-method collection;
 // - maintain a fake local collection;
 // - navigate;
 // - determine backend payment-method lifecycle state.
-//
-// Technical identifiers such as correlationId are generated at the
-// application boundary and are never exposed as member-facing fields.
-//
-// Lifecycle timestamps remain backend-authoritative.
 //
 // =============================================================================
 
@@ -73,59 +37,35 @@ import { useMyFinancialAccount } from '@/features/financial-account';
 
 import {
   createPaymentMethodSchema,
+  useAvailablePaymentProviders,
   useCreatePaymentMethod,
   useDeactivatePaymentMethod,
-  useDefaultPaymentMethod,
+  useSetDefaultPaymentMethod,
   type CreatePaymentMethodFormValues,
-  type PaymentMethodType,
 } from '@/features/financial-payment-methods';
-
+import {
+  useMyPaymentMethods,
+  } from '@/features/financial-payment-methods/hooks';
+  
 import {
   PaymentMethodActions,
-  PaymentMethodCard,
   PaymentMethodForm,
+  PaymentMethodList,
 } from '@/components/financial/payment-methods';
-
-// =============================================================================
-// Constants
-// =============================================================================
-
-const PAYMENT_METHOD_TYPES: readonly PaymentMethodType[] = [
-  'MOBILE_MONEY',
-  'BANK',
-  'CARD',
-  'WALLET',
-  'OTHER',
-];
-
-const PAYMENT_METHOD_TYPE_OPTIONS =
-  PAYMENT_METHOD_TYPES.map((type) => ({
-    value: type,
-    label: type
-      .replaceAll('_', ' ')
-      .toLowerCase()
-      .replace(/\b\w/g, (character) => character.toUpperCase()),
-  }));
 
 // =============================================================================
 // Local Types
 // =============================================================================
 
 interface PaymentMethodFormState {
-  readonly type: PaymentMethodType;
-  readonly provider: string;
-  readonly providerReference: string;
+  readonly phoneNumber: string;
   readonly displayName: string;
-  readonly lastFour: string;
   readonly isDefault: boolean;
 }
 
 interface PaymentMethodFormErrors {
-  readonly type?: string;
-  readonly provider?: string;
-  readonly providerReference?: string;
+  readonly phoneNumber?: string;
   readonly displayName?: string;
-  readonly lastFour?: string;
   readonly isDefault?: string;
   readonly form?: string;
 }
@@ -136,11 +76,8 @@ interface PaymentMethodFormErrors {
 
 function createInitialFormState(): PaymentMethodFormState {
   return {
-    type: 'MOBILE_MONEY',
-    provider: '',
-    providerReference: '',
+    phoneNumber: '',
     displayName: '',
-    lastFour: '',
     isDefault: true,
   };
 }
@@ -148,34 +85,10 @@ function createInitialFormState(): PaymentMethodFormState {
 /**
  * Generates technical application tracing metadata.
  *
- * This value is intentionally generated only when an operation is submitted.
+ * This value is generated only when an operation is submitted.
  */
 function createCorrelationId(): string {
   return crypto.randomUUID();
-}
-
-function getPaymentMethodLabel(
-  displayName: string | undefined,
-  provider: string,
-): string {
-  const normalizedDisplayName = displayName?.trim() ?? '';
-
-  return normalizedDisplayName.length > 0
-    ? normalizedDisplayName
-    : provider;
-}
-
-function getPaymentMethodDescription(
-  provider: string,
-  lastFour: string | undefined,
-): string {
-  const normalizedLastFour = lastFour?.trim() ?? '';
-
-  if (normalizedLastFour.length > 0) {
-    return `${provider} •••• ${normalizedLastFour}`;
-  }
-
-  return provider;
 }
 
 // =============================================================================
@@ -186,6 +99,11 @@ export function PaymentMethodsPageContainer() {
   // ===========================================================================
   // Financial Account
   // ===========================================================================
+  //
+  // The current create-payment-method mutation still requires accountPublicId.
+  // This query remains until the backend create endpoint resolves account
+  // ownership from the authenticated identity.
+  //
 
   const {
     data: financialAccount,
@@ -196,22 +114,36 @@ export function PaymentMethodsPageContainer() {
   } = useMyFinancialAccount();
 
   // ===========================================================================
-  // Default Payment Method
-  // ===========================================================================
-  //
-  // This is currently the only authoritative member-scoped payment-method
-  // retrieval surface available to this frontend feature.
-  //
-  // Do not reinterpret this as a collection query.
+  // Member Payment Methods
   // ===========================================================================
 
   const {
-    data: defaultPaymentMethod,
-    isLoading: isDefaultPaymentMethodLoading,
-    isError: isDefaultPaymentMethodError,
-    error: defaultPaymentMethodError,
-    refetch: refetchDefaultPaymentMethod,
-  } = useDefaultPaymentMethod(financialAccount?.publicId);
+    data: paymentMethods,
+    isLoading: isPaymentMethodsLoading,
+    isError: isPaymentMethodsError,
+    error: paymentMethodsError,
+    refetch: refetchPaymentMethods,
+  } = useMyPaymentMethods();
+
+  // ===========================================================================
+  // Available Payment Providers
+  // ===========================================================================
+
+  const {
+    data: availablePaymentProviders,
+    isLoading: isProvidersLoading,
+    isError: isProvidersError,
+    error: providersError,
+    refetch: refetchProviders,
+  } = useAvailablePaymentProviders();
+
+  /**
+   * M-PESA is the only provider supported by this member-facing form.
+   */
+  const isMpesaAvailable =
+    availablePaymentProviders?.some(
+      (provider) => provider.code === 'MPESA',
+    ) ?? false;
 
   // ===========================================================================
   // Mutations
@@ -219,6 +151,9 @@ export function PaymentMethodsPageContainer() {
 
   const createPaymentMethodMutation =
     useCreatePaymentMethod();
+
+  const setDefaultPaymentMethodMutation =
+    useSetDefaultPaymentMethod();
 
   const deactivatePaymentMethodMutation =
     useDeactivatePaymentMethod();
@@ -245,15 +180,14 @@ export function PaymentMethodsPageContainer() {
   const isCreating =
     createPaymentMethodMutation.isPending;
 
+  const isSettingDefault =
+    setDefaultPaymentMethodMutation.isPending;
+
   const isDeactivating =
     deactivatePaymentMethodMutation.isPending;
 
   const isMutating =
-    isCreating || isDeactivating;
-
-  const hasDefaultPaymentMethod =
-    defaultPaymentMethod !== null &&
-    defaultPaymentMethod !== undefined;
+    isCreating || isSettingDefault || isDeactivating;
 
   // ===========================================================================
   // Form Helpers
@@ -297,22 +231,40 @@ export function PaymentMethodsPageContainer() {
       return;
     }
 
+    if (isProvidersLoading) {
+      setErrors({
+        form:
+          'Payment providers are still loading. Please try again shortly.',
+      });
+
+      return;
+    }
+
+    if (isProvidersError) {
+      setErrors({
+        form:
+          providersError?.message ??
+          'Unable to load payment providers. Please try again.',
+      });
+
+      return;
+    }
+
+    if (!isMpesaAvailable) {
+      setErrors({
+        form:
+          'M-PESA is currently unavailable. Please try again later.',
+      });
+
+      return;
+    }
+
     const request: CreatePaymentMethodFormValues = {
-      type: form.type,
-
-      provider: form.provider,
-
+      type: 'MOBILE_MONEY',
+      provider: 'MPESA',
+      phoneNumber: form.phoneNumber.trim(),
       correlationId: createCorrelationId(),
-
-      providerReference:
-        form.providerReference.trim() || undefined,
-
-      displayName:
-        form.displayName.trim() || undefined,
-
-      lastFour:
-        form.lastFour.trim() || undefined,
-
+      displayName: form.displayName.trim() || undefined,
       isDefault: form.isDefault,
     };
 
@@ -324,16 +276,9 @@ export function PaymentMethodsPageContainer() {
         parsed.error.flatten().fieldErrors;
 
       setErrors({
-        type: fieldErrors.type?.[0],
-        provider: fieldErrors.provider?.[0],
-        providerReference:
-          fieldErrors.providerReference?.[0],
-        displayName:
-          fieldErrors.displayName?.[0],
-        lastFour:
-          fieldErrors.lastFour?.[0],
-        isDefault:
-          fieldErrors.isDefault?.[0],
+        phoneNumber: fieldErrors.phoneNumber?.[0],
+        displayName: fieldErrors.displayName?.[0],
+        isDefault: fieldErrors.isDefault?.[0],
       });
 
       return;
@@ -341,21 +286,12 @@ export function PaymentMethodsPageContainer() {
 
     createPaymentMethodMutation.mutate(
       {
-        accountPublicId:
-          financialAccount.publicId,
-
+        accountPublicId: financialAccount.publicId,
         request: parsed.data,
       },
       {
         onSuccess: async () => {
-          //
-          // Refresh the authoritative backend representation.
-          //
-          // We deliberately do not append the newly created payment method
-          // to a local collection because no authoritative collection query
-          // exists yet.
-          //
-          await refetchDefaultPaymentMethod();
+          await refetchPaymentMethods();
 
           setForm(createInitialFormState());
           setErrors({});
@@ -366,7 +302,7 @@ export function PaymentMethodsPageContainer() {
           setErrors({
             form:
               error.message ||
-              'Unable to add the payment method. Please try again.',
+              'Unable to add the M-PESA number. Please try again.',
           });
         },
       },
@@ -374,41 +310,93 @@ export function PaymentMethodsPageContainer() {
   };
 
   // ===========================================================================
-  // Deactivate Default Payment Method
-  // ===========================================================================
-  //
-  // With the current API surface, this is the only payment method whose
-  // identity the container can authoritatively obtain.
-  //
-  // There is intentionally no "set default" handler here because the queried
-  // payment method is already the default payment method.
-  //
-  // Once a payment-method collection query exists, the generic
-  // PaymentMethodActions component can expose set-default/deactivate actions
-  // for each individual collection item.
+  // Set Default Payment Method
   // ===========================================================================
 
-  const handleDeactivateDefaultPaymentMethod = () => {
-    if (!defaultPaymentMethod?.publicId) {
+  const handleSetDefaultPaymentMethod = (
+    paymentMethodPublicId: string,
+  ) => {
+    if (!paymentMethodPublicId) {
       return;
     }
 
-    deactivatePaymentMethodMutation.mutate(
+    setDefaultPaymentMethodMutation.mutate(
       {
-        paymentMethodPublicId:
-          defaultPaymentMethod.publicId,
-
+        paymentMethodPublicId,
         request: {
           correlationId: createCorrelationId(),
         },
       },
       {
         onSuccess: () => {
-          void refetchDefaultPaymentMethod();
+          void refetchPaymentMethods();
         },
       },
     );
   };
+
+  // ===========================================================================
+  // Deactivate Payment Method
+  // ===========================================================================
+
+  const handleDeactivatePaymentMethod = (
+    paymentMethodPublicId: string,
+  ) => {
+    if (!paymentMethodPublicId) {
+      return;
+    }
+
+    deactivatePaymentMethodMutation.mutate(
+      {
+        paymentMethodPublicId,
+        request: {
+          correlationId: createCorrelationId(),
+        },
+      },
+      {
+        onSuccess: () => {
+          void refetchPaymentMethods();
+        },
+      },
+    );
+  };
+
+  // ===========================================================================
+  // Payment Method List
+  // ===========================================================================
+
+  const paymentMethodListItems =
+    (paymentMethods ?? []).map((paymentMethod) => ({
+      id: paymentMethod.publicId,
+      phoneNumber: paymentMethod.phoneNumber,
+      displayName: paymentMethod.displayName,
+      isDefault: paymentMethod.isDefault,
+      isActive: paymentMethod.isActive,
+
+      actions: (
+        <PaymentMethodActions
+          isDefault={paymentMethod.isDefault}
+          isActive={paymentMethod.isActive}
+          isLoading={isMutating}
+          onSetDefault={
+            paymentMethod.isActive && !paymentMethod.isDefault
+              ? () =>
+                  handleSetDefaultPaymentMethod(
+                    paymentMethod.publicId,
+                  )
+              : undefined
+          }
+          onDeactivate={
+            paymentMethod.isActive
+              ? () =>
+                  handleDeactivatePaymentMethod(
+                    paymentMethod.publicId,
+                  )
+              : undefined
+          }
+        />
+      ),
+    }));
 
   // ===========================================================================
   // Loading
@@ -416,7 +404,7 @@ export function PaymentMethodsPageContainer() {
 
   if (
     isAccountLoading ||
-    isDefaultPaymentMethodLoading
+    isPaymentMethodsLoading
   ) {
     return (
       <main className="min-h-screen bg-[var(--background-brand)]">
@@ -435,7 +423,7 @@ export function PaymentMethodsPageContainer() {
 
                   <div className="h-24 w-full animate-pulse rounded bg-[var(--background-muted)]" />
 
-                  <div className="h-10 w-36 animate-pulse rounded bg-[var(--background-muted)]" />
+                  <div className="h-24 w-full animate-pulse rounded bg-[var(--background-muted)]" />
                 </div>
               </div>
             </div>
@@ -451,11 +439,11 @@ export function PaymentMethodsPageContainer() {
 
   if (
     isAccountError ||
-    isDefaultPaymentMethodError
+    isPaymentMethodsError
   ) {
     const message =
       accountError?.message ??
-      defaultPaymentMethodError?.message ??
+      paymentMethodsError?.message ??
       'Unable to load your payment methods.';
 
     return (
@@ -481,7 +469,8 @@ export function PaymentMethodsPageContainer() {
                     size="sm"
                     onClick={() => {
                       void refetchAccount();
-                      void refetchDefaultPaymentMethod();
+                      void refetchPaymentMethods();
+                      void refetchProviders();
                     }}
                   >
                     Try again
@@ -521,7 +510,7 @@ export function PaymentMethodsPageContainer() {
                   </h1>
 
                   <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
-                    Manage your default payment method for wallet top-ups.
+                    Manage your saved M-PESA numbers for wallet top-ups.
                   </p>
                 </div>
 
@@ -532,110 +521,73 @@ export function PaymentMethodsPageContainer() {
                     size="sm"
                     onClick={openCreateForm}
                   >
-                    Add payment method
+                    Add M-PESA number
                   </Button>
                 ) : null}
               </div>
             </header>
 
             {/* -----------------------------------------------------------------
-                Default Payment Method
+                Payment Method Collection
             ------------------------------------------------------------------ */}
 
-            {hasDefaultPaymentMethod ? (
-              <section
-                aria-labelledby="default-payment-method-title"
-                className="space-y-3"
-              >
-                <div>
-                  <h2
-                    id="default-payment-method-title"
-                    className="text-sm font-semibold text-[var(--foreground)]"
-                  >
-                    Default payment method
-                  </h2>
+            <section
+              aria-labelledby="saved-payment-methods-title"
+              className="space-y-3"
+            >
+              <div>
+                <h2
+                  id="saved-payment-methods-title"
+                  className="text-sm font-semibold text-[var(--foreground)]"
+                >
+                  Saved M-PESA numbers
+                </h2>
 
-                  <p className="mt-1 text-xs text-[var(--foreground-muted)]">
-                    This payment method can be used when a wallet top-up
-                    requires a selected payment method.
-                  </p>
-                </div>
+                <p className="mt-1 text-xs text-[var(--foreground-muted)]">
+                  Choose your default number or deactivate a number you no
+                  longer use.
+                </p>
+              </div>
 
-                <PaymentMethodCard
-                  type={defaultPaymentMethod.type}
-                  label={getPaymentMethodLabel(
-                    defaultPaymentMethod.displayName,
-                    defaultPaymentMethod.provider,
-                  )}
-                  description={getPaymentMethodDescription(
-                    defaultPaymentMethod.provider,
-                    defaultPaymentMethod.lastFour,
-                  )}
-                  isDefault={
-                    defaultPaymentMethod.isDefault
-                  }
-                  isActive={
-                    defaultPaymentMethod.isActive
-                  }
-                  actions={
-                    <PaymentMethodActions
-                      isDefault={
-                        defaultPaymentMethod.isDefault
-                      }
-                      isActive={
-                        defaultPaymentMethod.isActive
-                      }
-                      isLoading={isMutating}
-                      onDeactivate={
-                        defaultPaymentMethod.isActive
-                          ? handleDeactivateDefaultPaymentMethod
-                          : undefined
-                      }
-                    />
-                  }
-                />
-
-                {deactivatePaymentMethodMutation.isError ? (
-                  <div
-                    role="alert"
-                    className="rounded-[var(--radius-md)] border border-[var(--danger)] bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]"
-                  >
-                    {deactivatePaymentMethodMutation.error.message ||
-                      'Unable to deactivate the payment method. Please try again.'}
-                  </div>
-                ) : null}
-              </section>
-            ) : null}
-
-            {/* -----------------------------------------------------------------
-                No Default Payment Method
-            ------------------------------------------------------------------ */}
-
-            {!hasDefaultPaymentMethod ? (
-              <section className="surface p-6">
-                <div className="space-y-3">
-                  <div>
-                    <h2 className="text-sm font-semibold text-[var(--foreground)]">
-                      No default payment method
-                    </h2>
-
-                    <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
-                      Add a payment method to make wallet top-ups easier.
-                    </p>
-                  </div>
-
-                  {!showForm ? (
+              <PaymentMethodList
+                paymentMethods={paymentMethodListItems}
+                emptyState={
+                  !showForm ? (
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       onClick={openCreateForm}
                     >
-                      Add payment method
+                      Add M-PESA number
                     </Button>
-                  ) : null}
-                </div>
-              </section>
+                  ) : undefined
+                }
+              />
+            </section>
+
+            {/* -----------------------------------------------------------------
+                Mutation Errors
+            ------------------------------------------------------------------ */}
+
+            {setDefaultPaymentMethodMutation.isError ? (
+              <div
+                role="alert"
+                className="rounded-[var(--radius-md)] border border-[var(--danger)] bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]"
+              >
+                {setDefaultPaymentMethodMutation.error.message ||
+                  'Unable to set the default M-PESA number. Please try again.'}
+              </div>
+            ) : null}
+
+            {deactivatePaymentMethodMutation.isError ? (
+              <div
+                role="alert"
+                className="rounded-[var(--radius-md)] border border-[var(--danger)] bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]"
+              >
+                {deactivatePaymentMethodMutation.error.message ||
+                  'Unable to deactivate the M-PESA number. Please try again.'}
+              </div>
             ) : null}
 
             {/* -----------------------------------------------------------------
@@ -652,63 +604,47 @@ export function PaymentMethodsPageContainer() {
                     id="add-payment-method-title"
                     className="text-sm font-semibold text-[var(--foreground)]"
                   >
-                    Add payment method
+                    Add M-PESA number
                   </h2>
 
                   <p className="mt-1 text-xs text-[var(--foreground-muted)]">
-                    Add the payment details required by the selected provider.
+                    Enter the Kenyan mobile number you want to use for wallet
+                    top-ups.
                   </p>
                 </div>
 
                 <PaymentMethodForm
-                  type={form.type}
-                  typeOptions={PAYMENT_METHOD_TYPE_OPTIONS}
-                  provider={form.provider}
-                  providerReference={form.providerReference}
+                  phoneNumber={form.phoneNumber}
                   displayName={form.displayName}
-                  lastFour={form.lastFour}
                   isDefault={form.isDefault}
                   errors={{
-                    type: errors.type,
-                    provider: errors.provider,
-                    providerReference:
-                      errors.providerReference,
-                    displayName:
-                      errors.displayName,
-                    lastFour:
-                      errors.lastFour,
-                    isDefault:
-                      errors.isDefault,
+                    phoneNumber: errors.phoneNumber,
+                    displayName: errors.displayName,
+                    isDefault: errors.isDefault,
                   }}
                   isSubmitting={isCreating}
-                  formError={errors.form}
-                  onTypeChange={(type) => {
+                  formError={
+                    errors.form ??
+                    (isProvidersError
+                      ? providersError?.message ??
+                        'Unable to load payment providers.'
+                      : undefined) ??
+                    (isProvidersLoading
+                      ? 'Payment providers are loading.'
+                      : undefined) ??
+                    (!isProvidersLoading &&
+                    !isProvidersError &&
+                    !isMpesaAvailable
+                      ? 'M-PESA is currently unavailable.'
+                      : undefined)
+                  }
+                  onPhoneNumberChange={(phoneNumber) => {
                     setForm((current) => ({
                       ...current,
-                      type,
+                      phoneNumber,
                     }));
 
-                    clearFieldError('type');
-                  }}
-                  onProviderChange={(provider) => {
-                    setForm((current) => ({
-                      ...current,
-                      provider,
-                    }));
-
-                    clearFieldError('provider');
-                  }}
-                  onProviderReferenceChange={(
-                    providerReference,
-                  ) => {
-                    setForm((current) => ({
-                      ...current,
-                      providerReference,
-                    }));
-
-                    clearFieldError(
-                      'providerReference',
-                    );
+                    clearFieldError('phoneNumber');
                   }}
                   onDisplayNameChange={(displayName) => {
                     setForm((current) => ({
@@ -717,14 +653,6 @@ export function PaymentMethodsPageContainer() {
                     }));
 
                     clearFieldError('displayName');
-                  }}
-                  onLastFourChange={(lastFour) => {
-                    setForm((current) => ({
-                      ...current,
-                      lastFour,
-                    }));
-
-                    clearFieldError('lastFour');
                   }}
                   onIsDefaultChange={(isDefault) => {
                     setForm((current) => ({
@@ -740,21 +668,6 @@ export function PaymentMethodsPageContainer() {
               </section>
             ) : null}
 
-            {/* -----------------------------------------------------------------
-                Create Mutation Error
-            ------------------------------------------------------------------ */}
-
-            {createPaymentMethodMutation.isError &&
-            !errors.form ? (
-              <div
-                role="alert"
-                className="rounded-[var(--radius-md)] border border-[var(--danger)] bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]"
-              >
-                {createPaymentMethodMutation.error.message ||
-                  'Unable to add the payment method. Please try again.'}
-              </div>
-            ) : null}
-
           </div>
         </section>
       </div>
@@ -763,4 +676,3 @@ export function PaymentMethodsPageContainer() {
 }
 
 export default PaymentMethodsPageContainer;
-

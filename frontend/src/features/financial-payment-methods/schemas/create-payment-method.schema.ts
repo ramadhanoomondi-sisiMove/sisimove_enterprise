@@ -4,46 +4,15 @@
 //
 // Validation boundary for creating a FinancialPaymentMethod.
 //
-// Backend command flow:
+// Current supported payment method:
 //
-//     Create Payment Method Request
-//              │
-//              ▼
-//     AddFinancialPaymentMethodDto
-//              │
-//              ▼
-//     AddFinancialPaymentMethodCommand
+//     MOBILE_MONEY / MPESA
 //
-// The frontend supplies the Financial Account public identifier separately
-// through the API operation. It is therefore intentionally NOT part of this
-// form/request schema.
+// The Financial Account public identifier is supplied separately through
+// the API operation and is intentionally NOT part of this schema.
 //
-// Backend transport contract:
-//
-//     accountId          required
-//     type               required
-//     provider           required
-//     correlationId      required
-//     providerReference  optional
-//     displayName        optional
-//     lastFour           optional
-//     isDefault          optional
-//     causationId        optional
-//
-// Frontend API mapping will translate:
-//
-//     accountPublicId -> accountId
-//
-// This schema does NOT:
-// - call the backend;
-// - determine account ownership;
-// - perform authorization;
-// - persist payment methods;
-// - execute payment-provider operations;
-// - handle raw payment credentials.
-//
-// Backend authorization, ownership, domain validation, and provider rules
-// remain server-side.
+// The member-facing form collects the M-PESA phone number.
+// Provider and payment method type are fixed by the application.
 //
 // =============================================================================
 
@@ -53,58 +22,75 @@ import { z } from 'zod';
 // Payment Method Type
 // -----------------------------------------------------------------------------
 
-const paymentMethodTypeSchema = z.enum([
-  'MOBILE_MONEY',
-  'BANK',
-  'CARD',
-  'WALLET',
-  'OTHER',
-]);
+const paymentMethodTypeSchema = z.literal('MOBILE_MONEY');
+
+// -----------------------------------------------------------------------------
+// Provider
+// -----------------------------------------------------------------------------
+
+const paymentProviderSchema = z.literal('MPESA');
+
+// -----------------------------------------------------------------------------
+// Kenyan M-PESA Phone Number
+// -----------------------------------------------------------------------------
+
+const phoneNumberSchema = z
+  .string()
+  .trim()
+  .min(1, 'M-PESA phone number is required.')
+  .refine(
+    (value) => {
+      const normalized = value.replace(/[\s()-]/g, '');
+
+      return /^(?:0[17]\d{8}|254[17]\d{8}|\+254[17]\d{8})$/.test(
+        normalized,
+      );
+    },
+    {
+      message:
+        'Enter a valid Kenyan mobile number, for example 0712345678 or +254712345678.',
+    },
+  );
 
 // -----------------------------------------------------------------------------
 // Create Payment Method Schema
 // -----------------------------------------------------------------------------
 
-/**
- * Validates the frontend create-payment-method request.
- *
- * The Financial Account public identifier is intentionally excluded because
- * the API function receives it as a separate argument and maps it to the
- * backend DTO's `accountId` field.
- */
 export const createPaymentMethodSchema = z.object({
   // ---------------------------------------------------------------------------
   // Payment Method Type
   // ---------------------------------------------------------------------------
 
-  /**
-   * Category of the payment method.
-   */
   type: paymentMethodTypeSchema,
 
   // ---------------------------------------------------------------------------
   // Provider
   // ---------------------------------------------------------------------------
 
+  provider: paymentProviderSchema,
+
+  // ---------------------------------------------------------------------------
+  // M-PESA Phone Number
+  // ---------------------------------------------------------------------------
+
   /**
-   * External payment provider identifier.
+   * Member's M-PESA phone number.
+   *
+   * Accepted formats:
+   * - 0712345678
+   * - 0112345678
+   * - 254712345678
+   * - +254712345678
+   *
+   * The backend FinancialPaymentMethodPhoneNumber value object is responsible
+   * for normalization into international format.
    */
-  provider: z
-    .string()
-    .trim()
-    .min(1, 'Payment provider is required.')
-    .max(100, 'Payment provider is too long.'),
+  phoneNumber: phoneNumberSchema,
 
   // ---------------------------------------------------------------------------
   // Correlation
   // ---------------------------------------------------------------------------
 
-  /**
-   * Correlation identifier for tracing this application operation.
-   *
-   * This is generated/supplied by the application layer rather than being a
-   * payment credential.
-   */
   correlationId: z
     .string()
     .trim()
@@ -112,19 +98,13 @@ export const createPaymentMethodSchema = z.object({
     .max(255, 'Correlation ID is too long.'),
 
   // ---------------------------------------------------------------------------
-  // Provider Reference
-  // ---------------------------------------------------------------------------
+  // Optional Provider Reference
+  // -----------------------------------------------------------------------------
 
   /**
-   * Optional provider-side reference for the payment method.
+   * Provider-issued reference, when applicable.
    *
-   * The backend controller explicitly allows this field to be undefined.
-   *
-   * Examples may include a provider-recognized mobile-money number or a
-   * provider-side account/reference identifier.
-   *
-   * This must never contain a PIN, password, CVV, secret token, or other
-   * authentication credential.
+   * This is not the member's phone number.
    */
   providerReference: z
     .string()
@@ -133,12 +113,9 @@ export const createPaymentMethodSchema = z.object({
     .optional(),
 
   // ---------------------------------------------------------------------------
-  // Display Name
+  // Optional Display Name
   // ---------------------------------------------------------------------------
 
-  /**
-   * Optional member-facing name for identifying the payment method.
-   */
   displayName: z
     .string()
     .trim()
@@ -146,15 +123,9 @@ export const createPaymentMethodSchema = z.object({
     .optional(),
 
   // ---------------------------------------------------------------------------
-  // Last Four
+  // Optional Last Four
   // ---------------------------------------------------------------------------
 
-  /**
-   * Optional safe display metadata.
-   *
-   * This should contain only the last four characters/digits intended for
-   * member-facing identification.
-   */
   lastFour: z
     .string()
     .trim()
@@ -165,21 +136,12 @@ export const createPaymentMethodSchema = z.object({
   // Default
   // ---------------------------------------------------------------------------
 
-  /**
-   * Whether the newly created payment method should become the default.
-   *
-   * The backend remains authoritative for the final default state.
-   */
   isDefault: z.boolean().default(false),
 
   // ---------------------------------------------------------------------------
-  // Causation
+  // Optional Causation
   // ---------------------------------------------------------------------------
 
-  /**
-   * Optional causation identifier used for tracing the operation that caused
-   * this command.
-   */
   causationId: z
     .string()
     .trim()
@@ -191,13 +153,6 @@ export const createPaymentMethodSchema = z.object({
 // Form / Request Values
 // -----------------------------------------------------------------------------
 
-/**
- * Type inferred directly from the validation schema.
- *
- * Components, forms, and the create-payment-method API operation can use this
- * type instead of duplicating the request shape.
- */
 export type CreatePaymentMethodFormValues = z.infer<
   typeof createPaymentMethodSchema
 >;
-

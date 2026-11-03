@@ -5,9 +5,18 @@
 // React Query mutation hook for making a FinancialPaymentMethod the default
 // payment method.
 //
+// Current member-facing support:
+// - M-PESA payment methods.
+//
 // Backend operation:
 //
 //     POST /financial-payment-methods/:paymentMethodPublicId/default
+//
+// Backend authorization:
+//
+//     JwtAuthGuard
+//     PermissionsGuard
+//     financial-payment-method:set-default
 //
 // Responsibilities:
 // - coordinate the set-default mutation;
@@ -21,7 +30,7 @@
 // - modify cached data manually;
 // - access persistence.
 //
-// Domain rules and authorization remain server-side.
+// Domain rules, ownership validation, and authorization remain server-side.
 //
 // =============================================================================
 
@@ -61,7 +70,7 @@ export interface SetDefaultPaymentMethodMutationVariables {
 // -----------------------------------------------------------------------------
 
 /**
- * Sets a FinancialPaymentMethod as the default payment method.
+ * Sets an M-PESA FinancialPaymentMethod as the default payment method.
  *
  * @returns
  * React Query mutation for the set-default operation.

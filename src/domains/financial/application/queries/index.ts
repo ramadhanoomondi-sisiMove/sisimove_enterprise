@@ -69,6 +69,7 @@ export * from './get-all-financial-payment-methods.query';
 
 export * from './get-default-financial-payment-method.query';
 
+export * from './get-account-financial-payment-methods.query';
 // -----------------------------------------------------------------------------
 // Financial Payment
 // -----------------------------------------------------------------------------

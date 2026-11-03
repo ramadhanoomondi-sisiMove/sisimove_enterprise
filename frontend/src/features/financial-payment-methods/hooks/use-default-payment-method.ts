@@ -3,11 +3,11 @@
 // =============================================================================
 //
 // React Query hook for retrieving the default FinancialPaymentMethod belonging
-// to a Financial Account.
+// to the currently authenticated member.
 //
 // Backend operation:
 //
-//     GET /financial-payment-methods/accounts/:accountPublicId/default
+//     GET /financial-payment-methods/me
 //
 // Responsibilities:
 // - coordinate the default-payment-method read operation;
@@ -25,7 +25,7 @@
 //
 //     api/get-default-payment-method.api.ts
 //
-// Backend ownership and authorization remain server-side.
+// The backend resolves the authenticated member's Financial Account.
 //
 // =============================================================================
 
@@ -46,51 +46,22 @@ const FINANCIAL_PAYMENT_METHODS_QUERY_KEY = 'financial-payment-methods';
 // -----------------------------------------------------------------------------
 
 /**
- * Retrieves the default payment method for a financial account.
+ * Retrieves the default payment method belonging to the authenticated member.
  *
- * The query remains disabled until a valid financial-account public identifier
- * is supplied.
- *
- * A financial account may have no default payment method, in which case the
- * query resolves successfully with `null`.
- *
- * @param accountPublicId
- * API-safe public identifier of the financial account.
+ * A member may have no default payment method, in which case the query
+ * resolves successfully with null.
  *
  * @returns
- * React Query result containing the default payment method or `null`.
+ * React Query result containing the default payment method or null.
  */
-export function useDefaultPaymentMethod(
-  accountPublicId: string | undefined,
-) {
+export function useDefaultPaymentMethod() {
   return useQuery<FinancialPaymentMethod | null>({
     queryKey: [
       FINANCIAL_PAYMENT_METHODS_QUERY_KEY,
+      'me',
       'default',
-      accountPublicId,
     ],
 
-    /**
-     * Prevents an HTTP request when no account identifier is available.
-     */
-    enabled:
-      typeof accountPublicId === 'string' &&
-      accountPublicId.trim().length > 0,
-
-    /**
-     * React Query invokes the feature API operation only after the query has
-     * been enabled.
-     */
-    queryFn: () => {
-      if (
-        typeof accountPublicId !== 'string' ||
-        accountPublicId.trim().length === 0
-      ) {
-        throw new Error('Financial account public ID is required.');
-      }
-
-      return getDefaultPaymentMethod(accountPublicId);
-    },
+    queryFn: getDefaultPaymentMethod,
   });
 }
-

@@ -1,7 +1,3 @@
-// -----------------------------------------------------------------------------
-// Financial Payment Provider Aggregate
-// -----------------------------------------------------------------------------
-
 import { AggregateRoot } from '../../../../foundation/kernel/domain/aggregate-root';
 import type { UniqueEntityId } from '../../../../foundation/kernel/domain/unique-entity-id';
 
@@ -29,12 +25,16 @@ import type { FinancialPaymentProviderEnvironment } from '../value-objects/finan
 import type { FinancialPaymentProviderStatus } from '../value-objects/financial-payment-provider-status.vo';
 import type { FinancialPaymentProviderConfigurationReference } from '../value-objects/financial-payment-provider-configuration-reference.vo';
 import type { FinancialPaymentProviderCapabilityType } from '../value-objects/financial-payment-provider-capability-type.vo';
-
 import type { FinancialPaymentProviderPublicId } from '../value-objects/financial-payment-provider-public-id.vo';
 
 // -----------------------------------------------------------------------------
 // Creation Props
 // -----------------------------------------------------------------------------
+
+export interface CreateFinancialPaymentProviderCapabilityProps {
+  type: FinancialPaymentProviderCapabilityType;
+  isSupported: boolean;
+}
 
 export interface CreateFinancialPaymentProviderAggregateProps {
   code: FinancialPaymentProviderCode;
@@ -43,6 +43,7 @@ export interface CreateFinancialPaymentProviderAggregateProps {
   environment: FinancialPaymentProviderEnvironment;
   description?: string;
   configurationReference?: FinancialPaymentProviderConfigurationReference;
+  capabilities?: readonly CreateFinancialPaymentProviderCapabilityProps[];
 }
 
 // -----------------------------------------------------------------------------
@@ -95,9 +96,18 @@ export class FinancialPaymentProviderAggregate extends AggregateRoot<
       },
     );
 
-    provider.setUpdatedAt(createdAt);
-
     const aggregate = new FinancialPaymentProviderAggregate({ provider });
+
+    // Register capabilities through aggregate operations.
+    for (const capability of props.capabilities ?? []) {
+      aggregate.addCapability(
+        capability.type,
+        capability.isSupported,
+        createdAt,
+      );
+    }
+
+    provider.setUpdatedAt(createdAt);
 
     aggregate.ensureAggregateConsistency();
 

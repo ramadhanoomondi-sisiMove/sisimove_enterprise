@@ -1,3 +1,4 @@
+
 // =============================================================================
 // sisiMove — Create Financial Payment Method API
 // =============================================================================
@@ -8,43 +9,6 @@
 // Backend route:
 //
 //     POST /financial-payment-methods
-//
-// Backend authorization:
-//
-//     JwtAuthGuard
-//     PermissionsGuard
-//     financial-payment-method:create
-//
-// -----------------------------------------------------------------------------
-//
-// Architectural boundary:
-//
-//     Frontend
-//        │
-//        │ accountPublicId + validated request
-//        ▼
-//     createPaymentMethod()
-//        │
-//        │ accountPublicId -> accountId
-//        ▼
-//     Backend AddFinancialPaymentMethodDto
-//        │
-//        ▼
-//     AddFinancialPaymentMethodCommand
-//
-// The frontend supplies the Financial Account public identifier separately.
-// The backend DTO calls this field `accountId`, but it contains the opaque
-// public identifier rather than a database ID.
-//
-// This operation does NOT:
-// - access persistence;
-// - execute provider operations;
-// - modify account balances;
-// - create financial transactions;
-// - determine ownership;
-// - implement payment-method business rules.
-//
-// Those responsibilities remain on the backend.
 //
 // =============================================================================
 
@@ -92,10 +56,7 @@ export async function createPaymentMethod(
         // ---------------------------------------------------------------------
         // Financial Account
         // ---------------------------------------------------------------------
-        //
-        // The backend DTO names this property `accountId`, while the value is
-        // the API-safe Financial Account public identifier.
-        //
+
         accountId: accountPublicId,
 
         // ---------------------------------------------------------------------
@@ -104,6 +65,7 @@ export async function createPaymentMethod(
 
         type: request.type,
         provider: request.provider,
+        phoneNumber: request.phoneNumber,
 
         // ---------------------------------------------------------------------
         // Correlation

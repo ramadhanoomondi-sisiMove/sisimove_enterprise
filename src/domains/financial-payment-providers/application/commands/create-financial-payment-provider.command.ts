@@ -6,14 +6,14 @@ import type {
   FinancialPaymentProviderType,
   FinancialPaymentProviderEnvironment,
   FinancialPaymentProviderConfigurationReference,
+  FinancialPaymentProviderCapabilityType,
 } from '../../domain/value-objects';
 
-/**
- * Command for creating a Financial Payment Provider aggregate.
- *
- * The handler creates the aggregate, persists it, and dispatches its
- * resulting domain events.
- */
+export interface CreateFinancialPaymentProviderCapabilityInput {
+  type: FinancialPaymentProviderCapabilityType;
+  isSupported: boolean;
+}
+
 export class CreateFinancialPaymentProviderCommand implements Command {
   constructor(
     public readonly code: FinancialPaymentProviderCode,
@@ -25,5 +25,6 @@ export class CreateFinancialPaymentProviderCommand implements Command {
     public readonly description?: string,
     public readonly configurationReference?: FinancialPaymentProviderConfigurationReference,
     public readonly causationId?: string,
+    public readonly capabilities: readonly CreateFinancialPaymentProviderCapabilityInput[] = [],
   ) {}
 }

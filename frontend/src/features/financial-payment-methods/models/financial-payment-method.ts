@@ -4,9 +4,6 @@
 //
 // Member-facing representation of a FinancialPaymentMethod.
 //
-// This model intentionally represents the API/read-model boundary rather than
-// the Prisma persistence model.
-//
 // Backend persistence model:
 //
 //     FinancialPaymentMethod
@@ -16,6 +13,7 @@
 //     ├── type
 //     ├── provider
 //     ├── providerReference
+//     ├── phoneNumber
 //     ├── displayName
 //     ├── lastFour
 //     ├── isDefault
@@ -23,25 +21,33 @@
 //     ├── createdAt
 //     └── updatedAt
 //
+// Current member-facing support:
+// - M-PESA mobile money payment methods.
+// - Multiple registered M-PESA numbers.
+// - One default active payment method at a time.
+//
 // Frontend rules:
-// - `publicId` is the only payment-method identifier exposed to the UI.
-// - Database `id` is never represented.
-// - `accountId` is never represented.
-// - Provider references may be returned only when safe for the member-facing
-//   API.
-// - Sensitive payment credentials must never be represented here.
-// - Money is not represented by this model, so no amount conversion is
-//   required.
+// - publicId is the only payment-method identifier exposed to the UI.
+// - Database id is never represented.
+// - accountId is never represented.
+// - M-PESA phone numbers use normalized international format.
+// - Provider references are optional and exposed only when safe.
+// - Sensitive payment credentials must never be represented.
 //
 // =============================================================================
 
 import type { PaymentMethodType } from './payment-method-type';
+import type { FinancialPaymentProviderType } from './financial-payment-provider-type';
+
+/**
+ * Supported member-facing payment provider.
+ */
+export type FinancialPaymentProvider = 'MPESA';
 
 /**
  * Member-facing FinancialPaymentMethod.
  *
- * This is intentionally a plain TypeScript interface. Business rules remain
- * in the backend and API orchestration layer.
+ * Business rules and lifecycle transitions remain in the backend.
  */
 export interface FinancialPaymentMethod {
   /**
@@ -51,39 +57,44 @@ export interface FinancialPaymentMethod {
 
   /**
    * Category of the payment method.
+   *
+   * For M-PESA, this is MOBILE_MONEY.
    */
-  type: PaymentMethodType;
+  type: PaymentMethodType & FinancialPaymentProviderType;
 
   /**
    * External payment provider.
    *
-   * Example values may include provider-specific identifiers such as
-   * `MPESA`, depending on the backend contract.
+   * Current member-facing provider: MPESA.
    */
-  provider: string;
+  provider: FinancialPaymentProvider;
 
   /**
-   * Provider-side reference when the backend considers it safe to expose.
+   * Customer's registered M-PESA phone number.
    *
-   * This should never contain raw credentials, secrets, PINs, tokens, or
-   * other sensitive payment information.
+   * Returned in normalized international format.
+   *
+   * Example: +254712345678
+   */
+  phoneNumber: string;
+
+  /**
+   * Provider-side reference when safe for member-facing exposure.
    */
   providerReference?: string;
 
   /**
-   * Human-readable display name supplied by the provider or member.
+   * Human-readable display name, if supplied.
    */
   displayName?: string;
 
   /**
    * Last four visible digits/characters where applicable.
-   *
-   * This is intended for safe UI identification of a payment method.
    */
   lastFour?: string;
 
   /**
-   * Whether this payment method is currently the member's default method.
+   * Whether this payment method is the member's default method.
    */
   isDefault: boolean;
 

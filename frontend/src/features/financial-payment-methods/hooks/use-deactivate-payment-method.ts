@@ -4,6 +4,9 @@
 //
 // React Query mutation hook for deactivating a FinancialPaymentMethod.
 //
+// Current member-facing support:
+// - M-PESA payment methods.
+//
 // Backend operation:
 //
 //     POST /financial-payment-methods/:paymentMethodPublicId/deactivate
@@ -16,11 +19,11 @@
 // This hook does NOT:
 // - perform HTTP requests directly;
 // - delete payment-method records;
-// - determine ownership;
-// - enforce domain lifecycle rules;
+// - determine account ownership;
+// - enforce payment-method lifecycle rules;
 // - access persistence.
 //
-// Deactivation is a backend domain operation. The frontend only requests the
+// Deactivation is a backend domain operation. The frontend requests the
 // operation and consumes the resulting payment-method representation.
 //
 // =============================================================================
@@ -61,7 +64,7 @@ export interface DeactivatePaymentMethodMutationVariables {
 // -----------------------------------------------------------------------------
 
 /**
- * Deactivates a FinancialPaymentMethod.
+ * Deactivates an M-PESA FinancialPaymentMethod.
  *
  * @returns
  * React Query mutation for the deactivate operation.
@@ -78,4 +81,3 @@ export function useDeactivatePaymentMethod() {
       deactivatePaymentMethod(paymentMethodPublicId, request),
   });
 }
-

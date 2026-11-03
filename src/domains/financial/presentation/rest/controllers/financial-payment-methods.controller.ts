@@ -22,26 +22,7 @@
 // Financial Payment Methods are owned by a Financial Account through an
 // opaque Financial Account reference.
 //
-// The controller does NOT:
-// - execute payment provider operations;
-// - store or handle raw payment credentials;
-// - execute Financial Payments;
-// - modify Financial Account balances;
-// - create Financial Transactions.
-//
-// Provider operations belong to the integration boundary.
-// Payment execution belongs to the Financial Payment boundary.
-// Persistence belongs to the repository/infrastructure boundary.
-//
-// IMPORTANT:
-//
 // A Financial Account does NOT require a Payment Method.
-//
-// A newly registered user may therefore have:
-// - a Financial Account;
-// - a Financial Account Balance;
-// - zero Financial Payment Methods;
-// - no default Payment Method.
 //
 // Consequently, GET default must support a null result.
 //
@@ -72,9 +53,11 @@ import { ApiTags } from '@nestjs/swagger';
 // -----------------------------------------------------------------------------
 
 import {
+  CurrentIdentity,
   JwtAuthGuard,
   PermissionsGuard,
   RequirePermissions,
+  type AuthenticatedIdentity,
 } from '../../../../../foundation/security/auth';
 
 // -----------------------------------------------------------------------------
@@ -88,6 +71,8 @@ import type { QueryHandler } from '../../../../../foundation/kernel/application/
 // -----------------------------------------------------------------------------
 // Application — Tokens
 // -----------------------------------------------------------------------------
+
+import { FINANCIAL_ACCOUNT_TOKENS } from '../../../application/financial-account.tokens';
 
 import { FINANCIAL_PAYMENT_METHOD_TOKENS } from '../../../application/financial-payment-method.tokens';
 
@@ -106,14 +91,18 @@ import {
 // -----------------------------------------------------------------------------
 
 import {
+  GetAccountFinancialPaymentMethodsQuery,
   GetAllFinancialPaymentMethodsQuery,
   GetDefaultFinancialPaymentMethodQuery,
   GetFinancialPaymentMethodQuery,
+  GetMyFinancialAccountQuery,
 } from '../../../application/queries';
 
 // -----------------------------------------------------------------------------
-// Domain — Aggregate
+// Domain — Aggregates
 // -----------------------------------------------------------------------------
+
+import type { FinancialAccountAggregate } from '../../../domain/aggregates/financial-account.aggregate';
 
 import type { FinancialPaymentMethodAggregate } from '../../../domain/aggregates/financial-payment-method.aggregate';
 
@@ -122,7 +111,9 @@ import type { FinancialPaymentMethodAggregate } from '../../../domain/aggregates
 // -----------------------------------------------------------------------------
 
 import {
+  FinancialAccountOwnerPublicId,
   FinancialAccountPublicId,
+  FinancialPaymentMethodPhoneNumber,
   FinancialPaymentMethodPublicId,
   FinancialPaymentMethodType,
   FinancialProvider,
@@ -145,9 +136,9 @@ import {
 
 import { FinancialPaymentMethodResponseMapper } from '../mappers/financial-payment-method.response.mapper';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Controller
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 @ApiTags('Financial Payment Methods')
 @Controller('financial-payment-methods')
@@ -181,7 +172,17 @@ export class FinancialPaymentMethodsController {
     >,
 
     // -------------------------------------------------------------------------
-    // Query Handlers
+    // Financial Account Query Handlers
+    // -------------------------------------------------------------------------
+
+    @Inject(FINANCIAL_ACCOUNT_TOKENS.QUERY_HANDLERS.GET_ME)
+    private readonly getMyFinancialAccountHandler: QueryHandler<
+      GetMyFinancialAccountQuery,
+      FinancialAccountAggregate
+    >,
+
+    // -------------------------------------------------------------------------
+    // Financial Payment Method Query Handlers
     // -------------------------------------------------------------------------
 
     @Inject(FINANCIAL_PAYMENT_METHOD_TOKENS.QUERY_HANDLERS.GET)
@@ -195,9 +196,16 @@ export class FinancialPaymentMethodsController {
       GetDefaultFinancialPaymentMethodQuery,
       FinancialPaymentMethodAggregate | null
     >,
+
     @Inject(FINANCIAL_PAYMENT_METHOD_TOKENS.QUERY_HANDLERS.GET_ALL)
     private readonly getAllFinancialPaymentMethodsHandler: QueryHandler<
       GetAllFinancialPaymentMethodsQuery,
+      FinancialPaymentMethodAggregate[]
+    >,
+
+    @Inject(FINANCIAL_PAYMENT_METHOD_TOKENS.QUERY_HANDLERS.GET_ACCOUNT)
+    private readonly getAccountFinancialPaymentMethodsHandler: QueryHandler<
+      GetAccountFinancialPaymentMethodsQuery,
       FinancialPaymentMethodAggregate[]
     >,
   ) {}
@@ -205,9 +213,10 @@ export class FinancialPaymentMethodsController {
   // ===========================================================================
   // Queries
   // ===========================================================================
-  // -----------------------------------------------------------------------------
-  // Get All Financial Payment Methods
-  // -----------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Get All Financial Payment Methods — Admin
+  // ---------------------------------------------------------------------------
 
   @Get()
   @RequirePermissions('admin:read')
@@ -220,8 +229,54 @@ export class FinancialPaymentMethodsController {
 
     return FinancialPaymentMethodResponseMapper.fromAggregates(aggregates);
   }
+
   // ---------------------------------------------------------------------------
-  // Get Financial Payment Method
+  // Get My Financial Payment Methods
+  // ---------------------------------------------------------------------------
+  //
+  // Resolves the Financial Account from the authenticated Identity.
+  //
+  // The client cannot supply an account ID.
+  //
+  // This ensures that members can retrieve only payment methods belonging
+  // to their own Financial Account.
+  //
+  // ---------------------------------------------------------------------------
+
+  @Get('me')
+  public async getMine(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+  ): Promise<
+    ReturnType<typeof FinancialPaymentMethodResponseMapper.toResponse>[]
+  > {
+    // -------------------------------------------------------------------------
+    // Resolve the authenticated member's Financial Account
+    // -------------------------------------------------------------------------
+
+    const account = await this.getMyFinancialAccountHandler.execute(
+      new GetMyFinancialAccountQuery(
+        FinancialAccountOwnerPublicId.create(identity.identityPublicId),
+      ),
+    );
+
+    // -------------------------------------------------------------------------
+    // Retrieve payment methods belonging to that account
+    // -------------------------------------------------------------------------
+
+    const aggregates =
+      await this.getAccountFinancialPaymentMethodsHandler.execute(
+        new GetAccountFinancialPaymentMethodsQuery(account.publicId),
+      );
+
+    // -------------------------------------------------------------------------
+    // Response
+    // -------------------------------------------------------------------------
+
+    return FinancialPaymentMethodResponseMapper.fromAggregates(aggregates);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Get Financial Payment Method — Admin
   // ---------------------------------------------------------------------------
 
   @Get(':paymentMethodPublicId')
@@ -252,8 +307,6 @@ export class FinancialPaymentMethodsController {
   //
   // The application/query layer must return null in that case.
   //
-  // This endpoint intentionally has no explicit permission requirement.
-  // Authentication is still enforced by JwtAuthGuard.
   // ---------------------------------------------------------------------------
 
   @Get('accounts/:accountPublicId/default')
@@ -291,6 +344,14 @@ export class FinancialPaymentMethodsController {
     ReturnType<typeof FinancialPaymentMethodResponseMapper.toResponse>
   > {
     // -------------------------------------------------------------------------
+    // M-PESA Phone Number
+    // -------------------------------------------------------------------------
+
+    const phoneNumber = FinancialPaymentMethodPhoneNumber.create(
+      dto.phoneNumber,
+    );
+
+    // -------------------------------------------------------------------------
     // Provider Reference
     // -------------------------------------------------------------------------
 
@@ -316,6 +377,9 @@ export class FinancialPaymentMethodsController {
 
         // Correlation
         dto.correlationId,
+
+        // M-PESA Phone Number
+        phoneNumber,
 
         // Provider Reference
         providerReference,

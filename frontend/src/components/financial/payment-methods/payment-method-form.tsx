@@ -1,59 +1,36 @@
-// =============================================================================
-// sisiMove — Payment Method Form
-// =============================================================================
-//
-// Presentation-only form for creating a FinancialPaymentMethod.
-//
-// Responsibilities:
-// - render payment-method creation fields;
-// - display field-level validation errors;
-// - expose controlled field changes;
-// - expose submit/cancel actions;
-// - reflect submission state.
-//
-// This component does NOT:
-// - call the API;
-// - use React Query;
-// - generate correlation IDs;
-// - resolve the Financial Account;
-// - perform validation itself;
-// - navigate;
-// - contain payment-provider business rules;
-// - collect sensitive payment credentials.
-//
-// Technical identifiers such as correlationId and causationId are intentionally
-// not rendered as ordinary member-facing fields. The application/container
-// layer owns those values and supplies them when constructing the validated
-// CreatePaymentMethodFormValues payload.
-//
-// Validation contract:
-//     create-payment-method.schema.ts
-//
-// API contract:
-//     create-payment-method.api.ts
-//
-// =============================================================================
+
+ // =============================================================================
+ // sisiMove — M-PESA Payment Method Form
+ // =============================================================================
+ //
+ // Presentation-only form for creating an M-PESA FinancialPaymentMethod.
+ //
+ // Responsibilities:
+ // - collect the member's M-PESA phone number;
+ // - collect an optional display name;
+ // - expose the default-method preference;
+ // - display field-level validation errors;
+ // - expose submit/cancel actions;
+ // - reflect loading and submission states.
+ //
+ // Payment method type and provider are fixed by the application:
+ //
+ //     type     = MOBILE_MONEY
+ //     provider = MPESA
+ //
+ // This component does NOT:
+ // - call the API;
+ // - generate correlation IDs;
+ // - resolve the Financial Account;
+ // - perform validation itself;
+ // - navigate;
+ // - collect payment credentials or M-PESA PINs.
+ //
+ // =============================================================================
 
 'use client';
 
 import { Button, Input } from '@/components/ui';
-
-import type { PaymentMethodType } from '@/features/financial-payment-methods';
-
-// -----------------------------------------------------------------------------
-// Payment Method Type Option
-// -----------------------------------------------------------------------------
-
-/**
- * Presentation option for the payment-method type selector.
- *
- * The value must correspond to the domain-supported payment method types.
- */
-export interface PaymentMethodTypeOption {
-  value: PaymentMethodType;
-  label: string;
-  description?: string;
-}
 
 // -----------------------------------------------------------------------------
 // Props
@@ -61,29 +38,9 @@ export interface PaymentMethodTypeOption {
 
 export interface PaymentMethodFormProps {
   /**
-   * Currently selected payment-method type.
+   * Member's M-PESA mobile number.
    */
-  type: PaymentMethodType;
-
-  /**
-   * Available payment-method type options.
-   *
-   * The parent owns the final presentation labels and descriptions.
-   */
-  typeOptions: PaymentMethodTypeOption[];
-
-  /**
-   * External payment provider identifier.
-   */
-  provider: string;
-
-  /**
-   * Optional provider-side reference.
-   *
-   * This must never contain a PIN, CVV, password, secret token, or other
-   * authentication credential.
-   */
-  providerReference: string;
+  phoneNumber: string;
 
   /**
    * Optional member-facing display name.
@@ -91,12 +48,7 @@ export interface PaymentMethodFormProps {
   displayName: string;
 
   /**
-   * Optional safe last-four display metadata.
-   */
-  lastFour: string;
-
-  /**
-   * Whether the payment method should be requested as the default method.
+   * Whether this payment method should become the default.
    */
   isDefault: boolean;
 
@@ -104,11 +56,8 @@ export interface PaymentMethodFormProps {
    * Field-level validation errors.
    */
   errors?: {
-    type?: string;
-    provider?: string;
-    providerReference?: string;
+    phoneNumber?: string;
     displayName?: string;
-    lastFour?: string;
     isDefault?: string;
   };
 
@@ -118,24 +67,14 @@ export interface PaymentMethodFormProps {
   isSubmitting?: boolean;
 
   /**
-   * Optional overall form error supplied by the parent.
+   * Optional overall form error.
    */
   formError?: string;
 
   /**
-   * Called when the payment-method type changes.
+   * Called when the phone number changes.
    */
-  onTypeChange: (type: PaymentMethodType) => void;
-
-  /**
-   * Called when the provider changes.
-   */
-  onProviderChange: (provider: string) => void;
-
-  /**
-   * Called when the provider reference changes.
-   */
-  onProviderReferenceChange: (providerReference: string) => void;
+  onPhoneNumberChange: (phoneNumber: string) => void;
 
   /**
    * Called when the display name changes.
@@ -143,12 +82,7 @@ export interface PaymentMethodFormProps {
   onDisplayNameChange: (displayName: string) => void;
 
   /**
-   * Called when the last-four value changes.
-   */
-  onLastFourChange: (lastFour: string) => void;
-
-  /**
-   * Called when the default-method preference changes.
+   * Called when the default preference changes.
    */
   onIsDefaultChange: (isDefault: boolean) => void;
 
@@ -168,21 +102,14 @@ export interface PaymentMethodFormProps {
 // -----------------------------------------------------------------------------
 
 export function PaymentMethodForm({
-  type,
-  typeOptions,
-  provider,
-  providerReference,
+  phoneNumber,
   displayName,
-  lastFour,
   isDefault,
   errors,
   isSubmitting = false,
   formError,
-  onTypeChange,
-  onProviderChange,
-  onProviderReferenceChange,
+  onPhoneNumberChange,
   onDisplayNameChange,
-  onLastFourChange,
   onIsDefaultChange,
   onSubmit,
   onCancel,
@@ -210,89 +137,23 @@ export function PaymentMethodForm({
       ) : null}
 
       {/* ------------------------------------------------------------------ */}
-      {/* Payment Method Type                                                */}
-      {/* ------------------------------------------------------------------ */}
-
-      <div className="space-y-2">
-        <label
-          htmlFor="payment-method-type"
-          className="block text-sm font-medium text-[var(--foreground)]"
-        >
-          Payment method type
-        </label>
-
-        <select
-          id="payment-method-type"
-          value={type}
-          disabled={isSubmitting}
-          aria-invalid={Boolean(errors?.type)}
-          aria-describedby={errors?.type ? 'payment-method-type-error' : undefined}
-          onChange={(event) =>
-            onTypeChange(event.target.value as PaymentMethodType)
-          }
-          className={[
-            'w-full rounded-[var(--radius-md)] border bg-[var(--surface)]',
-            'px-3 py-2.5 text-sm text-[var(--foreground)]',
-            'outline-none transition',
-            'focus:border-[var(--brand)] focus:ring-2 focus:ring-[var(--brand)]/15',
-            'disabled:cursor-not-allowed disabled:opacity-60',
-            errors?.type
-              ? 'border-[var(--danger)]'
-              : 'border-[var(--border)]',
-          ].join(' ')}
-        >
-          {typeOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-
-        {typeOptions.find((option) => option.value === type)?.description ? (
-          <p className="text-xs text-[var(--foreground-muted)]">
-            {typeOptions.find((option) => option.value === type)?.description}
-          </p>
-        ) : null}
-
-        {errors?.type ? (
-          <p
-            id="payment-method-type-error"
-            className="text-sm text-[var(--danger)]"
-          >
-            {errors.type}
-          </p>
-        ) : null}
-      </div>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Provider                                                           */}
+      {/* M-PESA Phone Number                                                */}
       {/* ------------------------------------------------------------------ */}
 
       <Input
-        id="payment-method-provider"
-        label="Payment provider"
-        value={provider}
-        maxLength={100}
-        autoComplete="organization"
-        error={errors?.provider}
+        id="payment-method-phone-number"
+        label="M-PESA phone number"
+        helperText="Enter your Kenyan M-PESA number, for example 0712345678 or +254712345678."
+        value={phoneNumber}
+        maxLength={20}
+        type="tel"
+        inputMode="tel"
+        autoComplete="tel"
+        error={errors?.phoneNumber}
         disabled={isSubmitting}
-        onChange={(event) => onProviderChange(event.target.value)}
-      />
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Provider Reference                                                 */}
-      {/* ------------------------------------------------------------------ */}
-
-      <Input
-        id="payment-method-provider-reference"
-        label="Provider reference"
-        helperText="Use a provider-recognized reference only. Never enter a PIN, CVV, password, or secret token."
-        value={providerReference}
-        maxLength={255}
-        autoComplete="off"
-        error={errors?.providerReference}
-        disabled={isSubmitting}
-        onChange={(event) => onProviderReferenceChange(event.target.value)}
+        onChange={(event) =>
+          onPhoneNumberChange(event.target.value)
+        }
       />
 
       {/* ------------------------------------------------------------------ */}
@@ -302,30 +163,15 @@ export function PaymentMethodForm({
       <Input
         id="payment-method-display-name"
         label="Display name"
-        helperText="Optional name to help you recognize this payment method."
+        helperText="Optional. For example, My personal M-PESA."
         value={displayName}
         maxLength={100}
         autoComplete="off"
         error={errors?.displayName}
         disabled={isSubmitting}
-        onChange={(event) => onDisplayNameChange(event.target.value)}
-      />
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Last Four                                                          */}
-      {/* ------------------------------------------------------------------ */}
-
-      <Input
-        id="payment-method-last-four"
-        label="Last four"
-        helperText="Optional. Enter only the final four characters used to identify the payment method."
-        value={lastFour}
-        maxLength={4}
-        autoComplete="off"
-        inputMode="numeric"
-        error={errors?.lastFour}
-        disabled={isSubmitting}
-        onChange={(event) => onLastFourChange(event.target.value)}
+        onChange={(event) =>
+          onDisplayNameChange(event.target.value)
+        }
       />
 
       {/* ------------------------------------------------------------------ */}
@@ -339,7 +185,9 @@ export function PaymentMethodForm({
             checked={isDefault}
             disabled={isSubmitting}
             aria-invalid={Boolean(errors?.isDefault)}
-            onChange={(event) => onIsDefaultChange(event.target.checked)}
+            onChange={(event) =>
+              onIsDefaultChange(event.target.checked)
+            }
             className="mt-0.5 h-4 w-4 rounded border-[var(--border-strong)] text-[var(--brand)] focus:ring-[var(--brand)]/20"
           />
 
@@ -349,7 +197,7 @@ export function PaymentMethodForm({
             </span>
 
             <span className="mt-1 block text-xs text-[var(--foreground-muted)]">
-              New payments can use this method automatically when supported.
+              You can change your default M-PESA number later.
             </span>
 
             {errors?.isDefault ? (
@@ -383,8 +231,9 @@ export function PaymentMethodForm({
           variant="primary"
           size="md"
           loading={isSubmitting}
+          disabled={isSubmitting}
         >
-          Add payment method
+          Add M-PESA number
         </Button>
       </div>
     </form>

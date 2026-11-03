@@ -4,28 +4,6 @@
 //
 // Public exports for the Financial Payment Methods frontend feature.
 //
-// Feature boundary:
-//
-//     financial-payment-methods
-//     ├── api
-//     ├── models
-//     ├── schemas
-//     ├── mappers
-//     └── hooks
-//
-// Consumers should import from this feature barrel rather than reaching into
-// individual implementation files.
-//
-// Example:
-//
-//     import {
-//       FinancialPaymentMethod,
-//       usePaymentMethod,
-//     } from '@/features/financial/financial-payment-methods';
-//
-// Backend DTOs, Prisma models, domain aggregates, repositories, and command
-// handlers are intentionally not exposed here.
-//
 // =============================================================================
 
 // -----------------------------------------------------------------------------
@@ -38,6 +16,7 @@ export {
   createPaymentMethod,
   setDefaultPaymentMethod,
   deactivatePaymentMethod,
+  getAvailablePaymentProviders,
   type SetDefaultPaymentMethodRequest,
   type DeactivatePaymentMethodRequest,
 } from './api';
@@ -49,6 +28,8 @@ export {
 export {
   type FinancialPaymentMethod,
   type PaymentMethodType,
+  type FinancialPaymentProvider,
+  type FinancialPaymentProviderType,
 } from './models';
 
 // -----------------------------------------------------------------------------
@@ -67,6 +48,8 @@ export {
 export {
   mapFinancialPaymentMethod,
   type FinancialPaymentMethodApiResponse,
+  mapFinancialPaymentProvider,
+  type FinancialPaymentProviderApiResponse,
 } from './mappers';
 
 // -----------------------------------------------------------------------------
@@ -79,8 +62,8 @@ export {
   useCreatePaymentMethod,
   useSetDefaultPaymentMethod,
   useDeactivatePaymentMethod,
+  useAvailablePaymentProviders,
   type CreatePaymentMethodMutationVariables,
   type SetDefaultPaymentMethodMutationVariables,
   type DeactivatePaymentMethodMutationVariables,
 } from './hooks';
-

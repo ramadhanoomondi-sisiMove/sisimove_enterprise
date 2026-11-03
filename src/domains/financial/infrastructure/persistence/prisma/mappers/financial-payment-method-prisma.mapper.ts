@@ -18,6 +18,7 @@
 // - Preserve external provider identity.
 // - Preserve provider-issued references.
 // - Preserve safe display metadata.
+// - Preserve M-PESA phone numbers.
 // - Preserve default/active lifecycle state.
 // - Preserve lifecycle timestamps.
 // - Rehydrate the complete Financial Payment Method aggregate.
@@ -87,6 +88,7 @@ import { FinancialPaymentMethodEntity } from '../../../../domain/entities/financ
 
 import {
   FinancialAccountPublicId,
+  FinancialPaymentMethodPhoneNumber,
   FinancialPaymentMethodPublicId,
   FinancialPaymentMethodType,
   FinancialProvider,
@@ -266,6 +268,21 @@ export class FinancialPaymentMethodPrismaMapper {
     const lastFour = record.lastFour ?? undefined;
 
     // -------------------------------------------------------------------------
+    // M-PESA Phone Number
+    // -------------------------------------------------------------------------
+
+    /**
+     * Prisma NULL becomes domain undefined.
+     *
+     * The phone number is reconstructed through its value object so Kenyan
+     * mobile-number normalization and validation remain centralized.
+     */
+    const phoneNumber =
+      record.phoneNumber !== null
+        ? FinancialPaymentMethodPhoneNumber.create(record.phoneNumber)
+        : undefined;
+
+    // -------------------------------------------------------------------------
     // Entity
     // -------------------------------------------------------------------------
 
@@ -304,6 +321,8 @@ export class FinancialPaymentMethodPrismaMapper {
         displayName,
 
         lastFour,
+
+        phoneNumber,
 
         // ---------------------------------------------------------------------
         // Lifecycle
@@ -356,6 +375,7 @@ export class FinancialPaymentMethodPrismaMapper {
     providerReference: string | null;
     displayName: string | null;
     lastFour: string | null;
+    phoneNumber: string | null;
     isDefault: boolean;
     isActive: boolean;
     createdAt: Date;
@@ -401,6 +421,8 @@ export class FinancialPaymentMethodPrismaMapper {
       displayName: entity.displayName ?? null,
 
       lastFour: entity.lastFour ?? null,
+
+      phoneNumber: entity.phoneNumber?.value ?? null,
 
       // -----------------------------------------------------------------------
       // Lifecycle

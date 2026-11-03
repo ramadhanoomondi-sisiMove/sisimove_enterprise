@@ -41,6 +41,8 @@ export const FINANCIAL_PAYMENT_METHOD_TOKENS = {
 
     GET_ALL: Symbol('GetAllFinancialPaymentMethodsHandler'),
 
+    GET_ACCOUNT: Symbol('GetAccountFinancialPaymentMethodsHandler'),
+
     GET_DEFAULT: Symbol('GetDefaultFinancialPaymentMethodHandler'),
   } as const,
 } as const;

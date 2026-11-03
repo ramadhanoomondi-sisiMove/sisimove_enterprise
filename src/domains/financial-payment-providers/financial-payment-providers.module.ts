@@ -89,6 +89,7 @@ import {
   GetFinancialPaymentProviderByCodeHandler,
   GetFinancialPaymentProviderHandler,
   GetFinancialPaymentProvidersHandler,
+  GetAvailableFinancialPaymentProvidersHandler,
 } from './application/query-handlers';
 
 // =============================================================================
@@ -190,6 +191,11 @@ import {
     {
       provide: FINANCIAL_PAYMENT_PROVIDER_TOKENS.QUERY_HANDLERS.GET_BY_CODE,
       useClass: GetFinancialPaymentProviderByCodeHandler,
+    },
+
+    {
+      provide: FINANCIAL_PAYMENT_PROVIDER_TOKENS.QUERY_HANDLERS.GET_AVAILABLE,
+      useClass: GetAvailableFinancialPaymentProvidersHandler,
     },
   ],
 

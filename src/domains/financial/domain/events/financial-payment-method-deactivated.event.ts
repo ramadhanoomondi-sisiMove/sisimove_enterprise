@@ -77,9 +77,6 @@ export class FinancialPaymentMethodDeactivatedEvent extends FinancialDomainEvent
 
     /**
      * Payment method type.
-     *
-     * Included so consumers can understand which method was deactivated
-     * without loading the aggregate.
      */
     type: FinancialPaymentMethodType,
 
@@ -89,14 +86,12 @@ export class FinancialPaymentMethodDeactivatedEvent extends FinancialDomainEvent
     provider: FinancialProvider,
 
     /**
-     * Whether the method was the default method before deactivation.
+     * Whether the method was the default method immediately before
+     * deactivation.
      *
-     * FinancialPaymentMethodEntity clears isDefault when deactivated, so
-     * this value should normally be false when the event is constructed from
-     * the current aggregate state. If historical information is required,
-     * it should be captured explicitly before mutation.
+     * This value is captured before the entity changes its lifecycle state.
      */
-    isDefault: boolean,
+    wasDefault: boolean,
 
     /**
      * Time at which the payment method was deactivated.
@@ -122,7 +117,7 @@ export class FinancialPaymentMethodDeactivatedEvent extends FinancialDomainEvent
     this.accountId = accountId;
     this.type = type;
     this.provider = provider;
-    this.isDefault = isDefault;
+    this.wasDefault = wasDefault;
     this.deactivatedAt = deactivatedAt;
   }
 
@@ -151,9 +146,9 @@ export class FinancialPaymentMethodDeactivatedEvent extends FinancialDomainEvent
   public readonly provider: FinancialProvider;
 
   /**
-   * Default status represented by the event.
+   * Whether the method was default before deactivation.
    */
-  public readonly isDefault: boolean;
+  public readonly wasDefault: boolean;
 
   /**
    * Deactivation timestamp.
@@ -176,7 +171,7 @@ export class FinancialPaymentMethodDeactivatedEvent extends FinancialDomainEvent
 
       provider: this.provider.toString(),
 
-      isDefault: this.isDefault,
+      wasDefault: this.wasDefault,
 
       deactivatedAt: this.deactivatedAt.toISOString(),
     };

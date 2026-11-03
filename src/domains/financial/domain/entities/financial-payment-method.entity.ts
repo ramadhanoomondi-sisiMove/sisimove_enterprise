@@ -14,6 +14,7 @@
 // - Payment-method type.
 // - External provider identity.
 // - Provider-issued reference.
+// - Customer mobile-money phone number.
 // - Safe display metadata.
 // - Default designation.
 // - Active/inactive lifecycle.
@@ -61,6 +62,8 @@ import type { FinancialProvider } from '../value-objects/financial-provider.vo';
 
 import type { FinancialProviderReference } from '../value-objects/financial-provider-reference.vo';
 
+import type { FinancialPaymentMethodPhoneNumber } from '../value-objects/financial-payment-method-phone-number.vo';
+
 // -----------------------------------------------------------------------------
 // Props
 // -----------------------------------------------------------------------------
@@ -98,6 +101,13 @@ export interface FinancialPaymentMethodProps {
    * Must never contain raw payment credentials.
    */
   providerReference: FinancialProviderReference | undefined;
+
+  /**
+   * Customer's registered mobile-money phone number.
+   *
+   * Stored as a normalized phone-number value object.
+   */
+  phoneNumber: FinancialPaymentMethodPhoneNumber | undefined;
 
   /**
    * Safe human-readable display label.
@@ -160,6 +170,7 @@ export class FinancialPaymentMethodEntity extends Entity<
     displayName?: string,
     lastFour?: string,
     isDefault = false,
+    phoneNumber?: FinancialPaymentMethodPhoneNumber,
   ): FinancialPaymentMethodEntity {
     const now = new Date();
 
@@ -170,6 +181,7 @@ export class FinancialPaymentMethodEntity extends Entity<
         type,
         provider,
         providerReference: providerReference ?? undefined,
+        phoneNumber: phoneNumber ?? undefined,
 
         displayName:
           displayName !== undefined
@@ -236,6 +248,10 @@ export class FinancialPaymentMethodEntity extends Entity<
     return this.props.providerReference;
   }
 
+  public get phoneNumber(): FinancialPaymentMethodPhoneNumber | undefined {
+    return this.props.phoneNumber;
+  }
+
   public get displayName(): string | undefined {
     return this.props.displayName;
   }
@@ -278,6 +294,18 @@ export class FinancialPaymentMethodEntity extends Entity<
     this.ensureActive();
 
     this.props.providerReference = providerReference;
+
+    this.touch();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phone Number
+  // ---------------------------------------------------------------------------
+
+  public setPhoneNumber(phoneNumber?: FinancialPaymentMethodPhoneNumber): void {
+    this.ensureActive();
+
+    this.props.phoneNumber = phoneNumber ?? undefined;
 
     this.touch();
   }

@@ -30,4 +30,5 @@ export {
   PaymentMethodForm,
   type PaymentMethodFormProps,
   type PaymentMethodTypeOption,
+  type PaymentProviderOption,
 } from './payment-method-form';

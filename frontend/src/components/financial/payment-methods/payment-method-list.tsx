@@ -1,30 +1,14 @@
+
 // -----------------------------------------------------------------------------
-// sisiMove — Payment Method List
+// sisiMove — M-PESA Payment Method List
 // -----------------------------------------------------------------------------
 //
-// Presentation component for a collection of saved payment methods.
+// Presentation component for a collection of saved M-PESA payment methods.
 //
 // Responsibilities:
-// - Render payment method cards in a consistent responsive list.
-// - Present an empty state when no methods exist.
+// - Render M-PESA payment-method cards in a responsive list.
+// - Present an empty state when no numbers exist.
 // - Pass presentation data and parent-provided actions to each card.
-//
-// Architecture:
-//
-//     Payment Methods Container
-//              │
-//              ▼
-//     PaymentMethodList
-//              │
-//              └── PaymentMethodCard[]
-//
-// This component intentionally does NOT:
-// - fetch payment methods;
-// - create payment methods;
-// - set defaults;
-// - deactivate methods;
-// - navigate;
-// - own mutation state.
 //
 // The parent/container owns data retrieval, mutations, authorization, and
 // navigation.
@@ -47,14 +31,12 @@ export interface PaymentMethodListItem
   /**
    * Stable key for the rendered payment method.
    *
-   * This should normally be the payment method public ID.
+   * Normally the payment method public ID.
    */
   id: string;
 
   /**
-   * Optional actions belonging to this specific payment method.
-   *
-   * The parent remains responsible for creating these actions.
+   * Optional actions belonging to this payment method.
    */
   actions?: ReactNode;
 }
@@ -65,15 +47,12 @@ export interface PaymentMethodListItem
 
 export interface PaymentMethodListProps {
   /**
-   * Payment methods to display.
+   * Saved M-PESA numbers to display.
    */
   paymentMethods: PaymentMethodListItem[];
 
   /**
-   * Optional content displayed when the list is empty.
-   *
-   * This allows the container to provide an "Add payment method" action
-   * without coupling this component to routing or mutation behavior.
+   * Optional content displayed when no numbers exist.
    */
   emptyState?: ReactNode;
 }
@@ -89,19 +68,16 @@ export function PaymentMethodList({
   // ---------------------------------------------------------------------------
   // Empty state
   // ---------------------------------------------------------------------------
-  //
-  // Keep the empty-state decision at the presentation boundary while allowing
-  // the parent to supply the actual contextual action.
-  //
+
   if (paymentMethods.length === 0) {
     return (
       <div className="rounded-[var(--radius-lg)] border border-dashed border-[var(--border)] bg-[var(--background-subtle)] p-5 text-center">
         <p className="text-sm font-medium text-[var(--foreground)]">
-          No payment methods
+          No M-PESA numbers saved
         </p>
 
         <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
-          Add a payment method to make wallet top-ups easier.
+          Add an M-PESA number to make wallet top-ups easier.
         </p>
 
         {emptyState ? (

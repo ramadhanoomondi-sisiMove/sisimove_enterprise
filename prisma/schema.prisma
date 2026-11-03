@@ -2868,6 +2868,10 @@ model FinancialPaymentMethod {
 
   provider          String
   providerReference String?
+  
+
+  // Customer's M-PESA number, stored in normalized format.
+  phoneNumber String?
 
   displayName String?
   lastFour    String?
@@ -2881,9 +2885,11 @@ model FinancialPaymentMethod {
   updatedAt DateTime @updatedAt
 
   @@unique([provider, providerReference])
+  @@unique([accountId, provider, phoneNumber])
   @@index([accountId])
   @@index([provider])
   @@index([providerReference])
+  @@index([phoneNumber])
   @@index([type])
   @@index([isActive])
   @@map("financial_payment_methods")

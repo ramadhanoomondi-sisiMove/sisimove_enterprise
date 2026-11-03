@@ -16,3 +16,8 @@ export {
   GetFinancialPaymentProviderByCodeHandler,
   default as DefaultGetFinancialPaymentProviderByCodeHandler,
 } from './get-financial-payment-provider-by-code.handler';
+
+export {
+  GetAvailableFinancialPaymentProvidersHandler,
+  default as DefaultGetAvailableFinancialPaymentProvidersHandler,
+} from './get-available-financial-payment-providers.handler';

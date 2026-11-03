@@ -1,9 +1,15 @@
 "use client";
+
 import { useState } from 'react';
 
 import { cn } from '@/foundation/utils/cn';
 
-import type { AdminCreateProviderInput } from '@/features/admin/finance/providers';
+import type {
+  AdminCreateProviderInput,
+  AdminCreateProviderCapabilityInput,
+  AdminProviderCapabilityType,
+} from '@/features/admin/finance/providers';
+
 import {
   ADMIN_PROVIDER_TYPES,
   ADMIN_PROVIDER_ENVIRONMENTS,
@@ -35,6 +41,7 @@ const INITIAL_FORM: AdminCreateProviderInput = {
   environment: 'SANDBOX',
   description: '',
   configurationReference: '',
+  capabilities: [],
 };
 
 // -----------------------------------------------------------------------------
@@ -57,6 +64,53 @@ const ENVIRONMENT_LABELS: Record<
   SANDBOX: 'Sandbox',
   PRODUCTION: 'Production',
 };
+
+const CAPABILITY_OPTIONS: {
+  value: AdminProviderCapabilityType;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: 'INITIATE_PAYMENT',
+    label: 'Initiate Payment',
+    description: 'Start a customer payment, such as an M-PESA STK Push.',
+  },
+  {
+    value: 'VERIFY_PAYMENT',
+    label: 'Verify Payment',
+    description: 'Verify whether a payment was successfully completed.',
+  },
+  {
+    value: 'QUERY_PAYMENT',
+    label: 'Query Payment',
+    description: 'Retrieve the status of an existing payment.',
+  },
+  {
+    value: 'REFUND_PAYMENT',
+    label: 'Refund Payment',
+    description: 'Process a refund where supported.',
+  },
+  {
+    value: 'INITIATE_DISBURSEMENT',
+    label: 'Initiate Disbursement',
+    description: 'Send money to a recipient.',
+  },
+  {
+    value: 'VERIFY_DISBURSEMENT',
+    label: 'Verify Disbursement',
+    description: 'Verify the result of a disbursement.',
+  },
+  {
+    value: 'QUERY_BALANCE',
+    label: 'Query Balance',
+    description: 'Retrieve the provider account balance.',
+  },
+  {
+    value: 'WEBHOOKS',
+    label: 'Webhooks',
+    description: 'Receive provider payment notifications.',
+  },
+];
 
 // -----------------------------------------------------------------------------
 // Component
@@ -116,6 +170,45 @@ function ProviderCreateDialogContent({
   };
 
   // ---------------------------------------------------------------------------
+  // Capability Selection
+  // ---------------------------------------------------------------------------
+
+  const toggleCapability = (
+    capabilityType: AdminProviderCapabilityType,
+    checked: boolean,
+  ) => {
+    setForm((current) => {
+      const currentCapabilities = current.capabilities ?? [];
+
+      const updatedCapabilities = checked
+        ? [
+            ...currentCapabilities.filter(
+              (capability) => capability.type !== capabilityType,
+            ),
+            {
+              type: capabilityType,
+              isSupported: true,
+            },
+          ]
+        : currentCapabilities.filter(
+            (capability) => capability.type !== capabilityType,
+          );
+
+      return {
+        ...current,
+        capabilities: updatedCapabilities,
+      };
+    });
+  };
+
+  const isCapabilitySelected = (
+    capabilityType: AdminProviderCapabilityType,
+  ) =>
+    (form.capabilities ?? []).some(
+      (capability) => capability.type === capabilityType,
+    );
+
+  // ---------------------------------------------------------------------------
   // Validation
   // ---------------------------------------------------------------------------
 
@@ -132,6 +225,12 @@ function ProviderCreateDialogContent({
       return;
     }
 
+    const capabilities: AdminCreateProviderCapabilityInput[] =
+      (form.capabilities ?? []).map((capability) => ({
+        type: capability.type,
+        isSupported: capability.isSupported,
+      }));
+
     onConfirm({
       code: form.code.trim(),
       name: form.name.trim(),
@@ -140,6 +239,7 @@ function ProviderCreateDialogContent({
       description: form.description?.trim() || undefined,
       configurationReference:
         form.configurationReference?.trim() || undefined,
+      capabilities,
     });
   };
 
@@ -151,14 +251,14 @@ function ProviderCreateDialogContent({
     <ProviderOperationConfirmation
       isOpen
       title="Create payment provider"
-      description="Register a new payment provider in the financial administration module."
+      description="Register a new payment provider and select the capabilities its integration supports."
       confirmLabel="Create Provider"
       cancelLabel="Cancel"
       isLoading={isLoading}
       onConfirm={handleConfirm}
       onCancel={onCancel}
     >
-      <div className="max-h-[65vh] space-y-4 overflow-y-auto pr-1">
+      <div className="max-h-[65vh] space-y-5 overflow-y-auto pr-1">
 
         {/* Provider Code */}
 
@@ -275,6 +375,58 @@ function ProviderCreateDialogContent({
               </option>
             ))}
           </select>
+        </div>
+
+        {/* Capabilities */}
+
+        <div className="space-y-3 rounded-lg border border-border p-3">
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-foreground">
+              Provider capabilities
+            </h3>
+
+            <p className="text-xs text-muted-foreground">
+              Select only the capabilities that this provider&apos;s
+              integration actually implements. Selected capabilities
+              will be registered as supported.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {CAPABILITY_OPTIONS.map((capability) => (
+              <label
+                key={capability.value}
+                className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3"
+              >
+                <input
+                  type="checkbox"
+                  checked={isCapabilitySelected(capability.value)}
+                  onChange={(event) =>
+                    toggleCapability(
+                      capability.value,
+                      event.target.checked,
+                    )
+                  }
+                  disabled={isLoading}
+                  className="mt-1 h-4 w-4 shrink-0 accent-primary"
+                />
+
+                <span className="space-y-1">
+                  <span className="block text-sm font-medium text-foreground">
+                    {capability.label}
+                  </span>
+
+                  <span className="block text-xs text-muted-foreground">
+                    {capability.description}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Selected: {(form.capabilities ?? []).length}
+          </p>
         </div>
 
         {/* Description */}

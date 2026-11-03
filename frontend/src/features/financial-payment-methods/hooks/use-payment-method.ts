@@ -5,6 +5,22 @@
 // React Query hook for retrieving a FinancialPaymentMethod by its public
 // identifier.
 //
+// Backend operation:
+//
+//     GET /financial-payment-methods/:paymentMethodPublicId
+//
+// Backend authorization:
+//
+//     JwtAuthGuard
+//     PermissionsGuard
+//     admin:read
+//
+// This is an administrative lookup.
+//
+// Member-facing payment-method retrieval uses:
+//
+//     GET /financial-payment-methods/me
+//
 // Responsibilities:
 // - coordinate the payment-method read operation;
 // - manage query caching and request lifecycle;
@@ -21,7 +37,7 @@
 //
 //     api/get-payment-method.api.ts
 //
-// Backend authorization and ownership remain server-side.
+// Backend authorization remains server-side.
 //
 // =============================================================================
 
@@ -44,13 +60,15 @@ const FINANCIAL_PAYMENT_METHODS_QUERY_KEY = 'financial-payment-methods';
 /**
  * Retrieves a FinancialPaymentMethod by its public identifier.
  *
+ * Administrative permission is required by the backend.
+ *
  * The query remains disabled until a non-empty public identifier is supplied.
  *
  * @param paymentMethodPublicId
  * API-safe public identifier of the payment method.
  *
  * @returns
- * React Query result containing the payment method or `null`.
+ * React Query result containing the payment method or null.
  */
 export function usePaymentMethod(
   paymentMethodPublicId: string | undefined,
@@ -58,20 +76,14 @@ export function usePaymentMethod(
   return useQuery<FinancialPaymentMethod | null>({
     queryKey: [
       FINANCIAL_PAYMENT_METHODS_QUERY_KEY,
+      'admin',
       paymentMethodPublicId,
     ],
 
-    /**
-     * Prevents an HTTP request when no payment-method identifier is available.
-     */
     enabled:
       typeof paymentMethodPublicId === 'string' &&
       paymentMethodPublicId.trim().length > 0,
 
-    /**
-     * React Query invokes the feature API operation only after the query has
-     * been enabled.
-     */
     queryFn: () => {
       if (
         typeof paymentMethodPublicId !== 'string' ||

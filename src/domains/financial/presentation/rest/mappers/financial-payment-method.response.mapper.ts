@@ -25,6 +25,8 @@
 //
 // Safe display metadata such as displayName and lastFour may be returned.
 //
+// The registered M-PESA phone number is returned in normalized format.
+//
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
@@ -88,6 +90,13 @@ export interface FinancialPaymentMethodResponse {
    * External financial provider.
    */
   provider: string;
+
+  /**
+   * Customer's registered M-PESA phone number.
+   *
+   * Returned in normalized international format when available.
+   */
+  phoneNumber: string | undefined;
 
   /**
    * Opaque provider-issued reference.
@@ -203,6 +212,8 @@ export class FinancialPaymentMethodResponseMapper {
       type: paymentMethod.type.value,
 
       provider: paymentMethod.provider.value,
+
+      phoneNumber: paymentMethod.phoneNumber?.value,
 
       providerReference: paymentMethod.providerReference?.value,
 

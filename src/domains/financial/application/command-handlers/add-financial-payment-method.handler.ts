@@ -158,12 +158,11 @@ export class AddFinancialPaymentMethodHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     // 1. Load owning Financial Account
     // -------------------------------------------------------------------------
-    //
+
     // The Financial Payment Method belongs to a Financial Account.
     //
     // The command carries only the account public identity. The account
     // repository resolves the owning aggregate.
-    // -------------------------------------------------------------------------
 
     const account = await this.financialAccountRepository.findByPublicId(
       command.accountId,
@@ -182,14 +181,13 @@ export class AddFinancialPaymentMethodHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     // 3. Validate provider-reference uniqueness
     // -------------------------------------------------------------------------
-    //
+
     // Provider references are opaque external identifiers.
     //
     // When supplied, the reference must not already be registered for the
     // same provider.
     //
     // No provider API is contacted here.
-    // -------------------------------------------------------------------------
 
     if (command.providerReference !== undefined) {
       const existing =
@@ -208,7 +206,7 @@ export class AddFinancialPaymentMethodHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     // 4. Coordinate account-level default invariant
     // -------------------------------------------------------------------------
-    //
+
     // The Financial Payment Method aggregate cannot coordinate sibling
     // aggregates.
     //
@@ -219,17 +217,6 @@ export class AddFinancialPaymentMethodHandler implements CommandHandler<
     // If the new method is requested as default, locate the existing default
     // payment method and remove its default designation through its aggregate
     // behavior.
-    //
-    // IMPORTANT:
-    //
-    // Do NOT call:
-    //
-    //     existingDefault.paymentMethod.clearDefault()
-    //
-    // because that bypasses the aggregate boundary.
-    //
-    // The aggregate owns mutation of its entity.
-    // -------------------------------------------------------------------------
 
     if (command.isDefault === true) {
       const existingDefault =
@@ -247,8 +234,8 @@ export class AddFinancialPaymentMethodHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     // 5. Create Financial Payment Method Entity
     // -------------------------------------------------------------------------
-    //
-    // The entity requires:
+
+    // The entity receives:
     //
     // - Financial Account internal identity;
     // - Financial Account public identity;
@@ -256,10 +243,13 @@ export class AddFinancialPaymentMethodHandler implements CommandHandler<
     // - provider;
     // - optional provider reference;
     // - optional display metadata;
-    // - default designation.
+    // - default designation;
+    // - normalized M-PESA phone number.
     //
     // The entity determines the initial active lifecycle state.
-    // -------------------------------------------------------------------------
+    //
+    // Phone-number validation and normalization are already handled by
+    // FinancialPaymentMethodPhoneNumber.
 
     const paymentMethod = FinancialPaymentMethodEntity.create(
       account.id,
@@ -270,6 +260,7 @@ export class AddFinancialPaymentMethodHandler implements CommandHandler<
       command.displayName,
       command.lastFour,
       command.isDefault ?? false,
+      command.phoneNumber,
     );
 
     // -------------------------------------------------------------------------
@@ -281,12 +272,11 @@ export class AddFinancialPaymentMethodHandler implements CommandHandler<
     // -------------------------------------------------------------------------
     // 7. Record creation domain event
     // -------------------------------------------------------------------------
-    //
+
     // Aggregate creation intentionally does not emit the Added event.
     //
     // The application boundary records the event after the aggregate has
     // been successfully constructed.
-    // -------------------------------------------------------------------------
 
     aggregate.recordCreated(command.correlationId, command.causationId);
 

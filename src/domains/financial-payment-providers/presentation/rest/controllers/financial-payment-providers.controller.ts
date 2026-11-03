@@ -75,11 +75,11 @@ import {
 // -----------------------------------------------------------------------------
 
 import {
+  GetAvailableFinancialPaymentProvidersQuery,
   GetFinancialPaymentProviderByCodeQuery,
   GetFinancialPaymentProviderQuery,
   GetFinancialPaymentProvidersQuery,
 } from '../../../application/queries';
-
 // -----------------------------------------------------------------------------
 // Domain — Aggregate
 // -----------------------------------------------------------------------------
@@ -225,6 +225,11 @@ export class FinancialPaymentProvidersController {
       GetFinancialPaymentProviderByCodeQuery,
       FinancialPaymentProviderAggregate
     >,
+    @Inject(FINANCIAL_PAYMENT_PROVIDER_TOKENS.QUERY_HANDLERS.GET_AVAILABLE)
+    private readonly getAvailableHandler: QueryHandler<
+      GetAvailableFinancialPaymentProvidersQuery,
+      FinancialPaymentProviderAggregate[]
+    >,
   ) {}
 
   // ===========================================================================
@@ -318,7 +323,37 @@ export class FinancialPaymentProvidersController {
 
     return FinancialPaymentProviderResponseMapper.toResponse(aggregate);
   }
+  // ---------------------------------------------------------------------------
+  // Get Available Providers
+  // ---------------------------------------------------------------------------
 
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'List available financial payment providers',
+    description:
+      'Returns enabled and operational providers available for users adding a payment method.',
+  })
+  @Get('available')
+  @UseGuards(JwtAuthGuard)
+  public async getAvailable(): Promise<
+    {
+      publicId: string;
+      code: string;
+      name: string;
+      type: string;
+    }[]
+  > {
+    const aggregates = await this.getAvailableHandler.execute(
+      new GetAvailableFinancialPaymentProvidersQuery(),
+    );
+
+    return aggregates.map((aggregate) => ({
+      publicId: aggregate.publicId.value,
+      code: aggregate.code.value,
+      name: aggregate.name.value,
+      type: aggregate.type.value,
+    }));
+  }
   // ---------------------------------------------------------------------------
   // Get Provider By Public ID
   // ---------------------------------------------------------------------------
@@ -361,7 +396,7 @@ export class FinancialPaymentProvidersController {
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Create a financial payment provider',
-    description: 'Creates a provider using the supplied configuration.',
+    description: 'Creates a provider and registers its supported capabilities.',
   })
   @Post()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -376,6 +411,19 @@ export class FinancialPaymentProvidersController {
           )
         : undefined;
 
+    // -------------------------------------------------------------------------
+    // Map requested capabilities into domain value objects
+    // -------------------------------------------------------------------------
+
+    const capabilities = (dto.capabilities ?? []).map((capability) => ({
+      type: FinancialPaymentProviderCapabilityType.create(capability.type),
+      isSupported: capability.isSupported,
+    }));
+
+    // -------------------------------------------------------------------------
+    // Create command
+    // -------------------------------------------------------------------------
+
     const command = new CreateFinancialPaymentProviderCommand(
       FinancialPaymentProviderCode.create(dto.code),
       FinancialPaymentProviderName.create(dto.name),
@@ -385,6 +433,8 @@ export class FinancialPaymentProvidersController {
       randomUUID(),
       dto.description,
       configurationReference,
+      undefined, // causationId
+      capabilities,
     );
 
     const aggregate = await this.createHandler.execute(command);

@@ -11,6 +11,7 @@
  * - Change provider integration status.
  * - Configure M-PESA credentials securely.
  * - Test M-PESA Daraja OAuth authentication.
+ * - Enable and disable provider capabilities.
  * - Invalidate provider queries after successful state-changing operations.
  *
  * Architecture:
@@ -31,6 +32,7 @@ import type {
   AdminChangeProviderStatusInput,
   AdminConfigureMpesaInput,
   AdminCreateProviderInput,
+  AdminProviderCapabilityOperationParams,
   AdminProviderOperationParams,
   AdminTestMpesaConnectionResponse,
   AdminUpdateProviderInput,
@@ -163,6 +165,30 @@ export function useAdminProviderOperations() {
   });
 
   // ---------------------------------------------------------------------------
+  // Enable Capability
+  // ---------------------------------------------------------------------------
+
+  const enableCapability = useMutation({
+    mutationFn: (
+      params: AdminProviderCapabilityOperationParams,
+    ) => adminProvidersApi.enableCapability(params),
+
+    onSuccess: invalidateProviderQueries,
+  });
+
+  // ---------------------------------------------------------------------------
+  // Disable Capability
+  // ---------------------------------------------------------------------------
+
+  const disableCapability = useMutation({
+    mutationFn: (
+      params: AdminProviderCapabilityOperationParams,
+    ) => adminProvidersApi.disableCapability(params),
+
+    onSuccess: invalidateProviderQueries,
+  });
+
+  // ---------------------------------------------------------------------------
   // Return
   // ---------------------------------------------------------------------------
 
@@ -174,6 +200,8 @@ export function useAdminProviderOperations() {
     changeProviderStatus,
     configureMpesa,
     testMpesaConnection,
+    enableCapability,
+    disableCapability,
 
     isCreating: createProvider.isPending,
     isUpdating: updateProvider.isPending,
@@ -183,6 +211,9 @@ export function useAdminProviderOperations() {
     isConfiguringMpesa: configureMpesa.isPending,
     isTestingMpesaConnection: testMpesaConnection.isPending,
 
+    isEnablingCapability: enableCapability.isPending,
+    isDisablingCapability: disableCapability.isPending,
+
     isLoading:
       createProvider.isPending ||
       updateProvider.isPending ||
@@ -190,6 +221,8 @@ export function useAdminProviderOperations() {
       disableProvider.isPending ||
       changeProviderStatus.isPending ||
       configureMpesa.isPending ||
-      testMpesaConnection.isPending,
+      testMpesaConnection.isPending ||
+      enableCapability.isPending ||
+      disableCapability.isPending,
   };
 }

@@ -39,3 +39,8 @@ export {
   type DeactivatePaymentMethodRequest,
 } from './deactivate-payment-method.api';
 
+export {
+  getAvailablePaymentProviders,
+} from './get-available-payment-providers.api';
+
+export { getMyPaymentMethods } from './get-my-payment-methods.api';

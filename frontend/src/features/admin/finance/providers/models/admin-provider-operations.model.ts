@@ -1,6 +1,28 @@
-
 // -----------------------------------------------------------------------------
 // Admin Provider — Operation Models
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Provider Capability Input
+// -----------------------------------------------------------------------------
+
+export type AdminProviderCapabilityType =
+  | 'INITIATE_PAYMENT'
+  | 'VERIFY_PAYMENT'
+  | 'QUERY_PAYMENT'
+  | 'REFUND_PAYMENT'
+  | 'INITIATE_DISBURSEMENT'
+  | 'VERIFY_DISBURSEMENT'
+  | 'QUERY_BALANCE'
+  | 'WEBHOOKS';
+
+export interface AdminCreateProviderCapabilityInput {
+  type: AdminProviderCapabilityType;
+  isSupported: boolean;
+}
+
+// -----------------------------------------------------------------------------
+// Create Provider
 // -----------------------------------------------------------------------------
 
 export interface AdminCreateProviderInput {
@@ -10,17 +32,30 @@ export interface AdminCreateProviderInput {
   environment: string;
   description?: string;
   configurationReference?: string;
+  capabilities?: AdminCreateProviderCapabilityInput[];
 }
+
+// -----------------------------------------------------------------------------
+// Update Provider
+// -----------------------------------------------------------------------------
 
 export interface AdminUpdateProviderInput {
   name: string;
   causationId?: string;
 }
 
+// -----------------------------------------------------------------------------
+// Change Provider Status
+// -----------------------------------------------------------------------------
+
 export interface AdminChangeProviderStatusInput {
   status: string;
   causationId?: string;
 }
+
+// -----------------------------------------------------------------------------
+// Provider Operations
+// -----------------------------------------------------------------------------
 
 export interface AdminProviderOperationParams {
   providerPublicId: string;

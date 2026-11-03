@@ -219,6 +219,10 @@ import {
   // ---------------------------------------------------------------------------
   // Financial Payment Method
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Financial Payment Method
+  // ---------------------------------------------------------------------------
+  GetAccountFinancialPaymentMethodsHandler,
   GetDefaultFinancialPaymentMethodHandler,
   GetFinancialPaymentMethodHandler,
   GetAllFinancialPaymentMethodsHandler,
@@ -541,6 +545,10 @@ import { FinancialPaymentEventRegistry } from './domain/events/financial-payment
     {
       provide: FINANCIAL_PAYMENT_METHOD_TOKENS.QUERY_HANDLERS.GET_DEFAULT,
       useClass: GetDefaultFinancialPaymentMethodHandler,
+    },
+    {
+      provide: FINANCIAL_PAYMENT_METHOD_TOKENS.QUERY_HANDLERS.GET_ACCOUNT,
+      useClass: GetAccountFinancialPaymentMethodsHandler,
     },
 
     // =========================================================================
