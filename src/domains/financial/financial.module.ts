@@ -252,7 +252,7 @@ import {
   CountFinancialPaymentsQueryHandler,
 } from './application/query-handlers';
 import { EventRehydratorRegistry } from '../../infrastructure/events/event-rehydrator.registry';
-
+import { FinancialPaymentCreatedSubscriber } from './application/subscribers/financial-payment-created.subscriber';
 import { FinancialPaymentEventRegistry } from './domain/events/financial-payment-event.registry';
 // =============================================================================
 // Module
@@ -314,6 +314,11 @@ import { FinancialPaymentEventRegistry } from './domain/events/financial-payment
     // =========================================================================
 
     MpesaCallbackService,
+    // -------------------------------------------------------------------------
+    // Financial Payment — Event Subscribers
+    // -------------------------------------------------------------------------
+
+    FinancialPaymentCreatedSubscriber,
 
     // =========================================================================
     // Financial Account
