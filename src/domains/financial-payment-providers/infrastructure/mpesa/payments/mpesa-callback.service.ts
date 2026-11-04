@@ -85,8 +85,8 @@ export class MpesaCallbackService {
   /**
    * Persists the callback before attempting payment reconciliation.
    *
-   * This ensures that callbacks arriving before CheckoutRequestID has been
-   * persisted on the Payment Attempt are not lost.
+   * This ensures callbacks arriving before provider references are persisted
+   * are retained and can be reconciled later.
    */
   public async processCallback(body: unknown): Promise<MpesaCallbackResult> {
     const callback = this.extractCallback(body);
@@ -98,10 +98,6 @@ export class MpesaCallbackService {
       throw new Error('M-PESA callback is missing its request identifiers.');
     }
 
-    // -------------------------------------------------------------------------
-    // 1. Persist callback first
-    // -------------------------------------------------------------------------
-
     const callbackRecord = await this.callbackRepository.createIfNotExists({
       provider: this.provider.value,
       merchantRequestId,
@@ -111,10 +107,6 @@ export class MpesaCallbackService {
       payload: body,
     });
 
-    // -------------------------------------------------------------------------
-    // 2. Handle previously processed callback
-    // -------------------------------------------------------------------------
-
     if (callbackRecord.status === 'PROCESSED') {
       return {
         processed: false,
@@ -122,10 +114,6 @@ export class MpesaCallbackService {
         message: 'Callback already processed.',
       };
     }
-
-    // -------------------------------------------------------------------------
-    // 3. Attempt reconciliation
-    // -------------------------------------------------------------------------
 
     return this.reconcileCallback(callbackRecord);
   }
@@ -135,8 +123,7 @@ export class MpesaCallbackService {
   // ===========================================================================
 
   /**
-   * Called after the payment handler persists CheckoutRequestID.
-   *
+   * Called after CheckoutRequestID is persisted on the payment attempt.
    * This handles the callback-before-reference-persistence race.
    */
   public async reconcilePendingCallback(
@@ -190,50 +177,126 @@ export class MpesaCallbackService {
 
     return this.unitOfWork.execute(async () => {
       // -----------------------------------------------------------------------
-      // 1. Locate payment
+      // 1. Primary lookup: CheckoutRequestID
       // -----------------------------------------------------------------------
 
-      const aggregate = await this.paymentRepository.findByProviderReference(
+      let aggregate = await this.paymentRepository.findByProviderReference(
         this.provider,
         providerReference,
       );
 
-      // The payment reference may not have been persisted yet.
-      // Keep the callback pending for later reconciliation.
+      let attempt =
+        aggregate === null
+          ? undefined
+          : this.findMatchingAttempt(aggregate, checkoutRequestId);
 
-      if (aggregate === null) {
+      // -----------------------------------------------------------------------
+      // 2. Fallback lookup: MerchantRequestID
+      // -----------------------------------------------------------------------
+
+      /*
+       * MerchantRequestID fallback is used only when the checkout reference
+       * has not yet been persisted or did not identify an attempt.
+       *
+       * The repository implementation must reject ambiguous merchant IDs.
+       */
+      if (aggregate === null || attempt === undefined) {
+        const merchantAggregate =
+          await this.paymentRepository.findByMerchantRequestId(
+            this.provider,
+            merchantRequestId,
+          );
+
+        if (merchantAggregate !== null) {
+          const merchantAttempt = this.findMatchingAttemptByMerchantRequestId(
+            merchantAggregate,
+            merchantRequestId,
+          );
+
+          if (merchantAttempt !== undefined) {
+            // Never allow a merchant-ID match to override a different
+            // CheckoutRequestID already assigned to the attempt.
+            const existingCheckoutRequestId =
+              merchantAttempt.providerReference?.value;
+
+            if (
+              existingCheckoutRequestId !== undefined &&
+              existingCheckoutRequestId !== checkoutRequestId
+            ) {
+              this.logger.error(
+                `M-PESA callback identifier mismatch for attempt "${merchantAttempt.publicId.value}".`,
+              );
+
+              return {
+                processed: false,
+                duplicate: false,
+                paymentPublicId: merchantAggregate.publicId.value,
+                attemptPublicId: merchantAttempt.publicId.value,
+                message:
+                  'Callback is pending because its CheckoutRequestID does not match the payment attempt.',
+              };
+            }
+
+            aggregate = merchantAggregate;
+            attempt = merchantAttempt;
+
+            // Callback arrived before CheckoutRequestID was saved.
+            // Attach the callback's reference so future reconciliation uses
+            // the primary lookup path.
+            if (!attempt.hasProviderReference()) {
+              attempt.setProviderReference(providerReference);
+            }
+
+            this.logger.warn(
+              `M-PESA callback "${checkoutRequestId}" matched using MerchantRequestID fallback.`,
+            );
+          }
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // 3. Unmatched callback remains pending
+      // -----------------------------------------------------------------------
+
+      if (aggregate === null || attempt === undefined) {
         this.logger.warn(
-          `M-PESA callback "${checkoutRequestId}" is pending because its Financial Payment has not been located.`,
+          `M-PESA callback "${checkoutRequestId}" is pending because no matching Financial Payment Attempt was located.`,
         );
 
         return {
           processed: false,
           duplicate: false,
+          ...(aggregate ? { paymentPublicId: aggregate.publicId.value } : {}),
           message: 'Callback persisted and awaiting payment reconciliation.',
         };
       }
 
       // -----------------------------------------------------------------------
-      // 2. Locate matching attempt
+      // 4. Verify callback identifiers
       // -----------------------------------------------------------------------
 
-      const attempt = this.findMatchingAttempt(aggregate, checkoutRequestId);
+      const attemptMerchantRequestId = attempt.merchantRequestId;
 
-      if (attempt === undefined) {
-        this.logger.warn(
-          `M-PESA callback "${checkoutRequestId}" is pending because its Payment Attempt has not been located.`,
+      if (
+        attemptMerchantRequestId !== undefined &&
+        attemptMerchantRequestId !== merchantRequestId
+      ) {
+        this.logger.error(
+          `M-PESA MerchantRequestID mismatch for attempt "${attempt.publicId.value}".`,
         );
 
         return {
           processed: false,
           duplicate: false,
           paymentPublicId: aggregate.publicId.value,
-          message: 'Callback persisted and awaiting matching payment attempt.',
+          attemptPublicId: attempt.publicId.value,
+          message:
+            'Callback is pending because its MerchantRequestID does not match the payment attempt.',
         };
       }
 
       // -----------------------------------------------------------------------
-      // 3. Idempotency
+      // 5. Idempotency
       // -----------------------------------------------------------------------
 
       if (attempt.isTerminal()) {
@@ -257,13 +320,13 @@ export class MpesaCallbackService {
       }
 
       // -----------------------------------------------------------------------
-      // 4. Validate callback amount
+      // 6. Validate callback amount
       // -----------------------------------------------------------------------
 
       this.validateCallbackAmount(callback, attempt);
 
       // -----------------------------------------------------------------------
-      // 5. Apply provider result
+      // 7. Apply provider result
       // -----------------------------------------------------------------------
 
       const now = new Date();
@@ -272,26 +335,23 @@ export class MpesaCallbackService {
 
       if (callback.ResultCode === 0) {
         attempt.succeed(now);
-
         aggregate.succeed(now, correlationId, causationId);
       } else {
         const failureCode = String(callback.ResultCode);
-
         const failureMessage = this.sanitizeFailureMessage(callback.ResultDesc);
 
         attempt.fail(failureCode, failureMessage, now);
-
         aggregate.fail(now, correlationId, causationId);
       }
 
       // -----------------------------------------------------------------------
-      // 6. Persist payment aggregate
+      // 8. Persist payment aggregate
       // -----------------------------------------------------------------------
 
       await this.paymentRepository.save(aggregate);
 
       // -----------------------------------------------------------------------
-      // 7. Mark callback processed
+      // 9. Mark callback processed
       // -----------------------------------------------------------------------
 
       await this.callbackRepository.markProcessed(
@@ -301,7 +361,7 @@ export class MpesaCallbackService {
       );
 
       // -----------------------------------------------------------------------
-      // 8. Publish domain events
+      // 10. Publish domain events
       // -----------------------------------------------------------------------
 
       const domainEvents = aggregate.pullDomainEvents();
@@ -311,7 +371,7 @@ export class MpesaCallbackService {
       }
 
       // -----------------------------------------------------------------------
-      // 9. Return result
+      // 11. Return result
       // -----------------------------------------------------------------------
 
       this.logger.log(
@@ -423,7 +483,7 @@ export class MpesaCallbackService {
   }
 
   // ===========================================================================
-  // Find Matching Attempt
+  // Find Matching Attempt by CheckoutRequestID
   // ===========================================================================
 
   private findMatchingAttempt(
@@ -434,6 +494,21 @@ export class MpesaCallbackService {
       (attempt) =>
         attempt.provider.value === this.provider.value &&
         attempt.providerReference?.value === checkoutRequestId,
+    );
+  }
+
+  // ===========================================================================
+  // Find Matching Attempt by MerchantRequestID
+  // ===========================================================================
+
+  private findMatchingAttemptByMerchantRequestId(
+    aggregate: FinancialPaymentAggregate,
+    merchantRequestId: string,
+  ): FinancialPaymentAttemptEntity | undefined {
+    return aggregate.attempts.find(
+      (attempt) =>
+        attempt.provider.value === this.provider.value &&
+        attempt.merchantRequestId === merchantRequestId,
     );
   }
 

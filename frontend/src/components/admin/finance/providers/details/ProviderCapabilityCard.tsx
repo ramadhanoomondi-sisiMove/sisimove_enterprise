@@ -1,9 +1,12 @@
-import { Card, Badge } from '@/components/ui';
+
+import { Card, Badge, Button } from '@/components/ui';
 import { cn } from '@/foundation/utils/cn';
 import type { AdminProviderCapability } from '@/features/admin/finance/providers';
 
 export interface ProviderCapabilityCardProps {
   capability: AdminProviderCapability;
+  onEnable: () => void;
+  onDisable: () => void;
   className?: string;
 }
 
@@ -17,6 +20,8 @@ function formatCapabilityType(type: string): string {
 
 export function ProviderCapabilityCard({
   capability,
+  onEnable,
+  onDisable,
   className,
 }: ProviderCapabilityCardProps) {
   return (
@@ -65,6 +70,28 @@ export function ProviderCapabilityCard({
             {capability.canBeUsed ? 'Yes' : 'No'}
           </Badge>
         </div>
+      </div>
+
+      <div className="flex justify-end border-t pt-3">
+        {capability.isEnabled ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={onDisable}
+          >
+            Disable Capability
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            size="sm"
+            onClick={onEnable}
+            disabled={!capability.isSupported}
+          >
+            Enable Capability
+          </Button>
+        )}
       </div>
     </Card>
   );

@@ -557,6 +557,79 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
     return FinancialPaymentPrismaMapper.toDomain(record);
   }
   // ===========================================================================
+  // Find By Merchant Request ID
+  // ===========================================================================
+
+  /**
+   * Finds a complete Financial Payment aggregate using a provider-issued
+   * MerchantRequestID belonging to one of its Payment Attempts.
+   *
+   * MerchantRequestID is indexed but is not unique in the database.
+   * Therefore, this method reads at most two matching attempts:
+   *
+   * - No match -> return null.
+   * - Exactly one match -> load and return its owning Payment aggregate.
+   * - More than one match -> throw rather than selecting an arbitrary payment.
+   *
+   * The lookup is scoped by both provider and MerchantRequestID.
+   */
+  public async findByMerchantRequestId(
+    provider: FinancialProvider,
+    merchantRequestId: string,
+  ): Promise<FinancialPaymentAggregate | null> {
+    const normalizedProvider = provider.value.trim();
+
+    const normalizedMerchantRequestId = merchantRequestId.trim();
+
+    if (!normalizedProvider || !normalizedMerchantRequestId) {
+      throw new FinancialPaymentException(
+        'Financial Provider and Merchant Request ID must not be empty.',
+      );
+    }
+
+    const matchingAttempts = await this.prisma.financialPaymentAttempt.findMany(
+      {
+        where: {
+          provider: normalizedProvider,
+          merchantRequestId: normalizedMerchantRequestId,
+        },
+        select: {
+          paymentId: true,
+        },
+        take: 2,
+      },
+    );
+
+    if (matchingAttempts.length === 0) {
+      return null;
+    }
+
+    if (matchingAttempts.length > 1) {
+      throw new FinancialPaymentException(
+        `Merchant Request ID "${normalizedMerchantRequestId}" matches multiple Financial Payment Attempts for provider "${normalizedProvider}".`,
+      );
+    }
+
+    const matchingAttempt = matchingAttempts[0];
+
+    if (matchingAttempt === undefined) {
+      return null;
+    }
+
+    const record = await this.findPaymentRecordByUnique({
+      id: matchingAttempt.paymentId,
+    });
+
+    if (record === null) {
+      throw new FinancialPaymentException(
+        `Financial Payment "${matchingAttempt.paymentId}" referenced by Merchant Request ID "${normalizedMerchantRequestId}" does not exist.`,
+      );
+    }
+
+    return FinancialPaymentPrismaMapper.toDomain(record);
+  }
+
+  // ===========================================================================
   // Find By Account
   // ===========================================================================
 
@@ -1236,6 +1309,8 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
 
           providerReference: persistence.providerReference,
 
+          merchantRequestId: persistence.merchantRequestId,
+
           amount: persistence.amount,
 
           currency: persistence.currency,
@@ -1334,6 +1409,8 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
 
             providerReference: persistence.providerReference,
 
+            merchantRequestId: persistence.merchantRequestId,
+
             amount: persistence.amount,
 
             currency: persistence.currency,
@@ -1388,6 +1465,8 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
           provider: persistence.provider,
 
           providerReference: persistence.providerReference,
+
+          merchantRequestId: persistence.merchantRequestId,
 
           amount: persistence.amount,
 

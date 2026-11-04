@@ -19,7 +19,8 @@
 // - Maintain attempt identity.
 // - Maintain owning Financial Payment identity.
 // - Maintain provider information.
-// - Maintain provider reference.
+// - Maintain provider reference (CheckoutRequestID).
+// - Maintain MerchantRequestID separately.
 // - Maintain attempted monetary amount.
 // - Maintain attempt lifecycle.
 // - Maintain provider failure information.
@@ -88,6 +89,8 @@ export interface FinancialPaymentAttemptProps {
   /**
    * Provider-issued reference.
    *
+   * For M-PESA STK Push, this stores the CheckoutRequestID.
+   *
    * This may be unavailable until the provider accepts the execution request.
    *
    * Only a safe provider reference may be stored here.
@@ -95,6 +98,15 @@ export interface FinancialPaymentAttemptProps {
    * provider data must never be stored in the domain entity.
    */
   providerReference: FinancialProviderReference | undefined;
+
+  /**
+   * Safaricom MerchantRequestID.
+   *
+   * Stored separately from the CheckoutRequestID.
+   *
+   * This may be unavailable when the provider response is incomplete.
+   */
+  merchantRequestId: string | undefined;
 
   /**
    * Monetary amount attempted.
@@ -189,6 +201,8 @@ export class FinancialPaymentAttemptEntity extends Entity<
 
         providerReference: providerReference ?? undefined,
 
+        merchantRequestId: undefined,
+
         amount,
 
         failureCode: undefined,
@@ -239,6 +253,13 @@ export class FinancialPaymentAttemptEntity extends Entity<
 
   public get providerReference(): FinancialProviderReference | undefined {
     return this.props.providerReference;
+  }
+
+  /**
+   * Safaricom MerchantRequestID.
+   */
+  public get merchantRequestId(): string | undefined {
+    return this.props.merchantRequestId;
   }
 
   public get amount(): Money {
@@ -397,6 +418,8 @@ export class FinancialPaymentAttemptEntity extends Entity<
   /**
    * Assigns the provider reference returned by the integration boundary.
    *
+   * For M-PESA STK Push, this is the CheckoutRequestID.
+   *
    * A provider reference may only be changed while the attempt remains
    * non-terminal.
    */
@@ -419,6 +442,50 @@ export class FinancialPaymentAttemptEntity extends Entity<
    */
   public hasProviderReference(): boolean {
     return this.props.providerReference !== undefined;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Merchant Request ID
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Assigns the Safaricom MerchantRequestID.
+   *
+   * This identifier is stored independently from providerReference, which
+   * represents the CheckoutRequestID.
+   */
+  public setMerchantRequestId(merchantRequestId: string): void {
+    if (this.isTerminal()) {
+      throw new Error(
+        'Cannot set a MerchantRequestID on a terminal Financial Payment Attempt',
+      );
+    }
+
+    const normalized = merchantRequestId.trim();
+
+    if (!normalized) {
+      throw new Error('MerchantRequestID cannot be empty');
+    }
+
+    if (
+      this.props.merchantRequestId !== undefined &&
+      this.props.merchantRequestId !== normalized
+    ) {
+      throw new Error(
+        'Cannot replace an existing MerchantRequestID on a Financial Payment Attempt',
+      );
+    }
+
+    this.props.merchantRequestId = normalized;
+
+    this.touch();
+  }
+
+  /**
+   * Returns whether a MerchantRequestID has been assigned.
+   */
+  public hasMerchantRequestId(): boolean {
+    return this.props.merchantRequestId !== undefined;
   }
 
   // ---------------------------------------------------------------------------

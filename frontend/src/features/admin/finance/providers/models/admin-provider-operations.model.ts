@@ -1,3 +1,8 @@
+
+import type {
+  AdminProviderCapabilityType,
+} from './admin-provider.enums';
+
 // -----------------------------------------------------------------------------
 // Admin Provider — Operation Models
 // -----------------------------------------------------------------------------
@@ -5,16 +10,6 @@
 // -----------------------------------------------------------------------------
 // Provider Capability Input
 // -----------------------------------------------------------------------------
-
-export type AdminProviderCapabilityType =
-  | 'INITIATE_PAYMENT'
-  | 'VERIFY_PAYMENT'
-  | 'QUERY_PAYMENT'
-  | 'REFUND_PAYMENT'
-  | 'INITIATE_DISBURSEMENT'
-  | 'VERIFY_DISBURSEMENT'
-  | 'QUERY_BALANCE'
-  | 'WEBHOOKS';
 
 export interface AdminCreateProviderCapabilityInput {
   type: AdminProviderCapabilityType;

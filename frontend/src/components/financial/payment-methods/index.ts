@@ -1,14 +1,11 @@
-// =============================================================================
-// sisiMove — Financial Payment Methods Components
-// =============================================================================
-//
-// Presentation components for the authenticated payment-method surface.
-//
-// Components in this barrel remain UI/presentation boundaries. API calls,
-// React Query mutations, validation, navigation, and application orchestration
-// belong to the feature/container layers.
-//
-// =============================================================================
+
+ // =============================================================================
+ // sisiMove — Financial Payment Methods Components
+ // =============================================================================
+ //
+ // Presentation components for the authenticated payment-method surface.
+ //
+ // =============================================================================
 
 export {
   PaymentMethodCard,
@@ -29,6 +26,4 @@ export {
 export {
   PaymentMethodForm,
   type PaymentMethodFormProps,
-  type PaymentMethodTypeOption,
-  type PaymentProviderOption,
 } from './payment-method-form';

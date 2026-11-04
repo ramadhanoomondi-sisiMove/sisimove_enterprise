@@ -174,6 +174,24 @@ export interface FinancialPaymentRepository {
     provider: FinancialProvider,
     providerReference: FinancialProviderReference,
   ): Promise<FinancialPaymentAggregate | null>;
+  /**
+   * Finds a complete Financial Payment aggregate using a provider-issued
+   * MerchantRequestID belonging to one of its Payment Attempts.
+   *
+   * The lookup is scoped by Financial Provider and MerchantRequestID.
+   *
+   * Because MerchantRequestID is not currently unique in the persistence
+   * schema, infrastructure must verify that exactly one attempt matches
+   * before returning an aggregate. Ambiguous matches must not be selected.
+   *
+   * The returned aggregate includes all owned payment attempts.
+   *
+   * Returns null when no matching payment exists.
+   */
+  findByMerchantRequestId(
+    provider: FinancialProvider,
+    merchantRequestId: string,
+  ): Promise<FinancialPaymentAggregate | null>;
   // ===========================================================================
   // Financial Account
   // ===========================================================================

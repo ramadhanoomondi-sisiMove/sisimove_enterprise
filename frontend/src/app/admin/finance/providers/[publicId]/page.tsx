@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -11,6 +12,7 @@ import {
   type AdminProviderStatus,
   type AdminConfigureMpesaInput,
   type AdminUpdateProviderInput,
+  type AdminProviderCapability,
 } from '@/features/admin/finance/providers';
 
 import { ADMIN_ROUTES } from '@/foundation/routing/admin-routes';
@@ -27,6 +29,8 @@ import {
   ProviderOperationFeedback,
   ProviderErrorState,
   ProviderLoadingState,
+  ProviderCapabilityEnableDialog,
+  ProviderCapabilityDisableDialog,
 } from '@/components/admin/finance/providers';
 
 // -----------------------------------------------------------------------------
@@ -39,6 +43,8 @@ type ActiveDialog =
   | 'disable'
   | 'status'
   | 'mpesa'
+  | 'enableCapability'
+  | 'disableCapability'
   | null;
 
 // -----------------------------------------------------------------------------
@@ -80,12 +86,25 @@ export default function ProviderDetailsPage() {
   const [feedback, setFeedback] =
     useState<OperationFeedback | null>(null);
 
+  const [selectedCapability, setSelectedCapability] =
+    useState<AdminProviderCapability | null>(null);
+
   // ---------------------------------------------------------------------------
   // Dialog Management
   // ---------------------------------------------------------------------------
 
   const closeDialog = () => {
     setActiveDialog(null);
+    setSelectedCapability(null);
+  };
+
+  const openCapabilityDialog = (
+    capability: AdminProviderCapability,
+    dialog: 'enableCapability' | 'disableCapability',
+  ) => {
+    setFeedback(null);
+    setSelectedCapability(capability);
+    setActiveDialog(dialog);
   };
 
   // ---------------------------------------------------------------------------
@@ -102,6 +121,7 @@ export default function ProviderDetailsPage() {
       await operation();
 
       setActiveDialog(null);
+      setSelectedCapability(null);
 
       setFeedback({
         type: 'success',
@@ -206,6 +226,12 @@ export default function ProviderDetailsPage() {
         provider={provider}
         onBack={() =>
           router.push(ADMIN_ROUTES.FINANCE_PROVIDERS)
+        }
+        onEnableCapability={(capability) =>
+          openCapabilityDialog(capability, 'enableCapability')
+        }
+        onDisableCapability={(capability) =>
+          openCapabilityDialog(capability, 'disableCapability')
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -370,6 +396,50 @@ export default function ProviderDetailsPage() {
         }}
         onCancel={closeDialog}
       />
+
+      {/* Enable Provider Capability */}
+
+      {selectedCapability && (
+        <ProviderCapabilityEnableDialog
+          provider={provider}
+          capability={selectedCapability}
+          isOpen={activeDialog === 'enableCapability'}
+          isLoading={operations.isEnablingCapability}
+          onConfirm={() => {
+            void runOperation(
+              () =>
+                operations.enableCapability.mutateAsync({
+                  providerPublicId: publicId,
+                  capabilityType: selectedCapability.type,
+                }),
+              `${selectedCapability.type} capability was enabled successfully.`,
+            );
+          }}
+          onCancel={closeDialog}
+        />
+      )}
+
+      {/* Disable Provider Capability */}
+
+      {selectedCapability && (
+        <ProviderCapabilityDisableDialog
+          provider={provider}
+          capability={selectedCapability}
+          isOpen={activeDialog === 'disableCapability'}
+          isLoading={operations.isDisablingCapability}
+          onConfirm={() => {
+            void runOperation(
+              () =>
+                operations.disableCapability.mutateAsync({
+                  providerPublicId: publicId,
+                  capabilityType: selectedCapability.type,
+                }),
+              `${selectedCapability.type} capability was disabled successfully.`,
+            );
+          }}
+          onCancel={closeDialog}
+        />
+      )}
 
     </div>
   );

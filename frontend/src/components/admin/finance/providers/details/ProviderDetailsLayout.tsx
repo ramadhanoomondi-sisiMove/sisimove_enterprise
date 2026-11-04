@@ -5,7 +5,10 @@ import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { cn } from '@/foundation/utils/cn';
 
-import type { AdminProvider } from '@/features/admin/finance/providers';
+import type {
+  AdminProvider,
+  AdminProviderCapability,
+} from '@/features/admin/finance/providers';
 
 import { ProviderIdentityPanel } from './ProviderIdentityPanel';
 import { ProviderInformationPanel } from './ProviderInformationPanel';
@@ -19,6 +22,8 @@ import { ProviderAuditInformation } from './ProviderAuditInformation';
 export interface ProviderDetailsLayoutProps {
   provider: AdminProvider;
   onBack?: () => void;
+  onEnableCapability: (capability: AdminProviderCapability) => void;
+  onDisableCapability: (capability: AdminProviderCapability) => void;
   actions?: ReactNode;
   className?: string;
 }
@@ -26,6 +31,8 @@ export interface ProviderDetailsLayoutProps {
 export function ProviderDetailsLayout({
   provider,
   onBack,
+  onEnableCapability,
+  onDisableCapability,
   actions,
   className,
 }: ProviderDetailsLayoutProps) {
@@ -102,7 +109,11 @@ export function ProviderDetailsLayout({
 
         <ProviderConfigurationPanel provider={provider} />
 
-        <ProviderCapabilitiesPanel provider={provider} />
+        <ProviderCapabilitiesPanel
+          provider={provider}
+          onEnableCapability={onEnableCapability}
+          onDisableCapability={onDisableCapability}
+        />
 
         <ProviderLifecyclePanel provider={provider} />
 

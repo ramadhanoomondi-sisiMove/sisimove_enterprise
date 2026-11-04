@@ -1,35 +1,8 @@
 // -----------------------------------------------------------------------------
 // M-PESA STK Push Service
 // -----------------------------------------------------------------------------
-//
-// Responsibilities:
-//
-// - Resolve the configured M-PESA provider.
-// - Read the provider's environment and encrypted configuration.
-// - Obtain a Safaricom OAuth access token.
-// - Generate the Lipa Na M-PESA Online password.
-// - Generate the Daraja timestamp.
-// - Normalize the customer phone number.
-// - Submit the STK Push request.
-// - Normalize the Safaricom response.
-//
-// This service does NOT:
-// - Create Financial Payment Attempts.
-// - Update Financial Payment statuses.
-// - Mark payments as successful.
-// - Create Financial Transactions.
-// - Update account balances.
-//
-// Safaricom accepting a request does not mean payment is complete.
-// The actual outcome must be established through callback processing.
-//
-// -----------------------------------------------------------------------------
 
-import { Inject, Injectable } from '@nestjs/common';
-
-// -----------------------------------------------------------------------------
-// Financial Payment Provider
-// -----------------------------------------------------------------------------
+import { Inject, Injectable, Logger } from '@nestjs/common';
 
 import { FINANCIAL_PAYMENT_PROVIDER_TOKENS } from '../../../application/financial-payment-providers.tokens';
 
@@ -39,23 +12,11 @@ import { FinancialPaymentProviderCode } from '../../../domain/value-objects/fina
 
 import { FinancialPaymentProviderPublicId } from '../../../domain/value-objects/financial-payment-provider-public-id.vo';
 
-// -----------------------------------------------------------------------------
-// Provider Configuration
-// -----------------------------------------------------------------------------
-
 import { FinancialPaymentProviderConfigurationService } from '../../../application/services/financial-payment-provider-configuration.service';
-
-// -----------------------------------------------------------------------------
-// M-PESA Authentication and HTTP
-// -----------------------------------------------------------------------------
 
 import { MpesaOAuthService } from '../authentication/mpesa-oauth.service';
 
 import { MpesaHttpClient } from '../http/mpesa-http.client';
-
-// -----------------------------------------------------------------------------
-// Types
-// -----------------------------------------------------------------------------
 
 import type {
   MpesaStkPushApiResponse,
@@ -86,6 +47,8 @@ const MAXIMUM_TRANSACTION_DESCRIPTION_LENGTH = 13;
 
 @Injectable()
 export class MpesaStkPushService {
+  private readonly logger = new Logger(MpesaStkPushService.name);
+
   public constructor(
     @Inject(FINANCIAL_PAYMENT_PROVIDER_TOKENS.REPOSITORY)
     private readonly providerRepository: FinancialPaymentProviderRepository,
@@ -228,38 +191,219 @@ export class MpesaStkPushService {
     // -------------------------------------------------------------------------
     // 11. Submit STK Push request
     // -------------------------------------------------------------------------
+    //
+    // Once this HTTP submission begins, a connection failure or timeout
+    // cannot safely establish that Safaricom did not receive the request.
+    //
+    // Therefore, submission errors are treated as UNCERTAIN unless a
+    // structured Safaricom response establishes another outcome.
+    //
+    // Any returned identifiers must be preserved for reconciliation.
+    //
+    // Never automatically submit another STK Push from this service.
+    // -------------------------------------------------------------------------
 
-    const response = await this.httpClient.post<MpesaStkPushApiResponse>(
-      endpoint,
-      request,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
+    try {
+      const response = await this.httpClient.post<MpesaStkPushApiResponse>(
+        endpoint,
+        request,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
         },
-      },
+      );
+
+      return this.normalizeApiResponse(response.data);
+    } catch (error: unknown) {
+      // Axios may reject an HTTP response even when Safaricom returned
+      // a structured response body.
+      //
+      // Always normalize and preserve that body, including partial
+      // MerchantRequestID and CheckoutRequestID values.
+
+      const responseData = this.extractErrorResponseData(error);
+
+      if (responseData !== null) {
+        return this.normalizeApiResponse(responseData);
+      }
+
+      // No structured response was received.
+      //
+      // The request may nevertheless have reached Safaricom.
+      // Do not classify this as a confirmed rejection.
+
+      this.logger.error(
+        'M-PESA STK Push submission outcome is uncertain. Manual or callback reconciliation is required.',
+      );
+
+      return {
+        outcome: 'UNCERTAIN',
+        accepted: false,
+        merchantRequestId: null,
+        checkoutRequestId: null,
+        responseCode: null,
+        responseDescription:
+          'The STK Push submission outcome could not be established.',
+        customerMessage:
+          'Payment status is being verified. Do not initiate another payment.',
+      };
+    }
+  }
+
+  // ===========================================================================
+  // Normalize Safaricom API Response
+  // ===========================================================================
+
+  private normalizeApiResponse(payload: unknown): MpesaStkPushResult {
+    if (
+      typeof payload !== 'object' ||
+      payload === null ||
+      Array.isArray(payload)
+    ) {
+      return this.uncertainResult(
+        'Safaricom returned an invalid or incomplete response.',
+      );
+    }
+
+    const response = payload as Partial<MpesaStkPushApiResponse>;
+
+    // -------------------------------------------------------------------------
+    // Preserve every identifier independently
+    // -------------------------------------------------------------------------
+
+    const merchantRequestId = this.normalizeIdentifier(
+      response.MerchantRequestID,
     );
 
-    const payload = response.data;
+    const checkoutRequestId = this.normalizeIdentifier(
+      response.CheckoutRequestID,
+    );
+
+    const responseCode = this.normalizeIdentifier(response.ResponseCode);
+
+    const responseDescription = this.normalizeIdentifier(
+      response.ResponseDescription,
+    );
+
+    const customerMessage = this.normalizeIdentifier(response.CustomerMessage);
 
     // -------------------------------------------------------------------------
-    // 12. Validate Safaricom response
+    // Explicit acceptance
     // -------------------------------------------------------------------------
 
-    this.validateApiResponse(payload);
+    // ResponseCode 0 means Safaricom has accepted the STK Push request.
+    //
+    // Missing identifiers do not turn acceptance into rejection.
+    // Preserve any identifier that was returned.
+
+    if (responseCode === '0') {
+      return {
+        outcome: 'ACCEPTED',
+        accepted: true,
+        merchantRequestId,
+        checkoutRequestId,
+        responseCode,
+        responseDescription,
+        customerMessage,
+      };
+    }
 
     // -------------------------------------------------------------------------
-    // 13. Return normalized response
+    // Explicit rejection
     // -------------------------------------------------------------------------
+
+    // A structured Daraja response containing a non-zero ResponseCode
+    // is treated as an explicit rejection.
+    //
+    // Responses without a ResponseCode remain uncertain.
+
+    if (responseCode !== null) {
+      return {
+        outcome: 'REJECTED',
+        accepted: false,
+        merchantRequestId,
+        checkoutRequestId,
+        responseCode,
+        responseDescription,
+        customerMessage,
+      };
+    }
+
+    // -------------------------------------------------------------------------
+    // Incomplete or ambiguous response
+    // -------------------------------------------------------------------------
+
+    // Preserve partial identifiers even when Safaricom did not provide
+    // enough information to establish acceptance or rejection.
 
     return {
-      merchantRequestId: payload.MerchantRequestID,
-      checkoutRequestId: payload.CheckoutRequestID,
-      responseCode: payload.ResponseCode,
-      responseDescription: payload.ResponseDescription,
-      customerMessage: payload.CustomerMessage,
-      accepted: payload.ResponseCode === '0',
+      outcome: 'UNCERTAIN',
+      accepted: false,
+      merchantRequestId,
+      checkoutRequestId,
+      responseCode,
+      responseDescription:
+        responseDescription ??
+        'Safaricom response did not establish the request outcome.',
+      customerMessage:
+        customerMessage ??
+        'Payment status is being verified. Do not initiate another payment.',
+    };
+  }
+
+  // ===========================================================================
+  // Extract Axios Error Response
+  // ===========================================================================
+
+  private extractErrorResponseData(error: unknown): unknown {
+    if (typeof error !== 'object' || error === null || !('response' in error)) {
+      return null;
+    }
+
+    const response = error.response;
+
+    if (
+      typeof response !== 'object' ||
+      response === null ||
+      !('data' in response)
+    ) {
+      return null;
+    }
+
+    return response.data;
+  }
+
+  // ===========================================================================
+  // Normalize Identifier
+  // ===========================================================================
+
+  private normalizeIdentifier(value: string | null | undefined): string | null {
+    if (typeof value !== 'string') {
+      return null;
+    }
+
+    const normalized = value.trim();
+
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  // ===========================================================================
+  // Uncertain Result
+  // ===========================================================================
+
+  private uncertainResult(description: string): MpesaStkPushResult {
+    return {
+      outcome: 'UNCERTAIN',
+      accepted: false,
+      merchantRequestId: null,
+      checkoutRequestId: null,
+      responseCode: null,
+      responseDescription: description,
+      customerMessage:
+        'Payment status is being verified. Do not initiate another payment.',
     };
   }
 
@@ -402,31 +546,10 @@ export class MpesaStkPushService {
 
     return Buffer.from(rawPassword, 'utf8').toString('base64');
   }
-
-  // ===========================================================================
-  // Safaricom API Response Validation
-  // ===========================================================================
-
-  private validateApiResponse(response: MpesaStkPushApiResponse): void {
-    if (!response || typeof response !== 'object') {
-      throw new Error('Safaricom returned an invalid STK Push response.');
-    }
-
-    if (
-      typeof response.ResponseCode !== 'string' ||
-      typeof response.ResponseDescription !== 'string'
-    ) {
-      throw new Error(
-        'Safaricom STK Push response is missing required fields.',
-      );
-    }
-
-    if (response.ResponseCode === '0') {
-      if (!response.CheckoutRequestID || !response.MerchantRequestID) {
-        throw new Error(
-          'Safaricom accepted the request but did not return the required request identifiers.',
-        );
-      }
-    }
-  }
 }
+
+// -----------------------------------------------------------------------------
+// Default Export
+// -----------------------------------------------------------------------------
+
+export default MpesaStkPushService;

@@ -1,16 +1,24 @@
+
 import { Card } from '@/components/ui';
 import { cn } from '@/foundation/utils/cn';
-import type { AdminProvider } from '@/features/admin/finance/providers';
+import type {
+  AdminProvider,
+  AdminProviderCapability,
+} from '@/features/admin/finance/providers';
 import { ProviderSectionHeader } from '../layout';
 import { ProviderCapabilityCard } from './ProviderCapabilityCard';
 
 export interface ProviderCapabilitiesPanelProps {
   provider: AdminProvider;
+  onEnableCapability: (capability: AdminProviderCapability) => void;
+  onDisableCapability: (capability: AdminProviderCapability) => void;
   className?: string;
 }
 
 export function ProviderCapabilitiesPanel({
   provider,
+  onEnableCapability,
+  onDisableCapability,
   className,
 }: ProviderCapabilitiesPanelProps) {
   const capabilities = provider.capabilities ?? [];
@@ -28,6 +36,8 @@ export function ProviderCapabilitiesPanel({
             <ProviderCapabilityCard
               key={capability.publicId}
               capability={capability}
+              onEnable={() => onEnableCapability(capability)}
+              onDisable={() => onDisableCapability(capability)}
             />
           ))}
         </div>
