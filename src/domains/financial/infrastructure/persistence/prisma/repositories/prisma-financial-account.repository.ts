@@ -102,7 +102,7 @@ import {
 // -----------------------------------------------------------------------------
 
 import { FinancialAccountAggregate } from '../../../../domain/aggregates/financial-account.aggregate';
-
+import { FinancialAccountConcurrencyException } from '../../../../domain/exceptions/financial-account-concurrency.exception';
 // -----------------------------------------------------------------------------
 // Repository Contract
 // -----------------------------------------------------------------------------
@@ -218,6 +218,7 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
    *
    * both participate in the caller's transaction.
    */
+
   public async save(aggregate: FinancialAccountAggregate): Promise<void> {
     if (aggregate === undefined) {
       throw new Error('Financial Account aggregate is required.');
@@ -249,24 +250,35 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
     // -------------------------------------------------------------------------
     // Aggregate-Owned Balance
     // -------------------------------------------------------------------------
-    //
-    // The balance is owned by the FinancialAccount aggregate.
-    //
-    // accountId uniquely identifies the balance belonging to the aggregate
-    // root.
-    //
-    // No separate transaction is created here.
-    //
+
+    const balance = aggregate.balance;
+    const persistedVersion = balance.persistedVersion;
+
+    // -------------------------------------------------------------------------
+    // New Balance
     // -------------------------------------------------------------------------
 
-    await this.prisma.financialAccountBalance.upsert({
+    if (persistedVersion === null) {
+      await this.prisma.financialAccountBalance.create({
+        data: persistence.balance,
+      });
+
+      balance.markPersisted();
+
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // Existing Balance — Optimistic Concurrency Control
+    // -------------------------------------------------------------------------
+
+    const result = await this.prisma.financialAccountBalance.updateMany({
       where: {
         accountId: persistence.balance.accountId,
+        version: persistedVersion,
       },
 
-      create: persistence.balance,
-
-      update: {
+      data: {
         publicId: persistence.balance.publicId,
         availableAmount: persistence.balance.availableAmount,
         pendingAmount: persistence.balance.pendingAmount,
@@ -276,6 +288,20 @@ export class PrismaFinancialAccountRepository implements FinancialAccountReposit
         updatedAt: persistence.balance.updatedAt,
       },
     });
+
+    // -------------------------------------------------------------------------
+    // Concurrency Protection
+    // -------------------------------------------------------------------------
+
+    if (result.count !== 1) {
+      throw new FinancialAccountConcurrencyException();
+    }
+
+    // -------------------------------------------------------------------------
+    // Mark Successfully Persisted
+    // -------------------------------------------------------------------------
+
+    balance.markPersisted();
   }
 
   // ===========================================================================

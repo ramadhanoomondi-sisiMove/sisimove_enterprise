@@ -138,7 +138,8 @@
 // save():
 //
 // 1. Maps the complete aggregate into the persistence graph.
-// 2. Opens one database transaction.
+// 2. Reuses the active UnitOfWork transaction, or opens one when called
+//    outside a UnitOfWork.
 // 3. Upserts the journal root.
 // 4. Removes aggregate-owned entries that are no longer present.
 // 5. Upserts current entries.
@@ -173,10 +174,13 @@ import { Injectable } from '@nestjs/common';
 import { $Enums, Prisma } from '@prisma/client';
 
 // -----------------------------------------------------------------------------
-// Foundation
+// Transaction Context
 // -----------------------------------------------------------------------------
 
-import { PrismaService } from '../../../../../../infrastructure/database/prisma/prisma.service';
+import {
+  PrismaTransactionContext,
+  type PrismaClientLike,
+} from '../../../../../../infrastructure/database/prisma/prisma-transaction.context';
 
 // -----------------------------------------------------------------------------
 // Aggregate
@@ -233,7 +237,47 @@ export class PrismaAccountingJournalRepository implements AccountingJournalRepos
   // Constructor
   // ===========================================================================
 
-  public constructor(private readonly prisma: PrismaService) {}
+  public constructor(
+    private readonly transactionContext: PrismaTransactionContext,
+  ) {}
+
+  // ===========================================================================
+  // Current Prisma Client
+  // ===========================================================================
+
+  /**
+   * Resolves the Prisma client for the current execution context.
+   *
+   * - Inside UnitOfWork: returns the transaction-scoped Prisma client.
+   * - Outside UnitOfWork: returns the root PrismaService.
+   */
+  private get prisma(): PrismaClientLike {
+    return this.transactionContext.getClient();
+  }
+
+  // ===========================================================================
+  // Transaction Boundary
+  // ===========================================================================
+
+  /**
+   * Executes aggregate persistence atomically.
+   *
+   * If a UnitOfWork transaction is already active, its transaction client is
+   * reused and no nested transaction is created.
+   *
+   * Otherwise, the root PrismaService opens a transaction for this operation.
+   */
+  private async runInTransaction<T>(
+    work: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    const client = this.prisma;
+
+    if ('$transaction' in client) {
+      return client.$transaction(work);
+    }
+
+    return work(client);
+  }
 
   // ===========================================================================
   // Prisma Enum Boundary
@@ -320,7 +364,7 @@ export class PrismaAccountingJournalRepository implements AccountingJournalRepos
       const persistence =
         AccountingJournalPrismaMapper.toPersistence(aggregate);
 
-      await this.prisma.$transaction(async (tx) => {
+      await this.runInTransaction(async (tx) => {
         // ---------------------------------------------------------------------
         // Journal Root
         // ---------------------------------------------------------------------
@@ -448,7 +492,7 @@ export class PrismaAccountingJournalRepository implements AccountingJournalRepos
     try {
       const journalId = aggregate.journal.id.toString();
 
-      await this.prisma.$transaction(async (tx) => {
+      await this.runInTransaction(async (tx) => {
         await tx.accountingJournal.delete({
           where: {
             id: journalId,

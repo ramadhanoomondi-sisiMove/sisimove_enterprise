@@ -45,6 +45,8 @@ import { Module } from '@nestjs/common';
 
 import { IdentityModule } from '../identity/identity.module';
 
+import { AccountingModule } from '../accounting/accounting.module';
+
 import { PrismaModule } from '../../infrastructure/database/prisma/prisma.module';
 
 // -----------------------------------------------------------------------------
@@ -54,6 +56,8 @@ import { PrismaModule } from '../../infrastructure/database/prisma/prisma.module
 import { MpesaModule } from '../financial-payment-providers/infrastructure/mpesa/mpesa.module';
 
 import { MpesaCallbackService } from '../financial-payment-providers/infrastructure/mpesa/payments/mpesa-callback.service';
+
+import { QueryMpesaPaymentStatusService } from '../financial-payment-providers/infrastructure/mpesa/payments/query-mpesa-payment-status.service';
 
 import { FinancialPaymentProvidersModule } from '../financial-payment-providers/financial-payment-providers.module';
 
@@ -73,6 +77,7 @@ import {
   FinancialDisbursementsController,
 } from './presentation/rest/controllers';
 import { MpesaCallbackController } from '../financial-payment-providers/infrastructure/mpesa/payments/mpesa-callback.controller';
+
 // -----------------------------------------------------------------------------
 // Infrastructure — Dependency Injection
 // -----------------------------------------------------------------------------
@@ -148,6 +153,7 @@ import {
   CreateFinancialTransactionHandler,
   FailFinancialTransactionHandler,
   ReverseFinancialTransactionHandler,
+  PostSuccessfulFinancialPaymentHandler,
 
   // ---------------------------------------------------------------------------
   // Financial Payment
@@ -253,7 +259,8 @@ import {
 } from './application/query-handlers';
 import { EventRehydratorRegistry } from '../../infrastructure/events/event-rehydrator.registry';
 import { FinancialPaymentCreatedSubscriber } from './application/subscribers/financial-payment-created.subscriber';
-import { FinancialPaymentEventRegistry } from './domain/events/financial-payment-event.registry';
+import { FinancialPaymentSucceededSubscriber } from './application/subscribers/financial-payment-succeeded.subscriber';
+import { FinancialPaymentEventRegistry } from './domain/events/registry/financial-payment-event.registry';
 // =============================================================================
 // Module
 // =============================================================================
@@ -265,6 +272,7 @@ import { FinancialPaymentEventRegistry } from './domain/events/financial-payment
 
   imports: [
     IdentityModule,
+    AccountingModule,
     PrismaModule,
     MpesaModule,
     FinancialPaymentProvidersModule,
@@ -309,6 +317,7 @@ import { FinancialPaymentEventRegistry } from './domain/events/financial-payment
     // =========================================================================
 
     PlatformFinancialAccountsProvisioner,
+    QueryMpesaPaymentStatusService,
     // =========================================================================
     // M-PESA — Callback Processing
     // =========================================================================
@@ -319,7 +328,7 @@ import { FinancialPaymentEventRegistry } from './domain/events/financial-payment
     // -------------------------------------------------------------------------
 
     FinancialPaymentCreatedSubscriber,
-
+    FinancialPaymentSucceededSubscriber,
     // =========================================================================
     // Financial Account
     // =========================================================================
@@ -540,6 +549,10 @@ import { FinancialPaymentEventRegistry } from './domain/events/financial-payment
         return financialPaymentRegistry;
       },
       inject: [EventRehydratorRegistry],
+    },
+    {
+      provide: FINANCIAL_PAYMENT_TOKENS.COMMAND_HANDLERS.POST_SUCCESSFUL,
+      useClass: PostSuccessfulFinancialPaymentHandler,
     },
     // =========================================================================
     // Financial Payment Method

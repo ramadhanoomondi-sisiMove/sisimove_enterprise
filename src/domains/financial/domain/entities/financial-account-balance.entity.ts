@@ -59,8 +59,26 @@ interface FinancialAccountBalanceProps {
  *
  * The entity owns balance mutations.
  * The aggregate owns business rules and invariants.
+ *
+ * Version tracking:
+ * - version: current in-memory balance version.
+ * - persistedVersion: last successfully persisted balance version.
+ *
+ * The persisted version is used by the repository for optimistic concurrency
+ * control.
  */
 export class FinancialAccountBalanceEntity extends Entity<FinancialAccountBalanceProps> {
+  // ---------------------------------------------------------------------------
+  // Persisted Version
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Last version successfully loaded from or saved to persistence.
+   *
+   * Null means this balance has not yet been persisted.
+   */
+  private persistedVersionValue: number | null;
+
   // ---------------------------------------------------------------------------
   // Constructor
   // ---------------------------------------------------------------------------
@@ -68,25 +86,36 @@ export class FinancialAccountBalanceEntity extends Entity<FinancialAccountBalanc
   private constructor(
     props: FinancialAccountBalanceProps,
     id?: UniqueEntityId,
+    persistedVersion: number | null = null,
   ) {
     super(props, id);
+
+    this.persistedVersionValue = persistedVersion;
   }
 
   // ---------------------------------------------------------------------------
   // Factory
   // ---------------------------------------------------------------------------
 
+  /**
+   * Creates a new balance that has not yet been persisted.
+   */
   public static create(
     props: FinancialAccountBalanceProps,
   ): FinancialAccountBalanceEntity {
-    return new FinancialAccountBalanceEntity(props);
+    return new FinancialAccountBalanceEntity(props, undefined, null);
   }
 
+  /**
+   * Rehydrates an existing persisted balance.
+   *
+   * Its current version becomes the initial persisted version.
+   */
   public static rehydrate(
     props: FinancialAccountBalanceProps,
     id: UniqueEntityId,
   ): FinancialAccountBalanceEntity {
-    return new FinancialAccountBalanceEntity(props, id);
+    return new FinancialAccountBalanceEntity(props, id, props.version.value);
   }
 
   // ---------------------------------------------------------------------------
@@ -131,6 +160,35 @@ export class FinancialAccountBalanceEntity extends Entity<FinancialAccountBalanc
 
   public get updatedAt(): Date {
     return this.props.updatedAt;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Version
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns the last successfully persisted version.
+   *
+   * Null indicates that the balance is new and has not yet been saved.
+   */
+  public get persistedVersion(): number | null {
+    return this.persistedVersionValue;
+  }
+
+  /**
+   * Marks the current balance version as successfully persisted.
+   *
+   * The repository should call this only after the corresponding database
+   * create or conditional update succeeds.
+   */
+  public markPersisted(): void {
+    this.persistedVersionValue = this.props.version.value;
+  }
+
+  private incrementVersion(): void {
+    this.props.version = FinancialAccountBalanceVersion.create(
+      this.props.version.value + 1,
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -219,16 +277,6 @@ export class FinancialAccountBalanceEntity extends Entity<FinancialAccountBalanc
     );
 
     this.incrementVersion();
-  }
-
-  // ---------------------------------------------------------------------------
-  // Version
-  // ---------------------------------------------------------------------------
-
-  private incrementVersion(): void {
-    this.props.version = FinancialAccountBalanceVersion.create(
-      this.props.version.value + 1,
-    );
   }
 
   // ---------------------------------------------------------------------------

@@ -118,3 +118,5 @@ export * from './financial-disbursement-invalid-status.exception';
 export * from './financial-disbursement-attempt.exception';
 
 export * from './financial-disbursement-destination.exception';
+
+export * from './financial-account-concurrency.exception';

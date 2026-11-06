@@ -1,14 +1,14 @@
-import type { DomainEvent } from '../../../../foundation/kernel/domain/domain-event';
-import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
+import type { DomainEvent } from '../../../../../foundation/kernel/domain/domain-event';
+import type { EventMetadata } from '../../../../../foundation/kernel/domain/domain-event';
 
-import { FinancialPaymentCreatedEvent } from './financial-payment-created.event';
-import { FinancialPaymentAttemptAddedEvent } from './financial-payment-attempt-added.event';
-import { FinancialPaymentProcessingEvent } from './financial-payment-processing.event';
-import { FinancialPaymentSucceededEvent } from './financial-payment-succeeded.event';
-import { FinancialPaymentFailedEvent } from './financial-payment-failed.event';
-import { FinancialPaymentCancelledEvent } from './financial-payment-cancelled.event';
-import { FinancialPaymentExpiredEvent } from './financial-payment-expired.event';
-import { FinancialPaymentTransactionLinkedEvent } from './financial-payment-transaction-linked.event';
+import { FinancialPaymentCreatedEvent } from '../financial-payment-created.event';
+import { FinancialPaymentAttemptAddedEvent } from '../financial-payment-attempt-added.event';
+import { FinancialPaymentProcessingEvent } from '../financial-payment-processing.event';
+import { FinancialPaymentSucceededEvent } from '../financial-payment-succeeded.event';
+import { FinancialPaymentFailedEvent } from '../financial-payment-failed.event';
+import { FinancialPaymentCancelledEvent } from '../financial-payment-cancelled.event';
+import { FinancialPaymentExpiredEvent } from '../financial-payment-expired.event';
+import { FinancialPaymentTransactionLinkedEvent } from '../financial-payment-transaction-linked.event';
 
 type PaymentEventRehydrator = (
   metadata: EventMetadata,

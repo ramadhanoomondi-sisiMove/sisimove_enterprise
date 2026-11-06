@@ -242,3 +242,5 @@ export { CompleteFinancialDisbursementCommand } from './complete-financial-disbu
 export { FailFinancialDisbursementCommand } from './fail-financial-disbursement.command';
 
 export { CancelFinancialDisbursementCommand } from './cancel-financial-disbursement.command';
+
+export { PostSuccessfulFinancialPaymentCommand } from './post-successful-financial-payment.command';

@@ -43,6 +43,7 @@ export * from './create-financial-transaction.handler';
 // -----------------------------------------------------------------------------
 // Financial Transaction Lifecycle
 // -----------------------------------------------------------------------------
+export * from './post-successful-financial-payment.handler';
 
 export * from './complete-financial-transaction.handler';
 

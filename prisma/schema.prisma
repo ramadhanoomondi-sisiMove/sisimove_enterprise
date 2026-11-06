@@ -2772,7 +2772,7 @@ model FinancialTransaction {
   @@index([destinationAccountId])
   @@index([type])
   @@index([status])
-  @@index([referenceType, referencePublicId])
+  @@unique([referenceType, referencePublicId])
   @@index([accountingJournalPublicId])
   @@index([createdAt])
   @@map("financial_transactions")

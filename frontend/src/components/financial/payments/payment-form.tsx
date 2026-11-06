@@ -1,43 +1,18 @@
-// -----------------------------------------------------------------------------
+// =============================================================================
 // sisiMove — Financial Payment Form
-// -----------------------------------------------------------------------------
+// =============================================================================
 //
 // Presentation component for initiating a wallet top-up.
 //
-// Financial boundary:
+// Amount boundary:
+// - The member enters whole KES amounts only (major currency units).
+// - The parent/container contract remains amountMinorUnits.
+// - KES 100 entered here is emitted as 10000 minor units.
+// - Decimal input is not accepted.
 //
-//     PaymentPageContainer
-//             │
-//             ├── Financial Payment hooks
-//             ├── Financial Payment Method hooks
-//             │
-//             ↓
-//       PaymentForm
-//             │
-//             ├── amount input
-//             ├── payment method selection
-//             └── submit action
-//
-// This component intentionally does NOT:
-// - call the Financial Payment API;
-// - use React Query hooks;
-// - load payment methods;
-// - create a payment;
-// - perform navigation;
-// - decide payment authorization;
-// - contain payment-domain business rules.
-//
-// The parent/container owns those concerns and supplies the form with the
-// current values and available options.
-//
-// Existing global primitives are reused rather than recreated:
-// - Input
-// - Button
-//
-// Currency amounts remain integer minor units at the feature/domain boundary.
-// The form receives and emits minor-unit values rather than introducing a
-// second monetary representation.
-// -----------------------------------------------------------------------------
+// The parent/container owns API calls, validation, payment-method loading,
+// navigation, and payment lifecycle handling.
+// =============================================================================
 
 'use client';
 
@@ -46,152 +21,100 @@ import type { FormEvent } from 'react';
 import { Button, Input } from '@/components/ui';
 
 export interface PaymentMethodOption {
-  /**
-   * Stable public identifier for the selected payment method.
-   *
-   * This is intentionally opaque to the presentation component.
-   */
+  /** Stable public identifier for the selected payment method. */
   id: string;
 
-  /**
-   * Human-readable payment method label.
-   *
-   * Example:
-   *     M-PESA
-   *     Bank
-   */
+  /** Human-readable payment method label, e.g. M-PESA or Bank. */
   label: string;
 
-  /**
-   * Optional masked account detail.
-   *
-   * Example:
-   *     •••• 1234
-   *     +254 7XX XXX XXX
-   */
+  /** Optional masked account detail. */
   description?: string;
 
-  /**
-   * Whether this method is currently the member's default method.
-   *
-   * The form does not use this to make business decisions. It is purely
-   * presentation metadata supplied by the parent.
-   */
+  /** Presentation metadata supplied by the parent. */
   isDefault?: boolean;
 }
 
 export interface PaymentFormProps {
   /**
-   * Current amount in integer minor units.
-   *
-   * For KES:
-   *
-   *     1,000.00 KES → 100000
+   * Current amount in integer minor units, matching the container/API contract.
+   * Example: 10000 represents KES 100.
    */
   amountMinorUnits: number;
 
-  /**
-   * Current payment-method selection.
-   */
+  /** Current payment-method selection. */
   paymentMethodPublicId: string;
 
-  /**
-   * Available payment methods supplied by the parent/container.
-   */
+  /** Available payment methods supplied by the parent/container. */
   paymentMethods: PaymentMethodOption[];
 
-  /**
-   * Currency displayed beside the amount field.
-   *
-   * The actual backend currency remains part of the financial feature
-   * contract. This prop controls presentation only.
-   */
+  /** Currency displayed beside the amount field. */
   currency?: string;
 
-  /**
-   * Optional field-level validation message.
-   */
+  /** Optional field-level validation message. */
   amountError?: string;
 
-  /**
-   * Optional payment-method validation message.
-   */
+  /** Optional payment-method validation message. */
   paymentMethodError?: string;
 
-  /**
-   * Whether the payment operation is currently being submitted.
-   */
+  /** Whether the payment operation is currently being submitted. */
   isSubmitting?: boolean;
 
-  /**
-   * Whether the form may currently be submitted.
-   *
-   * The parent owns domain/business validation. The form only consumes the
-   * resulting state.
-   */
+  /** Whether the parent currently disables submission. */
   isSubmitDisabled?: boolean;
 
-  /**
-   * Amount change callback.
-   *
-   * The parent/container remains responsible for converting the input into
-   * the feature's integer minor-unit representation.
-   */
+  /** Emits an integer amount in minor units. */
   onAmountChange: (amountMinorUnits: number) => void;
 
-  /**
-   * Payment-method selection callback.
-   */
+  /** Payment-method selection callback. */
   onPaymentMethodChange: (paymentMethodPublicId: string) => void;
 
-  /**
-   * Form submission callback.
-   */
+  /** Form submission callback. */
   onSubmit: () => void;
 
-  /**
-   * Optional cancellation action.
-   *
-   * The form does not know where cancellation navigates.
-   */
+  /** Optional cancellation action. */
   onCancel?: () => void;
 }
 
 /**
- * Convert an integer minor-unit amount into a user-editable decimal string.
- *
- * This helper deliberately stays local to the form because it is an input
- * representation concern, not a replacement for the application's canonical
- * currency formatter.
+ * Convert the container's minor-unit amount into the whole-KES field value.
+ * A non-whole-KES amount is not displayed because this form accepts integers.
  */
 function formatAmountInput(amountMinorUnits: number): string {
-  if (!Number.isFinite(amountMinorUnits)) {
+  if (
+    !Number.isSafeInteger(amountMinorUnits) ||
+    amountMinorUnits <= 0 ||
+    amountMinorUnits % 100 !== 0
+  ) {
     return '';
   }
 
-  return (amountMinorUnits / 100).toFixed(2);
+  return String(amountMinorUnits / 100);
 }
 
 /**
- * Parse the user's decimal input into integer minor units.
- *
- * Invalid input is represented as zero here. Actual validation remains the
- * responsibility of the feature schema/container.
+ * Convert a whole-KES input into integer minor units.
+ * Empty or invalid input maps to zero; decimal input is never accepted.
  */
 function parseAmountInput(value: string): number {
-  const normalized = value.replace(/,/g, '').trim();
-
-  if (!normalized) {
+  if (value.length === 0) {
     return 0;
   }
 
-  const parsed = Number(normalized);
-
-  if (!Number.isFinite(parsed) || parsed < 0) {
+  if (!/^\d+$/.test(value)) {
     return 0;
   }
 
-  return Math.round(parsed * 100);
+  const wholeKes = Number(value);
+
+  if (!Number.isSafeInteger(wholeKes) || wholeKes <= 0) {
+    return 0;
+  }
+
+  const amountMinorUnits = wholeKes * 100;
+
+  return Number.isSafeInteger(amountMinorUnits)
+    ? amountMinorUnits
+    : 0;
 }
 
 export function PaymentForm({
@@ -208,20 +131,24 @@ export function PaymentForm({
   onSubmit,
   onCancel,
 }: PaymentFormProps) {
+  function handleAmountChange(value: string) {
+    // Accept only digits while allowing the field to be temporarily empty.
+    // Reject invalid input rather than replacing the current value with zero.
+    if (!/^\d*$/.test(value)) {
+      return;
+    }
+
+    onAmountChange(parseAmountInput(value));
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmit();
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      noValidate
-      className="space-y-6"
-    >
-      {/* ---------------------------------------------------------------------
-          Amount
-         --------------------------------------------------------------------- */}
+    <form onSubmit={handleSubmit} noValidate className="space-y-6">
+      {/* Amount */}
       <div className="space-y-2">
         <label
           htmlFor="wallet-top-up-amount"
@@ -242,22 +169,23 @@ export function PaymentForm({
             id="wallet-top-up-amount"
             name="amount"
             type="text"
-            inputMode="decimal"
+            inputMode="numeric"
+            pattern="[0-9]*"
             autoComplete="off"
             value={formatAmountInput(amountMinorUnits)}
-            onChange={(event) => {
-              onAmountChange(parseAmountInput(event.target.value));
-            }}
+            onChange={(event) => handleAmountChange(event.target.value)}
             aria-invalid={Boolean(amountError)}
             aria-describedby={
-              amountError
-                ? 'wallet-top-up-amount-error'
-                : undefined
+              amountError ? 'wallet-top-up-amount-error' : undefined
             }
             disabled={isSubmitting}
             className="pl-16 text-base sm:text-lg"
           />
         </div>
+
+        <p className="text-xs text-[var(--foreground-muted)]">
+          Enter a whole amount in KES. Decimals are not accepted.
+        </p>
 
         {amountError ? (
           <p
@@ -270,9 +198,7 @@ export function PaymentForm({
         ) : null}
       </div>
 
-      {/* ---------------------------------------------------------------------
-          Payment method
-         --------------------------------------------------------------------- */}
+      {/* Payment method */}
       <fieldset className="space-y-3">
         <legend className="text-sm font-semibold text-[var(--foreground)]">
           Payment method
@@ -280,8 +206,7 @@ export function PaymentForm({
 
         <div className="space-y-2">
           {paymentMethods.map((method) => {
-            const selected =
-              paymentMethodPublicId === method.id;
+            const selected = paymentMethodPublicId === method.id;
 
             return (
               <label
@@ -302,9 +227,7 @@ export function PaymentForm({
                   name="payment-method"
                   value={method.id}
                   checked={selected}
-                  onChange={() => {
-                    onPaymentMethodChange(method.id);
-                  }}
+                  onChange={() => onPaymentMethodChange(method.id)}
                   disabled={isSubmitting}
                   className="size-4 accent-[var(--brand)]"
                 />
@@ -334,18 +257,13 @@ export function PaymentForm({
         </div>
 
         {paymentMethodError ? (
-          <p
-            role="alert"
-            className="text-sm text-[var(--danger)]"
-          >
+          <p role="alert" className="text-sm text-[var(--danger)]">
             {paymentMethodError}
           </p>
         ) : null}
       </fieldset>
 
-      {/* ---------------------------------------------------------------------
-          Actions
-         --------------------------------------------------------------------- */}
+      {/* Actions */}
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         {onCancel ? (
           <Button
@@ -370,3 +288,5 @@ export function PaymentForm({
     </form>
   );
 }
+
+export default PaymentForm;

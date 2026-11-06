@@ -92,7 +92,7 @@ import {
 // -----------------------------------------------------------------------------
 // Application — Queries
 // -----------------------------------------------------------------------------
-
+import { QueryMpesaPaymentStatusService } from '../../../../financial-payment-providers/infrastructure/mpesa/payments/query-mpesa-payment-status.service';
 // -----------------------------------------------------------------------------
 // Application — Queries
 // -----------------------------------------------------------------------------
@@ -226,6 +226,7 @@ export class FinancialPaymentsController {
       GetAllFinancialPaymentsQuery,
       FinancialPaymentAggregate[]
     >,
+    private readonly queryMpesaPaymentStatusService: QueryMpesaPaymentStatusService,
   ) {}
 
   // ===========================================================================
@@ -571,6 +572,17 @@ export class FinancialPaymentsController {
     );
 
     return FinancialPaymentResponseMapper.toResponse(aggregate);
+  }
+  // ---------------------------------------------------------------------------
+  // Query M-PESA Payment Status
+  // ---------------------------------------------------------------------------
+
+  @Post(':paymentPublicId/mpesa/query')
+  @RequirePermissions('admin:read')
+  public async queryMpesaPaymentStatus(
+    @Param('paymentPublicId') paymentPublicId: string,
+  ) {
+    return this.queryMpesaPaymentStatusService.execute(paymentPublicId);
   }
 }
 

@@ -35,7 +35,10 @@ const MPESA_PRODUCTION_BASE_URL = 'https://api.safaricom.co.ke';
 
 const MPESA_STK_PUSH_ENDPOINT = '/mpesa/stkpush/v1/processrequest';
 
-const MINIMUM_AMOUNT = 1;
+// FinancialPayment amounts are stored in integer minor units (cent-equivalent).
+// Daraja STK Push accepts whole KES, so valid amounts must be at least 100
+// minor units and exactly divisible by 100.
+const MINIMUM_AMOUNT_MINOR_UNITS = 100;
 
 const MAXIMUM_ACCOUNT_REFERENCE_LENGTH = 12;
 
@@ -179,7 +182,9 @@ export class MpesaStkPushService {
       Password: password,
       Timestamp: timestamp,
       TransactionType: input.transactionType ?? 'CustomerPayBillOnline',
-      Amount: input.amount,
+      // Convert the domain's minor-unit amount into whole KES at the
+      // M-PESA provider boundary. Daraja expects an integer KES amount.
+      Amount: input.amount / 100,
       PartyA: phoneNumber,
       PartyB: shortcode,
       PhoneNumber: phoneNumber,
@@ -416,9 +421,13 @@ export class MpesaStkPushService {
       throw new Error('M-PESA provider public ID is required.');
     }
 
-    if (!Number.isInteger(input.amount) || input.amount < MINIMUM_AMOUNT) {
+    if (
+      !Number.isSafeInteger(input.amount) ||
+      input.amount < MINIMUM_AMOUNT_MINOR_UNITS ||
+      input.amount % 100 !== 0
+    ) {
       throw new Error(
-        'M-PESA transaction amount must be a positive whole number.',
+        'M-PESA transaction amount must be a whole KES amount represented in minor units.',
       );
     }
 

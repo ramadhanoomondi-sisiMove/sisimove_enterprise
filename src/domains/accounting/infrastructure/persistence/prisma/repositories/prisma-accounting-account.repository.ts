@@ -136,7 +136,10 @@ import { Injectable } from '@nestjs/common';
 
 import type { AccountingAccount as PrismaAccountingAccount } from '@prisma/client';
 
-import { PrismaService } from '../../../../../../infrastructure/database/prisma/prisma.service';
+import {
+  PrismaTransactionContext,
+  type PrismaClientLike,
+} from '../../../../../../infrastructure/database/prisma/prisma-transaction.context';
 
 // -----------------------------------------------------------------------------
 // Repository Contract
@@ -191,13 +194,33 @@ export class PrismaAccountingAccountRepository implements AccountingAccountRepos
   // ===========================================================================
 
   /**
-   * Prisma access is provided through the application's NestJS-managed
-   * PrismaService.
+   * Resolves the Prisma client through the ambient transaction context.
    *
-   * PrismaModule owns the PrismaService lifecycle and exports it to consuming
-   * modules.
+   * Inside UnitOfWork:
+   *
+   *     Prisma.TransactionClient
+   *
+   * Outside UnitOfWork:
+   *
+   *     PrismaService
    */
-  public constructor(private readonly prisma: PrismaService) {}
+  public constructor(
+    private readonly transactionContext: PrismaTransactionContext,
+  ) {}
+
+  // ===========================================================================
+  // Current Prisma Client
+  // ===========================================================================
+
+  /**
+   * Returns the Prisma client appropriate for the current execution context.
+   *
+   * This ensures all repository operations participate in the active
+   * transaction without creating a repository-owned transaction.
+   */
+  private get prisma(): PrismaClientLike {
+    return this.transactionContext.getClient();
+  }
 
   // ===========================================================================
   // Persistence

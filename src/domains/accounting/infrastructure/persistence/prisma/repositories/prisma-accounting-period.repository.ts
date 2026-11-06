@@ -137,7 +137,10 @@ import { Injectable } from '@nestjs/common';
 
 import type { AccountingPeriod as PrismaAccountingPeriod } from '@prisma/client';
 
-import { PrismaService } from '../../../../../../infrastructure/database/prisma/prisma.service';
+import {
+  PrismaTransactionContext,
+  type PrismaClientLike,
+} from '../../../../../../infrastructure/database/prisma/prisma-transaction.context';
 
 // -----------------------------------------------------------------------------
 // Repository Contract
@@ -190,10 +193,19 @@ export class PrismaAccountingPeriodRepository implements AccountingPeriodReposit
   // ===========================================================================
 
   /**
-   * Prisma access is provided through the application's NestJS-managed
-   * PrismaService.
+   * Prisma access is provided through the ambient UnitOfWork transaction
+   * when one exists, or the root PrismaService otherwise.
    */
-  public constructor(private readonly prisma: PrismaService) {}
+  public constructor(
+    private readonly transactionContext: PrismaTransactionContext,
+  ) {}
+
+  /**
+   * Resolves the active Prisma client for the current asynchronous context.
+   */
+  private get prisma(): PrismaClientLike {
+    return this.transactionContext.getClient();
+  }
 
   // ===========================================================================
   // Persistence

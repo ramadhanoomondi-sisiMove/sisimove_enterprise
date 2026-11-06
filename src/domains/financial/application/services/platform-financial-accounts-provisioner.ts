@@ -83,6 +83,12 @@ export class PlatformFinancialAccountsProvisioner implements OnApplicationBootst
       label: 'settlement',
     });
 
+    await this.ensureSystemAccount({
+      ownerPublicId: 'SYSTEM-MPESA-CLEARING',
+      type: 'PLATFORM',
+      label: 'mpesa clearing',
+    });
+
     this.logger.log('Required platform financial accounts are available.');
   }
 
@@ -147,14 +153,6 @@ export class PlatformFinancialAccountsProvisioner implements OnApplicationBootst
     } catch (error) {
       // -----------------------------------------------------------------------
       // Multi-instance Startup Race Protection
-      // -----------------------------------------------------------------------
-      //
-      // If two application instances start simultaneously, both may initially
-      // observe no account. The database unique constraint on ownerPublicId
-      // allows only one to win.
-      //
-      // If this instance loses that race, re-read the account and accept it
-      // when the resulting configuration is correct.
       // -----------------------------------------------------------------------
 
       const concurrent =

@@ -537,7 +537,11 @@ export class MpesaCallbackService {
       );
     }
 
-    if (callbackAmount !== attempt.amount.amount) {
+    // FinancialPayment stores amounts in minor units.
+    // M-PESA callback amounts are expressed in whole KES.
+    const expectedAmountKes = attempt.amount.amount / 100;
+
+    if (callbackAmount !== expectedAmountKes) {
       throw new Error(
         'M-PESA callback amount does not match the Financial Payment Attempt amount.',
       );

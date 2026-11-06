@@ -2,76 +2,40 @@
 // M-PESA — NestJS Module
 // -----------------------------------------------------------------------------
 //
-// Central NestJS module for M-PESA integration.
-//
 // Registered capabilities:
 //
 // - M-PESA OAuth authentication;
 // - M-PESA HTTP communication;
-// - M-PESA STK Push initiation.
+// - M-PESA STK Push initiation;
+// - M-PESA STK Query.
 //
-// Callback processing is registered separately in FinancialModule because
-// it depends on Financial Payment persistence and domain infrastructure.
+// Callback processing remains registered separately in FinancialModule.
 //
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// NestJS
 // -----------------------------------------------------------------------------
 
 import { Module } from '@nestjs/common';
 
-// -----------------------------------------------------------------------------
-// Financial Payment Providers
-// -----------------------------------------------------------------------------
-
 import { FinancialPaymentProvidersModule } from '../../financial-payment-providers.module';
-
-// -----------------------------------------------------------------------------
-// HTTP
-// -----------------------------------------------------------------------------
 
 import { MpesaHttpModule } from './http/mpesa-http.module';
 
-// -----------------------------------------------------------------------------
-// Authentication
-// -----------------------------------------------------------------------------
-
 import { MpesaOAuthService } from './authentication/mpesa-oauth.service';
 
-// -----------------------------------------------------------------------------
-// Payments
-// -----------------------------------------------------------------------------
-
 import { MpesaStkPushService } from './payments/mpesa-stk-push.service';
+
+import { MpesaStkQueryService } from './payments/mpesa-stk-query.service';
 
 // =============================================================================
 // Module
 // =============================================================================
 
 @Module({
-  // ===========================================================================
-  // Imports
-  // ===========================================================================
-
   imports: [FinancialPaymentProvidersModule, MpesaHttpModule],
 
-  // ===========================================================================
-  // Providers
-  // ===========================================================================
+  providers: [MpesaOAuthService, MpesaStkPushService, MpesaStkQueryService],
 
-  providers: [MpesaOAuthService, MpesaStkPushService],
-
-  // ===========================================================================
-  // Exports
-  // ===========================================================================
-
-  exports: [MpesaOAuthService, MpesaStkPushService],
+  exports: [MpesaOAuthService, MpesaStkPushService, MpesaStkQueryService],
 })
 export class MpesaModule {}
-
-// -----------------------------------------------------------------------------
-// Default Export
-// -----------------------------------------------------------------------------
 
 export default MpesaModule;

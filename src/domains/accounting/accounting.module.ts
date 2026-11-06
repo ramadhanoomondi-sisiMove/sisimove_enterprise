@@ -220,6 +220,22 @@ import { ACCOUNTING_PROVIDERS } from './infrastructure/dependency-injection/acco
 import { ACCOUNTING_TOKENS } from './application/accounting.tokens';
 
 // -----------------------------------------------------------------------------
+// Platform GL — Provisioner
+// -----------------------------------------------------------------------------
+
+import { PlatformGlAccountsProvisioner } from './application/bootstrap/platform-gl-accounts.provisioner';
+
+// -----------------------------------------------------------------------------
+// Foundation — Shared Infrastructure Tokens
+// -----------------------------------------------------------------------------
+
+import { UNIT_OF_WORK } from '../../foundation/persistence/unit-of-work.token';
+
+import type { AccountingAccountRepository } from './domain/repositories/accounting-account.repository';
+
+import type { UnitOfWork } from '../../foundation/persistence/unit-of-work.interface';
+
+// -----------------------------------------------------------------------------
 // Application — Command Handlers
 // -----------------------------------------------------------------------------
 
@@ -302,6 +318,29 @@ import {
     // =========================================================================
 
     ...ACCOUNTING_PROVIDERS,
+    // =========================================================================
+    // Temporary — Rename Platform Wallet Liability Account
+    // =========================================================================
+
+    // =========================================================================
+    // Platform GL — Chart of Accounts Provisioner
+    // =========================================================================
+    //
+    // The provisioner runs automatically through OnApplicationBootstrap.
+    //
+    // It receives the Accounting Account repository abstraction and the
+    // shared UnitOfWork token.
+    //
+    // -------------------------------------------------------------------------
+
+    {
+      provide: PlatformGlAccountsProvisioner,
+      useFactory: (
+        accountRepository: AccountingAccountRepository,
+        unitOfWork: UnitOfWork,
+      ) => new PlatformGlAccountsProvisioner(accountRepository, unitOfWork),
+      inject: [ACCOUNTING_TOKENS.REPOSITORIES.ACCOUNTING_ACCOUNT, UNIT_OF_WORK],
+    },
 
     // =========================================================================
     // Accounting Account — Command Handlers
@@ -440,6 +479,12 @@ import {
   // ---------------------------------------------------------------------------
 
   exports: [
+    // =========================================================================
+    // Platform GL — Provisioner
+    // =========================================================================
+
+    PlatformGlAccountsProvisioner,
+
     // =========================================================================
     // Repositories
     // =========================================================================

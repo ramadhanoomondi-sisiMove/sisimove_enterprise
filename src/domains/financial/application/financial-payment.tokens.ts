@@ -36,6 +36,8 @@ export const FINANCIAL_PAYMENT_TOKENS = {
 
     EXPIRE: Symbol('ExpireFinancialPaymentHandler'),
 
+    POST_SUCCESSFUL: Symbol('PostSuccessfulFinancialPaymentHandler'),
+
     LINK_TRANSACTION: Symbol('LinkFinancialPaymentTransactionHandler'),
   } as const,
 
