@@ -1,4 +1,10 @@
 -- CreateEnum
+CREATE TYPE "FinancialPaymentCallbackStatus" AS ENUM ('PENDING', 'PROCESSED', 'FAILED');
+
+-- CreateEnum
+CREATE TYPE "OutboxMessageStatus" AS ENUM ('PENDING', 'PROCESSING', 'PUBLISHED', 'DEAD_LETTERED');
+
+-- CreateEnum
 CREATE TYPE "JourneyCompletionConfirmationRole" AS ENUM ('PROVIDER', 'PASSENGER');
 
 -- CreateEnum
@@ -282,6 +288,18 @@ CREATE TYPE "VerificationRequestType" AS ENUM ('PROFILE_PHOTO', 'GOVERNMENT_ID',
 
 -- CreateEnum
 CREATE TYPE "VerificationRequestStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED', 'CANCELLED');
+
+-- CreateEnum
+CREATE TYPE "FinancialPaymentProviderType" AS ENUM ('MOBILE_MONEY', 'BANK', 'CARD_PROCESSOR', 'PAYMENT_GATEWAY', 'DIGITAL_WALLET', 'OTHER');
+
+-- CreateEnum
+CREATE TYPE "FinancialPaymentProviderIntegrationStatus" AS ENUM ('NOT_CONFIGURED', 'CONFIGURING', 'READY', 'DEGRADED', 'SUSPENDED');
+
+-- CreateEnum
+CREATE TYPE "FinancialPaymentProviderEnvironment" AS ENUM ('SANDBOX', 'PRODUCTION');
+
+-- CreateEnum
+CREATE TYPE "FinancialPaymentProviderCapabilityType" AS ENUM ('INITIATE_PAYMENT', 'VERIFY_PAYMENT', 'QUERY_PAYMENT', 'REFUND_PAYMENT', 'INITIATE_DISBURSEMENT', 'VERIFY_DISBURSEMENT', 'QUERY_BALANCE', 'WEBHOOKS');
 
 -- CreateTable
 CREATE TABLE "identities" (
@@ -1343,6 +1361,7 @@ CREATE TABLE "financial_payment_methods" (
     "type" "FinancialPaymentMethodType" NOT NULL,
     "provider" TEXT NOT NULL,
     "providerReference" TEXT,
+    "phoneNumber" TEXT,
     "displayName" TEXT,
     "lastFour" TEXT,
     "isDefault" BOOLEAN NOT NULL DEFAULT false,
@@ -1361,6 +1380,7 @@ CREATE TABLE "financial_payment_attempts" (
     "status" "FinancialPaymentAttemptStatus" NOT NULL DEFAULT 'PENDING',
     "provider" TEXT NOT NULL,
     "providerReference" TEXT,
+    "merchantRequestId" TEXT,
     "amount" INTEGER NOT NULL,
     "currency" TEXT NOT NULL DEFAULT 'KES',
     "failureCode" TEXT,
@@ -1832,6 +1852,119 @@ CREATE TABLE "support_case_resolutions" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "support_case_resolutions_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "financial_payment_providers" (
+    "id" TEXT NOT NULL,
+    "publicId" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "description" TEXT,
+    "type" "FinancialPaymentProviderType" NOT NULL,
+    "integrationStatus" "FinancialPaymentProviderIntegrationStatus" NOT NULL DEFAULT 'NOT_CONFIGURED',
+    "environment" "FinancialPaymentProviderEnvironment" NOT NULL DEFAULT 'SANDBOX',
+    "isEnabled" BOOLEAN NOT NULL DEFAULT false,
+    "configurationReference" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "financial_payment_providers_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "financial_payment_provider_capabilities" (
+    "id" TEXT NOT NULL,
+    "publicId" TEXT NOT NULL,
+    "providerId" TEXT NOT NULL,
+    "type" "FinancialPaymentProviderCapabilityType" NOT NULL,
+    "isSupported" BOOLEAN NOT NULL DEFAULT false,
+    "isEnabled" BOOLEAN NOT NULL DEFAULT false,
+    "configurationReference" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "financial_payment_provider_capabilities_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "financial_payment_provider_configurations" (
+    "id" TEXT NOT NULL,
+    "reference" TEXT NOT NULL,
+    "providerId" TEXT NOT NULL,
+    "environment" "FinancialPaymentProviderEnvironment" NOT NULL,
+    "encryptedPayload" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "financial_payment_provider_configurations_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "stored_events" (
+    "id" TEXT NOT NULL,
+    "eventId" TEXT NOT NULL,
+    "eventName" TEXT NOT NULL,
+    "eventVersion" INTEGER NOT NULL,
+    "aggregateId" TEXT NOT NULL,
+    "aggregateType" TEXT NOT NULL,
+    "correlationId" TEXT,
+    "causationId" TEXT,
+    "eventTimestamp" TIMESTAMP(3) NOT NULL,
+    "producerPlatform" TEXT NOT NULL,
+    "eventSchemaVersion" TEXT NOT NULL,
+    "payload" JSONB NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "stored_events_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "outbox_messages" (
+    "id" TEXT NOT NULL,
+    "storedEventId" TEXT NOT NULL,
+    "status" "OutboxMessageStatus" NOT NULL DEFAULT 'PENDING',
+    "attempts" INTEGER NOT NULL DEFAULT 0,
+    "availableAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "lockedAt" TIMESTAMP(3),
+    "lockedUntil" TIMESTAMP(3),
+    "lastAttemptAt" TIMESTAMP(3),
+    "lastError" TEXT,
+    "publishedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "outbox_messages_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "processed_events" (
+    "id" TEXT NOT NULL,
+    "storedEventId" TEXT NOT NULL,
+    "consumerName" TEXT NOT NULL,
+    "processedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "processed_events_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "financial_payment_callbacks" (
+    "id" TEXT NOT NULL,
+    "publicId" TEXT NOT NULL,
+    "provider" TEXT NOT NULL,
+    "merchantRequestId" TEXT NOT NULL,
+    "checkoutRequestId" TEXT NOT NULL,
+    "attemptId" TEXT,
+    "resultCode" INTEGER NOT NULL,
+    "resultDesc" TEXT NOT NULL,
+    "payload" JSONB NOT NULL,
+    "status" "FinancialPaymentCallbackStatus" NOT NULL DEFAULT 'PENDING',
+    "receivedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "processedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "financial_payment_callbacks_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -2801,13 +2934,13 @@ CREATE INDEX "financial_transactions_type_idx" ON "financial_transactions"("type
 CREATE INDEX "financial_transactions_status_idx" ON "financial_transactions"("status");
 
 -- CreateIndex
-CREATE INDEX "financial_transactions_referenceType_referencePublicId_idx" ON "financial_transactions"("referenceType", "referencePublicId");
-
--- CreateIndex
 CREATE INDEX "financial_transactions_accountingJournalPublicId_idx" ON "financial_transactions"("accountingJournalPublicId");
 
 -- CreateIndex
 CREATE INDEX "financial_transactions_createdAt_idx" ON "financial_transactions"("createdAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "financial_transactions_referenceType_referencePublicId_key" ON "financial_transactions"("referenceType", "referencePublicId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "financial_transaction_entries_publicId_key" ON "financial_transaction_entries"("publicId");
@@ -2855,6 +2988,9 @@ CREATE INDEX "financial_payment_methods_provider_idx" ON "financial_payment_meth
 CREATE INDEX "financial_payment_methods_providerReference_idx" ON "financial_payment_methods"("providerReference");
 
 -- CreateIndex
+CREATE INDEX "financial_payment_methods_phoneNumber_idx" ON "financial_payment_methods"("phoneNumber");
+
+-- CreateIndex
 CREATE INDEX "financial_payment_methods_type_idx" ON "financial_payment_methods"("type");
 
 -- CreateIndex
@@ -2864,7 +3000,13 @@ CREATE INDEX "financial_payment_methods_isActive_idx" ON "financial_payment_meth
 CREATE UNIQUE INDEX "financial_payment_methods_provider_providerReference_key" ON "financial_payment_methods"("provider", "providerReference");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "financial_payment_methods_accountId_provider_phoneNumber_key" ON "financial_payment_methods"("accountId", "provider", "phoneNumber");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "financial_payment_attempts_publicId_key" ON "financial_payment_attempts"("publicId");
+
+-- CreateIndex
+CREATE INDEX "financial_payment_attempts_merchantRequestId_idx" ON "financial_payment_attempts"("merchantRequestId");
 
 -- CreateIndex
 CREATE INDEX "financial_payment_attempts_paymentId_idx" ON "financial_payment_attempts"("paymentId");
@@ -3283,6 +3425,102 @@ CREATE UNIQUE INDEX "support_case_resolutions_caseId_key" ON "support_case_resol
 -- CreateIndex
 CREATE INDEX "support_case_resolutions_resolvedByPublicId_idx" ON "support_case_resolutions"("resolvedByPublicId");
 
+-- CreateIndex
+CREATE UNIQUE INDEX "financial_payment_providers_publicId_key" ON "financial_payment_providers"("publicId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "financial_payment_providers_code_key" ON "financial_payment_providers"("code");
+
+-- CreateIndex
+CREATE INDEX "financial_payment_providers_type_idx" ON "financial_payment_providers"("type");
+
+-- CreateIndex
+CREATE INDEX "financial_payment_providers_integrationStatus_idx" ON "financial_payment_providers"("integrationStatus");
+
+-- CreateIndex
+CREATE INDEX "financial_payment_providers_environment_idx" ON "financial_payment_providers"("environment");
+
+-- CreateIndex
+CREATE INDEX "financial_payment_providers_isEnabled_idx" ON "financial_payment_providers"("isEnabled");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "financial_payment_provider_capabilities_publicId_key" ON "financial_payment_provider_capabilities"("publicId");
+
+-- CreateIndex
+CREATE INDEX "financial_payment_provider_capabilities_providerId_idx" ON "financial_payment_provider_capabilities"("providerId");
+
+-- CreateIndex
+CREATE INDEX "financial_payment_provider_capabilities_type_idx" ON "financial_payment_provider_capabilities"("type");
+
+-- CreateIndex
+CREATE INDEX "financial_payment_provider_capabilities_isSupported_idx" ON "financial_payment_provider_capabilities"("isSupported");
+
+-- CreateIndex
+CREATE INDEX "financial_payment_provider_capabilities_isEnabled_idx" ON "financial_payment_provider_capabilities"("isEnabled");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "financial_payment_provider_capabilities_providerId_type_key" ON "financial_payment_provider_capabilities"("providerId", "type");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "financial_payment_provider_configurations_reference_key" ON "financial_payment_provider_configurations"("reference");
+
+-- CreateIndex
+CREATE INDEX "financial_payment_provider_configurations_providerId_idx" ON "financial_payment_provider_configurations"("providerId");
+
+-- CreateIndex
+CREATE INDEX "financial_payment_provider_configurations_environment_idx" ON "financial_payment_provider_configurations"("environment");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "financial_payment_provider_configurations_providerId_enviro_key" ON "financial_payment_provider_configurations"("providerId", "environment");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "stored_events_eventId_key" ON "stored_events"("eventId");
+
+-- CreateIndex
+CREATE INDEX "stored_events_aggregateId_eventTimestamp_idx" ON "stored_events"("aggregateId", "eventTimestamp");
+
+-- CreateIndex
+CREATE INDEX "stored_events_eventName_eventTimestamp_idx" ON "stored_events"("eventName", "eventTimestamp");
+
+-- CreateIndex
+CREATE INDEX "stored_events_aggregateType_aggregateId_idx" ON "stored_events"("aggregateType", "aggregateId");
+
+-- CreateIndex
+CREATE INDEX "stored_events_correlationId_idx" ON "stored_events"("correlationId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "outbox_messages_storedEventId_key" ON "outbox_messages"("storedEventId");
+
+-- CreateIndex
+CREATE INDEX "outbox_messages_status_availableAt_idx" ON "outbox_messages"("status", "availableAt");
+
+-- CreateIndex
+CREATE INDEX "outbox_messages_status_lockedUntil_idx" ON "outbox_messages"("status", "lockedUntil");
+
+-- CreateIndex
+CREATE INDEX "processed_events_storedEventId_idx" ON "processed_events"("storedEventId");
+
+-- CreateIndex
+CREATE INDEX "processed_events_processedAt_idx" ON "processed_events"("processedAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "processed_events_consumerName_storedEventId_key" ON "processed_events"("consumerName", "storedEventId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "financial_payment_callbacks_publicId_key" ON "financial_payment_callbacks"("publicId");
+
+-- CreateIndex
+CREATE INDEX "financial_payment_callbacks_attemptId_idx" ON "financial_payment_callbacks"("attemptId");
+
+-- CreateIndex
+CREATE INDEX "financial_payment_callbacks_status_receivedAt_idx" ON "financial_payment_callbacks"("status", "receivedAt");
+
+-- CreateIndex
+CREATE INDEX "financial_payment_callbacks_merchantRequestId_idx" ON "financial_payment_callbacks"("merchantRequestId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "financial_payment_callbacks_provider_checkoutRequestId_key" ON "financial_payment_callbacks"("provider", "checkoutRequestId");
+
 -- AddForeignKey
 ALTER TABLE "verifications" ADD CONSTRAINT "verifications_identityId_fkey" FOREIGN KEY ("identityId") REFERENCES "identities"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
@@ -3513,3 +3751,18 @@ ALTER TABLE "support_case_evidence" ADD CONSTRAINT "support_case_evidence_caseId
 
 -- AddForeignKey
 ALTER TABLE "support_case_resolutions" ADD CONSTRAINT "support_case_resolutions_caseId_fkey" FOREIGN KEY ("caseId") REFERENCES "support_cases"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "financial_payment_provider_capabilities" ADD CONSTRAINT "financial_payment_provider_capabilities_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "financial_payment_providers"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "financial_payment_provider_configurations" ADD CONSTRAINT "financial_payment_provider_configurations_providerId_fkey" FOREIGN KEY ("providerId") REFERENCES "financial_payment_providers"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "outbox_messages" ADD CONSTRAINT "outbox_messages_storedEventId_fkey" FOREIGN KEY ("storedEventId") REFERENCES "stored_events"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "processed_events" ADD CONSTRAINT "processed_events_storedEventId_fkey" FOREIGN KEY ("storedEventId") REFERENCES "stored_events"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "financial_payment_callbacks" ADD CONSTRAINT "financial_payment_callbacks_attemptId_fkey" FOREIGN KEY ("attemptId") REFERENCES "financial_payment_attempts"("id") ON DELETE SET NULL ON UPDATE CASCADE;

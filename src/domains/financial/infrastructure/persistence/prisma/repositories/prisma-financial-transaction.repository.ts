@@ -339,6 +339,7 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
    *
    * The caller owns the transaction boundary.
    */
+
   public async save(aggregate: FinancialTransactionAggregate): Promise<void> {
     if (aggregate === undefined) {
       throw new Error('Financial Transaction aggregate is required.');
@@ -360,6 +361,27 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     );
 
     // -------------------------------------------------------------------------
+    // Check whether this transaction already exists.
+    // -------------------------------------------------------------------------
+
+    const existingTransaction =
+      await this.prisma.financialTransaction.findUnique({
+        where: {
+          id: persistence.transaction.id,
+        },
+        select: {
+          id: true,
+          status: true,
+        },
+      });
+
+    // Existing completed transactions have immutable historical entries.
+    // A new transaction that is already completed in memory must still
+    // persist its entries on its first save.
+    const preserveCompletedEntries =
+      existingTransaction?.status === 'COMPLETED';
+
+    // -------------------------------------------------------------------------
     // Financial Transaction Root
     // -------------------------------------------------------------------------
 
@@ -370,7 +392,6 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
 
       create: {
         id: persistence.transaction.id,
-
         publicId: persistence.transaction.publicId,
 
         type: this.toPrismaFinancialTransactionType(
@@ -382,30 +403,23 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
         ),
 
         sourceAccountId: persistence.transaction.sourceAccountId,
-
         destinationAccountId: persistence.transaction.destinationAccountId,
 
         amount: persistence.transaction.amount,
-
         currency: persistence.transaction.currency,
 
         referenceType: persistence.transaction.referenceType,
-
         referencePublicId: persistence.transaction.referencePublicId,
 
         accountingJournalPublicId:
           persistence.transaction.accountingJournalPublicId,
 
         completedAt: persistence.transaction.completedAt,
-
         failedAt: persistence.transaction.failedAt,
-
         reversedAt: persistence.transaction.reversedAt,
-
         cancelledAt: persistence.transaction.cancelledAt,
 
         createdAt: persistence.transaction.createdAt,
-
         updatedAt: persistence.transaction.updatedAt,
       },
 
@@ -421,26 +435,20 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
         ),
 
         sourceAccountId: persistence.transaction.sourceAccountId,
-
         destinationAccountId: persistence.transaction.destinationAccountId,
 
         amount: persistence.transaction.amount,
-
         currency: persistence.transaction.currency,
 
         referenceType: persistence.transaction.referenceType,
-
         referencePublicId: persistence.transaction.referencePublicId,
 
         accountingJournalPublicId:
           persistence.transaction.accountingJournalPublicId,
 
         completedAt: persistence.transaction.completedAt,
-
         failedAt: persistence.transaction.failedAt,
-
         reversedAt: persistence.transaction.reversedAt,
-
         cancelledAt: persistence.transaction.cancelledAt,
 
         updatedAt: persistence.transaction.updatedAt,
@@ -450,19 +458,10 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
     // -------------------------------------------------------------------------
     // Aggregate-Owned Entries
     // -------------------------------------------------------------------------
-    //
-    // FinancialTransactionEntry is not an aggregate root.
-    //
-    // The aggregate owns the complete entry collection.
-    //
-    // Therefore the repository does not expose independent entry persistence.
-    //
-    // Existing entries are replaced with the current aggregate state.
-    //
-    // When save() executes inside a UnitOfWork, both the deletion and creation
-    // participate in that same ambient database transaction.
-    //
-    // -------------------------------------------------------------------------
+
+    if (preserveCompletedEntries) {
+      return;
+    }
 
     await this.prisma.financialTransactionEntry.deleteMany({
       where: {
@@ -474,19 +473,12 @@ export class PrismaFinancialTransactionRepository implements FinancialTransactio
       await this.prisma.financialTransactionEntry.createMany({
         data: persistence.entries.map((entry) => ({
           id: entry.id,
-
           publicId: entry.publicId,
-
           transactionId: entry.transactionId,
-
           accountId: entry.accountId,
-
           type: this.toPrismaFinancialTransactionEntryType(entry.type),
-
           balanceType: entry.balanceType,
-
           amount: entry.amount,
-
           createdAt: entry.createdAt,
         })),
       });

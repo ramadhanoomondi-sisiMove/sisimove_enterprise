@@ -2,11 +2,12 @@
 // Financial Payment — Post Successful Payment Handler
 // -----------------------------------------------------------------------------
 //
-// Application command handler responsible for posting a successfully confirmed
-// Financial Payment into the Financial Transaction and Financial Account
-// aggregates.
+// Posts a successfully confirmed Financial Payment into:
 //
-// Posting model:
+// 1. Financial Transaction and Financial Account aggregates.
+// 2. Accounting Journal and General Ledger.
+//
+// Operational balance movement:
 //
 //   SYSTEM-MPESA-CLEARING
 //       DEBIT AVAILABLE
@@ -15,19 +16,19 @@
 //       Receiving Account
 //       CREDIT AVAILABLE
 //
-// Responsibilities:
+// General ledger posting:
 //
-// 1. Load and validate the succeeded Financial Payment.
-// 2. Prevent duplicate transaction posting.
-// 3. Load the M-PESA clearing and receiving accounts.
-// 4. Debit the clearing account.
-// 5. Credit the receiving account.
-// 6. Create and complete a balanced Financial Transaction.
-// 7. Link the transaction to the Financial Payment.
-// 8. Persist all aggregates atomically.
-// 9. Persist resulting domain events into the transactional outbox.
+//   1121 — M-PESA Clearing Receivable       DEBIT
+//   2111 — User Wallet Balances Payable     CREDIT
 //
-// All persistence and event publication occur inside one UnitOfWork.
+// Both postings, aggregate links, and outbox events are committed atomically
+// inside the same UnitOfWork.
+//
+// Idempotency:
+// - Existing Financial Transactions never reapply account balance movements.
+// - Existing journals are recovered by their posting source.
+// - Duplicate journals are rejected.
+// - A completed transaction is linked to its journal without reopening it.
 //
 // -----------------------------------------------------------------------------
 
@@ -38,36 +39,30 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
-// Foundation — Unit of Work
+// Foundation
 // -----------------------------------------------------------------------------
 
 import { UNIT_OF_WORK } from '../../../../foundation/persistence/unit-of-work.token';
-
 import type { UnitOfWork } from '../../../../foundation/persistence/unit-of-work.interface';
 
-// -----------------------------------------------------------------------------
-// Foundation — Event Publisher
-// -----------------------------------------------------------------------------
-
 import { EVENT_PUBLISHER } from '../../../../foundation/events/event-publisher.token';
-
 import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
-
-// -----------------------------------------------------------------------------
-// Foundation — Command Handler
-// -----------------------------------------------------------------------------
 
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 
 // -----------------------------------------------------------------------------
-// Application — Tokens
+// Financial — Tokens
 // -----------------------------------------------------------------------------
 
 import { FINANCIAL_PAYMENT_TOKENS } from '../financial-payment.tokens';
-
 import { FINANCIAL_ACCOUNT_TOKENS } from '../../application/financial-account.tokens';
-
 import { FINANCIAL_TRANSACTION_TOKENS } from '../../application/financial-transaction.tokens';
+
+// -----------------------------------------------------------------------------
+// Accounting — Tokens
+// -----------------------------------------------------------------------------
+
+import { ACCOUNTING_TOKENS } from '../../../accounting/application/accounting.tokens';
 
 // -----------------------------------------------------------------------------
 // Command
@@ -76,38 +71,55 @@ import { FINANCIAL_TRANSACTION_TOKENS } from '../../application/financial-transa
 import type { PostSuccessfulFinancialPaymentCommand } from '../commands/post-successful-financial-payment.command';
 
 // -----------------------------------------------------------------------------
-// Financial Payment
+// Financial — Repositories
 // -----------------------------------------------------------------------------
 
 import type { FinancialPaymentRepository } from '../../domain/repositories/financial-payment.repository';
-
-// -----------------------------------------------------------------------------
-// Financial Account
-// -----------------------------------------------------------------------------
-
 import type { FinancialAccountRepository } from '../../domain/repositories/financial-account.repository';
-
-import { FinancialAccountPublicId } from '../../domain/value-objects/financial-account-public-id.vo';
-
-import { FinancialAccountOwnerPublicId } from '../../domain/value-objects/financial-account-owner-public-id.vo';
-
-import { FinancialAccountReference } from '../../domain/value-objects/financial-account-reference.vo';
-
-// -----------------------------------------------------------------------------
-// Financial Transaction
-// -----------------------------------------------------------------------------
-
 import type { FinancialTransactionRepository } from '../../domain/repositories/financial-transaction.repository';
 
+// -----------------------------------------------------------------------------
+// Financial — Aggregates and Value Objects
+// -----------------------------------------------------------------------------
+
+import { FinancialAccountPublicId } from '../../domain/value-objects/financial-account-public-id.vo';
+import { FinancialAccountOwnerPublicId } from '../../domain/value-objects/financial-account-owner-public-id.vo';
+import { FinancialAccountReference } from '../../domain/value-objects/financial-account-reference.vo';
+
 import { FinancialTransactionAggregate } from '../../domain/aggregates/financial-transaction.aggregate';
-
 import { FinancialTransactionReference } from '../../domain/value-objects/financial-transaction-reference.vo';
-
 import { FinancialTransactionType } from '../../domain/value-objects/financial-transaction-type.vo';
-
 import { FinancialTransactionEntryType } from '../../domain/value-objects/financial-transaction-entry-type.vo';
-
 import { FinancialBalanceType } from '../../domain/value-objects/financial-balance-type.vo';
+
+// -----------------------------------------------------------------------------
+// Accounting — Repositories
+// -----------------------------------------------------------------------------
+
+import type { AccountingAccountRepository } from '../../../accounting/domain/repositories/accounting-account.repository';
+import type { AccountingPeriodRepository } from '../../../accounting/domain/repositories/accounting-period.repository';
+import type { AccountingJournalRepository } from '../../../accounting/domain/repositories/accounting-journal.repository';
+
+// -----------------------------------------------------------------------------
+// Accounting — Aggregates and Entities
+// -----------------------------------------------------------------------------
+
+import { AccountingJournalAggregate } from '../../../accounting/domain/aggregates/accounting-journal.aggregate';
+
+import { AccountingJournalEntity } from '../../../accounting/domain/entities/accounting-journal.entity';
+import { AccountingJournalEntryEntity } from '../../../accounting/domain/entities/accounting-journal-entry.entity';
+import { AccountingJournalLineEntity } from '../../../accounting/domain/entities/accounting-journal-line.entity';
+import { AccountingPostingReferenceEntity } from '../../../accounting/domain/entities/accounting-posting-reference.entity';
+
+// -----------------------------------------------------------------------------
+// Accounting — Value Objects
+// -----------------------------------------------------------------------------
+
+import { AccountingAmount } from '../../../accounting/domain/value-objects/accounting-amount.vo';
+import { AccountingCurrency } from '../../../accounting/domain/value-objects/accounting-currency.vo';
+import { AccountingAccountCode } from '../../../accounting/domain/value-objects/accounting-account-code.vo';
+import { AccountingJournalLineType } from '../../../accounting/domain/value-objects/accounting-journal-line-type.vo';
+import { AccountingSourceType } from '../../../accounting/domain/value-objects/accounting-source-type.vo';
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -116,6 +128,12 @@ import { FinancialBalanceType } from '../../domain/value-objects/financial-balan
 const MPESA_CLEARING_ACCOUNT_OWNER = 'SYSTEM-MPESA-CLEARING';
 
 const PAYMENT_REFERENCE_TYPE = 'FINANCIAL_PAYMENT';
+
+const ACCOUNTING_SOURCE_TYPE = 'FINANCIAL_PAYMENT';
+
+const MPESA_CLEARING_GL_CODE = '1121';
+
+const USER_WALLET_PAYABLE_GL_CODE = '2111';
 
 // -----------------------------------------------------------------------------
 // Handler
@@ -140,6 +158,15 @@ export class PostSuccessfulFinancialPaymentHandler implements CommandHandler<
     @Inject(FINANCIAL_TRANSACTION_TOKENS.REPOSITORY)
     private readonly transactionRepository: FinancialTransactionRepository,
 
+    @Inject(ACCOUNTING_TOKENS.REPOSITORIES.ACCOUNTING_ACCOUNT)
+    private readonly accountingAccountRepository: AccountingAccountRepository,
+
+    @Inject(ACCOUNTING_TOKENS.REPOSITORIES.ACCOUNTING_PERIOD)
+    private readonly accountingPeriodRepository: AccountingPeriodRepository,
+
+    @Inject(ACCOUNTING_TOKENS.REPOSITORIES.ACCOUNTING_JOURNAL)
+    private readonly accountingJournalRepository: AccountingJournalRepository,
+
     @Inject(UNIT_OF_WORK)
     private readonly unitOfWork: UnitOfWork,
 
@@ -156,7 +183,7 @@ export class PostSuccessfulFinancialPaymentHandler implements CommandHandler<
   ): Promise<void> {
     await this.unitOfWork.execute(async () => {
       // -----------------------------------------------------------------------
-      // 1. Load Financial Payment
+      // 1. Load and Validate Financial Payment
       // -----------------------------------------------------------------------
 
       const payment = await this.paymentRepository.findByPublicId(
@@ -168,10 +195,6 @@ export class PostSuccessfulFinancialPaymentHandler implements CommandHandler<
           `Financial Payment not found: ${command.paymentPublicId.value}`,
         );
       }
-
-      // -----------------------------------------------------------------------
-      // 2. Validate Payment State
-      // -----------------------------------------------------------------------
 
       if (!payment.isSucceeded()) {
         throw new Error(
@@ -191,12 +214,40 @@ export class PostSuccessfulFinancialPaymentHandler implements CommandHandler<
         );
       }
 
+      const successfulAttempt = payment.getSuccessfulAttempt();
+
+      if (
+        successfulAttempt === undefined ||
+        !successfulAttempt.isSuccessful()
+      ) {
+        throw new Error(
+          `Financial Payment ${payment.publicId.value} has an invalid successful attempt.`,
+        );
+      }
+
+      const entryDate = successfulAttempt.completedAt;
+
+      if (entryDate === undefined) {
+        throw new Error(
+          `Successful attempt for payment ${payment.publicId.value} has no completion timestamp.`,
+        );
+      }
+
+      if (
+        payment.completedAt === undefined ||
+        payment.completedAt.getTime() !== entryDate.getTime()
+      ) {
+        throw new Error(
+          `Payment completion timestamp does not match its successful attempt: ${payment.publicId.value}.`,
+        );
+      }
+
       const amount = payment.amount.amount;
       const currency = payment.amount.currency;
       const now = new Date();
 
       // -----------------------------------------------------------------------
-      // 3. Establish Stable Transaction Reference
+      // 2. Establish Stable Financial Transaction Reference
       // -----------------------------------------------------------------------
 
       const reference = FinancialTransactionReference.create(
@@ -205,19 +256,7 @@ export class PostSuccessfulFinancialPaymentHandler implements CommandHandler<
       );
 
       // -----------------------------------------------------------------------
-      // 4. Check Existing Transaction
-      // -----------------------------------------------------------------------
-      //
-      // This check protects against:
-      //
-      // - duplicate outbox delivery;
-      // - subscriber retries;
-      // - a successful posting followed by a failed idempotency update;
-      // - repeated command execution.
-      //
-      // The database composite unique constraint provides the final
-      // concurrency protection.
-      //
+      // 3. Find Existing Financial Transaction
       // -----------------------------------------------------------------------
 
       const existingTransactions =
@@ -229,6 +268,8 @@ export class PostSuccessfulFinancialPaymentHandler implements CommandHandler<
         );
       }
 
+      let transaction: FinancialTransactionAggregate;
+
       if (existingTransactions.length === 1) {
         const existingTransaction = existingTransactions[0];
 
@@ -237,10 +278,6 @@ export class PostSuccessfulFinancialPaymentHandler implements CommandHandler<
             'Unable to retrieve the existing Financial Transaction.',
           );
         }
-
-        // ---------------------------------------------------------------------
-        // Verify the existing transaction
-        // ---------------------------------------------------------------------
 
         if (existingTransaction.type.value !== 'PAYMENT') {
           throw new Error(
@@ -263,10 +300,6 @@ export class PostSuccessfulFinancialPaymentHandler implements CommandHandler<
           );
         }
 
-        // ---------------------------------------------------------------------
-        // Verify existing payment link
-        // ---------------------------------------------------------------------
-
         if (
           payment.transactionPublicId !== undefined &&
           payment.transactionPublicId !== existingTransaction.publicId.value
@@ -275,10 +308,6 @@ export class PostSuccessfulFinancialPaymentHandler implements CommandHandler<
             'Financial Payment is linked to a different Financial Transaction.',
           );
         }
-
-        // ---------------------------------------------------------------------
-        // Repair a missing payment link if necessary
-        // ---------------------------------------------------------------------
 
         if (payment.transactionPublicId === undefined) {
           payment.linkTransaction(
@@ -289,251 +318,500 @@ export class PostSuccessfulFinancialPaymentHandler implements CommandHandler<
 
           await this.paymentRepository.save(payment);
 
-          const domainEvents = payment.pullDomainEvents();
+          const paymentEvents = payment.pullDomainEvents();
 
-          if (domainEvents.length > 0) {
-            await this.eventPublisher.publishAll(domainEvents);
+          if (paymentEvents.length > 0) {
+            await this.eventPublisher.publishAll(paymentEvents);
           }
         }
 
-        // The existing completed transaction has already been posted.
-        // Never apply the account balance movements again.
+        // Do not repeat the account balance movements.
+        transaction = existingTransaction;
+      } else {
+        // ---------------------------------------------------------------------
+        // 4. Validate Payment Does Not Reference a Missing Transaction
+        // ---------------------------------------------------------------------
+
+        if (payment.transactionPublicId !== undefined) {
+          throw new Error(
+            `Payment ${payment.publicId.value} references transaction ` +
+              `${payment.transactionPublicId}, but that transaction was not found.`,
+          );
+        }
+
+        // ---------------------------------------------------------------------
+        // 5. Load Receiving Financial Account
+        // ---------------------------------------------------------------------
+
+        const receivingAccount = await this.accountRepository.findByPublicId(
+          new FinancialAccountPublicId(payment.accountId.value),
+        );
+
+        if (receivingAccount === null) {
+          throw new Error(
+            `Receiving Financial Account not found: ${payment.accountId.value}`,
+          );
+        }
+
+        // ---------------------------------------------------------------------
+        // 6. Load M-PESA Clearing Financial Account
+        // ---------------------------------------------------------------------
+
+        const clearingAccount =
+          await this.accountRepository.findByOwnerPublicId(
+            FinancialAccountOwnerPublicId.create(MPESA_CLEARING_ACCOUNT_OWNER),
+          );
+
+        if (clearingAccount === null) {
+          throw new Error(
+            'SYSTEM-MPESA-CLEARING Financial Account was not found.',
+          );
+        }
+
+        // ---------------------------------------------------------------------
+        // 7. Validate Financial Account Identity and State
+        // ---------------------------------------------------------------------
+
+        if (
+          clearingAccount.publicId.value === receivingAccount.publicId.value
+        ) {
+          throw new Error(
+            'M-PESA clearing account cannot be the receiving account.',
+          );
+        }
+
+        if (!clearingAccount.ownerPublicId) {
+          throw new Error(
+            'M-PESA clearing account has no owner public identity.',
+          );
+        }
+
+        if (!receivingAccount.ownerPublicId) {
+          throw new Error('Receiving account has no owner public identity.');
+        }
+
+        clearingAccount.ensureOperational();
+        receivingAccount.ensureOperational();
+
+        clearingAccount.ensureCurrency(currency);
+        receivingAccount.ensureCurrency(currency);
+
+        // ---------------------------------------------------------------------
+        // 8. Build Financial Account References
+        // ---------------------------------------------------------------------
+
+        const clearingAccountReference = FinancialAccountReference.create(
+          clearingAccount.type.value,
+          clearingAccount.ownerPublicId.value,
+        );
+
+        const receivingAccountReference = FinancialAccountReference.create(
+          receivingAccount.type.value,
+          receivingAccount.ownerPublicId.value,
+        );
+
+        // ---------------------------------------------------------------------
+        // 9. Apply Operational Balance Movements
+        // ---------------------------------------------------------------------
+
+        clearingAccount.debitAvailable(amount, currency, now);
+
+        receivingAccount.creditAvailable(amount, currency, now);
+
+        // ---------------------------------------------------------------------
+        // 10. Create Financial Transaction
+        // ---------------------------------------------------------------------
+
+        transaction = FinancialTransactionAggregate.create(
+          {
+            type: FinancialTransactionType.create('PAYMENT'),
+
+            sourceAccount: clearingAccountReference,
+
+            destinationAccount: receivingAccountReference,
+
+            amount: payment.amount,
+
+            reference,
+          },
+          command.correlationId,
+          now,
+        );
+
+        transaction.addEntry({
+          account: clearingAccountReference,
+
+          type: FinancialTransactionEntryType.create('DEBIT'),
+
+          balanceType: FinancialBalanceType.create('AVAILABLE'),
+
+          amount: payment.amount,
+        });
+
+        transaction.addEntry({
+          account: receivingAccountReference,
+
+          type: FinancialTransactionEntryType.create('CREDIT'),
+
+          balanceType: FinancialBalanceType.create('AVAILABLE'),
+
+          amount: payment.amount,
+        });
+
+        transaction.complete(command.correlationId, now);
+
+        // ---------------------------------------------------------------------
+        // 11. Link Financial Transaction to Payment
+        // ---------------------------------------------------------------------
+
+        payment.linkTransaction(
+          transaction.publicId.value,
+          command.correlationId,
+          command.causationId,
+        );
+
+        // ---------------------------------------------------------------------
+        // 12. Persist Financial Aggregates
+        // ---------------------------------------------------------------------
+
+        await this.transactionRepository.save(transaction);
+
+        await this.accountRepository.save(clearingAccount);
+
+        await this.accountRepository.save(receivingAccount);
+
+        await this.paymentRepository.save(payment);
+
+        // ---------------------------------------------------------------------
+        // 13. Persist Financial Domain Events
+        // ---------------------------------------------------------------------
+
+        const financialEvents = [
+          ...transaction.pullDomainEvents(),
+          ...clearingAccount.pullDomainEvents(),
+          ...receivingAccount.pullDomainEvents(),
+          ...payment.pullDomainEvents(),
+        ];
+
+        if (financialEvents.length > 0) {
+          await this.eventPublisher.publishAll(financialEvents);
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // 14. Resolve Existing Accounting Journal by Posting Source
+      // -----------------------------------------------------------------------
+
+      const sourceType = AccountingSourceType.create(ACCOUNTING_SOURCE_TYPE);
+
+      const existingJournals =
+        await this.accountingJournalRepository.findByPostingSource(
+          sourceType.value,
+          payment.publicId.value,
+        );
+
+      if (existingJournals.length > 1) {
+        throw new Error(
+          `Multiple Accounting Journals exist for Financial Payment ${payment.publicId.value}.`,
+        );
+      }
+
+      if (existingJournals.length === 1) {
+        const existingJournal = existingJournals[0];
+
+        if (existingJournal === undefined) {
+          throw new Error(
+            'Unable to retrieve the existing Accounting Journal.',
+          );
+        }
+
+        if (!existingJournal.isPosted()) {
+          throw new Error(
+            `Accounting Journal for payment ${payment.publicId.value} exists but is not POSTED.`,
+          );
+        }
+
+        if (
+          existingJournal.postingReference === undefined ||
+          !existingJournal.postingReference.references(
+            sourceType,
+            payment.publicId.value,
+          )
+        ) {
+          throw new Error(
+            'Existing Accounting Journal has an invalid payment posting reference.',
+          );
+        }
+
+        if (
+          existingJournal.currency.value !== currency.value ||
+          existingJournal.totalDebit !== amount ||
+          existingJournal.totalCredit !== amount
+        ) {
+          throw new Error(
+            'Existing Accounting Journal does not match the Financial Payment amount or currency.',
+          );
+        }
+
+        if (transaction.hasAccountingJournal()) {
+          if (
+            transaction.accountingJournalPublicId !==
+            existingJournal.publicId.value
+          ) {
+            throw new Error(
+              'Financial Transaction references a different Accounting Journal.',
+            );
+          }
+        } else {
+          transaction.associateAccountingJournalAfterCompletion(
+            existingJournal.publicId.value,
+            now,
+          );
+
+          await this.transactionRepository.save(transaction);
+
+          const transactionEvents = transaction.pullDomainEvents();
+
+          if (transactionEvents.length > 0) {
+            await this.eventPublisher.publishAll(transactionEvents);
+          }
+        }
 
         return;
       }
 
       // -----------------------------------------------------------------------
-      // 5. Validate Existing Payment Link
+      // 15. Validate Existing Transaction Journal Link
       // -----------------------------------------------------------------------
 
-      if (payment.transactionPublicId !== undefined) {
+      if (transaction.hasAccountingJournal()) {
         throw new Error(
-          `Payment ${payment.publicId.value} references transaction ` +
-            `${payment.transactionPublicId}, but that transaction was not found.`,
+          `Financial Transaction ${transaction.publicId.value} references an Accounting Journal that was not found by its payment posting source.`,
         );
       }
 
       // -----------------------------------------------------------------------
-      // 6. Load Receiving Account
+      // 16. Resolve Accounting Period
       // -----------------------------------------------------------------------
 
-      const receivingAccountPublicId = new FinancialAccountPublicId(
-        payment.accountId.value,
-      );
+      const containingPeriods =
+        await this.accountingPeriodRepository.findContainingDate(entryDate);
 
-      const receivingAccount = await this.accountRepository.findByPublicId(
-        receivingAccountPublicId,
-      );
-
-      if (receivingAccount === null) {
+      if (containingPeriods.length !== 1) {
         throw new Error(
-          `Receiving Financial Account not found: ${payment.accountId.value}`,
+          `Expected exactly one Accounting Period for payment date ${entryDate.toISOString()}, found ${containingPeriods.length}.`,
+        );
+      }
+
+      const accountingPeriod = containingPeriods[0];
+
+      if (accountingPeriod === undefined) {
+        throw new Error(
+          'Unable to retrieve the Accounting Period for the payment date.',
+        );
+      }
+
+      if (!accountingPeriod.contains(entryDate)) {
+        throw new Error(
+          'Resolved Accounting Period does not contain the payment date.',
+        );
+      }
+
+      if (
+        !accountingPeriod.isUsable() ||
+        !accountingPeriod.canAcceptJournals()
+      ) {
+        throw new Error(
+          `Accounting Period ${accountingPeriod.publicId.value} cannot accept journals.`,
         );
       }
 
       // -----------------------------------------------------------------------
-      // 7. Load M-PESA Clearing Account
+      // 17. Resolve General Ledger Accounts
       // -----------------------------------------------------------------------
 
-      const clearingAccount = await this.accountRepository.findByOwnerPublicId(
-        FinancialAccountOwnerPublicId.create(MPESA_CLEARING_ACCOUNT_OWNER),
-      );
+      const clearingGlAccount =
+        await this.accountingAccountRepository.findByCode(
+          AccountingAccountCode.create(MPESA_CLEARING_GL_CODE),
+        );
 
-      if (clearingAccount === null) {
+      if (clearingGlAccount === null) {
         throw new Error(
-          'SYSTEM-MPESA-CLEARING Financial Account was not found.',
+          `General Ledger account ${MPESA_CLEARING_GL_CODE} was not found.`,
+        );
+      }
+
+      const walletPayableGlAccount =
+        await this.accountingAccountRepository.findByCode(
+          AccountingAccountCode.create(USER_WALLET_PAYABLE_GL_CODE),
+        );
+
+      if (walletPayableGlAccount === null) {
+        throw new Error(
+          `General Ledger account ${USER_WALLET_PAYABLE_GL_CODE} was not found.`,
         );
       }
 
       // -----------------------------------------------------------------------
-      // 8. Validate Account Identity
+      // 18. Validate General Ledger Account Classification and Availability
       // -----------------------------------------------------------------------
 
-      if (clearingAccount.publicId.value === receivingAccount.publicId.value) {
+      if (!clearingGlAccount.type.isAsset()) {
         throw new Error(
-          'M-PESA clearing account cannot be the receiving account.',
+          `General Ledger account ${MPESA_CLEARING_GL_CODE} must be an ASSET account.`,
         );
       }
 
-      if (!clearingAccount.ownerPublicId) {
+      if (!walletPayableGlAccount.type.isLiability()) {
         throw new Error(
-          'M-PESA clearing account has no owner public identity.',
+          `General Ledger account ${USER_WALLET_PAYABLE_GL_CODE} must be a LIABILITY account.`,
         );
       }
 
-      if (!receivingAccount.ownerPublicId) {
-        throw new Error('Receiving account has no owner public identity.');
+      if (
+        !clearingGlAccount.isUsable() ||
+        !clearingGlAccount.canReceivePostings()
+      ) {
+        throw new Error(
+          `General Ledger account ${MPESA_CLEARING_GL_CODE} cannot receive postings.`,
+        );
+      }
+
+      if (
+        !walletPayableGlAccount.isUsable() ||
+        !walletPayableGlAccount.canReceivePostings()
+      ) {
+        throw new Error(
+          `General Ledger account ${USER_WALLET_PAYABLE_GL_CODE} cannot receive postings.`,
+        );
+      }
+
+      if (clearingGlAccount.id.equals(walletPayableGlAccount.id)) {
+        throw new Error(
+          'M-PESA clearing and wallet payable GL accounts must be different.',
+        );
       }
 
       // -----------------------------------------------------------------------
-      // 9. Validate Account Operational State and Currency
+      // 19. Build Accounting Journal
       // -----------------------------------------------------------------------
 
-      clearingAccount.ensureOperational();
-      receivingAccount.ensureOperational();
+      const accountingCurrency = AccountingCurrency.create(currency.value);
 
-      clearingAccount.ensureCurrency(currency);
-      receivingAccount.ensureCurrency(currency);
+      if (!accountingCurrency.isKes()) {
+        throw new Error(
+          `Financial Payment accounting currently supports KES only; received ${currency.value}.`,
+        );
+      }
 
-      // -----------------------------------------------------------------------
-      // 10. Build Transaction Account References
-      // -----------------------------------------------------------------------
-      //
-      // Account references use the account type and owner public identity.
-      // They do not use the Financial Account's own public ID.
-      //
-      // -----------------------------------------------------------------------
+      // AccountingAmount uses the same integer minor-unit amount.
+      // Do not multiply the payment amount by 100.
 
-      const clearingAccountReference = FinancialAccountReference.create(
-        clearingAccount.type.value,
-        clearingAccount.ownerPublicId.value,
+      const accountingAmount = AccountingAmount.create(amount);
+
+      const journal = AccountingJournalEntity.create(
+        accountingCurrency,
+        accountingPeriod.id,
+        accountingPeriod.publicId,
+        now,
       );
 
-      const receivingAccountReference = FinancialAccountReference.create(
-        receivingAccount.type.value,
-        receivingAccount.ownerPublicId.value,
+      const journalAggregate = AccountingJournalAggregate.create(journal);
+
+      const journalEntry = AccountingJournalEntryEntity.create(
+        entryDate,
+        `M-PESA successful payment ${payment.publicId.value}`,
+        [],
+        now,
       );
 
+      const clearingDebitLine = AccountingJournalLineEntity.create(
+        clearingGlAccount.id,
+        AccountingJournalLineType.debit(),
+        accountingAmount,
+        accountingCurrency,
+        'M-PESA clearing receivable',
+        now,
+      );
+
+      const walletPayableCreditLine = AccountingJournalLineEntity.create(
+        walletPayableGlAccount.id,
+        AccountingJournalLineType.credit(),
+        accountingAmount,
+        accountingCurrency,
+        'User wallet balance payable',
+        now,
+      );
+
+      journalEntry.addLine(clearingDebitLine);
+      journalEntry.addLine(walletPayableCreditLine);
+
+      journalAggregate.addEntry(journalEntry);
+
       // -----------------------------------------------------------------------
-      // 11. Update Account Balances
-      // -----------------------------------------------------------------------
-      //
-      // Amount is already represented in integer minor units.
-      // Do not multiply it by 100.
-      //
-      // M-PESA incoming payment:
-      //
-      // Clearing Account: DEBIT AVAILABLE
-      // Receiving Account: CREDIT AVAILABLE
-      //
+      // 20. Attach Accounting Posting Reference
       // -----------------------------------------------------------------------
 
-      clearingAccount.debitAvailable(amount, currency, now);
+      const postingReference = AccountingPostingReferenceEntity.create(
+        sourceType,
+        payment.publicId.value,
+        now,
+      );
 
-      receivingAccount.creditAvailable(amount, currency, now);
+      journalAggregate.setPostingReference(postingReference);
 
       // -----------------------------------------------------------------------
-      // 12. Create Financial Transaction
+      // 21. Validate and Post Accounting Journal
       // -----------------------------------------------------------------------
 
-      const transaction = FinancialTransactionAggregate.create(
-        {
-          type: FinancialTransactionType.create('PAYMENT'),
+      if (!journalAggregate.canPost()) {
+        throw new Error(
+          `Accounting Journal for payment ${payment.publicId.value} is not ready for posting.`,
+        );
+      }
 
-          sourceAccount: clearingAccountReference,
+      if (!journalAggregate.isBalanced()) {
+        throw new Error(
+          `Accounting Journal for payment ${payment.publicId.value} is not balanced.`,
+        );
+      }
 
-          destinationAccount: receivingAccountReference,
+      journalAggregate.post(command.correlationId, command.causationId, now);
 
-          amount: payment.amount,
+      if (!journalAggregate.isPosted()) {
+        throw new Error(
+          `Accounting Journal for payment ${payment.publicId.value} was not posted.`,
+        );
+      }
 
-          reference,
-        },
-        command.correlationId,
+      // -----------------------------------------------------------------------
+      // 22. Associate Journal with Completed Financial Transaction
+      // -----------------------------------------------------------------------
+
+      transaction.associateAccountingJournalAfterCompletion(
+        journalAggregate.publicId.value,
         now,
       );
 
       // -----------------------------------------------------------------------
-      // 13. Add Clearing Account Debit Entry
+      // 23. Persist Accounting Journal and Transaction Link
       // -----------------------------------------------------------------------
 
-      transaction.addEntry({
-        account: clearingAccountReference,
-
-        type: FinancialTransactionEntryType.create('DEBIT'),
-
-        balanceType: FinancialBalanceType.create('AVAILABLE'),
-
-        amount: payment.amount,
-      });
-
-      // -----------------------------------------------------------------------
-      // 14. Add Receiving Account Credit Entry
-      // -----------------------------------------------------------------------
-
-      transaction.addEntry({
-        account: receivingAccountReference,
-
-        type: FinancialTransactionEntryType.create('CREDIT'),
-
-        balanceType: FinancialBalanceType.create('AVAILABLE'),
-
-        amount: payment.amount,
-      });
-
-      // -----------------------------------------------------------------------
-      // 15. Complete Balanced Transaction
-      // -----------------------------------------------------------------------
-
-      transaction.complete(command.correlationId, now);
-
-      // -----------------------------------------------------------------------
-      // 16. Link Transaction to Payment
-      // -----------------------------------------------------------------------
-
-      payment.linkTransaction(
-        transaction.publicId.value,
-        command.correlationId,
-        command.causationId,
-      );
-
-      // -----------------------------------------------------------------------
-      // 17. Persist Transaction
-      // -----------------------------------------------------------------------
-      //
-      // The unique transaction reference prevents a second transaction
-      // from being created for the same Financial Payment.
-      //
-      // -----------------------------------------------------------------------
+      await this.accountingJournalRepository.save(journalAggregate);
 
       await this.transactionRepository.save(transaction);
 
       // -----------------------------------------------------------------------
-      // 18. Persist Both Account Aggregates
-      // -----------------------------------------------------------------------
-      //
-      // Optimistic concurrency checks protect against concurrent balance
-      // modifications.
-      //
-      // Any failure must roll back the entire UnitOfWork.
-      //
+      // 24. Persist Accounting and Transaction Domain Events
       // -----------------------------------------------------------------------
 
-      await this.accountRepository.save(clearingAccount);
-
-      await this.accountRepository.save(receivingAccount);
-
-      // -----------------------------------------------------------------------
-      // 19. Persist Linked Payment
-      // -----------------------------------------------------------------------
-
-      await this.paymentRepository.save(payment);
-
-      // -----------------------------------------------------------------------
-      // 20. Persist Domain Events
-      // -----------------------------------------------------------------------
-      //
-      // Transaction events:
-      // - FinancialTransactionCreated
-      // - FinancialTransactionCompleted
-      //
-      // Payment event:
-      // - FinancialPaymentTransactionLinked
-      //
-      // Account domain events, if any, are also included.
-      //
-      // All events are persisted through the transactional outbox.
-      //
-      // -----------------------------------------------------------------------
-
-      const domainEvents = [
+      const accountingEvents = [
+        ...journalAggregate.pullDomainEvents(),
         ...transaction.pullDomainEvents(),
-        ...clearingAccount.pullDomainEvents(),
-        ...receivingAccount.pullDomainEvents(),
-        ...payment.pullDomainEvents(),
       ];
 
-      if (domainEvents.length > 0) {
-        await this.eventPublisher.publishAll(domainEvents);
+      if (accountingEvents.length > 0) {
+        await this.eventPublisher.publishAll(accountingEvents);
       }
     });
   }

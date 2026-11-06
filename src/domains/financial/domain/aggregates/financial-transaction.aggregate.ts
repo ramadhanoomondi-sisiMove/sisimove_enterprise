@@ -510,7 +510,33 @@ export class FinancialTransactionAggregate extends AggregateRoot<FinancialTransa
 
     this.transaction.setAccountingJournalPublicId(accountingJournalPublicId);
   }
+  /**
+   * Associates an Accounting Journal with an already completed transaction.
+   *
+   * This only establishes the opaque cross-domain reference.
+   * It does not modify transaction lifecycle or entries.
+   */
+  public associateAccountingJournalAfterCompletion(
+    accountingJournalPublicId: string,
+    associatedAt: Date = new Date(),
+  ): void {
+    if (!this.isCompleted()) {
+      throw new FinancialInvariantException(
+        'Accounting journal can only be associated after transaction completion.',
+      );
+    }
 
+    if (this.hasAccountingJournal()) {
+      throw new FinancialInvariantException(
+        'Financial transaction already has an accounting journal.',
+      );
+    }
+
+    this.transaction.setAccountingJournalPublicId(
+      accountingJournalPublicId,
+      associatedAt,
+    );
+  }
   // ===========================================================================
   // Lifecycle Queries
   // ===========================================================================
