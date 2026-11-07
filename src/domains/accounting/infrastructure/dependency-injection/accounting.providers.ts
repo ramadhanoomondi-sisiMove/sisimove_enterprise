@@ -87,6 +87,7 @@ import { PrismaAccountingPeriodRepository } from '../persistence/prisma/reposito
 
 import { PrismaAccountingJournalRepository } from '../persistence/prisma/repositories/prisma-accounting-journal.repository';
 
+import { PrismaAccountingCalendarRepository } from '../persistence/prisma/repositories/prisma-accounting-calendar.repository';
 // =============================================================================
 // Providers
 // =============================================================================
@@ -129,7 +130,24 @@ export const ACCOUNTING_PROVIDERS: Provider[] = [
     provide: ACCOUNTING_TOKENS.REPOSITORIES.ACCOUNTING_PERIOD,
     useClass: PrismaAccountingPeriodRepository,
   },
+  // ===========================================================================
+  // Accounting Calendar Repository
+  // ===========================================================================
+  //
+  // Application abstraction:
+  //
+  //     ACCOUNTING_TOKENS.REPOSITORIES.ACCOUNTING_CALENDAR
+  //
+  // Infrastructure implementation:
+  //
+  //     PrismaAccountingCalendarRepository
+  //
+  // ---------------------------------------------------------------------------
 
+  {
+    provide: ACCOUNTING_TOKENS.REPOSITORIES.ACCOUNTING_CALENDAR,
+    useClass: PrismaAccountingCalendarRepository,
+  },
   // ===========================================================================
   // Accounting Journal Repository
   // ===========================================================================

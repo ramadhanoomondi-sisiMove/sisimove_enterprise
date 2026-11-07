@@ -21,6 +21,16 @@ export { AccountingAccountInvalidStatusException } from './accounting-account-in
 export { AccountingAccountClosedException } from './accounting-account-closed.exception';
 
 // -----------------------------------------------------------------------------
+// Accounting Calendar Exceptions
+// -----------------------------------------------------------------------------
+
+export { AccountingCalendarNotFoundException } from './accounting-calendar-not-found.exception';
+
+export { AccountingCalendarAlreadyExistsException } from './accounting-calendar-already-exists.exception';
+
+export { AccountingCalendarInvalidConfigurationException } from './accounting-calendar-invalid-configuration.exception';
+
+// -----------------------------------------------------------------------------
 // Accounting Period Exceptions
 // -----------------------------------------------------------------------------
 

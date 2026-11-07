@@ -9,12 +9,21 @@
 //
 // Operational balance movement:
 //
-//   SYSTEM-MPESA-CLEARING
-//       DEBIT AVAILABLE
-//              |
-//              v
-//       Receiving Account
-//       CREDIT AVAILABLE
+//   1. Recognise the externally received M-PESA funds:
+//      SYSTEM-MPESA-CLEARING
+//          CREDIT AVAILABLE
+//
+//   2. Transfer those funds to the receiving wallet:
+//      SYSTEM-MPESA-CLEARING
+//          DEBIT AVAILABLE
+//                 |
+//                 v
+//          Receiving Account
+//          CREDIT AVAILABLE
+//
+// The clearing account is a transit account for this wallet-credit flow.
+// It does not need a pre-funded balance. The receipt and transfer are
+// applied atomically, so the clearing balance returns to its prior value.
 //
 // General ledger posting:
 //
@@ -97,6 +106,7 @@ import { FinancialBalanceType } from '../../domain/value-objects/financial-balan
 // -----------------------------------------------------------------------------
 
 import type { AccountingAccountRepository } from '../../../accounting/domain/repositories/accounting-account.repository';
+import type { AccountingCalendarRepository } from '../../../accounting/domain/repositories/accounting-calendar.repository';
 import type { AccountingPeriodRepository } from '../../../accounting/domain/repositories/accounting-period.repository';
 import type { AccountingJournalRepository } from '../../../accounting/domain/repositories/accounting-journal.repository';
 
@@ -118,6 +128,7 @@ import { AccountingPostingReferenceEntity } from '../../../accounting/domain/ent
 import { AccountingAmount } from '../../../accounting/domain/value-objects/accounting-amount.vo';
 import { AccountingCurrency } from '../../../accounting/domain/value-objects/accounting-currency.vo';
 import { AccountingAccountCode } from '../../../accounting/domain/value-objects/accounting-account-code.vo';
+import { AccountingCalendarCode } from '../../../accounting/domain/value-objects/accounting-calendar-code.vo';
 import { AccountingJournalLineType } from '../../../accounting/domain/value-objects/accounting-journal-line-type.vo';
 import { AccountingSourceType } from '../../../accounting/domain/value-objects/accounting-source-type.vo';
 
@@ -130,6 +141,8 @@ const MPESA_CLEARING_ACCOUNT_OWNER = 'SYSTEM-MPESA-CLEARING';
 const PAYMENT_REFERENCE_TYPE = 'FINANCIAL_PAYMENT';
 
 const ACCOUNTING_SOURCE_TYPE = 'FINANCIAL_PAYMENT';
+
+const PLATFORM_ACCOUNTING_CALENDAR_CODE = 'PLATFORM';
 
 const MPESA_CLEARING_GL_CODE = '1121';
 
@@ -160,6 +173,9 @@ export class PostSuccessfulFinancialPaymentHandler implements CommandHandler<
 
     @Inject(ACCOUNTING_TOKENS.REPOSITORIES.ACCOUNTING_ACCOUNT)
     private readonly accountingAccountRepository: AccountingAccountRepository,
+
+    @Inject(ACCOUNTING_TOKENS.REPOSITORIES.ACCOUNTING_CALENDAR)
+    private readonly accountingCalendarRepository: AccountingCalendarRepository,
 
     @Inject(ACCOUNTING_TOKENS.REPOSITORIES.ACCOUNTING_PERIOD)
     private readonly accountingPeriodRepository: AccountingPeriodRepository,
@@ -402,18 +418,26 @@ export class PostSuccessfulFinancialPaymentHandler implements CommandHandler<
 
         const clearingAccountReference = FinancialAccountReference.create(
           clearingAccount.type.value,
-          clearingAccount.ownerPublicId.value,
+          clearingAccount.publicId.value,
         );
 
         const receivingAccountReference = FinancialAccountReference.create(
           receivingAccount.type.value,
-          receivingAccount.ownerPublicId.value,
+          receivingAccount.publicId.value,
         );
 
         // ---------------------------------------------------------------------
         // 9. Apply Operational Balance Movements
         // ---------------------------------------------------------------------
 
+        // M-PESA has already confirmed receipt of these funds externally.
+        // Recognise that receipt in the clearing account first. This prevents
+        // a valid wallet top-up from requiring the system clearing account to
+        // have been pre-funded.
+        clearingAccount.creditAvailable(amount, currency, now);
+
+        // Transfer the received amount from clearing into the customer's
+        // available wallet balance. Both movements are inside this UnitOfWork.
         clearingAccount.debitAvailable(amount, currency, now);
 
         receivingAccount.creditAvailable(amount, currency, now);
@@ -591,15 +615,41 @@ export class PostSuccessfulFinancialPaymentHandler implements CommandHandler<
       }
 
       // -----------------------------------------------------------------------
-      // 16. Resolve Accounting Period
+      // 16. Resolve Platform Accounting Calendar and Period
       // -----------------------------------------------------------------------
 
-      const containingPeriods =
-        await this.accountingPeriodRepository.findContainingDate(entryDate);
+      const platformCalendar =
+        await this.accountingCalendarRepository.findByCode(
+          AccountingCalendarCode.create(PLATFORM_ACCOUNTING_CALENDAR_CODE),
+        );
+
+      if (platformCalendar === null) {
+        throw new Error(
+          'Platform Accounting Calendar was not found while posting the Financial Payment.',
+        );
+      }
+
+      if (platformCalendar.status.value !== 'ACTIVE') {
+        throw new Error(
+          'Platform Accounting Calendar is inactive and cannot accept Financial Payment postings.',
+        );
+      }
+
+      // Resolve periods only from the platform calendar. This prevents a
+      // period belonging to another calendar from being selected merely
+      // because its date range contains the payment completion timestamp.
+      const platformPeriods =
+        await this.accountingPeriodRepository.findByCalendarId(
+          platformCalendar.id,
+        );
+
+      const containingPeriods = platformPeriods.filter((period) =>
+        period.contains(entryDate),
+      );
 
       if (containingPeriods.length !== 1) {
         throw new Error(
-          `Expected exactly one Accounting Period for payment date ${entryDate.toISOString()}, found ${containingPeriods.length}.`,
+          `Expected exactly one PLATFORM Accounting Period for payment date ${entryDate.toISOString()}, found ${containingPeriods.length}.`,
         );
       }
 
@@ -607,7 +657,22 @@ export class PostSuccessfulFinancialPaymentHandler implements CommandHandler<
 
       if (accountingPeriod === undefined) {
         throw new Error(
-          'Unable to retrieve the Accounting Period for the payment date.',
+          'Unable to retrieve the PLATFORM Accounting Period for the payment date.',
+        );
+      }
+
+      if (!accountingPeriod.belongsToCalendar()) {
+        throw new Error(
+          'Resolved Accounting Period does not have calendar ownership.',
+        );
+      }
+
+      if (
+        accountingPeriod.calendarId === undefined ||
+        !accountingPeriod.calendarId.equals(platformCalendar.id)
+      ) {
+        throw new Error(
+          'Resolved Accounting Period does not belong to the PLATFORM Accounting Calendar.',
         );
       }
 

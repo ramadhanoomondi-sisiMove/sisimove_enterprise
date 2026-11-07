@@ -1,3 +1,4 @@
+
 // -----------------------------------------------------------------------------
 // Accounting — Aggregate Exports
 // -----------------------------------------------------------------------------
@@ -7,11 +8,13 @@
 // Aggregates:
 //
 // - AccountingAccountAggregate
+// - AccountingCalendarAggregate
 // - AccountingPeriodAggregate
 // - AccountingJournalAggregate
 //
 // -----------------------------------------------------------------------------
 
 export { default as AccountingAccountAggregate } from './accounting-account.aggregate';
+export { default as AccountingCalendarAggregate } from './accounting-calendar.aggregate';
 export { default as AccountingPeriodAggregate } from './accounting-period.aggregate';
 export { AccountingJournalAggregate } from './accounting-journal.aggregate';

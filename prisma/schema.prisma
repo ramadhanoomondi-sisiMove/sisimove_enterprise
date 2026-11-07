@@ -2768,11 +2768,11 @@ model FinancialTransaction {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([referenceType, referencePublicId])
   @@index([sourceAccountId])
   @@index([destinationAccountId])
   @@index([type])
   @@index([status])
-  @@unique([referenceType, referencePublicId])
   @@index([accountingJournalPublicId])
   @@index([createdAt])
   @@map("financial_transactions")
@@ -3269,6 +3269,19 @@ model AccountingPeriod {
 
   name String
 
+  // ---------------------------------------------------------------------------
+  // Calendar Ownership
+  // ---------------------------------------------------------------------------
+
+  calendarId String?
+
+  calendar AccountingCalendar? @relation(fields: [calendarId], references: [id], onDelete: Restrict)
+
+  // Stable period identity within its calendar.
+  // Example: 2026-11
+
+  periodKey String?
+
   startsAt DateTime
   endsAt   DateTime
 
@@ -3281,9 +3294,62 @@ model AccountingPeriod {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([calendarId, periodKey])
+  @@index([calendarId, startsAt, endsAt])
   @@index([startsAt, endsAt])
   @@index([status])
   @@map("accounting_periods")
+}
+
+// =============================================================================
+// ACCOUNTING CALENDAR
+// =============================================================================
+
+model AccountingCalendar {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // ---------------------------------------------------------------------------
+  // Calendar Identity
+  // ---------------------------------------------------------------------------
+
+  code String @unique
+  name String
+
+  // ---------------------------------------------------------------------------
+  // Calendar Configuration
+  // ---------------------------------------------------------------------------
+
+  timezone             String
+  fiscalYearStartMonth Int
+  frequency            AccountingPeriodFrequency @default(MONTHLY)
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
+  status AccountingCalendarStatus @default(ACTIVE)
+
+  // ---------------------------------------------------------------------------
+  // Accounting Periods
+  // ---------------------------------------------------------------------------
+
+  periods AccountingPeriod[]
+
+  // ---------------------------------------------------------------------------
+  // Audit
+  // ---------------------------------------------------------------------------
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
+
+  @@index([status])
+  @@index([frequency])
+  @@map("accounting_calendars")
 }
 
 // =============================================================================
@@ -4385,6 +4451,15 @@ model FinancialPaymentCallback {
   @@index([status, receivedAt])
   @@index([merchantRequestId])
   @@map("financial_payment_callbacks")
+}
+
+enum AccountingPeriodFrequency {
+  MONTHLY
+}
+
+enum AccountingCalendarStatus {
+  ACTIVE
+  INACTIVE
 }
 
 enum FinancialPaymentCallbackStatus {

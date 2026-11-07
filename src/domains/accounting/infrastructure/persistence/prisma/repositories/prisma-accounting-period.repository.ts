@@ -176,6 +176,8 @@ import type { AccountingPeriodPublicId } from '../../../../domain/value-objects/
 
 import type { AccountingPeriodStatus } from '../../../../domain/value-objects/accounting-period-status.vo';
 
+import type { AccountingPeriodKey } from '../../../../domain/value-objects/accounting-period-key.vo';
+
 // -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
@@ -231,6 +233,9 @@ export class PrismaAccountingPeriodRepository implements AccountingPeriodReposit
         id: persistence.period.id,
         publicId: persistence.period.publicId,
 
+        calendarId: persistence.period.calendarId,
+        periodKey: persistence.period.periodKey,
+
         name: persistence.period.name,
 
         startsAt: persistence.period.startsAt,
@@ -247,6 +252,9 @@ export class PrismaAccountingPeriodRepository implements AccountingPeriodReposit
 
       update: {
         publicId: persistence.period.publicId,
+
+        calendarId: persistence.period.calendarId,
+        periodKey: persistence.period.periodKey,
 
         name: persistence.period.name,
 
@@ -312,6 +320,120 @@ export class PrismaAccountingPeriodRepository implements AccountingPeriodReposit
     });
 
     return record === null ? null : this.toAggregate(record);
+  }
+
+  // ===========================================================================
+  // Aggregate Queries — Calendar Ownership
+  // ===========================================================================
+
+  /**
+   * Finds all periods belonging to the supplied Accounting Calendar.
+   *
+   * Legacy periods without calendar ownership are excluded.
+   */
+  public async findByCalendarId(
+    calendarId: UniqueEntityId,
+  ): Promise<AccountingPeriodAggregate[]> {
+    this.ensureId(
+      calendarId,
+      'Accounting Calendar internal identifier is required.',
+    );
+
+    const records = await this.prisma.accountingPeriod.findMany({
+      where: {
+        calendarId: calendarId.toString(),
+      },
+      orderBy: [{ startsAt: 'asc' }, { endsAt: 'asc' }],
+    });
+
+    return records.map((record) => this.toAggregate(record));
+  }
+
+  /**
+   * Finds a period by calendar identity and period key.
+   */
+  public async findByCalendarIdAndPeriodKey(
+    calendarId: UniqueEntityId,
+    periodKey: AccountingPeriodKey,
+  ): Promise<AccountingPeriodAggregate | null> {
+    this.ensureId(
+      calendarId,
+      'Accounting Calendar internal identifier is required.',
+    );
+    this.ensurePeriodKey(periodKey);
+
+    const record = await this.prisma.accountingPeriod.findFirst({
+      where: {
+        calendarId: calendarId.toString(),
+        periodKey: periodKey.value,
+      },
+    });
+
+    return record === null ? null : this.toAggregate(record);
+  }
+
+  /**
+   * Finds periods belonging to a calendar with the supplied status.
+   */
+  public async findByCalendarIdAndStatus(
+    calendarId: UniqueEntityId,
+    status: AccountingPeriodStatus,
+  ): Promise<AccountingPeriodAggregate[]> {
+    this.ensureId(
+      calendarId,
+      'Accounting Calendar internal identifier is required.',
+    );
+    this.ensureStatus(status);
+
+    const records = await this.prisma.accountingPeriod.findMany({
+      where: {
+        calendarId: calendarId.toString(),
+        status: status.value,
+      },
+      orderBy: [{ startsAt: 'asc' }, { endsAt: 'asc' }],
+    });
+
+    return records.map((record) => this.toAggregate(record));
+  }
+
+  /**
+   * Finds periods in one calendar whose boundaries overlap the supplied range.
+   *
+   * Inclusive overlap semantics:
+   *
+   *     period.startsAt <= endsAt
+   *     period.endsAt   >= startsAt
+   */
+  public async findOverlappingByCalendarId(
+    calendarId: UniqueEntityId,
+    startsAt: Date,
+    endsAt: Date,
+  ): Promise<AccountingPeriodAggregate[]> {
+    this.ensureId(
+      calendarId,
+      'Accounting Calendar internal identifier is required.',
+    );
+    this.ensureDate(
+      startsAt,
+      'Accounting Period range start date is required.',
+    );
+    this.ensureDate(endsAt, 'Accounting Period range end date is required.');
+    this.ensureValidRange(startsAt, endsAt);
+
+    const records = await this.prisma.accountingPeriod.findMany({
+      where: {
+        calendarId: calendarId.toString(),
+        startsAt: {
+          lte: endsAt,
+        },
+        endsAt: {
+          gte: startsAt,
+        },
+      },
+      orderBy: [{ startsAt: 'asc' }, { endsAt: 'asc' }],
+    });
+
+    return records.map((record) => this.toAggregate(record));
   }
 
   // ===========================================================================
@@ -968,6 +1090,96 @@ export class PrismaAccountingPeriodRepository implements AccountingPeriodReposit
   }
 
   // ===========================================================================
+  // Existence Queries — Calendar Ownership
+  // ===========================================================================
+
+  /**
+   * Determines whether at least one period belongs to the supplied calendar.
+   */
+  public async existsByCalendarId(
+    calendarId: UniqueEntityId,
+  ): Promise<boolean> {
+    this.ensureId(
+      calendarId,
+      'Accounting Calendar internal identifier is required.',
+    );
+
+    const record = await this.prisma.accountingPeriod.findFirst({
+      where: {
+        calendarId: calendarId.toString(),
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    return record !== null;
+  }
+
+  /**
+   * Determines whether a period exists for the supplied calendar and key.
+   */
+  public async existsByCalendarIdAndPeriodKey(
+    calendarId: UniqueEntityId,
+    periodKey: AccountingPeriodKey,
+  ): Promise<boolean> {
+    this.ensureId(
+      calendarId,
+      'Accounting Calendar internal identifier is required.',
+    );
+    this.ensurePeriodKey(periodKey);
+
+    const record = await this.prisma.accountingPeriod.findFirst({
+      where: {
+        calendarId: calendarId.toString(),
+        periodKey: periodKey.value,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    return record !== null;
+  }
+
+  /**
+   * Determines whether a period in the supplied calendar overlaps the range.
+   */
+  public async existsOverlappingByCalendarId(
+    calendarId: UniqueEntityId,
+    startsAt: Date,
+    endsAt: Date,
+  ): Promise<boolean> {
+    this.ensureId(
+      calendarId,
+      'Accounting Calendar internal identifier is required.',
+    );
+    this.ensureDate(
+      startsAt,
+      'Accounting Period range start date is required.',
+    );
+    this.ensureDate(endsAt, 'Accounting Period range end date is required.');
+    this.ensureValidRange(startsAt, endsAt);
+
+    const record = await this.prisma.accountingPeriod.findFirst({
+      where: {
+        calendarId: calendarId.toString(),
+        startsAt: {
+          lte: endsAt,
+        },
+        endsAt: {
+          gte: startsAt,
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    return record !== null;
+  }
+
+  // ===========================================================================
   // Existence Queries — Natural Attributes
   // ===========================================================================
 
@@ -1219,6 +1431,15 @@ export class PrismaAccountingPeriodRepository implements AccountingPeriodReposit
   private ensurePublicId(value: AccountingPeriodPublicId): void {
     if (value === undefined || value === null) {
       throw new Error('Accounting Period public identifier is required.');
+    }
+  }
+
+  /**
+   * Ensures an Accounting Period key is present.
+   */
+  private ensurePeriodKey(value: AccountingPeriodKey): void {
+    if (value === undefined || value === null) {
+      throw new Error('Accounting Period key is required.');
     }
   }
 

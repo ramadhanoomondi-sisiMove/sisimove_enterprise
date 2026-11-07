@@ -23,6 +23,8 @@
 // - map AccountingPeriodAggregate into persistence;
 // - preserve internal entity identity;
 // - preserve public identity;
+// - preserve accounting calendar ownership;
+// - preserve the accounting period key;
 // - translate Prisma enum values into domain value objects;
 // - translate domain value objects into Prisma enum/primitive values;
 // - preserve optional closedAt lifecycle state;
@@ -31,17 +33,21 @@
 //
 // -----------------------------------------------------------------------------
 //
-// Important:
+// Nullable ownership mapping:
 //
-// closedAt is optional in persistence and domain:
+// Prisma calendarId / periodKey
+//     ↓
+// Domain UniqueEntityId / AccountingPeriodKey
 //
 // Prisma null
 //     ↓
-// undefined
+// Domain undefined
 //
 // Domain undefined
 //     ↓
 // Prisma null
+//
+// Calendar identity and period key must either both exist or both be absent.
 //
 // -----------------------------------------------------------------------------
 //
@@ -84,6 +90,7 @@ import { AccountingPeriodEntity } from '../../../../domain/entities/accounting-p
 // -----------------------------------------------------------------------------
 
 import {
+  AccountingPeriodKey,
   AccountingPeriodPublicId,
   AccountingPeriodName,
   AccountingPeriodStatus,
@@ -133,40 +140,6 @@ export class AccountingPeriodPrismaMapper {
   /**
    * Rehydrates an AccountingPeriodEntity from a persisted Prisma record.
    *
-   * Mapping:
-   *
-   * Prisma id
-   *     ↓
-   * UniqueEntityId
-   *
-   * Prisma publicId
-   *     ↓
-   * AccountingPeriodPublicId
-   *
-   * Prisma name
-   *     ↓
-   * AccountingPeriodName
-   *
-   * Prisma startsAt
-   *     ↓
-   * Date
-   *
-   * Prisma endsAt
-   *     ↓
-   * Date
-   *
-   * Prisma status
-   *     ↓
-   * AccountingPeriodStatus
-   *
-   * Prisma closedAt
-   *     ↓
-   * Date | undefined
-   *
-   * Prisma timestamps
-   *     ↓
-   * defensive Date values
-   *
    * Rehydration does not emit domain events.
    */
   public static periodToDomain(
@@ -183,13 +156,28 @@ export class AccountingPeriodPrismaMapper {
     const publicId = new AccountingPeriodPublicId(record.publicId);
 
     // -------------------------------------------------------------------------
+    // Calendar Ownership
+    // -------------------------------------------------------------------------
+
+    // Prisma represents absent calendar ownership as null.
+    // The domain represents absent calendar ownership as undefined.
+
+    const calendarId =
+      record.calendarId !== null
+        ? new UniqueEntityId(record.calendarId)
+        : undefined;
+
+    const periodKey =
+      record.periodKey !== null
+        ? AccountingPeriodKey.create(record.periodKey)
+        : undefined;
+
+    // -------------------------------------------------------------------------
     // Closing Timestamp
     // -------------------------------------------------------------------------
-    //
+
     // Prisma represents an absent closing timestamp as null.
-    //
     // The domain represents it as undefined.
-    //
 
     const closedAt =
       record.closedAt !== null
@@ -202,6 +190,13 @@ export class AccountingPeriodPrismaMapper {
 
     return AccountingPeriodEntity.rehydrate(
       {
+        // ---------------------------------------------------------------------
+        // Calendar Ownership
+        // ---------------------------------------------------------------------
+
+        calendarId,
+        periodKey,
+
         // ---------------------------------------------------------------------
         // Definition
         // ---------------------------------------------------------------------
@@ -256,11 +251,15 @@ export class AccountingPeriodPrismaMapper {
    *
    * Domain value objects are serialized into primitive persistence values.
    *
+   * Domain undefined calendar ownership becomes Prisma null.
+   *
    * Domain undefined closedAt becomes Prisma null.
    */
   public static periodToPersistence(entity: AccountingPeriodEntity): {
     id: string;
     publicId: string;
+    calendarId: string | null;
+    periodKey: string | null;
     name: string;
     startsAt: Date;
     endsAt: Date;
@@ -274,6 +273,14 @@ export class AccountingPeriodPrismaMapper {
     }
 
     // -------------------------------------------------------------------------
+    // Calendar Ownership
+    // -------------------------------------------------------------------------
+
+    const calendarId = entity.calendarId?.toString() ?? null;
+
+    const periodKey = entity.periodKey?.value ?? null;
+
+    // -------------------------------------------------------------------------
     // Persistence
     // -------------------------------------------------------------------------
 
@@ -285,6 +292,14 @@ export class AccountingPeriodPrismaMapper {
       id: entity.id.toString(),
 
       publicId: entity.publicId.value,
+
+      // -----------------------------------------------------------------------
+      // Calendar Ownership
+      // -----------------------------------------------------------------------
+
+      calendarId,
+
+      periodKey,
 
       // -----------------------------------------------------------------------
       // Period Definition

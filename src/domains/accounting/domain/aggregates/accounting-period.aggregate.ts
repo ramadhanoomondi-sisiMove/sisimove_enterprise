@@ -11,6 +11,7 @@
 //
 // - own the AccountingPeriodEntity;
 // - expose Accounting Period identity;
+// - expose calendar ownership and period key;
 // - expose Accounting Period state;
 // - expose period boundaries;
 // - delegate period behavior to the entity;
@@ -41,6 +42,7 @@
 // -----------------------------------------------------------------------------
 
 import { AggregateRoot } from '../../../../foundation/kernel/domain/aggregate-root';
+import type { UniqueEntityId } from '../../../../foundation/kernel/domain/unique-entity-id';
 
 // -----------------------------------------------------------------------------
 // Accounting — Entity
@@ -64,6 +66,7 @@ import { AccountingException } from '../exceptions/accounting.exception';
 // Accounting — Value Objects
 // -----------------------------------------------------------------------------
 
+import type { AccountingPeriodKey } from '../value-objects/accounting-period-key.vo';
 import type { AccountingPeriodName } from '../value-objects/accounting-period-name.vo';
 import type { AccountingPeriodPublicId } from '../value-objects/accounting-period-public-id.vo';
 import type { AccountingPeriodStatus } from '../value-objects/accounting-period-status.vo';
@@ -172,6 +175,35 @@ export class AccountingPeriodAggregate extends AggregateRoot<
    */
   public override get publicId(): typeof this.period.publicId {
     return this.period.publicId;
+  }
+
+  // ===========================================================================
+  // Calendar Ownership
+  // ===========================================================================
+
+  /**
+   * Returns the internal identity of the owning Accounting Calendar.
+   *
+   * Legacy periods may not have calendar ownership.
+   */
+  public get calendarId(): UniqueEntityId | undefined {
+    return this.period.calendarId;
+  }
+
+  /**
+   * Returns the calendar period key.
+   *
+   * Legacy periods may not have a period key.
+   */
+  public get periodKey(): AccountingPeriodKey | undefined {
+    return this.period.periodKey;
+  }
+
+  /**
+   * Returns true when this period belongs to an Accounting Calendar.
+   */
+  public belongsToCalendar(): boolean {
+    return this.period.belongsToCalendar();
   }
 
   // ===========================================================================
@@ -453,6 +485,19 @@ export class AccountingPeriodAggregate extends AggregateRoot<
 
     if (closedAt !== undefined) {
       this.ensureValidDate(closedAt, 'closedAt');
+    }
+
+    // Calendar ownership consistency is enforced by AccountingPeriodEntity.
+    // Accessing these getters here ensures the aggregate exposes that state.
+    if (this.period.belongsToCalendar()) {
+      if (
+        this.period.calendarId === undefined ||
+        this.period.periodKey === undefined
+      ) {
+        throw new AccountingException(
+          'Calendar-owned accounting periods must have both a calendar identity and a period key.',
+        );
+      }
     }
   }
 

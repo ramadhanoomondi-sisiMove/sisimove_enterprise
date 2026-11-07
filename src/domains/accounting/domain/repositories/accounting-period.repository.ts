@@ -15,6 +15,8 @@
 // - retrieve Accounting Period aggregates;
 // - retrieve Accounting Period entities when explicitly required;
 // - query periods by identity;
+// - query periods by calendar ownership;
+// - query periods by calendar period key;
 // - query periods by name;
 // - query periods by lifecycle status;
 // - query periods by usability and journal-acceptance capability;
@@ -50,7 +52,8 @@
 // according to the accounting schema.
 //
 // -----------------------------------------------------------------------------
-//
+
+// -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
@@ -72,6 +75,7 @@ import type { AccountingPeriodEntity } from '../entities/accounting-period.entit
 // Accounting — Value Objects
 // -----------------------------------------------------------------------------
 
+import type { AccountingPeriodKey } from '../value-objects/accounting-period-key.vo';
 import type { AccountingPeriodName } from '../value-objects/accounting-period-name.vo';
 import type { AccountingPeriodPublicId } from '../value-objects/accounting-period-public-id.vo';
 import type { AccountingPeriodStatus } from '../value-objects/accounting-period-status.vo';
@@ -124,6 +128,56 @@ export interface AccountingPeriodRepository {
    * Finds an Accounting Period aggregate by internal identity.
    */
   findById(id: UniqueEntityId): Promise<AccountingPeriodAggregate | null>;
+
+  // ===========================================================================
+  // Aggregate Queries — Calendar Ownership
+  // ===========================================================================
+
+  /**
+   * Finds all Accounting Period aggregates belonging to a calendar.
+   *
+   * Legacy periods without calendar ownership are excluded.
+   */
+  findByCalendarId(
+    calendarId: UniqueEntityId,
+  ): Promise<AccountingPeriodAggregate[]>;
+
+  /**
+   * Finds an Accounting Period aggregate using its calendar identity
+   * and calendar period key.
+   *
+   * Example:
+   *
+   * calendarId = PLATFORM calendar identity
+   * periodKey = 2026-11
+   *
+   * Returns null when no matching period exists.
+   */
+  findByCalendarIdAndPeriodKey(
+    calendarId: UniqueEntityId,
+    periodKey: AccountingPeriodKey,
+  ): Promise<AccountingPeriodAggregate | null>;
+
+  /**
+   * Finds Accounting Period aggregates belonging to a calendar and
+   * having the supplied lifecycle status.
+   */
+  findByCalendarIdAndStatus(
+    calendarId: UniqueEntityId,
+    status: AccountingPeriodStatus,
+  ): Promise<AccountingPeriodAggregate[]>;
+
+  /**
+   * Finds periods belonging to a calendar whose boundaries overlap
+   * the supplied date range.
+   *
+   * This allows overlap checks to remain isolated to one calendar.
+   */
+  findOverlappingByCalendarId(
+    calendarId: UniqueEntityId,
+    startsAt: Date,
+    endsAt: Date,
+  ): Promise<AccountingPeriodAggregate[]>;
 
   // ===========================================================================
   // Aggregate Queries — Natural Attributes
@@ -327,6 +381,36 @@ export interface AccountingPeriodRepository {
    * Determines whether a period exists by internal identity.
    */
   existsById(id: UniqueEntityId): Promise<boolean>;
+
+  // ===========================================================================
+  // Existence Queries — Calendar Ownership
+  // ===========================================================================
+
+  /**
+   * Determines whether at least one period belongs to the supplied calendar.
+   */
+  existsByCalendarId(calendarId: UniqueEntityId): Promise<boolean>;
+
+  /**
+   * Determines whether a period exists for the supplied calendar
+   * and period key.
+   *
+   * This supports idempotent calendar-period provisioning.
+   */
+  existsByCalendarIdAndPeriodKey(
+    calendarId: UniqueEntityId,
+    periodKey: AccountingPeriodKey,
+  ): Promise<boolean>;
+
+  /**
+   * Determines whether any period belonging to the supplied calendar
+   * overlaps the given date range.
+   */
+  existsOverlappingByCalendarId(
+    calendarId: UniqueEntityId,
+    startsAt: Date,
+    endsAt: Date,
+  ): Promise<boolean>;
 
   // ===========================================================================
   // Existence Queries — Natural Attributes

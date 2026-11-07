@@ -13,6 +13,8 @@
 //
 // - Accounting Period identity;
 // - Accounting Period public identity;
+// - accounting calendar ownership;
+// - accounting period key;
 // - period name;
 // - period start date;
 // - period end date;
@@ -23,37 +25,12 @@
 //
 // -----------------------------------------------------------------------------
 //
-// Responsibilities:
+// Calendar ownership:
 //
-// - maintain Accounting Period identity;
-// - maintain Accounting Period public identity;
-// - maintain period name;
-// - maintain period boundaries;
-// - maintain period lifecycle status;
-// - manage period lifecycle;
-// - record when the period was closed;
-// - enforce period-level invariants;
-// - provide lifecycle-safe predicates.
-//
-// -----------------------------------------------------------------------------
-//
-// This entity does NOT:
-//
-// - create journals;
-// - post journals;
-// - reverse journals;
-// - calculate accounting balances;
-// - access Prisma;
-// - persist itself;
-// - access repositories;
-// - communicate with external systems;
-// - perform authorization checks.
-//
-// Journal operations belong to AccountingJournalAggregate.
-//
-// Persistence belongs to infrastructure.
-//
-// Application workflow orchestration belongs to the application layer.
+// - newly generated calendar periods must have a calendar identity;
+// - newly generated calendar periods must have a period key;
+// - legacy periods may remain without calendar ownership;
+// - calendar identity and period key must either both exist or both be absent.
 //
 // -----------------------------------------------------------------------------
 //
@@ -75,8 +52,7 @@
 // startsAt must be strictly before endsAt.
 //
 // The entity does not enforce that periods cannot overlap because overlap
-// detection requires knowledge of other accounting periods and therefore
-// belongs to the application/domain service or repository-backed workflow.
+// detection requires knowledge of other accounting periods.
 //
 // -----------------------------------------------------------------------------
 //
@@ -89,8 +65,6 @@
 //
 // closedAt must never be earlier than startsAt.
 //
-// Historical journals remain associated with the closed period.
-//
 // A closed period cannot be modified or reopened.
 // -----------------------------------------------------------------------------
 
@@ -102,9 +76,17 @@ import { AccountingPeriodAlreadyClosedException } from '../exceptions/accounting
 
 import { AccountingPeriodPublicId } from '../value-objects/accounting-period-public-id.vo';
 import type { AccountingPeriodName } from '../value-objects/accounting-period-name.vo';
+import type { AccountingPeriodKey } from '../value-objects/accounting-period-key.vo';
 import { AccountingPeriodStatus } from '../value-objects/accounting-period-status.vo';
 
+// =============================================================================
+// Properties
+// =============================================================================
+
 export interface AccountingPeriodProps {
+  calendarId?: UniqueEntityId | undefined;
+  periodKey?: AccountingPeriodKey | undefined;
+
   name: AccountingPeriodName;
   startsAt: Date;
   endsAt: Date;
@@ -113,6 +95,10 @@ export interface AccountingPeriodProps {
   createdAt: Date;
   updatedAt: Date;
 }
+
+// =============================================================================
+// Entity
+// =============================================================================
 
 export class AccountingPeriodEntity extends Entity<
   AccountingPeriodProps,
@@ -126,15 +112,19 @@ export class AccountingPeriodEntity extends Entity<
     super(props, id, publicId);
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Factory
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public static create(
     name: AccountingPeriodName,
     startsAt: Date,
     endsAt: Date,
     createdAt: Date = new Date(),
+    calendar?: {
+      calendarId: UniqueEntityId;
+      periodKey: AccountingPeriodKey;
+    },
   ): AccountingPeriodEntity {
     AccountingPeriodEntity.ensureName(name);
 
@@ -146,10 +136,18 @@ export class AccountingPeriodEntity extends Entity<
 
     AccountingPeriodEntity.ensureValidPeriodRange(startsAt, endsAt);
 
+    AccountingPeriodEntity.ensureCalendarOwnership(
+      calendar?.calendarId,
+      calendar?.periodKey,
+    );
+
     const timestamp = AccountingPeriodEntity.cloneDate(createdAt);
 
     const entity = new AccountingPeriodEntity(
       {
+        calendarId: calendar?.calendarId,
+        periodKey: calendar?.periodKey,
+
         name,
         startsAt: AccountingPeriodEntity.cloneDate(startsAt),
         endsAt: AccountingPeriodEntity.cloneDate(endsAt),
@@ -167,9 +165,9 @@ export class AccountingPeriodEntity extends Entity<
     return entity;
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Rehydration
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public static rehydrate(
     props: AccountingPeriodProps,
@@ -208,6 +206,11 @@ export class AccountingPeriodEntity extends Entity<
 
     AccountingPeriodEntity.ensureValidPeriodRange(props.startsAt, props.endsAt);
 
+    AccountingPeriodEntity.ensureCalendarOwnership(
+      props.calendarId,
+      props.periodKey,
+    );
+
     if (props.updatedAt.getTime() < props.createdAt.getTime()) {
       throw new AccountingException(
         'Accounting period updated date cannot be before creation date.',
@@ -232,6 +235,9 @@ export class AccountingPeriodEntity extends Entity<
 
     const entity = new AccountingPeriodEntity(
       {
+        calendarId: props.calendarId,
+        periodKey: props.periodKey,
+
         name: props.name,
         startsAt: AccountingPeriodEntity.cloneDate(props.startsAt),
         endsAt: AccountingPeriodEntity.cloneDate(props.endsAt),
@@ -252,9 +258,25 @@ export class AccountingPeriodEntity extends Entity<
     return entity;
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Calendar Ownership
+  // ===========================================================================
+
+  public get calendarId(): UniqueEntityId | undefined {
+    return this.props.calendarId;
+  }
+
+  public get periodKey(): AccountingPeriodKey | undefined {
+    return this.props.periodKey;
+  }
+
+  public belongsToCalendar(): boolean {
+    return this.props.calendarId !== undefined;
+  }
+
+  // ===========================================================================
   // Name
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public get name(): AccountingPeriodName {
     return this.props.name;
@@ -272,9 +294,9 @@ export class AccountingPeriodEntity extends Entity<
     this.touch();
   }
 
-  // ---------------------------------------------------------------------------
-  // Period boundaries
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Period Boundaries
+  // ===========================================================================
 
   public get startsAt(): Date {
     return AccountingPeriodEntity.cloneDate(this.props.startsAt);
@@ -332,9 +354,9 @@ export class AccountingPeriodEntity extends Entity<
     return this.props.endsAt.getTime() > date.getTime();
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Status
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public get status(): AccountingPeriodStatus {
     return this.props.status;
@@ -364,9 +386,9 @@ export class AccountingPeriodEntity extends Entity<
     return this.isOpen();
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Closing
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public get closedAt(): Date | undefined {
     if (this.props.closedAt === undefined) {
@@ -410,9 +432,9 @@ export class AccountingPeriodEntity extends Entity<
     this.touch(closedAt);
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Timestamps
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public get createdAt(): Date {
     return AccountingPeriodEntity.cloneDate(this.props.createdAt);
@@ -436,9 +458,9 @@ export class AccountingPeriodEntity extends Entity<
     this.props.updatedAt = timestamp;
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Invariants
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   private validateInvariants(): void {
     AccountingPeriodEntity.ensureName(this.props.name);
@@ -462,6 +484,11 @@ export class AccountingPeriodEntity extends Entity<
     AccountingPeriodEntity.ensureValidPeriodRange(
       this.props.startsAt,
       this.props.endsAt,
+    );
+
+    AccountingPeriodEntity.ensureCalendarOwnership(
+      this.props.calendarId,
+      this.props.periodKey,
     );
 
     if (this.props.updatedAt.getTime() < this.props.createdAt.getTime()) {
@@ -502,9 +529,9 @@ export class AccountingPeriodEntity extends Entity<
     }
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Guards
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   private ensureMutable(): void {
     if (this.isClosed()) {
@@ -523,6 +550,20 @@ export class AccountingPeriodEntity extends Entity<
   private static ensureStatus(status: AccountingPeriodStatus): void {
     if (status === undefined) {
       throw new AccountingException('Accounting period status is required.');
+    }
+  }
+
+  private static ensureCalendarOwnership(
+    calendarId: UniqueEntityId | undefined,
+    periodKey: AccountingPeriodKey | undefined,
+  ): void {
+    const hasCalendarId = calendarId !== undefined;
+    const hasPeriodKey = periodKey !== undefined;
+
+    if (hasCalendarId !== hasPeriodKey) {
+      throw new AccountingException(
+        'Accounting period calendar identity and period key must either both be provided or both be absent.',
+      );
     }
   }
 
@@ -548,3 +589,9 @@ export class AccountingPeriodEntity extends Entity<
     return new Date(value.getTime());
   }
 }
+
+// -----------------------------------------------------------------------------
+// Default Export
+// -----------------------------------------------------------------------------
+
+export default AccountingPeriodEntity;

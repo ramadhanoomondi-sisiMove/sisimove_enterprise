@@ -64,6 +64,13 @@ export const ACCOUNTING_TOKENS = {
     ACCOUNTING_ACCOUNT: Symbol('AccountingAccountRepository'),
 
     /**
+     * Accounting Calendar aggregate repository.
+     *
+     * Infrastructure provides the concrete persistence implementation.
+     */
+    ACCOUNTING_CALENDAR: Symbol('AccountingCalendarRepository'),
+
+    /**
      * Accounting Period aggregate repository.
      *
      * Infrastructure provides the concrete persistence implementation.

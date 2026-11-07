@@ -220,10 +220,14 @@ import { ACCOUNTING_PROVIDERS } from './infrastructure/dependency-injection/acco
 import { ACCOUNTING_TOKENS } from './application/accounting.tokens';
 
 // -----------------------------------------------------------------------------
-// Platform GL — Provisioner
+// Application — Bootstrap Provisioners
 // -----------------------------------------------------------------------------
 
 import { PlatformGlAccountsProvisioner } from './application/bootstrap/platform-gl-accounts.provisioner';
+
+import { PlatformAccountingCalendarProvisioner } from './application/bootstrap/platform-accounting-calendar.provisioner';
+
+import { AccountingPeriodProvisioner } from './application/bootstrap/accounting-period.provisioner';
 
 // -----------------------------------------------------------------------------
 // Foundation — Shared Infrastructure Tokens
@@ -232,6 +236,10 @@ import { PlatformGlAccountsProvisioner } from './application/bootstrap/platform-
 import { UNIT_OF_WORK } from '../../foundation/persistence/unit-of-work.token';
 
 import type { AccountingAccountRepository } from './domain/repositories/accounting-account.repository';
+
+import type { AccountingCalendarRepository } from './domain/repositories/accounting-calendar.repository';
+
+import type { AccountingPeriodRepository } from './domain/repositories/accounting-period.repository';
 
 import type { UnitOfWork } from '../../foundation/persistence/unit-of-work.interface';
 
@@ -318,6 +326,63 @@ import {
     // =========================================================================
 
     ...ACCOUNTING_PROVIDERS,
+
+    // =========================================================================
+    // Platform Accounting Calendar — Provisioner
+    // =========================================================================
+    //
+    // Creates the immutable PLATFORM Accounting Calendar when it does not
+    // already exist. Existing configuration and lifecycle state are preserved.
+    //
+    // -------------------------------------------------------------------------
+
+    {
+      provide: PlatformAccountingCalendarProvisioner,
+      useFactory: (
+        calendarRepository: AccountingCalendarRepository,
+        unitOfWork: UnitOfWork,
+      ) =>
+        new PlatformAccountingCalendarProvisioner(
+          calendarRepository,
+          unitOfWork,
+        ),
+      inject: [
+        ACCOUNTING_TOKENS.REPOSITORIES.ACCOUNTING_CALENDAR,
+        UNIT_OF_WORK,
+      ],
+    },
+
+    // =========================================================================
+    // Accounting Period — Provisioner
+    // =========================================================================
+    //
+    // Provisions the current month and the next 23 months for the PLATFORM
+    // Accounting Calendar. Existing and closed periods are preserved.
+    //
+    // -------------------------------------------------------------------------
+
+    {
+      provide: AccountingPeriodProvisioner,
+      useFactory: (
+        platformCalendarProvisioner: PlatformAccountingCalendarProvisioner,
+        calendarRepository: AccountingCalendarRepository,
+        periodRepository: AccountingPeriodRepository,
+        unitOfWork: UnitOfWork,
+      ) =>
+        new AccountingPeriodProvisioner(
+          platformCalendarProvisioner,
+          calendarRepository,
+          periodRepository,
+          unitOfWork,
+        ),
+      inject: [
+        PlatformAccountingCalendarProvisioner,
+        ACCOUNTING_TOKENS.REPOSITORIES.ACCOUNTING_CALENDAR,
+        ACCOUNTING_TOKENS.REPOSITORIES.ACCOUNTING_PERIOD,
+        UNIT_OF_WORK,
+      ],
+    },
+
     // =========================================================================
     // Temporary — Rename Platform Wallet Liability Account
     // =========================================================================
@@ -490,6 +555,8 @@ import {
     // =========================================================================
 
     ACCOUNTING_TOKENS.REPOSITORIES.ACCOUNTING_ACCOUNT,
+
+    ACCOUNTING_TOKENS.REPOSITORIES.ACCOUNTING_CALENDAR,
 
     ACCOUNTING_TOKENS.REPOSITORIES.ACCOUNTING_PERIOD,
 
