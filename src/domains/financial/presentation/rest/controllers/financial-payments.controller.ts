@@ -341,20 +341,37 @@ export class FinancialPaymentsController {
     // Payment Amount
     // -------------------------------------------------------------------------
     //
-    // REST transports monetary amounts as strings.
+    // REST receives whole KES amounts as strings.
     //
-    // The Financial Money VO stores integer minor units as a safe JavaScript
-    // number.
+    // Example:
+    //   Frontend input:  "100"
+    //   API amount:      "100"
+    //   Domain amount:   10000 minor units
+    //   M-PESA amount:   100 KES
     //
-    // The Money VO remains the authoritative domain validation boundary.
+    // Convert exactly once at this boundary.
     //
     // -------------------------------------------------------------------------
 
-    const amount = Number(dto.amount);
+    if (typeof dto.amount !== 'string' || !/^[1-9]\d*$/.test(dto.amount)) {
+      throw new BadRequestException(
+        'Financial Payment amount must be a positive whole KES amount.',
+      );
+    }
 
-    if (!Number.isFinite(amount) || !Number.isSafeInteger(amount)) {
-      throw new Error(
-        'Financial Payment amount must be a safe integer in minor units',
+    const majorAmount = Number(dto.amount);
+
+    if (!Number.isSafeInteger(majorAmount)) {
+      throw new BadRequestException(
+        'Financial Payment amount exceeds the supported monetary range.',
+      );
+    }
+
+    const amountMinorUnits = majorAmount * 100;
+
+    if (!Number.isSafeInteger(amountMinorUnits)) {
+      throw new BadRequestException(
+        'Financial Payment amount exceeds the supported monetary range.',
       );
     }
 
@@ -374,7 +391,7 @@ export class FinancialPaymentsController {
         // Payment Amount
         // ---------------------------------------------------------------------
 
-        Money.create(amount, Currency.create(dto.currency)),
+        Money.create(amountMinorUnits, Currency.create(dto.currency)),
 
         // ---------------------------------------------------------------------
         // Correlation

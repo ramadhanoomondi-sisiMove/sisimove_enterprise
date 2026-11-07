@@ -1,3 +1,4 @@
+
 // =============================================================================
 // sisiMove — Create Payment Request Model
 // =============================================================================
@@ -12,7 +13,11 @@
 //
 // This is deliberate:
 //
-//     "125000" = KES 1,250.00
+//     "100"  = KES 100
+//     "1250" = KES 1,250
+//
+// The amount represents whole major currency units (KES), exactly as entered
+// by the member. No multiplication or conversion to minor units occurs here.
 //
 // Using a string prevents JavaScript floating-point behavior from becoming
 // part of the payment request contract.
@@ -38,18 +43,22 @@ export interface CreatePaymentRequest {
   /**
    * Amount to fund the Financial Account.
    *
-   * String representation of integer minor units.
+   * String representation of whole KES in major currency units.
    *
-   * Example:
+   * The value is transmitted exactly as entered by the member.
    *
-   *     "125000" = KES 1,250.00
+   * Examples:
+   *
+   *     "100"  = KES 100
+   *     "500"  = KES 500
+   *     "1250" = KES 1,250
    */
   amount: string;
 
   /**
    * ISO currency code for the payment.
    *
-   * SisiMove currently uses KES for member wallet funding.
+   * sisiMove currently uses KES for member wallet funding.
    */
   currency: string;
 

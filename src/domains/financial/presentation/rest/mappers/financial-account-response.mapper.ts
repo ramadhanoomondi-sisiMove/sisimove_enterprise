@@ -120,8 +120,8 @@ export interface FinancialAccountBalanceResponse {
   /**
    * Funds currently available for normal financial operations.
    *
-   * Amount is represented in integer minor units.
-   */
+   * Amount is represented in whole currency units in the REST response.
+   * Internal domain storage uses integer minor units.   */
   availableAmount: number;
 
   /**
@@ -366,13 +366,10 @@ export class FinancialAccountResponseMapper {
       // Monetary State
       // -----------------------------------------------------------------------
 
-      availableAmount: balance.availableAmount.value,
-
-      pendingAmount: balance.pendingAmount.value,
-
-      heldAmount: balance.heldAmount.value,
-
-      totalAmount: balance.totalAmount(),
+      availableAmount: balance.availableAmount.value / 100,
+      pendingAmount: balance.pendingAmount.value / 100,
+      heldAmount: balance.heldAmount.value / 100,
+      totalAmount: balance.totalAmount() / 100,
 
       currency: balance.currency.value,
 

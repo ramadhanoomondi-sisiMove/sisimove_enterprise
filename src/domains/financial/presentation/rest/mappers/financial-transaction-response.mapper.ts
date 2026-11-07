@@ -276,7 +276,7 @@ export class FinancialTransactionResponseMapper {
 
       status: aggregate.transaction.status.value,
 
-      amount: aggregate.transaction.amount.amount,
+      amount: aggregate.transaction.amount.amount / 100,
 
       currency: aggregate.transaction.amount.currency.value,
 
@@ -360,8 +360,7 @@ export class FinancialTransactionResponseMapper {
 
       status: transaction.status.value,
 
-      amount: transaction.amount.amount,
-
+      amount: transaction.amount.amount / 100,
       currency: transaction.amount.currency.value,
 
       // -----------------------------------------------------------------------
@@ -485,8 +484,7 @@ export class FinancialTransactionResponseMapper {
       // Amount
       // -----------------------------------------------------------------------
 
-      amount: entry.amount.amount,
-
+      amount: entry.amount.amount / 100,
       currency: entry.amount.currency.value,
 
       // -----------------------------------------------------------------------

@@ -1,41 +1,22 @@
-// -----------------------------------------------------------------------------
+
+ // -----------------------------------------------------------------------------
 // sisiMove — Payment Result
 // -----------------------------------------------------------------------------
 //
 // Presentation component for the terminal state of a financial payment.
 //
 // Responsibilities:
-// - Present a successful, failed, or otherwise terminal payment outcome.
-// - Display the payment reference when supplied.
+// - Present a successful or failed payment outcome.
+// - Animate the success circle and check mark.
 // - Display a human-readable message.
+// - Display the payment reference when supplied.
 // - Expose optional actions supplied by the parent.
 //
-// Architecture:
-//
-//     Payment Container / Page
-//              │
-//              ▼
-//        PaymentResult
-//              │
-//              ├── status presentation
-//              └── parent-provided actions
-//
-// This component intentionally does NOT:
-// - determine payment status;
-// - fetch payment state;
-// - retry a payment;
-// - navigate;
-// - mutate financial data;
-// - call payment APIs.
-//
-// The application layer owns payment lifecycle decisions.
-// The parent composition decides which actions are available for the result.
+// Payment lifecycle decisions remain in the application layer.
 //
 // -----------------------------------------------------------------------------
 
 import type { ReactNode } from 'react';
-
-import { Badge } from '@/components/ui';
 
 // -----------------------------------------------------------------------------
 // Models
@@ -48,39 +29,10 @@ export type PaymentResultStatus = 'success' | 'failed';
 // -----------------------------------------------------------------------------
 
 export interface PaymentResultProps {
-  /**
-   * Terminal payment outcome.
-   */
   status: PaymentResultStatus;
-
-  /**
-   * Human-readable result title.
-   *
-   * Defaults are provided by the component, but the parent may override them
-   * when the application has more specific wording.
-   */
   title?: string;
-
-  /**
-   * Human-readable explanation of the payment outcome.
-   */
   message?: string;
-
-  /**
-   * Optional payment public reference.
-   *
-   * This should be a safe public identifier, never an internal database ID.
-   */
   paymentReference?: string;
-
-  /**
-   * Optional actions supplied by the parent.
-   *
-   * Examples:
-   * - View wallet
-   * - Try again
-   * - Return to payments
-   */
   actions?: ReactNode;
 }
 
@@ -98,32 +50,78 @@ export function PaymentResult({
   const isSuccessful = status === 'success';
 
   const resolvedTitle =
-    title ?? (isSuccessful ? 'Top-up successful' : 'Top-up unsuccessful');
+    title ??
+    (isSuccessful
+      ? 'Your payment was successful'
+      : 'Your payment was unsuccessful');
 
   const resolvedMessage =
     message ??
     (isSuccessful
-      ? 'Your wallet top-up has been completed.'
-      : 'We could not complete your wallet top-up.');
+      ? 'Thank you for your payment.'
+      : 'We could not complete your payment. Please try again.');
 
   return (
     <section
       aria-labelledby="payment-result-title"
+      aria-live="polite"
       className="surface rounded-[var(--radius-lg)] p-6 text-center sm:p-8"
     >
       {/* ------------------------------------------------------------------- */}
-      {/* Status indicator                                                    */}
+      {/* Animated payment status                                             */}
       {/* ------------------------------------------------------------------- */}
+
       <div className="flex justify-center">
-        <Badge variant={isSuccessful ? 'success' : 'danger'}>
-          {isSuccessful ? 'Successful' : 'Failed'}
-        </Badge>
+        {isSuccessful ? (
+          <div
+            className="payment-success-circle"
+            role="img"
+            aria-label="Payment successful"
+          >
+            <svg
+              viewBox="0 0 64 64"
+              className="payment-success-check"
+              aria-hidden="true"
+            >
+              <path
+                d="M14 33 L27 46 L51 17"
+                fill="none"
+                stroke="white"
+                strokeWidth="5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="payment-success-check-path"
+              />
+            </svg>
+          </div>
+        ) : (
+          <div
+            className="payment-failed-circle"
+            role="img"
+            aria-label="Payment unsuccessful"
+          >
+            <svg
+              viewBox="0 0 64 64"
+              className="h-12 w-12"
+              aria-hidden="true"
+            >
+              <path
+                d="M21 21 L43 43 M43 21 L21 43"
+                fill="none"
+                stroke="white"
+                strokeWidth="5"
+                strokeLinecap="round"
+              />
+            </svg>
+          </div>
+        )}
       </div>
 
       {/* ------------------------------------------------------------------- */}
       {/* Result message                                                      */}
       {/* ------------------------------------------------------------------- */}
-      <div className="mx-auto mt-4 max-w-sm">
+
+      <div className="mx-auto mt-5 max-w-sm">
         <h2
           id="payment-result-title"
           className="text-base font-semibold text-[var(--foreground)]"
@@ -139,6 +137,7 @@ export function PaymentResult({
       {/* ------------------------------------------------------------------- */}
       {/* Payment reference                                                   */}
       {/* ------------------------------------------------------------------- */}
+
       {paymentReference ? (
         <div className="mx-auto mt-5 max-w-sm rounded-[var(--radius-md)] bg-[var(--background-subtle)] px-3 py-2.5 text-left">
           <p className="text-xs font-medium text-[var(--foreground-muted)]">
@@ -154,11 +153,88 @@ export function PaymentResult({
       {/* ------------------------------------------------------------------- */}
       {/* Parent-provided actions                                             */}
       {/* ------------------------------------------------------------------- */}
+
       {actions ? (
         <div className="mx-auto mt-6 flex max-w-sm flex-col gap-2 sm:flex-row sm:justify-center">
           {actions}
         </div>
       ) : null}
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Component animations                                                */}
+      {/* ------------------------------------------------------------------- */}
+
+      <style>{`
+        .payment-success-circle {
+          width: 74px;
+          height: 74px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 9999px;
+          background: var(--success);
+          animation: payment-circle-appear 450ms ease-out both;
+        }
+
+        .payment-success-check {
+          width: 52px;
+          height: 52px;
+          overflow: visible;
+        }
+
+        .payment-success-check-path {
+          stroke-dasharray: 60;
+          stroke-dashoffset: 60;
+          animation: payment-check-draw 550ms 250ms ease-out forwards;
+        }
+
+        .payment-failed-circle {
+          width: 74px;
+          height: 74px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 9999px;
+          background: var(--danger);
+        }
+
+        @keyframes payment-circle-appear {
+          0% {
+            opacity: 0;
+            transform: scale(0.45);
+          }
+          70% {
+            opacity: 1;
+            transform: scale(1.08);
+          }
+          100% {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
+        @keyframes payment-check-draw {
+          to {
+            stroke-dashoffset: 0;
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .payment-success-circle,
+          .payment-success-check-path {
+            animation: none;
+          }
+
+          .payment-success-circle {
+            opacity: 1;
+            transform: none;
+          }
+
+          .payment-success-check-path {
+            stroke-dashoffset: 0;
+          }
+        }
+      `}</style>
     </section>
   );
 }

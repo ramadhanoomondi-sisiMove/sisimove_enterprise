@@ -1,3 +1,4 @@
+
 // =============================================================================
 // sisiMove — Create Payment Schema
 // =============================================================================
@@ -30,11 +31,16 @@
 //     - mutate wallet balances;
 //     - transition payment status.
 //
-// Monetary amounts are represented as integer minor-unit strings.
+// Monetary amounts are represented as strings containing whole KES
+// in major currency units.
 //
-// Example:
+// Examples:
 //
-//     "125000" = KES 1,250.00
+//     "100"  = KES 100
+//     "500"  = KES 500
+//     "1250" = KES 1,250
+//
+// The amount is not multiplied by 100 at this boundary.
 //
 // =============================================================================
 
@@ -46,20 +52,26 @@ import { z } from 'zod';
 
 export const createPaymentSchema = z.object({
   /**
-   * Payment amount in integer minor units.
+   * Payment amount in whole KES (major currency units).
+   *
+   * The value is transmitted as entered by the member.
    *
    * Examples:
    *
-   *     "10000"  = KES 100.00
-   *     "125000" = KES 1,250.00
+   *     "100"  = KES 100
+   *     "500"  = KES 500
+   *     "1250" = KES 1,250
    *
-   * Decimal amounts and floating-point values are deliberately rejected.
+   * Decimal amounts, negative values, and non-numeric values are rejected.
    */
   amount: z
     .string()
     .trim()
     .regex(/^[0-9]+$/, {
-      message: 'Amount must be a whole number in minor units.',
+      message: 'Amount must be a whole number in KES.',
+    })
+    .refine((value) => Number.isSafeInteger(Number(value)), {
+      message: 'Amount is too large.',
     })
     .refine((value) => Number(value) > 0, {
       message: 'Amount must be greater than zero.',
@@ -68,7 +80,7 @@ export const createPaymentSchema = z.object({
   /**
    * ISO currency code.
    *
-   * SisiMove currently operates member wallet payments in KES.
+   * sisiMove currently operates member wallet payments in KES.
    */
   currency: z
     .string()
@@ -134,4 +146,3 @@ export const createPaymentSchema = z.object({
 // -----------------------------------------------------------------------------
 
 export type CreatePaymentFormValues = z.infer<typeof createPaymentSchema>;
-

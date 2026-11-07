@@ -1,4 +1,5 @@
-// -----------------------------------------------------------------------------
+
+ // -----------------------------------------------------------------------------
 // sisiMove — Payment Summary
 // -----------------------------------------------------------------------------
 //
@@ -8,6 +9,7 @@
 // - Present the monetary breakdown before a payment is submitted.
 // - Display amount, fee, and total using the shared FinancialAmount component.
 // - Keep all monetary values in integer minor units.
+// - Clearly communicate that the member is ready to proceed with booking.
 // - Provide a compact, mobile-first visual hierarchy.
 //
 // Architecture:
@@ -26,7 +28,8 @@
 // - submit payments;
 // - navigate;
 // - own application state;
-// - call financial APIs.
+// - call financial APIs;
+// - confirm a booking.
 //
 // Fee calculation belongs to the application/domain boundary.
 // Formatting belongs to the shared financial presentation layer.
@@ -110,27 +113,30 @@ export function PaymentSummary({
       {/* ------------------------------------------------------------------- */}
       {/* Section heading                                                     */}
       {/* ------------------------------------------------------------------- */}
+
       <div>
         <h2
           id="payment-summary-title"
           className="text-sm font-semibold text-[var(--foreground)]"
         >
-          Top-up summary
+          You&apos;re ready to book
         </h2>
 
         <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
-          Review the amount before continuing.
+          Review your wallet top-up amount and payment fee before proceeding.
         </p>
       </div>
 
       {/* ------------------------------------------------------------------- */}
       {/* Monetary breakdown                                                  */}
       {/* ------------------------------------------------------------------- */}
+
       <dl className="mt-5 space-y-3">
         {/* Amount ----------------------------------------------------------- */}
+
         <div className="flex items-center justify-between gap-4">
           <dt className="text-sm text-[var(--foreground-secondary)]">
-            Amount
+            Amount to add
           </dt>
 
           <dd className="text-sm font-medium text-[var(--foreground)]">
@@ -139,9 +145,10 @@ export function PaymentSummary({
         </div>
 
         {/* Fee -------------------------------------------------------------- */}
+
         <div className="flex items-center justify-between gap-4">
           <dt className="text-sm text-[var(--foreground-secondary)]">
-            Fee
+            Payment fee
           </dt>
 
           <dd className="text-sm font-medium text-[var(--foreground)]">
@@ -153,15 +160,16 @@ export function PaymentSummary({
       {/* ------------------------------------------------------------------- */}
       {/* Total                                                               */}
       {/* ------------------------------------------------------------------- */}
+
       <div className="mt-4 border-t border-[var(--border-subtle)] pt-4">
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-sm font-semibold text-[var(--foreground)]">
-              Total
+              Total to pay
             </p>
 
             <p className="mt-0.5 text-xs text-[var(--foreground-muted)]">
-              Amount charged
+              Amount charged to your payment method
             </p>
           </div>
 
@@ -174,6 +182,7 @@ export function PaymentSummary({
       {/* ------------------------------------------------------------------- */}
       {/* Optional contextual footer                                          */}
       {/* ------------------------------------------------------------------- */}
+
       {footer ? (
         <div className="mt-4 border-t border-[var(--border-subtle)] pt-4">
           {footer}

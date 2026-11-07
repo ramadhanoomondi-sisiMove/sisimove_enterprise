@@ -1,99 +1,25 @@
-// =============================================================================
-// sisiMove — Top Up Page Container
-// =============================================================================
-//
-// Application orchestration boundary for the authenticated wallet top-up flow.
-//
-// Responsibilities:
-// - load the authenticated member's Financial Account;
-// - load the current default FinancialPaymentMethod;
-// - own top-up form state;
-// - validate member input with createPaymentSchema;
-// - generate the technical correlation identifier;
-// - create the FinancialPayment;
-// - observe the created FinancialPayment lifecycle;
-// - poll while the payment is PENDING or PROCESSING;
-// - present the authoritative terminal payment result;
-// - navigate to the canonical payment-method management surface when no
-//   payment method is available.
-//
-// This container deliberately does NOT:
-//
-// - calculate wallet balances;
-// - calculate payment fees;
-// - mutate FinancialAccount state;
-// - transition FinancialPayment state;
-// - create FinancialTransaction records;
-// - determine whether a payment succeeded independently of the backend;
-// - access HTTP directly;
-// - expose database identifiers;
-// - contain persistence concerns.
-//
-// Payment lifecycle:
-//
-//     member enters amount
-//             ↓
-//     createPayment()
-//             ↓
-//     FinancialPayment created
-//             ↓
-//     payment.publicId
-//             ↓
-//     useFinancialPayment()
-//             ↓
-//     PENDING / PROCESSING
-//             ↓
-//     SUCCEEDED / FAILED / CANCELLED / EXPIRED
-//
-// The FinancialPayment returned by the backend remains authoritative.
-//
-// =============================================================================
 
 'use client';
 
-// -----------------------------------------------------------------------------
-// React
-// -----------------------------------------------------------------------------
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-
 import { useRouter } from 'next/navigation';
 
-// -----------------------------------------------------------------------------
-// Authenticated routes
-// -----------------------------------------------------------------------------
-
 import { AUTHENTICATED_ROUTES } from '@/foundation/routing/authenticated-routes';
-
-// -----------------------------------------------------------------------------
-// Financial Account feature
-// -----------------------------------------------------------------------------
 
 import {
   useMyFinancialAccount,
 } from '@/features/financial-account';
 
-// -----------------------------------------------------------------------------
-// Financial Payment Methods feature
-// -----------------------------------------------------------------------------
-
 import {
   useDefaultPaymentMethod,
 } from '@/features/financial-payment-methods';
-
-// -----------------------------------------------------------------------------
-// Financial Payments feature
-// -----------------------------------------------------------------------------
 
 import {
   createPaymentSchema,
   useCreatePayment,
   useFinancialPayment,
 } from '@/features/financial-payments';
-
-// -----------------------------------------------------------------------------
-// Financial presentation
-// -----------------------------------------------------------------------------
 
 import {
   PaymentForm,
@@ -103,27 +29,14 @@ import {
   type PaymentResultStatus,
 } from '@/components/financial/payments';
 
-// -----------------------------------------------------------------------------
-// UI
-// -----------------------------------------------------------------------------
-
 import { Button } from '@/components/ui';
 
 // =============================================================================
 // Constants
 // =============================================================================
 
-/**
- * sisiMove currently operates member wallet funding in KES.
- */
 const DEFAULT_CURRENCY = 'KES';
 
-/**
- * Interval used while observing an active payment.
- *
- * Payment state remains backend-authoritative; polling merely retrieves the
- * latest state.
- */
 const PAYMENT_STATUS_POLL_INTERVAL_MS = 3_000;
 
 // =============================================================================
@@ -147,11 +60,6 @@ interface PaymentResultCopy {
 // Helpers
 // =============================================================================
 
-/**
- * Determines whether a FinancialPayment remains in an active lifecycle state.
- *
- * Only backend-defined active states are included.
- */
 function isPaymentInProgress(
   status: FinancialPaymentStatus,
 ): boolean {
@@ -161,18 +69,6 @@ function isPaymentInProgress(
   );
 }
 
-/**
- * Maps the FinancialPayment lifecycle into the smaller presentation contract
- * exposed by PaymentResult.
- *
- * PaymentResult deliberately distinguishes only:
- *
- *     success
- *     failed
- *
- * The underlying FinancialPayment status remains authoritative and is used
- * separately to determine the member-facing explanatory copy.
- */
 function mapPaymentResultStatus(
   status: FinancialPaymentStatus,
 ): PaymentResultStatus {
@@ -181,12 +77,6 @@ function mapPaymentResultStatus(
     : 'failed';
 }
 
-/**
- * Provides member-facing copy for terminal payment states.
- *
- * This function does not change payment state. It only translates the
- * authoritative backend lifecycle state into presentation text.
- */
 function getPaymentResultCopy(
   status:
     | 'SUCCEEDED'
@@ -226,14 +116,6 @@ function getPaymentResultCopy(
   }
 }
 
-/**
- * Builds the single payment-method option currently available to the
- * top-up flow.
- *
- * The frontend currently exposes only the authoritative default payment
- * method. This must not be interpreted as a complete payment-method
- * collection.
- */
 function createPaymentMethodOption(
   paymentMethod: NonNullable<
     ReturnType<typeof useDefaultPaymentMethod>['data']
@@ -285,13 +167,6 @@ export function TopUpPageContainer() {
   // ===========================================================================
   // Default Payment Method
   // ===========================================================================
-  //
-  // The current frontend feature exposes the member's default payment method,
-  // not a complete member-scoped payment-method collection.
-  //
-  // Therefore the top-up surface intentionally presents only this
-  // authoritative method.
-  // ===========================================================================
 
   const {
     data: defaultPaymentMethod,
@@ -305,37 +180,30 @@ export function TopUpPageContainer() {
   // Create Payment
   // ===========================================================================
 
-  const createPaymentMutation =
-    useCreatePayment();
+  const createPaymentMutation = useCreatePayment();
 
   // ===========================================================================
   // Form State
   // ===========================================================================
 
   /**
-   * Amount is maintained as integer minor units.
+   * Amount is maintained as a string in whole KES.
    *
-   * Example:
+   * The exact input is preserved.
    *
-   *     125000 = KES 1,250.00
+   * Examples:
+   *
+   *     "100"  = KES 100
+   *     "500"  = KES 500
+   *     "1250" = KES 1,250
+   *
+   * No minor-unit conversion occurs in this container.
    */
   const [
-    amountMinorUnits,
-    setAmountMinorUnits,
-  ] = useState<number>(0);
+    amount,
+    setAmount,
+  ] = useState<string>('');
 
-  /**
-   * Explicitly selected payment method.
-   *
-   * An empty value means that the member has not overridden the backend's
-   * default payment method.
-   *
-   * The effective method is therefore:
-   *
-   *     explicit selection
-   *         OR
-   *     backend default
-   */
   const [
     selectedPaymentMethodId,
     setSelectedPaymentMethodId,
@@ -360,11 +228,6 @@ export function TopUpPageContainer() {
   // Payment Observation State
   // ===========================================================================
 
-  /**
-   * Public identifier of the FinancialPayment created by the backend.
-   *
-   * This is deliberately the only payment identifier retained by the UI.
-   */
   const [
     paymentPublicId,
     setPaymentPublicId,
@@ -380,9 +243,7 @@ export function TopUpPageContainer() {
     isError: isPaymentError,
     error: paymentError,
     refetch: refetchPayment,
-  } = useFinancialPayment(
-    paymentPublicId,
-  );
+  } = useFinancialPayment(paymentPublicId);
 
   // ===========================================================================
   // Effective Payment Method
@@ -396,10 +257,6 @@ export function TopUpPageContainer() {
   // ===========================================================================
   // Payment Method Presentation
   // ===========================================================================
-  //
-  // Only the default payment method is currently available from the feature
-  // query. Do not construct additional methods locally.
-  // ===========================================================================
 
   const paymentMethods: PaymentMethodOption[] =
     defaultPaymentMethod
@@ -412,15 +269,6 @@ export function TopUpPageContainer() {
 
   // ===========================================================================
   // Payment Status Polling
-  // ===========================================================================
-  //
-  // useFinancialPayment() retrieves the authoritative payment record.
-  //
-  // While the backend reports PENDING or PROCESSING, this container periodically
-  // requests the latest representation.
-  //
-  // Polling stops automatically when the payment reaches a terminal state or
-  // when the component leaves the payment-observation surface.
   // ===========================================================================
 
   useEffect(() => {
@@ -444,6 +292,7 @@ export function TopUpPageContainer() {
     payment,
     refetchPayment,
   ]);
+
   // ===========================================================================
   // Submit
   // ===========================================================================
@@ -484,8 +333,9 @@ export function TopUpPageContainer() {
     // -------------------------------------------------------------------------
 
     if (
-      !Number.isFinite(amountMinorUnits) ||
-      amountMinorUnits <= 0
+      !/^\d+$/.test(amount) ||
+      !Number.isSafeInteger(Number(amount)) ||
+      Number(amount) <= 0
     ) {
       setAmountError(
         'Enter a valid top-up amount.',
@@ -495,35 +345,25 @@ export function TopUpPageContainer() {
     }
 
     // -------------------------------------------------------------------------
-    // Technical correlation identifier
-    // -------------------------------------------------------------------------
-    //
-    // Generated only when the operation is submitted.
-    //
-    // This is not a member-facing field.
+    // Correlation Identifier
     // -------------------------------------------------------------------------
 
-    const correlationId =
-      crypto.randomUUID();
+    const correlationId = crypto.randomUUID();
 
     // -------------------------------------------------------------------------
     // Validate CreatePaymentRequest
     // -------------------------------------------------------------------------
 
-    const parsed =
-      createPaymentSchema.safeParse({
-        amount:
-          String(amountMinorUnits),
+    const parsed = createPaymentSchema.safeParse({
+      // Send the exact string entered by the member.
+      amount,
 
-        currency:
-          DEFAULT_CURRENCY,
+      currency: DEFAULT_CURRENCY,
 
-        correlationId,
+      correlationId,
 
-        methodPublicId:
-          effectivePaymentMethodId,
-
-      });
+      methodPublicId: effectivePaymentMethodId,
+    });
 
     if (!parsed.success) {
       const fieldErrors =
@@ -549,18 +389,10 @@ export function TopUpPageContainer() {
     // -------------------------------------------------------------------------
     // Create FinancialPayment
     // -------------------------------------------------------------------------
-    //
-    // Creation does NOT mean that the payment has succeeded.
-    //
-    // The returned public ID becomes the input to useFinancialPayment(), which
-    // observes the authoritative payment lifecycle.
-    // -------------------------------------------------------------------------
 
     createPaymentMutation.mutate(
       {
-        accountPublicId:
-          financialAccount.publicId,
-
+        accountPublicId: financialAccount.publicId,
         request: parsed.data,
       },
       {
@@ -586,7 +418,7 @@ export function TopUpPageContainer() {
 
   const handleReset = () => {
     setPaymentPublicId(undefined);
-    setAmountMinorUnits(0);
+    setAmount('');
     setSelectedPaymentMethodId('');
     setAmountError(undefined);
     setPaymentMethodError(undefined);
@@ -809,10 +641,9 @@ export function TopUpPageContainer() {
     // Terminal Payment
     // -------------------------------------------------------------------------
 
-    const resultCopy =
-      getPaymentResultCopy(
-        payment.status,
-      );
+    const resultCopy = getPaymentResultCopy(
+      payment.status,
+    );
 
     return (
       <main className="min-h-screen bg-[var(--background-brand)]">
@@ -825,9 +656,7 @@ export function TopUpPageContainer() {
                 )}
                 title={resultCopy.title}
                 message={resultCopy.message}
-                paymentReference={
-                  payment.publicId
-                }
+                paymentReference={payment.publicId}
                 actions={
                   <Button
                     type="button"
@@ -902,9 +731,7 @@ export function TopUpPageContainer() {
         <section className="section">
           <div className="mx-auto max-w-2xl space-y-5">
 
-            {/* -----------------------------------------------------------------
-                Page heading
-            ------------------------------------------------------------------ */}
+            {/* Page Heading */}
 
             <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -929,61 +756,35 @@ export function TopUpPageContainer() {
               </Link>
             </header>
 
-            {/* -----------------------------------------------------------------
-                Top-up form
-            ------------------------------------------------------------------ */}
+            {/* Top-Up Form */}
 
             <PaymentForm
-              amountMinorUnits={
-                amountMinorUnits
-              }
-              paymentMethodPublicId={
-                effectivePaymentMethodId
-              }
-              paymentMethods={
-                paymentMethods
-              }
+              amount={amount}
+              paymentMethodPublicId={effectivePaymentMethodId}
+              paymentMethods={paymentMethods}
               currency={DEFAULT_CURRENCY}
               amountError={amountError}
-              paymentMethodError={
-                paymentMethodError
-              }
-              isSubmitting={
-                createPaymentMutation.isPending
-              }
-              isSubmitDisabled={
-                createPaymentMutation.isPending
-              }
-              onAmountChange={(
-                nextAmountMinorUnits,
-              ) => {
-                setAmountMinorUnits(
-                  nextAmountMinorUnits,
-                );
-
+              paymentMethodError={paymentMethodError}
+              isSubmitting={createPaymentMutation.isPending}
+              isSubmitDisabled={createPaymentMutation.isPending}
+              onAmountChange={(nextAmount) => {
+                setAmount(nextAmount);
                 setAmountError(undefined);
                 setFormError(undefined);
               }}
-              onPaymentMethodChange={(
-                paymentMethodPublicId,
-              ) => {
+              onPaymentMethodChange={(paymentMethodPublicId) => {
                 setSelectedPaymentMethodId(
                   paymentMethodPublicId,
                 );
 
-                setPaymentMethodError(
-                  undefined,
-                );
-
+                setPaymentMethodError(undefined);
                 setFormError(undefined);
               }}
               onSubmit={handleSubmit}
               onCancel={handleReset}
             />
 
-            {/* -----------------------------------------------------------------
-                Application error
-            ------------------------------------------------------------------ */}
+            {/* Application Error */}
 
             {formError ? (
               <div
@@ -994,9 +795,8 @@ export function TopUpPageContainer() {
               </div>
             ) : null}
 
-            {/* -----------------------------------------------------------------
-                Mutation error
-                ------------------------------------------------------------------ */}
+            {/* Mutation Error */}
+
             {createPaymentMutation.isError &&
             !formError ? (
               <div
@@ -1015,9 +815,4 @@ export function TopUpPageContainer() {
   );
 }
 
-// =============================================================================
-// Default Export
-// =============================================================================
-
 export default TopUpPageContainer;
-

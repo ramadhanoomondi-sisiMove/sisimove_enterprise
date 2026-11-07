@@ -263,7 +263,7 @@ export class FinancialPaymentResponseMapper {
       // Payment
       // -----------------------------------------------------------------------
 
-      amount: aggregate.amount.amount,
+      amount: aggregate.amount.amount / 100,
 
       currency: aggregate.amount.currency.value,
 
@@ -378,8 +378,7 @@ export class FinancialPaymentResponseMapper {
       // Amount
       // -----------------------------------------------------------------------
 
-      amount: attempt.amount.amount,
-
+      amount: attempt.amount.amount / 100,
       currency: attempt.amount.currency.value,
 
       // -----------------------------------------------------------------------
