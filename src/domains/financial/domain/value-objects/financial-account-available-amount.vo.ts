@@ -37,7 +37,10 @@ const MIN_AVAILABLE_AMOUNT = 0;
  *
  * For example, for KES:
  *
- * 1000 = KES 1,000
+ * 100    = KES 1.00
+ * 1000   = KES 10.00
+ * 1260   = KES 12.60
+ * 10000  = KES 100.00
  */
 export class FinancialAccountAvailableAmount extends ValueObject<FinancialAccountAvailableAmountProps> {
   // ---------------------------------------------------------------------------
@@ -55,7 +58,7 @@ export class FinancialAccountAvailableAmount extends ValueObject<FinancialAccoun
   /**
    * Creates a Financial Account available amount.
    *
-   * The amount must be a finite, non-negative integer.
+   * The amount must be a non-negative safe integer.
    */
   public static create(value: number): FinancialAccountAvailableAmount {
     FinancialAccountAvailableAmount.validate(value);
@@ -74,8 +77,10 @@ export class FinancialAccountAvailableAmount extends ValueObject<FinancialAccoun
       );
     }
 
-    if (!Number.isInteger(value)) {
-      throw new Error('Financial Account available amount must be an integer');
+    if (!Number.isSafeInteger(value)) {
+      throw new Error(
+        'Financial Account available amount must be a safe integer',
+      );
     }
 
     if (value < MIN_AVAILABLE_AMOUNT) {

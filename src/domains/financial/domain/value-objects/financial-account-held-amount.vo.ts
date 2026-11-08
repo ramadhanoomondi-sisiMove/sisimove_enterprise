@@ -38,7 +38,10 @@ const MIN_HELD_AMOUNT = 0;
  *
  * For example, for KES:
  *
- * 1000 = KES 1,000
+ * 100    = KES 1.00
+ * 1000   = KES 10.00
+ * 1260   = KES 12.60
+ * 10000  = KES 100.00
  */
 export class FinancialAccountHeldAmount extends ValueObject<FinancialAccountHeldAmountProps> {
   // ---------------------------------------------------------------------------
@@ -56,7 +59,7 @@ export class FinancialAccountHeldAmount extends ValueObject<FinancialAccountHeld
   /**
    * Creates a Financial Account held amount.
    *
-   * The amount must be a finite, non-negative integer.
+   * The amount must be a non-negative safe integer.
    */
   public static create(value: number): FinancialAccountHeldAmount {
     FinancialAccountHeldAmount.validate(value);
@@ -73,8 +76,8 @@ export class FinancialAccountHeldAmount extends ValueObject<FinancialAccountHeld
       throw new Error('Financial Account held amount must be a finite number');
     }
 
-    if (!Number.isInteger(value)) {
-      throw new Error('Financial Account held amount must be an integer');
+    if (!Number.isSafeInteger(value)) {
+      throw new Error('Financial Account held amount must be a safe integer');
     }
 
     if (value < MIN_HELD_AMOUNT) {

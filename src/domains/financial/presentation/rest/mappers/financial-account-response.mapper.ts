@@ -21,6 +21,18 @@
 //
 // Value Objects are converted to their primitive representations here.
 //
+// MONETARY REPRESENTATION:
+//
+// - Domain storage uses integer minor units.
+// - REST responses return integer minor units.
+// - No currency conversion is performed by this mapper.
+// - Frontends are responsible for formatting amounts for display.
+//
+// For KES:
+// 100   = KES 1.00
+// 1260  = KES 12.60
+// 10000 = KES 100.00
+//
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
@@ -97,6 +109,8 @@ export interface FinancialAccountResponse {
 
 /**
  * REST representation of an aggregate-owned Financial Account balance.
+ *
+ * All monetary amounts are represented as integer minor units.
  */
 export interface FinancialAccountBalanceResponse {
   // ===========================================================================
@@ -120,21 +134,21 @@ export interface FinancialAccountBalanceResponse {
   /**
    * Funds currently available for normal financial operations.
    *
-   * Amount is represented in whole currency units in the REST response.
-   * Internal domain storage uses integer minor units.   */
+   * Represented in integer minor units.
+   */
   availableAmount: number;
 
   /**
    * Funds received by the account but not yet available for normal use.
    *
-   * Amount is represented in integer minor units.
+   * Represented in integer minor units.
    */
   pendingAmount: number;
 
   /**
    * Funds reserved against the account.
    *
-   * Amount is represented in integer minor units.
+   * Represented in integer minor units.
    */
   heldAmount: number;
 
@@ -142,6 +156,8 @@ export interface FinancialAccountBalanceResponse {
    * Total monetary state:
    *
    * available + pending + held
+   *
+   * Represented in integer minor units.
    */
   totalAmount: number;
 
@@ -334,6 +350,8 @@ export class FinancialAccountResponseMapper {
    *
    * The account is supplied separately because the balance entity stores the
    * internal accountId rather than the Financial Account public identifier.
+   *
+   * All monetary amounts are returned unchanged in integer minor units.
    */
   private static mapBalance(
     account: FinancialAccountEntity,
@@ -366,10 +384,13 @@ export class FinancialAccountResponseMapper {
       // Monetary State
       // -----------------------------------------------------------------------
 
-      availableAmount: balance.availableAmount.value / 100,
-      pendingAmount: balance.pendingAmount.value / 100,
-      heldAmount: balance.heldAmount.value / 100,
-      totalAmount: balance.totalAmount() / 100,
+      availableAmount: balance.availableAmount.value,
+
+      pendingAmount: balance.pendingAmount.value,
+
+      heldAmount: balance.heldAmount.value,
+
+      totalAmount: balance.totalAmount(),
 
       currency: balance.currency.value,
 
@@ -394,6 +415,8 @@ export class FinancialAccountResponseMapper {
    *
    * Because the balance entity only stores the internal accountId, it cannot
    * expose the Financial Account public identifier without the owning account.
+   *
+   * All monetary amounts are returned unchanged in integer minor units.
    */
   public static balanceFromEntity(
     balance: FinancialAccountBalanceEntity,

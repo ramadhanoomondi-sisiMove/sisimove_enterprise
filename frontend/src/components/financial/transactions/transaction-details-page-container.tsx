@@ -1,63 +1,31 @@
-// =============================================================================
-// sisiMove — Financial Transaction Details Page Container
-// =============================================================================
-//
-// Container for the member-facing financial transaction detail surface.
-//
-// Responsibilities:
-// - Receive the transaction public ID;
-// - Normalize the route-derived public ID;
-// - Invoke the existing financial transaction retrieval hook;
-// - Own the retrieval lifecycle;
-// - Own loading state;
-// - Own error state;
-// - Provide retry behavior;
-// - Map domain timestamps into member-facing labels;
-// - Map backend reference fields into a safe display label;
-// - Compose TransactionDetails.
-//
-// Non-responsibilities:
-// - Direct HTTP requests;
-// - API response mapping;
-// - Financial calculations;
-// - Accounting behavior;
-// - Transaction lifecycle mutations;
-// - Determining transaction ownership;
-// - Creating or modifying transactions.
-//
-// Backend capability:
-//
-//     GET /financial-transactions/:transactionPublicId
-//
-// Important:
-// - No transaction collection/history endpoint is assumed here.
-// - Ownership and authorization remain backend responsibilities.
-// - The route public ID is treated only as a lookup identifier.
-// =============================================================================
 
 "use client";
 
 // =============================================================================
-// React
+// sisiMove — Financial Transaction Details Page Container
+// =============================================================================
+//
+// Member-facing transaction details.
+//
+// Data source:
+// GET /financial-transactions/me
+//
+// The authenticated member's transaction collection is retrieved from the
+// backend. The requested transaction is selected by publicId.
+//
+// No admin-only transaction endpoint is used here.
 // =============================================================================
 
 import {
+  useCallback,
   useEffect,
+  useState,
   type ReactNode,
 } from "react";
 
-// =============================================================================
-// Financial Transaction — Feature
-// =============================================================================
-
 import {
-  FinancialTransactionType,
-  useFinancialTransaction,
+  useMyFinancialTransactions,
 } from "@/features/financial-transactions";
-
-// =============================================================================
-// Presentation
-// =============================================================================
 
 import {
   TransactionDetails,
@@ -72,39 +40,7 @@ export interface TransactionDetailsPageContainerProps {
 }
 
 // =============================================================================
-// Presentation labels
-// =============================================================================
-//
-// The label is used only for supporting copy in this container.
-// TransactionDetails owns the primary transaction-type presentation.
-//
-// =============================================================================
-
-const TRANSACTION_TYPE_LABELS: Record<
-  FinancialTransactionType,
-  string
-> = {
-  [FinancialTransactionType.PAYMENT]: "Payment",
-  [FinancialTransactionType.TRANSFER]: "Transfer",
-  [FinancialTransactionType.HOLD]: "Funds reserved",
-  [FinancialTransactionType.RELEASE]: "Funds released",
-  [FinancialTransactionType.CAPTURE]: "Funds captured",
-  [FinancialTransactionType.SETTLEMENT]: "Settlement",
-  [FinancialTransactionType.DISBURSEMENT]: "Disbursement",
-  [FinancialTransactionType.REFUND]: "Refund",
-  [FinancialTransactionType.REVERSAL]: "Reversal",
-  [FinancialTransactionType.ADJUSTMENT]: "Adjustment",
-};
-
-// =============================================================================
 // Date formatting
-// =============================================================================
-//
-// Financial timestamps come from the backend as ISO-compatible strings.
-//
-// The container converts them into member-facing labels.
-// No financial timezone or accounting calculation is performed here.
-//
 // =============================================================================
 
 function formatDateTime(
@@ -117,8 +53,6 @@ function formatDateTime(
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    // Defensive fallback:
-    // preserve the backend value rather than rendering an empty date.
     return value;
   }
 
@@ -131,34 +65,13 @@ function formatDateTime(
 // =============================================================================
 // Reference formatting
 // =============================================================================
-//
-// Reference semantics belong to the backend/application layer.
-//
-// The container deliberately does not translate reference types such as:
-//
-//     WALLET_TOP_UP
-//     BOOKING
-//     WITHDRAWAL
-//
-// into business-specific copy.
-//
-// It simply presents the available reference pair.
-//
-// =============================================================================
 
 function formatReference(
-  referenceType: string | null | undefined,
-  referencePublicId: string | null | undefined,
+  reference: string | null | undefined,
 ): string | undefined {
-  if (!referenceType && !referencePublicId) {
-    return undefined;
-  }
+  const normalizedReference = reference?.trim();
 
-  if (referenceType && referencePublicId) {
-    return `${referenceType} · ${referencePublicId}`;
-  }
-
-  return referenceType ?? referencePublicId ?? undefined;
+  return normalizedReference || undefined;
 }
 
 // =============================================================================
@@ -253,14 +166,6 @@ function TransactionDetailsError({
 // =============================================================================
 // Invalid Route State
 // =============================================================================
-//
-// An empty public ID is a route/input problem, not a financial transaction
-// retrieval failure.
-//
-// Keeping this separate prevents an invalid route from being presented as
-// though the backend had returned "transaction not found."
-//
-// =============================================================================
 
 function TransactionDetailsInvalidRequest(): ReactNode {
   return (
@@ -298,51 +203,66 @@ function TransactionDetailsInvalidRequest(): ReactNode {
 }
 
 // =============================================================================
+// Not Found State
+// =============================================================================
+
+function TransactionDetailsNotFound(): ReactNode {
+  return (
+    <main className="min-h-screen bg-[var(--background-brand)]">
+      <div className="page-container">
+        <div className="py-6 sm:py-8 lg:py-10">
+          <section
+            className="surface p-5 sm:p-6"
+            role="alert"
+          >
+            <h1 className="text-sm font-semibold text-[var(--foreground)]">
+              Transaction not found
+            </h1>
+
+            <p className="mt-1 text-sm leading-6 text-[var(--foreground-secondary)]">
+              This transaction could not be found in your
+              financial account.
+            </p>
+          </section>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+// =============================================================================
 // Container
 // =============================================================================
 
 export function TransactionDetailsPageContainer({
   transactionPublicId,
 }: TransactionDetailsPageContainerProps): ReactNode {
-  // ---------------------------------------------------------------------------
-  // Normalize the route-derived identifier once per render.
-  // ---------------------------------------------------------------------------
-
   const normalizedTransactionPublicId =
     transactionPublicId.trim();
 
   // ---------------------------------------------------------------------------
-  // Financial transaction retrieval
-  // ---------------------------------------------------------------------------
-  //
-  // The feature hook owns the API interaction.
-  //
-  // The container owns when retrieval happens and how the resulting lifecycle
-  // is represented in the page.
-  //
+  // Transaction retrieval hook
   // ---------------------------------------------------------------------------
 
   const {
-    data: transaction,
+    data: transactions,
     isLoading,
     error,
-    getTransaction,
-  } = useFinancialTransaction();
+    getTransactions,
+  } = useMyFinancialTransactions();
+
+  // ---------------------------------------------------------------------------
+  // Track which route identifier has completed retrieval.
+  //
+  // State is updated only after the asynchronous request completes.
+  // No synchronous state update is performed inside the effect.
+  // ---------------------------------------------------------------------------
+
+  const [loadedForId, setLoadedForId] =
+    useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
   // Initial retrieval
-  // ---------------------------------------------------------------------------
-  //
-  // The lookup is intentionally imperative:
-  //
-  //     useFinancialTransaction()
-  //             │
-  //             └── getTransaction(publicId)
-  //
-  // The public ID is the only route-derived input.
-  //
-  // Ownership, authorization and visibility must remain backend concerns.
-  //
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
@@ -350,16 +270,42 @@ export function TransactionDetailsPageContainer({
       return;
     }
 
-    void getTransaction(
-      normalizedTransactionPublicId,
-    );
+    let active = true;
+
+    const loadTransactions = async (): Promise<void> => {
+      try {
+        await getTransactions();
+      } catch {
+        // The hook owns and exposes the request error.
+      } finally {
+        if (active) {
+          setLoadedForId(normalizedTransactionPublicId);
+        }
+      }
+    };
+
+    void loadTransactions();
+
+    return () => {
+      active = false;
+    };
   }, [
     normalizedTransactionPublicId,
-    getTransaction,
+    getTransactions,
   ]);
 
   // ---------------------------------------------------------------------------
-  // Invalid route identifier
+  // Retry
+  // ---------------------------------------------------------------------------
+
+  const handleRetry = useCallback((): void => {
+    void getTransactions().catch(() => {
+      // The hook owns and exposes the request error.
+    });
+  }, [getTransactions]);
+
+  // ---------------------------------------------------------------------------
+  // Invalid route
   // ---------------------------------------------------------------------------
 
   if (!normalizedTransactionPublicId) {
@@ -370,36 +316,37 @@ export function TransactionDetailsPageContainer({
   // Loading
   // ---------------------------------------------------------------------------
 
-  if (isLoading) {
+  if (
+    isLoading ||
+    loadedForId !== normalizedTransactionPublicId
+  ) {
     return <TransactionDetailsLoading />;
   }
 
   // ---------------------------------------------------------------------------
-  // Error / missing transaction
-  // ---------------------------------------------------------------------------
-  //
-  // A null transaction without an explicit error is treated defensively as an
-  // unavailable resource.
-  //
-  // This does not invent a new backend status. It simply prevents the detail
-  // presentation from receiving an invalid transaction object.
-  //
+  // Retrieval error
   // ---------------------------------------------------------------------------
 
-  if (error || !transaction) {
+  if (error) {
     return (
       <TransactionDetailsError
-        message={
-          error?.message ??
-          "The requested transaction could not be found."
-        }
-        onRetry={() => {
-          void getTransaction(
-            normalizedTransactionPublicId,
-          );
-        }}
+        message={error.message}
+        onRetry={handleRetry}
       />
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Find authenticated member's transaction
+  // ---------------------------------------------------------------------------
+
+  const transaction = transactions.find(
+    (item) =>
+      item.publicId === normalizedTransactionPublicId,
+  );
+
+  if (!transaction) {
+    return <TransactionDetailsNotFound />;
   }
 
   // ---------------------------------------------------------------------------
@@ -410,11 +357,7 @@ export function TransactionDetailsPageContainer({
     formatDateTime(transaction.createdAt) ??
     transaction.createdAt;
 
-  const supportingLabel =
-    TRANSACTION_TYPE_LABELS[transaction.type];
-
-  const entryCount =
-    transaction.entries.length;
+  const entryCount = transaction.entries.length;
 
   const entryLabel =
     entryCount === 1
@@ -456,13 +399,12 @@ export function TransactionDetailsPageContainer({
               transaction.cancelledAt,
             )}
             referenceLabel={formatReference(
-              transaction.referenceType,
-              transaction.referencePublicId,
+              transaction.reference,
             )}
             supportingContent={
               <p className="text-xs leading-5 text-[var(--foreground-muted)]">
-                {supportingLabel} transaction with{" "}
-                {entryCount} {entryLabel}.
+                {entryCount} {entryLabel} recorded for this
+                transaction.
               </p>
             }
           />

@@ -1,140 +1,71 @@
+
 // -----------------------------------------------------------------------------
 // sisiMove — My Financial Account Balance API
 // -----------------------------------------------------------------------------
 //
-// Authenticated HTTP operation for retrieving the balance belonging to the
-// currently authenticated member's Financial Account.
+// Responsibilities:
+// - Retrieve the balance for the supplied Financial Account public ID.
+// - Map the backend response into the frontend balance model.
 //
-// Backend routes:
+// Non-responsibilities:
+// - Resolving the authenticated member's Financial Account.
+// - Ownership resolution.
+// - Financial calculations.
+// - Monetary conversion or formatting.
 //
-//     GET /financial-accounts/me
-//     GET /financial-accounts/:accountPublicId/balance
+// The caller resolves the authenticated Financial Account and supplies its
+// public ID. The backend remains responsible for authorization.
 //
-// -----------------------------------------------------------------------------
+// Monetary convention:
+// - Amounts are returned in integer minor units.
+// - KES 100 represents KES 1.00.
+// - No monetary conversion occurs in this API module.
 //
-// The Financial Account controller currently exposes balance retrieval through
-// the account public ID:
-//
-//     GET /financial-accounts/:accountPublicId/balance
-//
-// There is intentionally no invented:
-//
-//     GET /financial-accounts/me/balance
-//
-// endpoint.
-//
-// The frontend therefore resolves the authenticated member's account first:
-//
-//     getMyFinancialAccount()
-//             ↓
-//     MyFinancialAccount.publicId
-//             ↓
-//     GET /financial-accounts/:accountPublicId/balance
-//
-// -----------------------------------------------------------------------------
-//
-// Architectural boundary:
-//
-// - Authentication is handled by authenticatedApiClient.
-// - Account ownership is resolved through the authenticated self-read.
-// - The account public ID is obtained from the backend response.
-// - No ownerPublicId is accepted from the caller.
-// - No database ID is exposed.
-// - No financial business rules are implemented here.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// Authentication — Authenticated HTTP
 // -----------------------------------------------------------------------------
 
 import { authenticatedApiClient } from '@/features/authentication';
 
-// -----------------------------------------------------------------------------
-// Financial Account — Models
-// -----------------------------------------------------------------------------
+import type { FinancialAccountBalance } from '../models';
 
-import type {
-  FinancialAccountBalance,
-  MyFinancialAccount,
-} from '../models';
+import {
+  mapFinancialAccountBalance,
+  type FinancialAccountBalanceApiResponse,
+} from '../mappers';
 
 // =============================================================================
 // Constants
 // =============================================================================
 
-/**
- * Base route for the Financial Account HTTP controller.
- *
- * NestJS:
- *
- *     @Controller('financial-accounts')
- */
 const FINANCIAL_ACCOUNTS_PATH = '/financial-accounts';
 
 // =============================================================================
-// Get My Financial Account
+// Get Financial Account Balance
 // =============================================================================
 
 /**
- * Resolve the authenticated member's Financial Account.
+ * Retrieve the balance for a Financial Account.
  *
- * The backend derives ownership from the authenticated access token.
- *
- * This function is kept private because consumers should use
- * getMyFinancialBalance() rather than manually managing the account
- * resolution sequence.
- */
-async function getMyFinancialAccount(): Promise<MyFinancialAccount> {
-  return authenticatedApiClient.get<MyFinancialAccount>(
-    `${FINANCIAL_ACCOUNTS_PATH}/me`,
-  );
-}
-
-// =============================================================================
-// Get My Financial Balance
-// =============================================================================
-
-/**
- * Retrieve the balance belonging to the currently authenticated member.
- *
- * Resolution flow:
- *
- *     authenticated session
- *             ↓
- *     GET /financial-accounts/me
- *             ↓
- *     MyFinancialAccount.publicId
- *             ↓
- *     GET /financial-accounts/:accountPublicId/balance
- *
- * The caller supplies no account identifier.
- *
- * The account public ID is obtained from the authenticated self-read.
- *
- * Backend:
+ * Endpoint:
  *
  *     GET /financial-accounts/:accountPublicId/balance
  *
- * Authentication:
+ * The account public ID is supplied by the caller after resolving the
+ * authenticated member's Financial Account.
  *
- *     Bearer access token
+ * Authentication is required.
  *
- * Backend authorization:
- *
- *     financial-account:read
- *
- * Expected successful response:
- *
- *     FinancialAccountBalance
+ * Monetary amounts remain integer minor units.
+ * No monetary conversion or formatting occurs here.
  */
-export async function getMyFinancialBalance(): Promise<FinancialAccountBalance> {
-  const account = await getMyFinancialAccount();
+export async function getMyFinancialBalance(
+  accountPublicId: string,
+): Promise<FinancialAccountBalance> {
+  const response =
+    await authenticatedApiClient.get<FinancialAccountBalanceApiResponse>(
+      `${FINANCIAL_ACCOUNTS_PATH}/${encodeURIComponent(
+        accountPublicId,
+      )}/balance`,
+    );
 
-  return authenticatedApiClient.get<FinancialAccountBalance>(
-    `${FINANCIAL_ACCOUNTS_PATH}/${encodeURIComponent(
-      account.publicId,
-    )}/balance`,
-  );
+  return mapFinancialAccountBalance(response);
 }
-

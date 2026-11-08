@@ -22,6 +22,19 @@
 // - Expose safe provider references.
 // - Expose safe failure information.
 //
+// Monetary representation:
+//
+// - Domain monetary values use integer minor units.
+// - REST responses preserve integer minor units.
+// - No monetary conversion is performed by this mapper.
+// - Frontends are responsible for formatting amounts for display.
+//
+// For KES:
+//
+// 100   = KES 1.00
+// 1260  = KES 12.60
+// 10000 = KES 100.00
+//
 // This mapper does NOT:
 //
 // - Execute provider operations.
@@ -83,6 +96,8 @@ export interface FinancialPaymentAttemptResponse {
 
   /**
    * Attempted monetary amount.
+   *
+   * Represented in integer minor units.
    */
   amount: number;
 
@@ -153,7 +168,7 @@ export interface FinancialPaymentResponse {
   accountId: string;
 
   /**
-   * Payment amount.
+   * Payment amount represented in integer minor units.
    */
   amount: number;
 
@@ -240,6 +255,8 @@ export class FinancialPaymentResponseMapper {
    * Child payment attempts are mapped as part of the aggregate response
    * because they are structurally owned by the Financial Payment aggregate.
    *
+   * Monetary amounts are returned unchanged in integer minor units.
+   *
    * Optional properties are conditionally added so this mapper remains
    * compatible with exactOptionalPropertyTypes: true.
    */
@@ -263,7 +280,7 @@ export class FinancialPaymentResponseMapper {
       // Payment
       // -----------------------------------------------------------------------
 
-      amount: aggregate.amount.amount / 100,
+      amount: aggregate.amount.amount,
 
       currency: aggregate.amount.currency.value,
 
@@ -349,6 +366,8 @@ export class FinancialPaymentResponseMapper {
    * The attempt's internal paymentId is deliberately not exposed because it is
    * an internal aggregate-ownership reference.
    *
+   * Monetary amounts are returned unchanged in integer minor units.
+   *
    * Optional properties are conditionally added so no property is explicitly
    * assigned undefined under exactOptionalPropertyTypes: true.
    */
@@ -378,7 +397,8 @@ export class FinancialPaymentResponseMapper {
       // Amount
       // -----------------------------------------------------------------------
 
-      amount: attempt.amount.amount / 100,
+      amount: attempt.amount.amount,
+
       currency: attempt.amount.currency.value,
 
       // -----------------------------------------------------------------------

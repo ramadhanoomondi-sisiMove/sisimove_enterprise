@@ -1,24 +1,8 @@
-// -----------------------------------------------------------------------------
-// sisiMove — Financial Transaction Status
-// -----------------------------------------------------------------------------
-//
-// Frontend representation of the backend FinancialTransactionStatus enum.
-//
-// Backend:
-//     PENDING
-//     COMPLETED
-//     FAILED
-//     REVERSED
-//     CANCELLED
-//
-// This file mirrors the backend contract exactly.
-// -----------------------------------------------------------------------------
-
+//src/features/financial-transactions/models/financial-transaction-status.ts
 export enum FinancialTransactionStatus {
-  PENDING = "PENDING",
-  COMPLETED = "COMPLETED",
-  FAILED = "FAILED",
-  REVERSED = "REVERSED",
-  CANCELLED = "CANCELLED",
+  PENDING = 'PENDING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  REVERSED = 'REVERSED',
+  CANCELLED = 'CANCELLED',
 }
-

@@ -1,3 +1,4 @@
+
 // =============================================================================
 // sisiMove — Use My Financial Account
 // =============================================================================
@@ -53,7 +54,7 @@ export const MY_FINANCIAL_ACCOUNT_QUERY_KEY = [
 /**
  * Retrieve the authenticated member's Financial Account.
  *
- * `getMyFinancialAccount()` is already responsible for mapping the backend
+ * `getMyFinancialAccount()` is responsible for mapping the backend
  * FinancialAccountResponse into the frontend MyFinancialAccount model.
  *
  * The hook therefore exposes that model directly.
@@ -61,7 +62,6 @@ export const MY_FINANCIAL_ACCOUNT_QUERY_KEY = [
 export function useMyFinancialAccount() {
   return useQuery({
     queryKey: MY_FINANCIAL_ACCOUNT_QUERY_KEY,
-
-    queryFn: () => getMyFinancialAccount(),
+    queryFn: getMyFinancialAccount,
   });
 }

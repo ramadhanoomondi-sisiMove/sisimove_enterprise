@@ -1,27 +1,43 @@
-//frontend/src/foundation/formatters/currency.ts
+
 // -----------------------------------------------------------------------------
 // sisiMove — Currency Formatters
 // -----------------------------------------------------------------------------
 //
 // Shared financial presentation formatters.
 //
-// Current sisiMove financial amounts are represented as integer KES amounts
-// throughout the financial backend.
+// Monetary conventions:
 //
-// Example:
+// 1. formatCurrency()
+//    Accepts amounts expressed in major currency units.
 //
-//     10000 → KES 10,000.00
-//      2000 → KES 2,000.00
+// 2. formatCurrencyMinorUnits()
+//    Accepts amounts expressed in integer minor currency units.
+//
+// Examples for KES:
+//
+//     formatCurrency(10000)             → KES 10,000.00
+//     formatCurrencyMinorUnits(10000)   → KES 100.00
+//
+// Currency precision is determined from the ISO currency code.
 //
 // These functions perform presentation formatting only.
-// They do not calculate, convert, or mutate financial values.
+// They do not mutate financial values or perform exchange-rate conversion.
 //
 // -----------------------------------------------------------------------------
 
 // =============================================================================
-// Format Currency
+// Format Currency — Major Units
 // =============================================================================
 
+/**
+ * Format an amount already expressed in major currency units.
+ *
+ * Example:
+ *
+ *     10000 → KES 10,000.00
+ *
+ * Do not pass integer minor-unit amounts to this function.
+ */
 export function formatCurrency(
   amount: number,
   currency = 'KES',
@@ -35,27 +51,39 @@ export function formatCurrency(
 }
 
 // =============================================================================
-// Format Currency Amount
+// Format Currency — Minor Units
 // =============================================================================
-//
-// Kept as a compatibility alias for existing callers.
-//
-// Despite the historical name "formatCurrencyMinorUnits", the current
-// financial backend represents amounts as integer KES amounts rather than
-// minor units.
-//
-// Example:
-//
-//     10000 → KES 10,000.00
-//      2000 → KES 2,000.00
-//
-// No division or currency conversion is performed.
-//
-// =============================================================================
+
+/**
+ * Format an amount expressed in integer minor currency units.
+ *
+ * The currency's standard fraction-digit precision determines the conversion.
+ *
+ * Examples:
+ *
+ *     10000 → KES 100.00
+ *     12600 → KES 126.00
+ *    100000 → KES 1,000.00
+ *
+ * For currencies without fractional minor units, the amount is formatted
+ * without dividing by 100.
+ */
 
 export function formatCurrencyMinorUnits(
   amount: number,
   currency = 'KES',
 ): string {
-  return formatCurrency(amount, currency);
+  const currencyFormatter = new Intl.NumberFormat('en-KE', {
+    style: 'currency',
+    currency,
+  });
+
+  const fractionDigits =
+    currencyFormatter.resolvedOptions().maximumFractionDigits ?? 2;
+
+  const divisor = 10 ** fractionDigits;
+  const majorAmount = amount / divisor;
+
+  return currencyFormatter.format(majorAmount);
 }
+

@@ -276,7 +276,8 @@ export class FinancialTransactionResponseMapper {
 
       status: aggregate.transaction.status.value,
 
-      amount: aggregate.transaction.amount.amount / 100,
+      // Preserve integer minor units in the REST response.
+      amount: aggregate.transaction.amount.amount,
 
       currency: aggregate.transaction.amount.currency.value,
 
@@ -360,7 +361,8 @@ export class FinancialTransactionResponseMapper {
 
       status: transaction.status.value,
 
-      amount: transaction.amount.amount / 100,
+      amount: transaction.amount.amount,
+
       currency: transaction.amount.currency.value,
 
       // -----------------------------------------------------------------------
@@ -484,7 +486,8 @@ export class FinancialTransactionResponseMapper {
       // Amount
       // -----------------------------------------------------------------------
 
-      amount: entry.amount.amount / 100,
+      amount: entry.amount.amount,
+
       currency: entry.amount.currency.value,
 
       // -----------------------------------------------------------------------

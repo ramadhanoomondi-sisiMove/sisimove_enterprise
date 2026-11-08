@@ -4,27 +4,20 @@
 //
 // REST controller for Financial Transaction operations.
 //
-// Aggregate:
-//
-// FinancialTransactionAggregate
-// ├── FinancialTransactionEntity
-// └── FinancialTransactionEntryEntity[]
-//
-// The controller is responsible only for:
+// Responsibilities:
 // - HTTP transport;
 // - DTO validation;
 // - conversion from transport primitives to domain value objects;
 // - dispatching application commands and queries.
 //
+// Security:
+// - All routes require JWT authentication.
+// - Member self-service routes resolve the account from authenticated identity.
+// - Administrative and lifecycle routes retain their permission requirements.
+//
 // Domain behavior remains inside FinancialTransactionAggregate.
 // Application orchestration remains inside command/query handlers.
 // Persistence remains behind FinancialTransactionRepository.
-//
-// FinancialTransactionEntryEntity is owned by the
-// FinancialTransactionAggregate and is therefore returned through the
-// Financial Transaction response mapper.
-//
-// Accounting remains a separate bounded context.
 //
 // -----------------------------------------------------------------------------
 
@@ -46,16 +39,18 @@ import {
 // Swagger
 // -----------------------------------------------------------------------------
 
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 // -----------------------------------------------------------------------------
-// Identity — Authentication & Authorization
+// Foundation — Security
 // -----------------------------------------------------------------------------
 
 import {
+  CurrentIdentity,
   JwtAuthGuard,
   PermissionsGuard,
   RequirePermissions,
+  type AuthenticatedIdentity,
 } from '../../../../../foundation/security/auth';
 
 // -----------------------------------------------------------------------------
@@ -69,6 +64,8 @@ import type { QueryHandler } from '../../../../../foundation/kernel/application/
 // -----------------------------------------------------------------------------
 // Application — Tokens
 // -----------------------------------------------------------------------------
+
+import { FINANCIAL_ACCOUNT_TOKENS } from '../../../application/financial-account.tokens';
 
 import { FINANCIAL_TRANSACTION_TOKENS } from '../../../application/financial-transaction.tokens';
 
@@ -91,10 +88,15 @@ import {
 import {
   GetAllFinancialTransactionsQuery,
   GetFinancialTransactionQuery,
+  GetMyFinancialAccountQuery,
+  GetFinancialAccountTransactionsQuery,
 } from '../../../application/queries';
+
 // -----------------------------------------------------------------------------
-// Domain — Aggregate
+// Domain — Aggregates
 // -----------------------------------------------------------------------------
+
+import type { FinancialAccountAggregate } from '../../../domain/aggregates/financial-account.aggregate';
 
 import type { FinancialTransactionAggregate } from '../../../domain/aggregates/financial-transaction.aggregate';
 
@@ -104,11 +106,12 @@ import type { FinancialTransactionAggregate } from '../../../domain/aggregates/f
 
 import {
   Currency,
-  FinancialAccountReference,
+  FinancialAccountOwnerPublicId,
   FinancialTransactionPublicId,
   FinancialTransactionReference,
   FinancialTransactionType,
   Money,
+  FinancialAccountReference,
 } from '../../../domain/value-objects';
 
 // -----------------------------------------------------------------------------
@@ -134,8 +137,9 @@ import { FinancialTransactionResponseMapper } from '../mappers/financial-transac
 // -----------------------------------------------------------------------------
 
 @ApiTags('Financial Transactions')
+@ApiBearerAuth()
 @Controller('financial-transactions')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard)
 export class FinancialTransactionsController {
   // ===========================================================================
   // Constructor
@@ -177,7 +181,7 @@ export class FinancialTransactionsController {
     >,
 
     // -------------------------------------------------------------------------
-    // Query Handlers
+    // Transaction Query Handlers
     // -------------------------------------------------------------------------
 
     @Inject(FINANCIAL_TRANSACTION_TOKENS.QUERY_HANDLERS.GET)
@@ -185,15 +189,84 @@ export class FinancialTransactionsController {
       GetFinancialTransactionQuery,
       FinancialTransactionAggregate | null
     >,
+
     @Inject(FINANCIAL_TRANSACTION_TOKENS.QUERY_HANDLERS.GET_ALL)
     private readonly getAllFinancialTransactionsHandler: QueryHandler<
       GetAllFinancialTransactionsQuery,
       FinancialTransactionAggregate[]
     >,
+
+    @Inject(
+      FINANCIAL_TRANSACTION_TOKENS.QUERY_HANDLERS.GET_ACCOUNT_TRANSACTIONS,
+    )
+    private readonly getFinancialAccountTransactionsHandler: QueryHandler<
+      GetFinancialAccountTransactionsQuery,
+      FinancialTransactionAggregate[]
+    >,
+
+    // -------------------------------------------------------------------------
+    // Financial Account Query Handler
+    // -------------------------------------------------------------------------
+
+    @Inject(FINANCIAL_ACCOUNT_TOKENS.QUERY_HANDLERS.GET_ME)
+    private readonly getMyFinancialAccountHandler: QueryHandler<
+      GetMyFinancialAccountQuery,
+      FinancialAccountAggregate
+    >,
   ) {}
 
   // ===========================================================================
-  // Queries
+  // Member Self-Service Queries
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // Get Authenticated User's Financial Transactions
+  // ---------------------------------------------------------------------------
+  //
+  // GET /financial-transactions/me
+  //
+  // The account is resolved from the authenticated identity.
+  //
+  // No account ID is accepted from the client.
+  //
+  // ---------------------------------------------------------------------------
+
+  @Get('me')
+  public async getMyTransactions(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+  ): Promise<
+    ReturnType<typeof FinancialTransactionResponseMapper.toResponse>[]
+  > {
+    // -------------------------------------------------------------------------
+    // 1. Resolve the authenticated user's Financial Account
+    // -------------------------------------------------------------------------
+
+    const account = await this.getMyFinancialAccountHandler.execute(
+      new GetMyFinancialAccountQuery(
+        FinancialAccountOwnerPublicId.create(identity.identityPublicId),
+      ),
+    );
+
+    // -------------------------------------------------------------------------
+    // 2. Retrieve transactions for the resolved account
+    // -------------------------------------------------------------------------
+
+    const aggregates =
+      await this.getFinancialAccountTransactionsHandler.execute(
+        new GetFinancialAccountTransactionsQuery(account.account.publicId),
+      );
+
+    // -------------------------------------------------------------------------
+    // 3. Map transaction aggregates to REST responses
+    // -------------------------------------------------------------------------
+
+    return aggregates.map((aggregate) =>
+      FinancialTransactionResponseMapper.toResponse(aggregate),
+    );
+  }
+
+  // ===========================================================================
+  // Administrative Queries
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
@@ -201,6 +274,7 @@ export class FinancialTransactionsController {
   // ---------------------------------------------------------------------------
 
   @Get()
+  @UseGuards(PermissionsGuard)
   @RequirePermissions('admin:read')
   public async getAll(): Promise<
     ReturnType<typeof FinancialTransactionResponseMapper.toResponse>[]
@@ -219,6 +293,7 @@ export class FinancialTransactionsController {
   // ---------------------------------------------------------------------------
 
   @Get(':transactionPublicId')
+  @UseGuards(PermissionsGuard)
   @RequirePermissions('admin:read')
   public async get(
     @Param('transactionPublicId') transactionPublicId: string,
@@ -247,14 +322,11 @@ export class FinancialTransactionsController {
   // ---------------------------------------------------------------------------
 
   @Post()
+  @UseGuards(PermissionsGuard)
   @RequirePermissions('financial-transaction:create')
   public async create(
     @Body() dto: CreateFinancialTransactionDto,
   ): Promise<ReturnType<typeof FinancialTransactionResponseMapper.toResponse>> {
-    // -------------------------------------------------------------------------
-    // Source Account Reference
-    // -------------------------------------------------------------------------
-
     const sourceAccount =
       dto.sourceAccountType !== undefined &&
       dto.sourceAccountPublicId !== undefined
@@ -263,10 +335,6 @@ export class FinancialTransactionsController {
             dto.sourceAccountPublicId,
           )
         : undefined;
-
-    // -------------------------------------------------------------------------
-    // Destination Account Reference
-    // -------------------------------------------------------------------------
 
     const destinationAccount =
       dto.destinationAccountType !== undefined &&
@@ -277,10 +345,6 @@ export class FinancialTransactionsController {
           )
         : undefined;
 
-    // -------------------------------------------------------------------------
-    // Business Reference
-    // -------------------------------------------------------------------------
-
     const reference =
       dto.referenceType !== undefined && dto.referencePublicId !== undefined
         ? FinancialTransactionReference.create(
@@ -289,19 +353,7 @@ export class FinancialTransactionsController {
           )
         : undefined;
 
-    // -------------------------------------------------------------------------
-    // Transaction Amount
-    // -------------------------------------------------------------------------
-    //
-    // REST transports monetary amounts as strings.
-    //
-    // The Financial Money VO stores integer minor units as a safe JavaScript
-    // number.
-    //
-    // The Money VO remains the authoritative domain validation boundary.
-    //
-    // -------------------------------------------------------------------------
-
+    // Amounts are integer minor units.
     const amount = Number(dto.amount);
 
     if (!Number.isFinite(amount) || !Number.isSafeInteger(amount)) {
@@ -310,67 +362,27 @@ export class FinancialTransactionsController {
       );
     }
 
-    // -------------------------------------------------------------------------
-    // Create Aggregate
-    // -------------------------------------------------------------------------
-
     const aggregate = await this.createFinancialTransactionHandler.execute(
       new CreateFinancialTransactionCommand(
-        // ---------------------------------------------------------------------
-        // Transaction Type
-        // ---------------------------------------------------------------------
-
         FinancialTransactionType.create(dto.type),
-
-        // ---------------------------------------------------------------------
-        // Transaction Amount
-        // ---------------------------------------------------------------------
-
         Money.create(amount, Currency.create(dto.currency)),
-
-        // ---------------------------------------------------------------------
-        // Correlation
-        // ---------------------------------------------------------------------
-
         dto.correlationId,
-
-        // ---------------------------------------------------------------------
-        // Source Account
-        // ---------------------------------------------------------------------
-
         sourceAccount,
-
-        // ---------------------------------------------------------------------
-        // Destination Account
-        // ---------------------------------------------------------------------
-
         destinationAccount,
-
-        // ---------------------------------------------------------------------
-        // Business Reference
-        // ---------------------------------------------------------------------
-
         reference,
-
-        // ---------------------------------------------------------------------
-        // Causation
-        // ---------------------------------------------------------------------
-
         dto.causationId,
       ),
     );
 
-    // -------------------------------------------------------------------------
-    // Response
-    // -------------------------------------------------------------------------
-
     return FinancialTransactionResponseMapper.toResponse(aggregate);
   }
+
   // ---------------------------------------------------------------------------
   // Complete Financial Transaction
   // ---------------------------------------------------------------------------
 
   @Post(':transactionPublicId/complete')
+  @UseGuards(PermissionsGuard)
   @RequirePermissions('financial-transaction:complete')
   public async complete(
     @Param('transactionPublicId') transactionPublicId: string,
@@ -378,13 +390,8 @@ export class FinancialTransactionsController {
   ): Promise<ReturnType<typeof FinancialTransactionResponseMapper.toResponse>> {
     const aggregate = await this.completeFinancialTransactionHandler.execute(
       new CompleteFinancialTransactionCommand(
-        // Transaction Public ID
         new FinancialTransactionPublicId(transactionPublicId),
-
-        // Correlation
         dto.correlationId,
-
-        // Causation
         dto.causationId,
       ),
     );
@@ -397,6 +404,7 @@ export class FinancialTransactionsController {
   // ---------------------------------------------------------------------------
 
   @Post(':transactionPublicId/fail')
+  @UseGuards(PermissionsGuard)
   @RequirePermissions('financial-transaction:fail')
   public async fail(
     @Param('transactionPublicId') transactionPublicId: string,
@@ -404,16 +412,9 @@ export class FinancialTransactionsController {
   ): Promise<ReturnType<typeof FinancialTransactionResponseMapper.toResponse>> {
     const aggregate = await this.failFinancialTransactionHandler.execute(
       new FailFinancialTransactionCommand(
-        // Transaction Public ID
         new FinancialTransactionPublicId(transactionPublicId),
-
-        // Correlation
         dto.correlationId,
-
-        // Failure Reason
         dto.reason,
-
-        // Causation
         dto.causationId,
       ),
     );
@@ -426,6 +427,7 @@ export class FinancialTransactionsController {
   // ---------------------------------------------------------------------------
 
   @Post(':transactionPublicId/reverse')
+  @UseGuards(PermissionsGuard)
   @RequirePermissions('financial-transaction:reverse')
   public async reverse(
     @Param('transactionPublicId') transactionPublicId: string,
@@ -433,16 +435,9 @@ export class FinancialTransactionsController {
   ): Promise<ReturnType<typeof FinancialTransactionResponseMapper.toResponse>> {
     const aggregate = await this.reverseFinancialTransactionHandler.execute(
       new ReverseFinancialTransactionCommand(
-        // Transaction Public ID
         new FinancialTransactionPublicId(transactionPublicId),
-
-        // Correlation
         dto.correlationId,
-
-        // Reversal Reason
         dto.reason,
-
-        // Causation
         dto.causationId,
       ),
     );
@@ -455,6 +450,7 @@ export class FinancialTransactionsController {
   // ---------------------------------------------------------------------------
 
   @Post(':transactionPublicId/cancel')
+  @UseGuards(PermissionsGuard)
   @RequirePermissions('financial-transaction:cancel')
   public async cancel(
     @Param('transactionPublicId') transactionPublicId: string,
@@ -462,16 +458,9 @@ export class FinancialTransactionsController {
   ): Promise<ReturnType<typeof FinancialTransactionResponseMapper.toResponse>> {
     const aggregate = await this.cancelFinancialTransactionHandler.execute(
       new CancelFinancialTransactionCommand(
-        // Transaction Public ID
         new FinancialTransactionPublicId(transactionPublicId),
-
-        // Correlation
         dto.correlationId,
-
-        // Cancellation Reason
         dto.reason,
-
-        // Causation
         dto.causationId,
       ),
     );

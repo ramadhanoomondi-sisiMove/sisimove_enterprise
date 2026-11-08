@@ -1,10 +1,2 @@
-// -----------------------------------------------------------------------------
-// sisiMove — Financial Transaction Hooks
-// -----------------------------------------------------------------------------
-//
-// Public hook surface for Financial Transaction operations.
-//
-// -----------------------------------------------------------------------------
-
 export * from './use-financial-transaction';
-
+export * from './use-my-financial-transactions';

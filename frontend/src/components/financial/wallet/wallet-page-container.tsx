@@ -1,3 +1,6 @@
+
+'use client';
+
 // -----------------------------------------------------------------------------
 // sisiMove — Wallet Page Container
 // -----------------------------------------------------------------------------
@@ -6,63 +9,32 @@
 //
 // Responsibilities:
 // - Resolve the authenticated Financial Account.
-// - Resolve the authenticated Financial Account Balance.
+// - Resolve its Financial Account Balance.
+// - Retrieve authenticated user's Financial Transactions.
+// - Map transactions into wallet activity presentation data.
 // - Compose wallet-level presentation data.
 // - Provide wallet-level loading and error states.
 // - Provide wallet navigation actions.
-// - Pass composed financial data into WalletOverview.
 //
-// Non-responsibilities:
-// - Performing HTTP requests directly.
-// - Knowing backend API routes.
-// - Mapping raw API responses.
-// - Implementing financial business rules.
-// - Calculating balances.
-// - Rendering individual wallet sections.
-// - Performing payment operations.
-// - Performing withdrawal operations.
-// - Loading transaction history until the transaction collection feature exists.
+// Financial Account remains authoritative for account state.
 //
-// Architecture:
-//
-//     Authenticated Route
-//            │
-//            ▼
-//     WalletPageContainer
-//            │
-//       ┌────┴─────────────┐
-//       │                  │
-//       ▼                  ▼
-// useMyFinancialAccount  useMyFinancialBalance
-//       │                  │
-//       └────────┬─────────┘
-//                │
-//                ▼
-//          WalletOverview
-//                │
-//       ┌────────┼──────────────────────┐
-//       ▼        ▼          ▼           ▼
-//    Balance  Breakdown   Status     Actions
-//                                      │
-//                                      ├── Top up
-//                                      ├── Withdraw
-//                                      └── Transactions
-//
-// Financial Account remains the authoritative source for account state.
-//
-// Financial Account Balance remains the authoritative source for:
+// Financial Account Balance remains authoritative for:
 // - availableAmount;
 // - pendingAmount;
 // - heldAmount;
 // - currency.
 //
+// Transaction amounts remain integer minor units.
 // -----------------------------------------------------------------------------
-
-'use client';
 
 // -----------------------------------------------------------------------------
 // React
 // -----------------------------------------------------------------------------
+
+import {
+  useCallback,
+  useEffect,
+} from 'react';
 
 import type { ReactNode } from 'react';
 
@@ -88,24 +60,37 @@ import {
 } from '@/features/financial-account';
 
 // -----------------------------------------------------------------------------
+// Financial Transactions
+// -----------------------------------------------------------------------------
+
+import {
+  useMyFinancialTransactions,
+  FinancialTransactionEntryType,
+  FinancialBalanceType,
+  FinancialTransactionType,
+} from '@/features/financial-transactions';
+
+import type {
+  FinancialTransaction,
+  FinancialTransactionEntry,
+} from '@/features/financial-transactions';
+
+// -----------------------------------------------------------------------------
 // Wallet Presentation
 // -----------------------------------------------------------------------------
 
 import { WalletOverview } from './wallet-overview';
-import type { WalletQuickAction } from './wallet-quick-actions';
+
+import type {
+  WalletActivityItemProps,
+} from './wallet-activity-item';
+
+import type {
+  WalletQuickAction,
+} from './wallet-quick-actions';
 
 // =============================================================================
 // Shared Link Classes
-// =============================================================================
-//
-// Wallet actions are navigation actions rather than financial mutations.
-//
-// The destination routes own the corresponding financial workflows.
-//
-// Keeping the visual treatment here prevents WalletQuickActions from knowing
-// anything about routing while allowing this container to compose complete
-// wallet navigation.
-//
 // =============================================================================
 
 const primaryActionClassName = [
@@ -156,6 +141,133 @@ const secondaryActionClassName = [
 ].join(' ');
 
 // =============================================================================
+// Transaction Presentation Helpers
+// =============================================================================
+
+/**
+ * Convert a Financial Transaction type into a readable wallet activity title.
+ */
+function getTransactionTitle(
+  type: FinancialTransactionType,
+): string {
+  const titles: Record<FinancialTransactionType, string> = {
+    [FinancialTransactionType.PAYMENT]: 'Payment',
+    [FinancialTransactionType.TRANSFER]: 'Transfer',
+    [FinancialTransactionType.HOLD]: 'Funds held',
+    [FinancialTransactionType.RELEASE]: 'Funds released',
+    [FinancialTransactionType.CAPTURE]: 'Payment captured',
+    [FinancialTransactionType.SETTLEMENT]: 'Settlement',
+    [FinancialTransactionType.DISBURSEMENT]: 'Disbursement',
+    [FinancialTransactionType.REFUND]: 'Refund',
+    [FinancialTransactionType.REVERSAL]: 'Reversal',
+    [FinancialTransactionType.ADJUSTMENT]: 'Balance adjustment',
+  };
+
+  return titles[type] ?? 'Wallet transaction';
+}
+
+/**
+ * Format an ISO date for wallet activity display.
+ */
+function formatActivityDate(value: string): string {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat('en-KE', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+/**
+ * Resolve the most appropriate entry belonging to the user's wallet.
+ *
+ * A transaction may contain multiple entries for different balance
+ * categories. Prefer AVAILABLE to avoid showing multiple rows for the
+ * same transaction.
+ */
+function getWalletAccountEntry(
+  transaction: FinancialTransaction,
+  accountPublicId: string,
+): FinancialTransactionEntry | undefined {
+  const accountEntries = transaction.entries.filter(
+    (entry) => entry.accountPublicId === accountPublicId,
+  );
+
+  const preferredBalanceTypes: FinancialBalanceType[] = [
+    FinancialBalanceType.AVAILABLE,
+    FinancialBalanceType.PENDING,
+    FinancialBalanceType.HELD,
+  ];
+
+  for (const balanceType of preferredBalanceTypes) {
+    const entry = accountEntries.find(
+      (candidate) => candidate.balanceType === balanceType,
+    );
+
+    if (entry) {
+      return entry;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Map authenticated wallet transactions into recent activity items.
+ *
+ * The original transaction timestamp is used for sorting before formatting.
+ * Only entries belonging to the authenticated account are displayed.
+ */
+function mapWalletActivity(
+  transactions: FinancialTransaction[],
+  accountPublicId: string,
+): WalletActivityItemProps[] {
+  return [...transactions]
+    .sort(
+      (first, second) =>
+        new Date(second.createdAt).getTime() -
+        new Date(first.createdAt).getTime(),
+    )
+    .map((transaction): WalletActivityItemProps | null => {
+      const entry = getWalletAccountEntry(
+        transaction,
+        accountPublicId,
+      );
+
+      if (!entry) {
+        return null;
+      }
+
+      const direction =
+        entry.type === FinancialTransactionEntryType.CREDIT
+          ? 'in'
+          : 'out';
+
+      return {
+        id: transaction.publicId,
+        title: getTransactionTitle(transaction.type),
+        description: transaction.status.toLowerCase(),
+        date: formatActivityDate(transaction.createdAt),
+        amount: Math.abs(entry.amount),
+        currency: entry.currency,
+        direction,
+      };
+    })
+    .filter(
+      (activity): activity is WalletActivityItemProps =>
+        activity !== null,
+    )
+    .slice(0, 5);
+}
+
+// =============================================================================
 // Loading State
 // =============================================================================
 
@@ -174,13 +286,9 @@ function WalletLoadingState(): ReactNode {
 
           <div className="space-y-4">
             <div className="surface h-32 animate-pulse" />
-
             <div className="surface h-32 animate-pulse" />
-
             <div className="surface h-20 animate-pulse" />
-
             <div className="surface h-32 animate-pulse" />
-
             <div className="surface h-52 animate-pulse" />
           </div>
         </div>
@@ -294,12 +402,6 @@ function WalletState({
 // Component
 // =============================================================================
 
-/**
- * Authenticated wallet screen composition container.
- *
- * This component composes the independently owned Financial Account feature
- * boundaries and passes the resulting state into WalletOverview.
- */
 export function WalletPageContainer(): ReactNode {
   // ---------------------------------------------------------------------------
   // Financial Account
@@ -323,7 +425,27 @@ export function WalletPageContainer(): ReactNode {
     isError: balanceIsError,
     error: balanceError,
     refetch: refetchBalance,
-  } = useMyFinancialBalance();
+  } = useMyFinancialBalance(account?.publicId);
+
+  // ---------------------------------------------------------------------------
+  // Financial Transactions
+  // ---------------------------------------------------------------------------
+
+  const {
+    data: transactions,
+    getTransactions,
+  } = useMyFinancialTransactions();
+
+  // ---------------------------------------------------------------------------
+  // Load Transaction History
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    void getTransactions().catch(() => {
+      // Transaction history is supplementary wallet data.
+      // Its failure must not block wallet balance and operations.
+    });
+  }, [getTransactions]);
 
   // ---------------------------------------------------------------------------
   // Loading
@@ -348,10 +470,22 @@ export function WalletPageContainer(): ReactNode {
   // Retry
   // ---------------------------------------------------------------------------
 
-  const handleRetry = (): void => {
+  const handleRetry = useCallback((): void => {
     void refetchAccount();
-    void refetchBalance();
-  };
+
+    if (account?.publicId) {
+      void refetchBalance();
+    }
+
+    void getTransactions().catch(() => {
+      // Keep transaction-history errors independent of wallet balance.
+    });
+  }, [
+    account?.publicId,
+    refetchAccount,
+    refetchBalance,
+    getTransactions,
+  ]);
 
   // ---------------------------------------------------------------------------
   // Loading State
@@ -401,14 +535,16 @@ export function WalletPageContainer(): ReactNode {
   }
 
   // ---------------------------------------------------------------------------
-  // Primary Wallet Actions
+  // Wallet Recent Activity
   // ---------------------------------------------------------------------------
-  //
-  // These are navigation-only elements.
-  //
-  // The wallet container does not perform financial operations itself.
-  // The destination feature owns the corresponding transaction flow.
-  //
+
+  const recentActivity = mapWalletActivity(
+    transactions,
+    account.publicId,
+  );
+
+  // ---------------------------------------------------------------------------
+  // Primary Wallet Actions
   // ---------------------------------------------------------------------------
 
   const balanceAction: ReactNode = (
@@ -431,13 +567,6 @@ export function WalletPageContainer(): ReactNode {
 
   // ---------------------------------------------------------------------------
   // Quick Actions
-  // ---------------------------------------------------------------------------
-  //
-  // WalletQuickActions is intentionally presentation-only.
-  //
-  // Each action receives a ready-to-render Link from this composition
-  // boundary. The quick-action component therefore remains unaware of routing.
-  //
   // ---------------------------------------------------------------------------
 
   const actions: WalletQuickAction[] = [
@@ -486,14 +615,6 @@ export function WalletPageContainer(): ReactNode {
 
   // ---------------------------------------------------------------------------
   // Activity Footer
-  // ---------------------------------------------------------------------------
-  //
-  // A transaction collection API is not currently part of the connected
-  // transaction feature, so the wallet does not fabricate recent transactions.
-  //
-  // The footer still provides the correct navigation boundary for the
-  // transaction surface.
-  //
   // ---------------------------------------------------------------------------
 
   const activityFooter: ReactNode = (
@@ -558,6 +679,7 @@ export function WalletPageContainer(): ReactNode {
             status={account.status}
             statusMessage={statusMessage}
             actions={actions}
+            recentActivity={recentActivity}
             balanceAction={balanceAction}
             activityFooter={activityFooter}
           />
