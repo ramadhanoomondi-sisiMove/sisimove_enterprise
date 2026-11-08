@@ -1,34 +1,29 @@
+
+"use client";
+
 // -----------------------------------------------------------------------------
 // sisiMove — Wallet Quick Actions
 // -----------------------------------------------------------------------------
 //
 // Compact action group for the primary wallet operations.
 //
-// Typical actions:
+// Responsibilities:
+// - Present caller-provided actions.
+// - Control responsive layout.
+// - Provide accessible grouping.
+// - Maintain consistent action spacing and alignment.
 //
-// - Add money
-// - Withdraw
-// - Payment methods
-// - Transactions
+// Non-responsibilities:
+// - Performing financial operations.
+// - Determining action availability.
+// - Fetching wallet state.
+// - Defining navigation.
+// - Applying financial business rules.
 //
-// Architectural boundary:
-//
-// This component:
-// - presents caller-provided actions;
-// - controls responsive layout;
-// - provides accessible grouping.
-//
-// This component does NOT:
-// - perform financial operations;
-// - decide whether an action is permitted;
-// - fetch wallet state;
-// - contain routing logic;
-// - know about API responses.
-//
-// Availability and behavior belong to the wallet feature/page orchestration.
+// Action appearance and behavior belong to the caller.
 // -----------------------------------------------------------------------------
 
-import type { ReactNode } from 'react';
+import type { ReactNode } from "react";
 
 // -----------------------------------------------------------------------------
 // Types
@@ -38,31 +33,31 @@ export interface WalletQuickAction {
   /**
    * Stable key used for React rendering.
    */
-  id: string;
+  readonly id: string;
 
   /**
    * User-facing action label.
    */
-  label: string;
+  readonly label: string;
 
   /**
    * Optional supporting description.
    */
-  description?: string;
+  readonly description?: string;
 
   /**
    * Caller-provided interactive element.
    *
    * Usually a Button or Link from the application UI layer.
    */
-  action: ReactNode;
+  readonly action: ReactNode;
 }
 
 export interface WalletQuickActionsProps {
   /**
    * Actions currently available to the wallet user.
    */
-  actions: WalletQuickAction[];
+  readonly actions: readonly WalletQuickAction[];
 }
 
 // -----------------------------------------------------------------------------
@@ -71,7 +66,7 @@ export interface WalletQuickActionsProps {
 
 export function WalletQuickActions({
   actions,
-}: WalletQuickActionsProps) {
+}: WalletQuickActionsProps): ReactNode {
   if (actions.length === 0) {
     return null;
   }
@@ -79,48 +74,49 @@ export function WalletQuickActions({
   return (
     <section
       aria-labelledby="wallet-quick-actions-title"
-      className="surface p-4"
+      className="surface p-4 sm:p-5"
     >
-      <div className="mb-4">
+      <header className="mb-4">
         <h2
           id="wallet-quick-actions-title"
           className="text-sm font-semibold text-[var(--foreground)]"
         >
           Quick actions
         </h2>
-      </div>
+      </header>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {actions.map((item) => (
-          <div
+          <article
             key={item.id}
             className={[
-              'rounded-[var(--radius-md)]',
-              'border',
-              'border-[var(--border)]',
-              'p-3',
-            ].join(' ')}
+              "flex min-w-0 flex-col",
+              "rounded-[var(--radius-md)]",
+              "border border-[var(--border)]",
+              "bg-[var(--surface)]",
+              "p-3 sm:p-4",
+            ].join(" ")}
           >
-            <div className="flex min-w-0 flex-col gap-3">
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-[var(--foreground)]">
-                  {item.label}
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-semibold text-[var(--foreground)]">
+                {item.label}
+              </h3>
+
+              {item.description ? (
+                <p className="mt-1 text-xs leading-5 text-[var(--foreground-muted)]">
+                  {item.description}
                 </p>
-
-                {item.description ? (
-                  <p className="mt-1 text-xs leading-5 text-[var(--foreground-muted)]">
-                    {item.description}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="w-full">
-                {item.action}
-              </div>
+              ) : null}
             </div>
-          </div>
+
+            <div className="mt-3 w-full">
+              {item.action}
+            </div>
+          </article>
         ))}
       </div>
     </section>
   );
 }
+
+export default WalletQuickActions;

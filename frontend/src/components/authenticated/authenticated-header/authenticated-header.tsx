@@ -1,21 +1,20 @@
+
 'use client';
 
 // -----------------------------------------------------------------------------
 // Path: src/components/navigation/authenticated-header.tsx
 // -----------------------------------------------------------------------------
-// sisiMove — Authenticated Header
+// sisiMove — Responsive Authenticated Header
 // -----------------------------------------------------------------------------
 //
-// Responsive authenticated header.
+// Mobile:
+// Row 1: Logo, wallet, notifications, account menu.
+// Row 2: Verification status and authenticated navigation.
 //
-// The header scales uniformly across viewport sizes:
-// - header height scales down;
-// - horizontal padding scales down;
-// - logo/navigation spacing scales down;
-// - utility spacing scales down;
-// - navigation remains shrinkable;
-// - no fixed-width element is allowed to force overflow;
-// - existing component responsibilities and behavior are unchanged.
+// Desktop:
+// Logo, authenticated navigation, wallet, notifications, account menu.
+//
+// The header does not fetch wallet or account data.
 //
 // -----------------------------------------------------------------------------
 
@@ -25,118 +24,156 @@ import { AuthenticatedAccountMenu } from './authenticated-account-menu';
 import { AuthenticatedLogo } from './authenticated-logo';
 import { AuthenticatedNavigation } from './authenticated-navigation';
 import { AuthenticatedNotifications } from './authenticated-notifications';
+import { AuthenticatedWalletBalance } from './authenticated-wallet-balance';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Props
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export interface AuthenticatedHeaderProps {
-  /**
-   * Public traveller handle displayed by the authenticated account menu.
-   */
   readonly travellerHandle: string;
 
-  /**
-   * Already-resolved public Asset URL for the traveller avatar.
-   *
-   * The header does not resolve or fetch the asset itself.
-   */
   readonly travellerAvatarUrl?: string | null;
 
-  /**
-   * Already-resolved verification level for the authenticated Identity.
-   *
-   * The header does not fetch Verification or determine authorization.
-   */
   readonly verificationLevel: VerificationLevel;
+
+  /**
+   * Available wallet balance in integer minor units.
+   *
+   * Null means loading or unavailable.
+   */
+  readonly availableAmount: number | null;
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Component
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export function AuthenticatedHeader({
   travellerHandle,
   travellerAvatarUrl,
   verificationLevel,
+  availableAmount,
 }: AuthenticatedHeaderProps) {
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur">
-      <div
-        className="
-          mx-auto
+    <header className="
+      sticky
+      top-0
+      z-40
+      w-full
+      border-b
+      border-[var(--border)]
+      bg-[var(--surface)]/95
+      backdrop-blur
+    ">
+
+      {/* ================================================================= */}
+      {/* Primary Header Row                                                 */}
+      {/* ================================================================= */}
+
+      <div className="
+        mx-auto
+        flex
+        min-h-14
+        w-full
+        max-w-7xl
+        min-w-0
+        items-center
+        justify-between
+        gap-2
+        px-3
+        sm:px-4
+        lg:min-h-16
+        lg:px-6
+      ">
+
+        {/* Logo */}
+
+        <div className="min-w-0 shrink-0">
+          <AuthenticatedLogo />
+        </div>
+
+        {/* Desktop Navigation */}
+
+        <div className="
+          hidden
+          min-w-0
+          flex-1
+          items-center
+          justify-center
+          overflow-hidden
+          lg:flex
+        ">
+          <AuthenticatedNavigation
+            verificationLevel={verificationLevel}
+          />
+        </div>
+
+        {/* Authenticated Utilities */}
+
+        <div className="
           flex
-          min-h-[clamp(2.75rem,7vw,4rem)]
+          min-w-0
+          shrink-0
+          items-center
+          justify-end
+          gap-1
+          sm:gap-2
+        ">
+
+          {/* Wallet Balance */}
+
+          <AuthenticatedWalletBalance
+            availableAmount={availableAmount}
+          />
+
+          {/* Notifications */}
+
+          <AuthenticatedNotifications />
+
+          {/* Account Menu */}
+
+          <AuthenticatedAccountMenu
+            travellerHandle={travellerHandle}
+            avatarSrc={travellerAvatarUrl}
+          />
+
+        </div>
+      </div>
+
+      {/* ================================================================= */}
+      {/* Mobile Navigation Row                                              */}
+      {/* ================================================================= */}
+
+      <div className="
+        w-full
+        border-t
+        border-[var(--border-subtle)]
+        px-3
+        py-2
+        sm:px-4
+        lg:hidden
+      ">
+        <div className="
+          mx-auto
           w-full
           max-w-7xl
           min-w-0
-          items-center
-          gap-[clamp(0.25rem,1vw,0.75rem)]
-          px-[clamp(0.5rem,2.5vw,2rem)]
-        "
-      >
-        {/* ----------------------------------------------------------------- */}
-        {/* Primary authenticated navigation                                 */}
-        {/* ----------------------------------------------------------------- */}
-
-        <div
-          className="
-            flex
-            min-w-0
-            flex-1
-            items-center
-            gap-[clamp(0.35rem,1.5vw,1.5rem)]
-            overflow-hidden
-          "
-        >
-          <div className="min-w-0 shrink">
-            <AuthenticatedLogo />
-          </div>
-
-          <div
-            className="
-              min-w-0
-              flex-1
-              overflow-hidden
-            "
-          >
+          overflow-x-auto
+          overscroll-x-contain
+          [scrollbar-width:none]
+          [&::-webkit-scrollbar]:hidden
+        ">
+          <div className="flex w-max min-w-full items-center">
             <AuthenticatedNavigation
               verificationLevel={verificationLevel}
             />
           </div>
         </div>
-
-        {/* ----------------------------------------------------------------- */}
-        {/* Authenticated utilities                                           */}
-        {/* ----------------------------------------------------------------- */}
-
-        <div
-          className="
-            flex
-            min-w-0
-            shrink
-            items-center
-            gap-[clamp(0.15rem,0.6vw,0.5rem)]
-          "
-        >
-          {/*
-           * Notification behavior belongs to the notification feature.
-           */}
-          <div className="min-w-0 shrink">
-            <AuthenticatedNotifications />
-          </div>
-
-          {/*
-           * Account behavior belongs to the authenticated account menu.
-           */}
-          <div className="min-w-0 shrink">
-            <AuthenticatedAccountMenu
-              travellerHandle={travellerHandle}
-              avatarSrc={travellerAvatarUrl}
-            />
-          </div>
-        </div>
       </div>
+
     </header>
   );
 }
+
+export default AuthenticatedHeader;

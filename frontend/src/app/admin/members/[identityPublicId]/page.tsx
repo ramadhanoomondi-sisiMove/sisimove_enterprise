@@ -8,10 +8,12 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-import { Container } from "@/components/ui/container";
-import { ErrorState } from "@/components/ui/error-state";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
+import {
+  Container,
+  ErrorState,
+  Skeleton,
+  Button,
+} from "@/components/ui";
 
 import {
   MemberDetailHeader,
@@ -24,6 +26,7 @@ import {
   MemberSecurityPanel,
   MemberJourneyPanel,
   MemberBookingPanel,
+  MemberFinancePanel,
   MEMBER_DETAIL_SECTIONS,
   type MemberDetailSection,
 } from "@/components/admin/members/details";
@@ -587,6 +590,10 @@ export default function AdminMemberDetailPage(): ReactNode {
               </div>
             )}
           </div>
+        ) : activeSection === "finance" ? (
+          <MemberFinancePanel
+            identityPublicId={identityPublicId}
+          />
         ) : (
           <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] p-6">
             <h2 className="text-base font-semibold text-[var(--foreground)]">

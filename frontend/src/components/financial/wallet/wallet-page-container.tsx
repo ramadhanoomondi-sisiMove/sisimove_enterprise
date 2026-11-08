@@ -104,7 +104,7 @@ const primaryActionClassName = [
   'px-4',
   'text-sm',
   'font-semibold',
-  'text-[var(--brand-foreground)]',
+  '!text-white',
   'shadow-[var(--shadow-sm)]',
   'transition',
   'hover:bg-[var(--brand-hover)]',
@@ -115,6 +115,7 @@ const primaryActionClassName = [
   'focus-visible:ring-offset-2',
   'sm:w-auto',
 ].join(' ');
+
 
 const secondaryActionClassName = [
   'inline-flex',

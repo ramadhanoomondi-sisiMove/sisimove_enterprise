@@ -63,14 +63,19 @@ function requireString(value: unknown, field: string): string {
   return value;
 }
 
+/**
+ * Validates an integer monetary amount in minor units.
+ *
+ * Amounts are preserved exactly as returned by the backend.
+ * No currency conversion or scaling occurs here.
+ */
 function requireAmount(value: unknown, field: string): number {
   if (
     typeof value !== 'number' ||
-    !Number.isSafeInteger(value) ||
-    value < 0
+    !Number.isSafeInteger(value)
   ) {
     throw new Error(
-      `Invalid financial transaction response: ${field} must be a non-negative safe integer.`,
+      `Invalid financial transaction response: ${field} must be a safe integer in minor units.`,
     );
   }
 

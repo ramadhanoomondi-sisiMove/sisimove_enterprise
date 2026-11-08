@@ -1,20 +1,19 @@
-// -----------------------------------------------------------------------------
-// sisiMove — Admin Member Detail Navigation
-// -----------------------------------------------------------------------------
-//
-// Responsibilities:
-// - Display navigation between member detail sections.
-// - Support controlled active-section selection.
-// - Provide accessible tab semantics.
-// - Allow the parent to control which section is displayed.
-//
-// Non-responsibilities:
-// - Fetching member data.
-// - Managing API requests.
-// - Enforcing administrative permissions.
-// - Rendering the detail panels themselves.
-//
-// -----------------------------------------------------------------------------
+
+/**
+ * sisiMove — Admin Member Detail Navigation
+ *
+ * Responsibilities:
+ * - Display navigation between member detail sections.
+ * - Support controlled active-section selection.
+ * - Provide accessible tab semantics.
+ * - Allow the parent to control which section is displayed.
+ *
+ * Non-responsibilities:
+ * - Fetching member data.
+ * - Managing API requests.
+ * - Enforcing administrative permissions.
+ * - Rendering the detail panels themselves.
+ */
 
 import type { ReactNode } from 'react';
 
@@ -31,6 +30,7 @@ export const MEMBER_DETAIL_SECTIONS = [
   { id: 'trust', label: 'Trust' },
   { id: 'roles', label: 'Roles & access' },
   { id: 'security', label: 'Security' },
+  { id: 'finance', label: 'Finance' },
   { id: 'journeys', label: 'Journeys' },
   { id: 'bookings', label: 'Bookings' },
   { id: 'activity', label: 'Activity' },
@@ -56,9 +56,15 @@ export interface MemberDetailNavigationProps {
   readonly className?: string;
 
   /**
-   * Optional stable ID used to associate the navigation with its tab panel.
+   * Optional stable ID used for the tab list.
    */
   readonly id?: string;
+
+  /**
+   * Optional ID of the currently rendered tab panel.
+   * Must match the ID assigned to the active panel by the parent.
+   */
+  readonly panelId?: string;
 }
 
 // -----------------------------------------------------------------------------
@@ -70,7 +76,11 @@ export function MemberDetailNavigation({
   onSectionChange,
   className,
   id = 'member-detail-navigation',
+  panelId,
 }: MemberDetailNavigationProps): ReactNode {
+  const activePanelId =
+    panelId ?? `${id}-panel-${activeSection}`;
+
   return (
     <nav
       aria-label="Member detail sections"
@@ -98,7 +108,11 @@ export function MemberDetailNavigation({
               type="button"
               role="tab"
               aria-selected={isActive}
-              aria-controls={`${id}-panel-${section.id}`}
+              aria-controls={
+                isActive
+                  ? activePanelId
+                  : `${id}-panel-${section.id}`
+              }
               tabIndex={isActive ? 0 : -1}
               onClick={() => onSectionChange(section.id)}
               className={cn(

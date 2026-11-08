@@ -10,7 +10,7 @@ export interface AdminFinancialTransactionFilters {
 
   type?: AdminFinancialTransactionType | 'ALL';
 
-  currency?: string | 'ALL';
+  currency?: string;
 
   sourceAccountPublicId?: string;
 

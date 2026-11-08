@@ -36,7 +36,7 @@ import {
 // =============================================================================
 
 export interface TransactionDetailsPageContainerProps {
-  readonly transactionPublicId: string;
+  readonly transactionPublicId?: string | null;
 }
 
 // =============================================================================
@@ -238,7 +238,9 @@ export function TransactionDetailsPageContainer({
   transactionPublicId,
 }: TransactionDetailsPageContainerProps): ReactNode {
   const normalizedTransactionPublicId =
-    transactionPublicId.trim();
+    typeof transactionPublicId === "string"
+      ? transactionPublicId.trim()
+      : "";
 
   // ---------------------------------------------------------------------------
   // Transaction retrieval hook

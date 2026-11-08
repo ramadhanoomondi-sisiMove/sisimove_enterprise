@@ -3,12 +3,24 @@
 // -----------------------------------------------------------------------------
 //
 // Responsibilities:
-// - Format a payment amount consistently using its currency.
-// - Support explicit minor-unit conversion when required.
-// - Avoid introducing a separate currency-formatting primitive.
+// - Format payment amounts consistently with financial transactions.
+// - Use integer minor units by default.
+// - Support major units explicitly when required.
+// - Reuse shared currency formatters.
+//
+// Monetary convention:
+// API amounts are integer minor units.
+//
+// Example:
+// 1260 minor units → KES 12.60
 // -----------------------------------------------------------------------------
 
 import type { HTMLAttributes } from 'react';
+
+import {
+  formatCurrency,
+  formatCurrencyMinorUnits,
+} from '@/foundation/formatters/currency';
 
 // -----------------------------------------------------------------------------
 // Types
@@ -18,47 +30,35 @@ export interface PaymentAmountProps
   extends Omit<HTMLAttributes<HTMLSpanElement>, 'children'> {
   amount: number;
   currency: string;
+  /** Set false only when the supplied amount is already in major units. */
   minorUnits?: boolean;
-  locale?: string;
-  maximumFractionDigits?: number;
 }
 
 // -----------------------------------------------------------------------------
 // Formatting
 // -----------------------------------------------------------------------------
 
-function formatPaymentAmount({
-  amount,
-  currency,
-  minorUnits,
-  locale,
-  maximumFractionDigits,
-}: Pick<
-  PaymentAmountProps,
-  | 'amount'
-  | 'currency'
-  | 'minorUnits'
-  | 'locale'
-  | 'maximumFractionDigits'
->): string {
+function formatPaymentAmount(
+  amount: number,
+  currency: string,
+  minorUnits: boolean,
+): string {
   const normalizedCurrency = currency.trim().toUpperCase();
 
-  if (!Number.isFinite(amount) || !normalizedCurrency) {
+  if (!normalizedCurrency || !Number.isFinite(amount)) {
     return '—';
   }
 
-  const displayAmount = minorUnits ? amount / 100 : amount;
+  if (minorUnits && !Number.isSafeInteger(amount)) {
+    return '—';
+  }
 
   try {
-    return new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency: normalizedCurrency,
-      ...(maximumFractionDigits !== undefined
-        ? { maximumFractionDigits }
-        : {}),
-    }).format(displayAmount);
+    return minorUnits
+      ? formatCurrencyMinorUnits(amount, normalizedCurrency)
+      : formatCurrency(amount, normalizedCurrency);
   } catch {
-    return `${normalizedCurrency} ${displayAmount.toLocaleString(locale)}`;
+    return '—';
   }
 }
 
@@ -69,9 +69,7 @@ function formatPaymentAmount({
 export function PaymentAmount({
   amount,
   currency,
-  minorUnits = false,
-  locale,
-  maximumFractionDigits,
+  minorUnits = true,
   className,
   ...props
 }: PaymentAmountProps) {
@@ -81,13 +79,9 @@ export function PaymentAmount({
       className={className}
       dir="auto"
     >
-      {formatPaymentAmount({
-        amount,
-        currency,
-        minorUnits,
-        locale,
-        maximumFractionDigits,
-      })}
+      {formatPaymentAmount(amount, currency, minorUnits)}
     </span>
   );
 }
+
+export default PaymentAmount;

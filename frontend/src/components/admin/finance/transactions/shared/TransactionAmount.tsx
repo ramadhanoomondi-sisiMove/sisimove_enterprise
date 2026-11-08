@@ -1,45 +1,60 @@
-
 import { cn } from '@/foundation/utils/cn';
+import {
+  formatCurrencyMinorUnits,
+} from '@/foundation/formatters/currency';
 
 export interface TransactionAmountProps {
-  /** Amount returned by the API in major currency units. */
+  /** Amount returned by the API in integer minor currency units. */
   amount: number;
   currency: string;
   className?: string;
-  locale?: string;
 }
 
+/**
+ * Formats a transaction amount using the shared minor-unit formatter.
+ *
+ * API amounts are never converted or modified here.
+ *
+ * Example:
+ * KES 10000 minor units → KES 100.00
+ */
 export function formatTransactionAmount(
   amount: number,
   currency: string,
-  locale = 'en-KE',
 ): string {
   const normalizedCurrency = currency.trim().toUpperCase();
 
-  if (!Number.isFinite(amount) || !normalizedCurrency) {
+  if (
+    !Number.isSafeInteger(amount) ||
+    !normalizedCurrency
+  ) {
     return `${amount} ${normalizedCurrency}`;
   }
 
   try {
-    return new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency: normalizedCurrency,
-    }).format(amount);
+    return formatCurrencyMinorUnits(
+      amount,
+      normalizedCurrency,
+    );
   } catch {
     return `${amount} ${normalizedCurrency}`;
   }
 }
 
+// -----------------------------------------------------------------------------
+// Transaction Amount Component
+// -----------------------------------------------------------------------------
+
 export function TransactionAmount({
   amount,
   currency,
   className,
-  locale = 'en-KE',
 }: TransactionAmountProps) {
+  const normalizedCurrency = currency.trim().toUpperCase();
+
   const formattedAmount = formatTransactionAmount(
     amount,
-    currency,
-    locale,
+    normalizedCurrency,
   );
 
   return (
@@ -48,7 +63,7 @@ export function TransactionAmount({
         'whitespace-nowrap tabular-nums font-medium text-[var(--foreground)]',
         className,
       )}
-      title={`${amount} ${currency}`}
+      title={`${amount} ${normalizedCurrency} (minor units)`}
     >
       {formattedAmount}
     </span>

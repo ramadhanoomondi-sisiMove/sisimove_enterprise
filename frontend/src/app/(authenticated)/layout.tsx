@@ -1,3 +1,6 @@
+
+'use client';
+
 // -----------------------------------------------------------------------------
 // sisiMove — Authenticated Route Layout
 // -----------------------------------------------------------------------------
@@ -8,113 +11,35 @@
 // - resolve the current Traveller Profile;
 // - resolve the Traveller Profile's public avatar Asset reference;
 // - resolve the current Identity Verification aggregate;
-// - supply presentation-ready traveller data and verification capability
-//   to AuthenticatedShell.
+// - resolve the authenticated member's Financial Account;
+// - resolve the Financial Account's available balance;
+// - supply presentation-ready data to AuthenticatedShell.
 //
 // Non-responsibilities:
 // - authentication state management;
 // - session management;
 // - route authorization;
 // - verification business logic;
-// - notification fetching;
-// - notification state management;
-// - marketplace data fetching;
+// - financial calculations;
+// - balance mutation;
 // - rendering application pages.
 //
-// Data flow:
-//
-//     useCurrentTravellerProfile()
-//              │
-//              ├── handle
-//              │
-//              └── avatarAssetPublicId
-//                         │
-//                         ▼
-//                  usePublicAsset()
-//                         │
-//                         └── avatar.url
-//
-//     useVerification()
-//              │
-//              └── verification.level
-//                         │
-//                         ▼
-//                  AuthenticatedShell
-//                         │
-//                         ▼
-//                  AuthenticatedHeader
-//                         │
-//                         ▼
-//              AuthenticatedNavigation
-//
-// Verification presentation:
-//
-//     NONE
-//       → Get Verified
-//
-//     MEMBER
-//       → My Bookings
-//
-//     DRIVER
-//       → My Journeys
-//       → My Bookings
-//
-// Backend authorization remains authoritative.
-// Navigation visibility is presentation only.
-//
 // -----------------------------------------------------------------------------
 
-"use client";
+import type { ReactNode } from 'react';
 
-import type { ReactNode } from "react";
+import { AuthenticatedShell } from '@/components/authenticated';
 
-// -----------------------------------------------------------------------------
-// Authenticated Application
-// -----------------------------------------------------------------------------
+import { useCurrentTravellerProfile } from '@/features/traveller-profile';
 
-import { AuthenticatedShell } from "@/components/authenticated";
+import { useVerification } from '@/features/verification/hooks';
 
-// -----------------------------------------------------------------------------
-// Traveller Profile
-// -----------------------------------------------------------------------------
+import { usePublicAsset } from '@/features/assets';
 
-import { useCurrentTravellerProfile } from "@/features/traveller-profile";
-
-// -----------------------------------------------------------------------------
-// Verification
-// -----------------------------------------------------------------------------
-//
-// The Verification feature owns retrieval of the current authenticated
-// Identity's Verification aggregate.
-//
-//     GET /verifications/me
-//              ↓
-//       useVerification()
-//              ↓
-//       verification.level
-//
-// The layout does not calculate verification permissions.
-// It only passes the already-resolved VerificationLevel to the shell.
-// -----------------------------------------------------------------------------
-
-import { useVerification } from "@/features/verification/hooks";
-
-// -----------------------------------------------------------------------------
-// Assets
-// -----------------------------------------------------------------------------
-//
-// The Asset feature owns public Asset URL resolution.
-//
-//     avatarAssetPublicId
-//             ↓
-//     public Asset reference
-//             ↓
-//     avatar.url
-//
-// The layout never constructs an Asset URL itself.
-// -----------------------------------------------------------------------------
-
-import { usePublicAsset } from "@/features/assets";
+import {
+  useMyFinancialAccount,
+  useMyFinancialBalance,
+} from '@/features/financial-account';
 
 // =============================================================================
 // Props
@@ -137,13 +62,6 @@ export default function AuthenticatedLayout({
   // ---------------------------------------------------------------------------
   // Current Traveller Profile
   // ---------------------------------------------------------------------------
-  //
-  // The authenticated route boundary resolves the current Traveller Profile.
-  //
-  // Header and shell components receive presentation-ready values and remain
-  // independent from Traveller Profile data access.
-  //
-  // ---------------------------------------------------------------------------
 
   const {
     data: travellerProfile,
@@ -153,17 +71,6 @@ export default function AuthenticatedLayout({
 
   // ---------------------------------------------------------------------------
   // Current Verification
-  // ---------------------------------------------------------------------------
-  //
-  // The Verification hook loads:
-  //
-  //     GET /verifications/me
-  //
-  // The resulting `verification.level` is passed unchanged to
-  // AuthenticatedShell.
-  //
-  // The layout does not determine authorization.
-  //
   // ---------------------------------------------------------------------------
 
   const {
@@ -175,17 +82,6 @@ export default function AuthenticatedLayout({
   // ---------------------------------------------------------------------------
   // Avatar Asset Reference
   // ---------------------------------------------------------------------------
-  //
-  // TravellerProfile owns only the opaque Asset public ID.
-  //
-  // The Asset feature owns resolution of:
-  //
-  //     avatarAssetPublicId → public delivery URL
-  //
-  // `null` is supplied while the profile is unavailable. The public Asset hook
-  // is responsible for treating a null identifier as a disabled query.
-  //
-  // ---------------------------------------------------------------------------
 
   const avatarAssetPublicId =
     travellerProfile?.avatarAssetPublicId ?? null;
@@ -195,18 +91,34 @@ export default function AuthenticatedLayout({
   } = usePublicAsset(avatarAssetPublicId);
 
   // ---------------------------------------------------------------------------
+  // Current Financial Account
+  // ---------------------------------------------------------------------------
+
+  const {
+    data: financialAccount,
+    isLoading: accountLoading,
+    isError: accountIsError,
+  } = useMyFinancialAccount();
+
+  // ---------------------------------------------------------------------------
+  // Current Financial Account Balance
+  // ---------------------------------------------------------------------------
+
+  const {
+    data: financialBalance,
+    isLoading: balanceLoading,
+    isError: balanceIsError,
+  } = useMyFinancialBalance(
+    financialAccount?.publicId,
+  );
+
+  // ---------------------------------------------------------------------------
   // Current Traveller Profile Loading
   // ---------------------------------------------------------------------------
 
   if (profileLoading) {
     return (
-      <div
-        className={[
-          "min-h-screen",
-          "bg-[var(--background)]",
-          "text-[var(--foreground)]",
-        ].join(" ")}
-      >
+      <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
         <div
           className="flex min-h-screen items-center justify-center px-4"
           aria-busy="true"
@@ -223,24 +135,10 @@ export default function AuthenticatedLayout({
   // ---------------------------------------------------------------------------
   // Current Verification Loading
   // ---------------------------------------------------------------------------
-  //
-  // Navigation visibility depends on the resolved VerificationLevel.
-  //
-  // Do not render authenticated navigation before Verification has loaded.
-  // This prevents the application from briefly presenting the wrong
-  // verification-level navigation.
-  //
-  // ---------------------------------------------------------------------------
 
   if (verificationLoading) {
     return (
-      <div
-        className={[
-          "min-h-screen",
-          "bg-[var(--background)]",
-          "text-[var(--foreground)]",
-        ].join(" ")}
-      >
+      <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
         <div
           className="flex min-h-screen items-center justify-center px-4"
           aria-busy="true"
@@ -257,26 +155,12 @@ export default function AuthenticatedLayout({
   // ---------------------------------------------------------------------------
   // Current Traveller Profile Failure
   // ---------------------------------------------------------------------------
-  //
-  // The authenticated shell requires a Traveller Profile because the header
-  // account boundary requires the public traveller handle.
-  //
-  // ---------------------------------------------------------------------------
 
   if (profileIsError || travellerProfile == null) {
     return (
-      <div
-        className={[
-          "min-h-screen",
-          "bg-[var(--background)]",
-          "text-[var(--foreground)]",
-        ].join(" ")}
-      >
+      <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
         <div className="flex min-h-screen items-center justify-center px-4">
-          <div
-            className="max-w-md text-center"
-            role="alert"
-          >
+          <div className="max-w-md text-center" role="alert">
             <h1 className="text-lg font-semibold text-[var(--foreground)]">
               We could not load your profile
             </h1>
@@ -293,29 +177,12 @@ export default function AuthenticatedLayout({
   // ---------------------------------------------------------------------------
   // Current Verification Failure
   // ---------------------------------------------------------------------------
-  //
-  // A missing Verification aggregate is treated as an error rather than
-  // silently converting the user to NONE.
-  //
-  // Registration is expected to create the Verification aggregate, so a
-  // missing result should not be interpreted as an unverified user.
-  //
-  // ---------------------------------------------------------------------------
 
   if (verificationError || verification == null) {
     return (
-      <div
-        className={[
-          "min-h-screen",
-          "bg-[var(--background)]",
-          "text-[var(--foreground)]",
-        ].join(" ")}
-      >
+      <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
         <div className="flex min-h-screen items-center justify-center px-4">
-          <div
-            className="max-w-md text-center"
-            role="alert"
-          >
+          <div className="max-w-md text-center" role="alert">
             <h1 className="text-lg font-semibold text-[var(--foreground)]">
               We could not load your verification status
             </h1>
@@ -331,28 +198,26 @@ export default function AuthenticatedLayout({
   }
 
   // ---------------------------------------------------------------------------
-  // Authenticated Application Shell
+  // Financial Account and Balance State
   // ---------------------------------------------------------------------------
+
+  // Do not interpret a missing or failed balance as zero.
   //
-  // Avatar URL resolution is intentionally non-blocking.
-  //
-  // If the Asset request is still loading or fails, `null` is passed to the
-  // account menu and the shared Avatar primitive can render its initials
-  // fallback.
-  //
-  // Verification level is now passed from the actual Verification aggregate.
-  //
-  //     verification.level
-  //             ↓
-  //     AuthenticatedShell
-  //             ↓
-  //     AuthenticatedHeader
-  //             ↓
-  //     AuthenticatedNavigation
-  //
-  // Notification state is intentionally absent from this composition boundary.
-  // The notification feature independently owns that server state.
-  //
+  // The header receives null until the actual available balance is resolved.
+  // Its presentation component must support null as a loading/unavailable
+  // state rather than displaying a misleading zero balance.
+
+  const availableAmount =
+    !accountLoading &&
+    !accountIsError &&
+    !balanceLoading &&
+    !balanceIsError &&
+    financialBalance != null
+      ? financialBalance.availableAmount
+      : null;
+
+  // ---------------------------------------------------------------------------
+  // Authenticated Application Shell
   // ---------------------------------------------------------------------------
 
   return (
@@ -360,6 +225,7 @@ export default function AuthenticatedLayout({
       travellerHandle={travellerProfile.handle}
       travellerAvatarUrl={avatarAsset?.url ?? null}
       verificationLevel={verification.level}
+      availableAmount={availableAmount}
     >
       {children}
     </AuthenticatedShell>

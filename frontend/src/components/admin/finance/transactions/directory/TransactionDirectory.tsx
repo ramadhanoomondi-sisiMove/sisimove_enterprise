@@ -1,6 +1,5 @@
 'use client';
 
-import { useMemo } from 'react';
 import { FilterX } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -44,23 +43,21 @@ export function TransactionDirectory({
   onViewTransaction,
   containerSize = '2xl',
 }: TransactionDirectoryProps) {
-  const isFiltered = useMemo(
-    () =>
-      Boolean(
-        filters.search?.trim() ||
-        (filters.status && filters.status !== 'ALL') ||
-        (filters.type && filters.type !== 'ALL') ||
-        (filters.currency && filters.currency !== 'ALL') ||
-        filters.sourceAccountPublicId?.trim() ||
-        filters.destinationAccountPublicId?.trim() ||
-        filters.reference?.trim() ||
-        filters.createdFrom ||
-        filters.createdTo
-      ),
-    [filters],
+  const isFiltered = Boolean(
+    filters.search?.trim() ||
+      (filters.status && filters.status !== 'ALL') ||
+      (filters.type && filters.type !== 'ALL') ||
+      (filters.currency && filters.currency !== 'ALL') ||
+      filters.sourceAccountPublicId?.trim() ||
+      filters.destinationAccountPublicId?.trim() ||
+      filters.reference?.trim() ||
+      filters.createdFrom ||
+      filters.createdTo,
   );
 
-  const patchFilters = (patch: Partial<AdminFinancialTransactionFilters>) => {
+  const patchFilters = (
+    patch: Partial<AdminFinancialTransactionFilters>,
+  ) => {
     onFiltersChange({
       ...filters,
       ...patch,
@@ -75,26 +72,43 @@ export function TransactionDirectory({
   };
 
   const changePage = (page: number) => {
-    onFiltersChange({ ...filters, page });
+    onFiltersChange({
+      ...filters,
+      page,
+    });
   };
 
   const changePageSize = (pageSize: number) => {
-    onFiltersChange({ ...filters, page: 1, pageSize });
+    onFiltersChange({
+      ...filters,
+      page: 1,
+      pageSize,
+    });
   };
 
-  const changeSort = (sortBy: NonNullable<AdminFinancialTransactionFilters['sortBy']>) => {
-    const sortDirection =
-      filters.sortBy === sortBy && filters.sortDirection === 'desc'
-        ? 'asc'
-        : 'desc';
+  const changeSort = (
+    sortBy: NonNullable<AdminFinancialTransactionFilters['sortBy']>,
+  ) => {
+    const isSameSort = filters.sortBy === sortBy;
 
-    onFiltersChange({ ...filters, sortBy, sortDirection, page: 1 });
+    const sortDirection =
+      isSameSort && filters.sortDirection === 'desc' ? 'asc' : 'desc';
+
+    onFiltersChange({
+      ...filters,
+      sortBy,
+      sortDirection,
+      page: 1,
+    });
   };
 
   return (
     <Container size={containerSize} className="py-6 sm:py-8">
       <div className="space-y-6">
-        <TransactionDirectoryHeader resultCount={totalItems} isFiltered={isFiltered} />
+        <TransactionDirectoryHeader
+          resultCount={totalItems}
+          isFiltered={isFiltered}
+        />
 
         <div className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -103,6 +117,7 @@ export function TransactionDirectory({
               onChange={(search) => patchFilters({ search })}
               disabled={isLoading}
             />
+
             {isFiltered && (
               <Button
                 type="button"

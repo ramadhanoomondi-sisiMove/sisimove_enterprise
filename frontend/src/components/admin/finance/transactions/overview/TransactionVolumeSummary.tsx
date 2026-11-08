@@ -1,5 +1,4 @@
-
-import { ArrowUpRight, Coins } from 'lucide-react';
+import { Coins } from 'lucide-react';
 
 import { cn } from '@/foundation/utils/cn';
 
@@ -37,10 +36,10 @@ export function TransactionVolumeSummary({
             id="transaction-volume-summary-title"
             className="text-base font-semibold text-[var(--foreground)]"
           >
-            Transaction volume
+            Gross transaction volume
           </h2>
           <p className="mt-1 text-sm text-[var(--foreground-muted)]">
-            Amounts grouped by currency
+            Total transaction amounts grouped by currency
           </p>
         </div>
 
@@ -92,11 +91,6 @@ export function TransactionVolumeSummary({
                 <span className="text-base font-semibold tabular-nums text-[var(--foreground)]">
                   {formatTransactionAmount(item.amount, item.currency)}
                 </span>
-
-                <ArrowUpRight
-                  aria-hidden="true"
-                  className="h-4 w-4 shrink-0 text-[var(--foreground-subtle)]"
-                />
               </div>
             </div>
           ))}

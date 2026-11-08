@@ -1,4 +1,3 @@
-
 // -----------------------------------------------------------------------------
 // sisiMove Admin — Financial Transactions API
 // -----------------------------------------------------------------------------
@@ -28,6 +27,11 @@
 // This adapter does not access authSessionStorage directly.
 // Authentication is delegated to AuthenticatedApiClient.
 // HTTP execution is delegated to the foundation ApiClient.
+//
+// Monetary contract:
+// - Amounts are supplied in integer minor units.
+// - No currency conversion or scaling occurs in this adapter.
+// - Response amounts are mapped without changing their values.
 //
 // -----------------------------------------------------------------------------
 
@@ -81,6 +85,11 @@ import type {
  * Request body accepted by the create endpoint.
  *
  * Keep this aligned with CreateFinancialTransactionDto on the backend.
+ *
+ * Amount must represent an integer in the currency's minor units.
+ * Example:
+ * - KES 1.00  = 100
+ * - KES 12.60 = 1260
  */
 export interface CreateAdminFinancialTransactionPayload {
   type: string;
@@ -118,6 +127,13 @@ export class AdminFinancialTransactionsApi {
    * Retrieves all Financial Transactions.
    *
    * GET /financial-transactions
+   *
+   * Requires:
+   * - JWT authentication
+   * - admin:read permission
+   *
+   * Note:
+   * The current backend endpoint returns an unpaginated array.
    */
   public async getAll(): Promise<AdminFinancialTransaction[]> {
     const response =
@@ -136,6 +152,10 @@ export class AdminFinancialTransactionsApi {
    * Retrieves one Financial Transaction by its public ID.
    *
    * GET /financial-transactions/:transactionPublicId
+   *
+   * Requires:
+   * - JWT authentication
+   * - admin:read permission
    */
   public async getByPublicId(
     transactionPublicId: string,
@@ -158,6 +178,10 @@ export class AdminFinancialTransactionsApi {
    * Creates a Financial Transaction.
    *
    * POST /financial-transactions
+   *
+   * Requires:
+   * - JWT authentication
+   * - financial-transaction:create permission
    */
   public async create(
     payload: CreateAdminFinancialTransactionPayload,
@@ -181,6 +205,10 @@ export class AdminFinancialTransactionsApi {
    * Completes a pending Financial Transaction.
    *
    * POST /financial-transactions/:transactionPublicId/complete
+   *
+   * Requires:
+   * - JWT authentication
+   * - financial-transaction:complete permission
    */
   public async complete(
     transactionPublicId: string,
@@ -201,6 +229,10 @@ export class AdminFinancialTransactionsApi {
    * Marks a Financial Transaction as failed.
    *
    * POST /financial-transactions/:transactionPublicId/fail
+   *
+   * Requires:
+   * - JWT authentication
+   * - financial-transaction:fail permission
    */
   public async fail(
     transactionPublicId: string,
@@ -221,6 +253,10 @@ export class AdminFinancialTransactionsApi {
    * Reverses a Financial Transaction.
    *
    * POST /financial-transactions/:transactionPublicId/reverse
+   *
+   * Requires:
+   * - JWT authentication
+   * - financial-transaction:reverse permission
    */
   public async reverse(
     transactionPublicId: string,
@@ -241,6 +277,10 @@ export class AdminFinancialTransactionsApi {
    * Cancels a Financial Transaction.
    *
    * POST /financial-transactions/:transactionPublicId/cancel
+   *
+   * Requires:
+   * - JWT authentication
+   * - financial-transaction:cancel permission
    */
   public async cancel(
     transactionPublicId: string,

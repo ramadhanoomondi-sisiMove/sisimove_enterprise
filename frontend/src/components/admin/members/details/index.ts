@@ -138,3 +138,5 @@ export {
 export {
   MemberStatusChangeDialog,
 } from "./member-status-change-dialog";
+
+export * from "./member-finance-panel";
