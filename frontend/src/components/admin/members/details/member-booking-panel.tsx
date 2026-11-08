@@ -1,11 +1,12 @@
+
 "use client";
 
 import type { ReactNode } from "react";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge, Button } from "@/components/ui";
 import { MemberDataSection } from "@/components/admin/members/primitives/member-data-section";
 import { cn } from "@/foundation/utils/cn";
+import { formatCurrencyMinorUnits } from "@/foundation/formatters/currency";
 import { useMemberBookings } from "@/features/admin/members/hooks/use-member-bookings";
 import type { MemberBookingApiResponse } from "@/features/admin/members/api/member-bookings.api";
 
@@ -27,6 +28,10 @@ function formatDate(value?: string | null): string {
   }).format(date);
 }
 
+/**
+ * Booking pricing and payment amounts are stored in integer minor units.
+ * Convert them only for display; never modify the underlying values.
+ */
 function formatMoney(
   amount?: number | null,
   currency?: string | null,
@@ -38,15 +43,9 @@ function formatMoney(
   const normalizedCurrency = currency?.trim().toUpperCase() || "KES";
 
   try {
-    return new Intl.NumberFormat("en-KE", {
-      style: "currency",
-      currency: normalizedCurrency,
-      maximumFractionDigits: 2,
-    }).format(amount);
+    return formatCurrencyMinorUnits(amount, normalizedCurrency);
   } catch {
-    return `${normalizedCurrency} ${amount.toLocaleString("en-KE", {
-      maximumFractionDigits: 2,
-    })}`;
+    return `${normalizedCurrency} ${amount.toLocaleString("en-KE")}`;
   }
 }
 
@@ -106,6 +105,7 @@ function Detail({
       <p className="text-xs font-medium text-[var(--foreground-muted)]">
         {label}
       </p>
+
       <div className="mt-1 break-words text-sm text-[var(--foreground)]">
         {hasValue ? value : "—"}
       </div>
@@ -137,6 +137,7 @@ function BookingCard({
           <p className="text-xs font-medium text-[var(--foreground-muted)]">
             Booking reference
           </p>
+
           <p className="mt-1 break-all text-sm font-semibold text-[var(--foreground)]">
             {booking.publicId || "—"}
           </p>
@@ -156,19 +157,24 @@ function BookingCard({
         <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Detail label="Origin" value={snapshot?.originName} />
           <Detail label="Destination" value={snapshot?.destinationName} />
+
           <Detail
             label="Departure"
             value={formatDate(snapshot?.departureAt)}
           />
+
           <Detail
             label="Arrival"
             value={formatDate(snapshot?.arrivalAt)}
           />
+
           <Detail label="Seats booked" value={booking.seats} />
+
           <Detail
             label="Journey reference"
             value={booking.journeyPublicId}
           />
+
           <Detail
             label="Journey status"
             value={
@@ -177,18 +183,18 @@ function BookingCard({
               </Badge>
             }
           />
+
           <Detail
             label="Booking created"
             value={formatDate(booking.createdAt)}
           />
+
           <Detail
             label="Last updated"
             value={formatDate(booking.updatedAt)}
           />
-          <Detail
-            label="Timezone"
-            value={snapshot?.timezone}
-          />
+
+          <Detail label="Timezone" value={snapshot?.timezone} />
         </div>
       </div>
 
@@ -204,6 +210,7 @@ function BookingCard({
             <Detail label="Model" value={snapshot.vehicleModel} />
             <Detail label="Year" value={snapshot.vehicleYear} />
             <Detail label="Color" value={snapshot.vehicleColor} />
+
             <Detail
               label="Registration"
               value={snapshot.vehicleRegistration}
@@ -224,10 +231,12 @@ function BookingCard({
           <Detail label="Profile ID" value={traveller.publicId} />
           <Detail label="Country code" value={traveller.countryCode} />
           <Detail label="Bio" value={traveller.bio} />
+
           <Detail
             label="Verification level"
             value={formatStatus(trust.verificationLevel)}
           />
+
           <Detail
             label="Average rating"
             value={
@@ -236,7 +245,9 @@ function BookingCard({
                 : "—"
             }
           />
+
           <Detail label="Rating count" value={trust.ratingCount} />
+
           <Detail
             label="Completed journeys"
             value={trust.completedJourneys}
@@ -271,22 +282,27 @@ function BookingCard({
             label="Published"
             value={formatDate(journey.publishedAt)}
           />
+
           <Detail
             label="Started"
             value={formatDate(journey.startedAt)}
           />
+
           <Detail
             label="Completion requested"
             value={formatDate(journey.completionRequestedAt)}
           />
+
           <Detail
             label="Journey completed"
             value={formatDate(journey.completedAt)}
           />
+
           <Detail
             label="Journey cancelled"
             value={formatDate(journey.cancelledAt)}
           />
+
           <Detail
             label="Journey expired"
             value={formatDate(journey.expiredAt)}
@@ -306,14 +322,17 @@ function BookingCard({
               label="Associated bookings"
               value={activity.associatedBookingsCount}
             />
+
             <Detail
               label="Participants"
               value={activity.participantsCount}
             />
+
             <Detail
               label="Visible messages"
               value={activity.messagesCount}
             />
+
             <Detail
               label="Unread messages"
               value={activity.unreadMessagesCount}
@@ -334,22 +353,27 @@ function BookingCard({
               label="Price per seat"
               value={formatMoney(pricing.pricePerSeat, pricing.currency)}
             />
+
             <Detail
               label="Subtotal"
               value={formatMoney(pricing.subtotal, pricing.currency)}
             />
+
             <Detail
               label="Discount"
               value={formatMoney(pricing.discountAmount, pricing.currency)}
             />
+
             <Detail
               label="Adjustment"
               value={formatMoney(pricing.adjustmentAmount, pricing.currency)}
             />
+
             <Detail
               label="Total amount"
               value={formatMoney(pricing.totalAmount, pricing.currency)}
             />
+
             <Detail label="Pricing currency" value={pricing.currency} />
           </div>
         </div>
@@ -373,27 +397,34 @@ function BookingCard({
               label="Payment amount"
               value={formatMoney(payment.amount, payment.currency)}
             />
+
             <Detail label="Currency" value={payment.currency} />
+
             <Detail
               label="Authorized at"
               value={formatDate(payment.authorizedAt)}
             />
+
             <Detail
               label="Captured at"
               value={formatDate(payment.capturedAt)}
             />
+
             <Detail
               label="Failed at"
               value={formatDate(payment.failedAt)}
             />
+
             <Detail
               label="Refunded at"
               value={formatDate(payment.refundedAt)}
             />
+
             <Detail
               label="Transaction reference"
               value={payment.transactionPublicId}
             />
+
             <Detail
               label="Failure reason"
               value={payment.failureReason}
@@ -411,14 +442,17 @@ function BookingCard({
 
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Detail label="Reason" value={cancellation.reason} />
+
             <Detail
               label="Description"
               value={cancellation.reasonDescription}
             />
+
             <Detail
               label="Cancelled at"
               value={formatDate(cancellation.cancelledAt)}
             />
+
             <Detail
               label="Cancelled by"
               value={cancellation.cancelledByPublicId}
@@ -432,12 +466,15 @@ function BookingCard({
         {booking.confirmedAt && (
           <span>Confirmed: {formatDate(booking.confirmedAt)}</span>
         )}
+
         {booking.cancelledAt && (
           <span>Cancelled: {formatDate(booking.cancelledAt)}</span>
         )}
+
         {booking.completedAt && (
           <span>Completed: {formatDate(booking.completedAt)}</span>
         )}
+
         {booking.expiredAt && (
           <span>Expired: {formatDate(booking.expiredAt)}</span>
         )}
@@ -480,9 +517,11 @@ export function MemberBookingPanel({
           <p className="text-sm font-medium text-[var(--foreground)]">
             Could not load bookings.
           </p>
+
           <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
             Check your access and connection, then try again.
           </p>
+
           <Button
             type="button"
             variant="outline"
@@ -498,6 +537,7 @@ export function MemberBookingPanel({
           <p className="text-sm font-medium text-[var(--foreground)]">
             No bookings found
           </p>
+
           <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
             There are no bookings available for this passenger.
           </p>
@@ -508,6 +548,7 @@ export function MemberBookingPanel({
             <p className="text-sm text-[var(--foreground-secondary)]">
               Detailed booking records
             </p>
+
             <Badge variant="outline">{bookings.length}</Badge>
           </div>
 

@@ -1,15 +1,16 @@
 
-import { CreditCard, FileText, Receipt } from 'lucide-react';
+import { CreditCard, FileText, Receipt } from "lucide-react";
 
-import { BookingSectionHeader } from '@/components/admin/bookings/layout';
-import type { AdminBooking } from '@/features/admin/bookings';
-import { cn } from '@/foundation/utils/cn';
+import { BookingSectionHeader } from "@/components/admin/bookings/layout";
+import type { AdminBooking } from "@/features/admin/bookings";
+import { formatCurrency } from "@/foundation/formatters/currency";
+import { cn } from "@/foundation/utils/cn";
 
-import { BookingPaymentTimeline } from './BookingPaymentTimeline';
+import { BookingPaymentTimeline } from "./BookingPaymentTimeline";
 
-type BookingPayment = NonNullable<AdminBooking['payment']>;
+export type BookingPayment = NonNullable<AdminBooking["payment"]>;
 
-interface BookingPaymentPanelProps {
+export interface BookingPaymentPanelProps {
   payment: BookingPayment | null | undefined;
   className?: string;
 }
@@ -18,34 +19,32 @@ function formatMoney(
   amount: number | undefined,
   currency: string | undefined,
 ): string {
-  if (amount == null || !Number.isFinite(amount)) {
-    return 'Not available';
+  if (amount === undefined || !Number.isFinite(amount)) {
+    return "Not available";
   }
 
-  if (!currency) {
-    return amount.toLocaleString('en-KE');
-  }
+  const normalizedCurrency = currency?.trim().toUpperCase() || "KES";
 
   try {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency,
-    }).format(amount);
+    return formatCurrency(amount, normalizedCurrency);
   } catch {
-    return `${currency} ${amount.toLocaleString('en-KE')}`;
+    return `${normalizedCurrency} ${amount.toLocaleString("en-KE", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
   }
 }
 
 function formatDate(value: string | null | undefined): string {
-  if (!value) return 'Not available';
+  if (!value) return "Not available";
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) return 'Not available';
+  if (Number.isNaN(date.getTime())) return "Not available";
 
-  return new Intl.DateTimeFormat('en-KE', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
+  return new Intl.DateTimeFormat("en-KE", {
+    dateStyle: "medium",
+    timeStyle: "short",
   }).format(date);
 }
 
@@ -53,26 +52,47 @@ function PaymentStatus({ status }: { status: string }) {
   const normalized = status.toUpperCase();
 
   const tone =
-    normalized === 'CAPTURED'
-      ? 'border-[var(--success)]/20 bg-[var(--success-soft)] text-[var(--success)]'
-      : normalized === 'FAILED'
-        ? 'border-[var(--danger)]/20 bg-[var(--danger-soft)] text-[var(--danger)]'
-        : normalized === 'REFUNDED' ||
-            normalized === 'PARTIALLY_REFUNDED'
-          ? 'border-[var(--warning)]/20 bg-[var(--warning-soft)] text-[var(--warning)]'
-          : 'border-[var(--border)] bg-[var(--background-subtle)] text-[var(--foreground-secondary)]';
+    normalized === "CAPTURED"
+      ? "border-[var(--success)]/20 bg-[var(--success-soft)] text-[var(--success)]"
+      : normalized === "FAILED"
+        ? "border-[var(--danger)]/20 bg-[var(--danger-soft)] text-[var(--danger)]"
+        : normalized === "REFUNDED" ||
+            normalized === "PARTIALLY_REFUNDED"
+          ? "border-[var(--warning)]/20 bg-[var(--warning-soft)] text-[var(--warning)]"
+          : "border-[var(--border)] bg-[var(--background-subtle)] text-[var(--foreground-secondary)]";
 
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold',
+        "inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold",
         tone,
       )}
     >
-      <span className="mr-2 size-1.5 rounded-full bg-current" />
-      {status.replaceAll('_', ' ')}
+      <span
+        className="mr-2 size-1.5 rounded-full bg-current"
+        aria-hidden="true"
+      />
+      {status.replace(/_/g, " ")}
     </span>
   );
+}
+
+function getLastPaymentEvent(payment: BookingPayment): string | undefined {
+  const events = [
+    payment.authorizedAt,
+    payment.capturedAt,
+    payment.failedAt,
+    payment.refundedAt,
+  ].filter(
+    (value): value is string =>
+      typeof value === "string" &&
+      value.trim().length > 0 &&
+      !Number.isNaN(new Date(value).getTime()),
+  );
+
+  return events.sort(
+    (a, b) => new Date(b).getTime() - new Date(a).getTime(),
+  )[0];
 }
 
 export function BookingPaymentPanel({
@@ -82,7 +102,7 @@ export function BookingPaymentPanel({
   return (
     <section
       className={cn(
-        'min-w-0 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm sm:p-6',
+        "min-w-0 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm sm:p-6",
         className,
       )}
     >
@@ -106,9 +126,10 @@ export function BookingPaymentPanel({
                 <p className="text-sm font-semibold text-[var(--foreground)]">
                   Payment status
                 </p>
+
                 <p className="mt-1 break-all text-xs text-[var(--foreground-secondary)]">
                   {payment.transactionPublicId ??
-                    'No transaction reference available'}
+                    "No transaction reference available"}
                 </p>
               </div>
             </div>
@@ -122,6 +143,7 @@ export function BookingPaymentPanel({
                 <Receipt className="size-4" aria-hidden="true" />
                 Payment amount
               </p>
+
               <p className="mt-2 break-words text-lg font-semibold text-[var(--foreground)]">
                 {formatMoney(payment.amount, payment.currency)}
               </p>
@@ -132,8 +154,9 @@ export function BookingPaymentPanel({
                 <FileText className="size-4" aria-hidden="true" />
                 Transaction reference
               </p>
+
               <p className="mt-2 break-all text-sm font-semibold text-[var(--foreground)]">
-                {payment.transactionPublicId ?? 'Not available'}
+                {payment.transactionPublicId ?? "Not available"}
               </p>
             </div>
 
@@ -141,25 +164,9 @@ export function BookingPaymentPanel({
               <p className="text-xs font-medium text-[var(--foreground-secondary)]">
                 Last recorded payment event
               </p>
+
               <p className="mt-2 text-sm font-semibold text-[var(--foreground)]">
-                {formatDate(
-                  [
-                    payment.authorizedAt,
-                    payment.capturedAt,
-                    payment.failedAt,
-                    payment.refundedAt,
-                  ]
-                    .filter(
-                      (value): value is string =>
-                        typeof value === 'string' &&
-                        value.trim().length > 0 &&
-                        !Number.isNaN(new Date(value).getTime()),
-                    )
-                    .sort(
-                      (a, b) =>
-                        new Date(b).getTime() - new Date(a).getTime(),
-                    )[0],
-                )}
+                {formatDate(getLastPaymentEvent(payment))}
               </p>
             </div>
           </div>
@@ -169,6 +176,7 @@ export function BookingPaymentPanel({
               <p className="text-sm font-semibold text-[var(--danger)]">
                 Recorded failure reason
               </p>
+
               <p className="mt-1 break-words text-sm leading-6 text-[var(--foreground)]">
                 {payment.failureReason}
               </p>
@@ -186,10 +194,12 @@ export function BookingPaymentPanel({
               className="mt-0.5 size-5 shrink-0 text-[var(--foreground-muted)]"
               aria-hidden="true"
             />
+
             <div>
               <p className="text-sm font-semibold text-[var(--foreground)]">
                 No payment information
               </p>
+
               <p className="mt-1 text-sm leading-6 text-[var(--foreground-secondary)]">
                 No payment record is available for this booking.
               </p>
@@ -200,5 +210,3 @@ export function BookingPaymentPanel({
     </section>
   );
 }
-
-export type { BookingPaymentPanelProps };

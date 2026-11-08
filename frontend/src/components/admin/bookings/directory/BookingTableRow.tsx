@@ -1,24 +1,42 @@
 
-'use client';
+"use client";
 
-import { Eye } from 'lucide-react';
+import { Eye } from "lucide-react";
 
-import { BookingPaymentStatusBadge } from '../shared/BookingPaymentStatusBadge';
-import { BookingPublicId } from '../shared/BookingPublicId';
-import { BookingStatusBadge } from '../shared/BookingStatusBadge';
+import { BookingPaymentStatusBadge } from "../shared/BookingPaymentStatusBadge";
+import { BookingPublicId } from "../shared/BookingPublicId";
+import { BookingStatusBadge } from "../shared/BookingStatusBadge";
 
-import type { AdminBooking } from '@/features/admin/bookings';
+import type { AdminBooking } from "@/features/admin/bookings";
 
 import {
   formatAdminBookingDate,
-  formatAdminBookingMoney,
   formatAdminBookingRoute,
   formatAdminBookingSeats,
-} from '@/features/admin/bookings';
+} from "@/features/admin/bookings";
+
+import { formatCurrencyMinorUnits } from "@/foundation/formatters/currency";
 
 interface BookingTableRowProps {
   booking: AdminBooking;
   onView?: (booking: AdminBooking) => void;
+}
+
+function formatBookingAmount(
+  amount: number,
+  currency: string,
+): string {
+  if (!Number.isFinite(amount)) {
+    return "—";
+  }
+
+  const normalizedCurrency = currency?.trim().toUpperCase() || "KES";
+
+  try {
+    return formatCurrencyMinorUnits(amount, normalizedCurrency);
+  } catch {
+    return `${normalizedCurrency} ${amount.toLocaleString("en-KE")}`;
+  }
 }
 
 export function BookingTableRow({
@@ -74,11 +92,11 @@ export function BookingTableRow({
       <td className="px-4 py-4 text-right align-middle">
         <span className="text-sm font-medium tabular-nums text-[var(--foreground)]">
           {pricing
-            ? formatAdminBookingMoney(
+            ? formatBookingAmount(
                 pricing.totalAmount,
                 pricing.currency,
               )
-            : '—'}
+            : "—"}
         </span>
 
         <p className="mt-1 text-xs text-[var(--foreground-muted)]">
@@ -90,7 +108,7 @@ export function BookingTableRow({
         <span className="text-sm text-[var(--foreground-secondary)]">
           {departureAt
             ? formatAdminBookingDate(departureAt)
-            : '—'}
+            : "—"}
         </span>
       </td>
 

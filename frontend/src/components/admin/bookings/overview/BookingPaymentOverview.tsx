@@ -3,13 +3,14 @@ import {
   Banknote,
   CircleDollarSign,
   RotateCcw,
-} from 'lucide-react';
+} from "lucide-react";
 
-import type { AdminBookingFinancialSummary } from '@/features/admin/bookings/models/admin-booking-summary.model';
+import { BookingMetricCard } from "./BookingMetricCard";
 
-import { BookingMetricCard } from './BookingMetricCard';
+import type { AdminBookingFinancialSummary } from "@/features/admin/bookings/models/admin-booking-summary.model";
+import { formatCurrencyMinorUnits } from "@/foundation/formatters/currency";
 
-interface BookingPaymentOverviewProps {
+export interface BookingPaymentOverviewProps {
   summary: AdminBookingFinancialSummary;
   className?: string;
 }
@@ -19,17 +20,15 @@ function formatMoney(
   currency: string,
 ): string {
   if (!Number.isFinite(amount)) {
-    return '—';
+    return "—";
   }
 
+  const normalizedCurrency = currency?.trim().toUpperCase() || "KES";
+
   try {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 2,
-    }).format(amount);
+    return formatCurrencyMinorUnits(amount, normalizedCurrency);
   } catch {
-    return `${currency} ${amount.toLocaleString('en-KE')}`;
+    return `${normalizedCurrency} ${amount.toLocaleString("en-KE")}`;
   }
 }
 
@@ -41,28 +40,28 @@ export function BookingPaymentOverview({
 
   const metrics = [
     {
-      key: 'booking-value',
-      title: 'Total booking value',
+      key: "booking-value",
+      title: "Total booking value",
       value: formatMoney(summary.totalBookingValue, currency),
       description: `Booking value in ${currency}`,
       icon: <CircleDollarSign size={18} aria-hidden="true" />,
-      tone: 'default' as const,
+      tone: "default" as const,
     },
     {
-      key: 'captured',
-      title: 'Captured payments',
+      key: "captured",
+      title: "Captured payments",
       value: formatMoney(summary.totalCapturedAmount, currency),
       description: `Payments captured in ${currency}`,
       icon: <Banknote size={18} aria-hidden="true" />,
-      tone: 'success' as const,
+      tone: "success" as const,
     },
     {
-      key: 'refunded',
-      title: 'Refunded amount',
+      key: "refunded",
+      title: "Refunded amount",
       value: formatMoney(summary.totalRefundedAmount, currency),
       description: `Refunds in ${currency}`,
       icon: <RotateCcw size={18} aria-hidden="true" />,
-      tone: 'warning' as const,
+      tone: "warning" as const,
     },
   ];
 
@@ -78,6 +77,7 @@ export function BookingPaymentOverview({
         >
           Payment overview
         </h2>
+
         <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
           Booking value, captured payments, and refunds.
         </p>
@@ -98,5 +98,3 @@ export function BookingPaymentOverview({
     </section>
   );
 }
-
-export type { BookingPaymentOverviewProps };

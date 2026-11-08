@@ -1,12 +1,13 @@
 
-import { Calculator, Info } from 'lucide-react';
+import { Calculator, Info } from "lucide-react";
 
-import { BookingSectionHeader } from '@/components/admin/bookings/layout';
-import { cn } from '@/foundation/utils/cn';
+import { BookingSectionHeader } from "@/components/admin/bookings/layout";
+import { formatCurrencyMinorUnits } from "@/foundation/formatters/currency";
+import { cn } from "@/foundation/utils/cn";
 
-import { BookingPriceBreakdown } from './BookingPriceBreakdown';
+import { BookingPriceBreakdown } from "./BookingPriceBreakdown";
 
-interface BookingPricingData {
+export interface BookingPricingData {
   pricePerSeat: number;
   seats: number;
   subtotal: number;
@@ -16,9 +17,23 @@ interface BookingPricingData {
   currency: string;
 }
 
-interface BookingPricingPanelProps {
+export interface BookingPricingPanelProps {
   pricing: BookingPricingData | null | undefined;
   className?: string;
+}
+
+function formatMoney(amount: number, currency: string): string {
+  if (!Number.isFinite(amount)) {
+    return "Not available";
+  }
+
+  const normalizedCurrency = currency?.trim().toUpperCase() || "KES";
+
+  try {
+    return formatCurrencyMinorUnits(amount, normalizedCurrency);
+  } catch {
+    return `${normalizedCurrency} ${amount.toLocaleString("en-KE")}`;
+  }
 }
 
 export function BookingPricingPanel({
@@ -28,7 +43,7 @@ export function BookingPricingPanel({
   return (
     <section
       className={cn(
-        'min-w-0 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm sm:p-6',
+        "min-w-0 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm sm:p-6",
         className,
       )}
     >
@@ -42,20 +57,12 @@ export function BookingPricingPanel({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--background-subtle)] p-4">
               <div className="flex items-center gap-2 text-xs font-medium text-[var(--foreground-secondary)]">
-                <Calculator
-                  className="size-4"
-                  aria-hidden="true"
-                />
+                <Calculator className="size-4" aria-hidden="true" />
                 Price per seat
               </div>
+
               <p className="mt-2 text-lg font-semibold text-[var(--foreground)]">
-                {pricing.pricePerSeat.toLocaleString('en-KE', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}{' '}
-                <span className="text-xs font-medium text-[var(--foreground-secondary)]">
-                  {pricing.currency}
-                </span>
+                {formatMoney(pricing.pricePerSeat, pricing.currency)}
               </p>
             </div>
 
@@ -63,6 +70,7 @@ export function BookingPricingPanel({
               <div className="text-xs font-medium text-[var(--foreground-secondary)]">
                 Seats priced
               </div>
+
               <p className="mt-2 text-lg font-semibold text-[var(--foreground)]">
                 {pricing.seats}
               </p>
@@ -73,9 +81,9 @@ export function BookingPricingPanel({
             currency={pricing.currency}
             total={pricing.totalAmount}
             items={[
-              { label: 'Subtotal', amount: pricing.subtotal },
-              { label: 'Discount', amount: pricing.discountAmount },
-              { label: 'Adjustment', amount: pricing.adjustmentAmount },
+              { label: "Subtotal", amount: pricing.subtotal },
+              { label: "Discount", amount: pricing.discountAmount },
+              { label: "Adjustment", amount: pricing.adjustmentAmount },
             ]}
           />
         </div>
@@ -85,10 +93,12 @@ export function BookingPricingPanel({
             className="mt-0.5 size-5 shrink-0 text-[var(--foreground-muted)]"
             aria-hidden="true"
           />
+
           <div>
             <p className="text-sm font-semibold text-[var(--foreground)]">
               No pricing information
             </p>
+
             <p className="mt-1 text-sm leading-6 text-[var(--foreground-secondary)]">
               Pricing details have not been recorded for this booking.
             </p>
@@ -98,5 +108,3 @@ export function BookingPricingPanel({
     </section>
   );
 }
-
-export type { BookingPricingPanelProps };
