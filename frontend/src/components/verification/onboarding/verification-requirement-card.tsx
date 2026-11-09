@@ -1,3 +1,4 @@
+
 'use client';
 
 // -----------------------------------------------------------------------------
@@ -12,43 +13,41 @@
 // --------------
 // Presents one VerificationRequirement.
 //
-// This component is intentionally presentation-only.
+// This component is presentation-only.
+//
+// It:
+// - presents requirement information and status;
+// - exposes selection for eligible requirements;
+// - renders the submission surface directly below the selected requirement.
 //
 // It does NOT:
-// - fetch Verification;
-// - fetch Verification Requests;
+// - fetch verification data;
 // - submit verification requests;
-// - cancel requests;
-// - upload assets;
+// - upload assets itself;
 // - determine eligibility;
-// - determine which requirements are required;
 // - calculate requirement lifecycle state;
 // - perform navigation.
 //
-// The parent supplies the complete VerificationRequirement model.
+// Submission placement
+// --------------------
+// The parent workflow supplies the submission component through the optional
+// submission prop.
 //
-// Selection
-// ---------
-// The card may expose a selection action for requirements whose supplied
-// lifecycle state permits another submission:
+// When supplied, it is rendered directly below the requirement information.
 //
-//     NOT_STARTED → Submit
-//     REJECTED    → Resubmit
-//     CANCELLED   → Submit again
-//
-// PENDING and APPROVED requirements are informational and therefore do not
-// expose a submission action.
-//
-// The card does not perform the submission itself. It only reports selection
-// through the supplied onSelect callback.
+// This keeps upload functionality owned by VerificationSubmit while allowing
+// the upload interface to appear beneath the requirement being worked on.
 //
 // Design system
 // -------------
-// All visual styling uses the frozen sisiMove design tokens.
-// No arbitrary colors, gradients, or dark-mode styling are introduced.
+// All styling uses the frozen sisiMove design tokens.
 // -----------------------------------------------------------------------------
 
-import type { VerificationRequirement } from '@/features/verification/models/verification-requirement';
+import type { ReactNode } from 'react';
+
+import type {
+  VerificationRequirement,
+} from '@/features/verification/models/verification-requirement';
 
 // =============================================================================
 // Props
@@ -59,12 +58,18 @@ export interface VerificationRequirementCardProps {
 
   /**
    * Called when the user selects this requirement for further action.
-   *
-   * The owning workflow decides what happens after selection.
    */
   readonly onSelect?: (
     requirement: VerificationRequirement,
   ) => void;
+
+  /**
+   * Optional submission surface.
+   *
+   * The parent supplies this only for the currently selected requirement.
+   * It is rendered immediately below the requirement card content.
+   */
+  readonly submission?: ReactNode;
 }
 
 // =============================================================================
@@ -228,6 +233,7 @@ function isSelectableStatus(
 export function VerificationRequirementCard({
   requirement,
   onSelect,
+  submission,
 }: VerificationRequirementCardProps) {
   const label = getRequirementLabel(
     requirement.type,
@@ -259,11 +265,11 @@ export function VerificationRequirementCard({
         'shadow-[var(--shadow-sm)]',
       ].join(' ')}
     >
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        {/* ------------------------------------------------------------------ */}
-        {/* Requirement information                                            */}
-        {/* ------------------------------------------------------------------ */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Requirement information                                            */}
+      {/* ------------------------------------------------------------------ */}
 
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold text-[var(--foreground)]">
@@ -281,9 +287,7 @@ export function VerificationRequirementCard({
             {description}
           </p>
 
-          {/* -------------------------------------------------------------- */}
-          {/* Rejection reason                                                */}
-          {/* -------------------------------------------------------------- */}
+          {/* Rejection reason */}
 
           {requirement.status === 'REJECTED' &&
             requirement.rejectionReason && (
@@ -293,9 +297,9 @@ export function VerificationRequirementCard({
             )}
         </div>
 
-        {/* ------------------------------------------------------------------ */}
-        {/* Status / action                                                     */}
-        {/* ------------------------------------------------------------------ */}
+        {/* ---------------------------------------------------------------- */}
+        {/* Status / action                                                   */}
+        {/* ---------------------------------------------------------------- */}
 
         <div className="flex shrink-0 items-center gap-3">
           <span
@@ -334,7 +338,22 @@ export function VerificationRequirementCard({
           )}
         </div>
       </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Selected requirement submission                                    */}
+      {/* ------------------------------------------------------------------ */}
+
+      {submission && (
+        <div
+          className={[
+            'mt-5',
+            'border-t border-[var(--border)]',
+            'pt-5',
+          ].join(' ')}
+        >
+          {submission}
+        </div>
+      )}
     </article>
   );
 }
-

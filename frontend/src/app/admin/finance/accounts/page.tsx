@@ -1,3 +1,4 @@
+
 'use client';
 
 // -----------------------------------------------------------------------------
@@ -9,9 +10,6 @@
 // - Platform-wide financial account overview
 // - Financial account directory
 //
-// The platform overview summarizes the supplied account collection.
-// The directory supports account selection and navigation to account details.
-// Account navigation uses canonical routes and public identifiers.
 // -----------------------------------------------------------------------------
 
 import { useCallback } from 'react';
@@ -43,19 +41,6 @@ export default function FinancialAccountsPage() {
     error,
     refetch,
   } = useAdminFinancialAccountsList();
-
-  // ---------------------------------------------------------------------------
-  // Formatting
-  // ---------------------------------------------------------------------------
-
-  const formatAmount = useCallback(
-    (minorUnits: number, currency: string) =>
-      new Intl.NumberFormat('en-KE', {
-        style: 'currency',
-        currency,
-      }).format(minorUnits),
-    [],
-  );
 
   // ---------------------------------------------------------------------------
   // Navigation and actions
@@ -91,14 +76,10 @@ export default function FinancialAccountsPage() {
   return (
     <FinancialAccountPageContainer size="2xl">
       <main className="space-y-6">
-        {/* Page header */}
-
         <FinancialAccountControlCenterHeader
           title="Financial Accounts"
           description="Inspect account details, review balances, and monitor account status across the platform."
         />
-
-        {/* Collection toolbar */}
 
         <FinancialAccountPageToolbar
           leading={
@@ -125,17 +106,12 @@ export default function FinancialAccountsPage() {
           }
         />
 
-        {/* Platform-wide overview */}
-
         <FinancialAccountOverview
           accounts={accounts}
           isLoading={isLoading}
           isError={isError}
           collectionIsComplete={collectionIsComplete}
-          formatAmount={formatAmount}
         />
-
-        {/* Individual account directory */}
 
         <FinancialAccountDirectory
           accounts={accounts}
@@ -145,10 +121,8 @@ export default function FinancialAccountsPage() {
           onRefresh={handleRefresh}
           onOpenAccount={handleOpenAccount}
           onSelectAccount={() => {
-            // The overview is platform-wide and does not depend on selection.
-            // The directory can still use its own selection behavior.
+            // Preserve the directory selection callback.
           }}
-          formatAmount={formatAmount}
         />
       </main>
     </FinancialAccountPageContainer>

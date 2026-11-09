@@ -14,6 +14,7 @@ import { useCallback, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 
 import { ADMIN_ROUTES } from '@/foundation/routing/admin-routes';
+import { formatCurrencyMinorUnits } from '@/foundation/formatters/currency';
 
 import {
   useAdminFinancialAccount,
@@ -47,13 +48,6 @@ function getErrorMessage(error: unknown): string {
   }
 
   return 'The request could not be completed. Please try again.';
-}
-
-function formatAmount(minorUnits: number, currency: string): string {
-  return new Intl.NumberFormat('en-KE', {
-    style: 'currency',
-    currency,
-  }).format(minorUnits);
 }
 
 // -----------------------------------------------------------------------------
@@ -156,7 +150,7 @@ export default function FinancialAccountDetailPage() {
           title: 'Account operation completed',
           message: `The ${selectedOperation} request completed successfully for account ${account.publicId}.`,
         });
-         } catch (error: unknown) {
+      } catch (error: unknown) {
         setSelectedOperation(null);
 
         setFeedback({
@@ -271,7 +265,7 @@ export default function FinancialAccountDetailPage() {
       <div className="grid min-w-0 gap-6 xl:grid-cols-2">
         <FinancialAccountBalancePanel
           balance={balanceQuery.data ?? account.balance}
-          formatAmount={formatAmount}
+          formatAmount={formatCurrencyMinorUnits}
         />
 
         <FinancialAccountIdentityPanel account={account} />
@@ -279,7 +273,7 @@ export default function FinancialAccountDetailPage() {
 
       <FinancialAccountInformationPanel
         account={account}
-        formatAmount={formatAmount}
+        formatAmount={formatCurrencyMinorUnits}
       />
 
       <FinancialAccountAuditInformation

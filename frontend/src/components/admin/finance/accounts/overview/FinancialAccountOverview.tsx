@@ -49,7 +49,6 @@ export interface FinancialAccountOverviewProps {
   isLoading?: boolean;
   isError?: boolean;
   collectionIsComplete?: boolean;
-  formatAmount: (minorUnits: number, currency: string) => string;
   className?: string;
 }
 
@@ -95,7 +94,6 @@ export function FinancialAccountOverview({
   isLoading = false,
   isError = false,
   collectionIsComplete = true,
-  formatAmount,
   className,
 }: FinancialAccountOverviewProps) {
   const summary = useMemo(() => {
@@ -321,22 +319,10 @@ export function FinancialAccountOverview({
                   key={balance.currency}
                   currency={balance.currency}
                   accountCount={balance.accountCount}
-                  availableAmount={formatAmount(
-                    balance.availableAmount,
-                    balance.currency,
-                  )}
-                  pendingAmount={formatAmount(
-                    balance.pendingAmount,
-                    balance.currency,
-                  )}
-                  heldAmount={formatAmount(
-                    balance.heldAmount,
-                    balance.currency,
-                  )}
-                  totalAmount={formatAmount(
-                    balance.totalAmount,
-                    balance.currency,
-                  )}
+                  availableAmount={balance.availableAmount}
+                  pendingAmount={balance.pendingAmount}
+                  heldAmount={balance.heldAmount}
+                  totalAmount={balance.totalAmount}
                   description={`Combined balance for ${balance.accountCount} account${balance.accountCount === 1 ? '' : 's'} in ${balance.currency}.`}
                 />
               ))}

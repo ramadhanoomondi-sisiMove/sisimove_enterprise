@@ -2,6 +2,7 @@
 import { ChevronRight, Eye } from 'lucide-react';
 
 import type { AdminFinancialAccount } from '@/features/admin/finance/accounts/models';
+import { formatCurrencyMinorUnits } from '@/foundation/formatters/currency';
 
 import {
   FinancialAccountStatusBadge,
@@ -13,7 +14,6 @@ export interface FinancialAccountTableRowProps {
   account: AdminFinancialAccount;
   onOpenAccount?: (accountPublicId: string) => void;
   onSelectAccount?: (accountPublicId: string) => void;
-  formatAmount: (minorUnits: number, currency: string) => string;
 }
 
 function formatDate(value: string): string {
@@ -30,7 +30,6 @@ export function FinancialAccountTableRow({
   account,
   onOpenAccount,
   onSelectAccount,
-  formatAmount,
 }: FinancialAccountTableRowProps) {
   return (
     <tr className="transition hover:bg-[var(--background-muted)]">
@@ -89,19 +88,19 @@ export function FinancialAccountTableRow({
       </td>
 
       <td className="whitespace-nowrap px-4 py-3 text-sm tabular-nums text-[var(--foreground)]">
-        {formatAmount(account.balance.availableAmount, account.currency)}
+        {formatCurrencyMinorUnits(account.balance.availableAmount, account.currency)}
       </td>
 
       <td className="whitespace-nowrap px-4 py-3 text-sm tabular-nums text-[var(--foreground-secondary)]">
-        {formatAmount(account.balance.pendingAmount, account.currency)}
+        {formatCurrencyMinorUnits(account.balance.pendingAmount, account.currency)}
       </td>
 
       <td className="whitespace-nowrap px-4 py-3 text-sm tabular-nums text-[var(--foreground-secondary)]">
-        {formatAmount(account.balance.heldAmount, account.currency)}
+        {formatCurrencyMinorUnits(account.balance.heldAmount, account.currency)}
       </td>
 
       <td className="whitespace-nowrap px-4 py-3 text-sm font-semibold tabular-nums text-[var(--foreground)]">
-        {formatAmount(account.balance.totalAmount, account.currency)}
+        {formatCurrencyMinorUnits(account.balance.totalAmount, account.currency)}
       </td>
 
       <td className="whitespace-nowrap px-4 py-3 text-xs text-[var(--foreground-muted)]">

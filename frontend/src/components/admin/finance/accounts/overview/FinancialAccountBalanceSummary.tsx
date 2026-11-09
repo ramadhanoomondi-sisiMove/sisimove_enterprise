@@ -1,14 +1,18 @@
+
 // -----------------------------------------------------------------------------
 // sisiMove Admin — Financial Account Balance Summary
 // -----------------------------------------------------------------------------
 //
 // Displays aggregated balances for one currency across the platform.
-// Amounts are supplied as formatted display strings.
+//
+// Monetary values are supplied as raw integer minor units and formatted
+// through the shared currency formatter.
 // -----------------------------------------------------------------------------
 
 import { WalletCards } from 'lucide-react';
 
 import { Card } from '@/components/ui';
+import { formatCurrencyMinorUnits } from '@/foundation/formatters/currency';
 
 import { FinancialAccountSectionHeader } from '../layout';
 
@@ -18,10 +22,10 @@ import { FinancialAccountSectionHeader } from '../layout';
 
 export interface FinancialAccountBalanceSummaryProps {
   currency: string;
-  availableAmount: string;
-  pendingAmount: string;
-  heldAmount: string;
-  totalAmount: string;
+  availableAmount: number;
+  pendingAmount: number;
+  heldAmount: number;
+  totalAmount: number;
   accountCount?: number;
   description?: string;
   className?: string;
@@ -79,7 +83,7 @@ export function FinancialAccountBalanceSummary({
         </p>
 
         <p className="mt-2 break-words text-3xl font-semibold tracking-tight text-[var(--foreground)]">
-          {totalAmount}
+          {formatCurrencyMinorUnits(totalAmount, currency)}
         </p>
       </div>
 
@@ -94,7 +98,7 @@ export function FinancialAccountBalanceSummary({
             </dt>
 
             <dd className="break-words text-right text-sm font-semibold tabular-nums text-[var(--foreground)]">
-              {values[row.key]}
+              {formatCurrencyMinorUnits(values[row.key], currency)}
             </dd>
           </div>
         ))}

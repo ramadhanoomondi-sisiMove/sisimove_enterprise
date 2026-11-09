@@ -873,7 +873,7 @@ export class FinancialTransactionAggregate extends AggregateRoot<FinancialTransa
       FinancialTransactionStatusVO.create('COMPLETED'),
     );
 
-    this.transaction.setUpdatedAt(completedAt);
+    this.transaction.setCompletedAt(completedAt);
 
     // -------------------------------------------------------------------------
     // Record event
@@ -913,7 +913,7 @@ export class FinancialTransactionAggregate extends AggregateRoot<FinancialTransa
 
     this.transaction.setStatus(FinancialTransactionStatusVO.create('FAILED'));
 
-    this.transaction.setUpdatedAt(failedAt);
+    this.transaction.setFailedAt(failedAt);
 
     // -------------------------------------------------------------------------
     // Record event
@@ -955,7 +955,7 @@ export class FinancialTransactionAggregate extends AggregateRoot<FinancialTransa
       FinancialTransactionStatusVO.create('CANCELLED'),
     );
 
-    this.transaction.setUpdatedAt(cancelledAt);
+    this.transaction.setCancelledAt(cancelledAt);
 
     // -------------------------------------------------------------------------
     // Record event
@@ -1002,7 +1002,7 @@ export class FinancialTransactionAggregate extends AggregateRoot<FinancialTransa
 
     this.transaction.setStatus(FinancialTransactionStatusVO.create('REVERSED'));
 
-    this.transaction.setUpdatedAt(reversedAt);
+    this.transaction.setReversedAt(reversedAt);
 
     // -------------------------------------------------------------------------
     // Record event

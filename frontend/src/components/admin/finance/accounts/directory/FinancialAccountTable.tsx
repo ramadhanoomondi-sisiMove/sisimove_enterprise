@@ -12,7 +12,6 @@ export interface FinancialAccountTableProps {
   onResetFilters?: () => void;
   onOpenAccount?: (accountPublicId: string) => void;
   onSelectAccount?: (accountPublicId: string) => void;
-  formatAmount: (minorUnits: number, currency: string) => string;
 }
 
 export function FinancialAccountTable({
@@ -22,7 +21,6 @@ export function FinancialAccountTable({
   onResetFilters,
   onOpenAccount,
   onSelectAccount,
-  formatAmount,
 }: FinancialAccountTableProps) {
   return (
     <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
@@ -79,7 +77,6 @@ export function FinancialAccountTable({
                   account={account}
                   onOpenAccount={onOpenAccount}
                   onSelectAccount={onSelectAccount}
-                  formatAmount={formatAmount}
                 />
               ))
             )}

@@ -1,3 +1,4 @@
+
 'use client';
 
 // -----------------------------------------------------------------------------
@@ -13,32 +14,19 @@
 // Presents the verification requirements supplied by the feature-level
 // verification workflow.
 //
-// Data flow:
-//
-//     VerificationOnboarding
-//             │
-//             │ VerificationRequirement[]
-//             ▼
-//     VerificationRequirements
-//             │
-//             ├── filter required requirements
-//             ├── order requirements
-//             └── render VerificationRequirementCard[]
-//
-// This component:
-// - receives the requirement projection from its parent;
-// - filters presentation to required requirements;
+// It:
+// - receives the requirement projection from the parent;
+// - filters required requirements;
 // - orders requirements consistently;
 // - renders one VerificationRequirementCard per requirement;
-// - forwards selection to the parent workflow.
+// - forwards selection to the parent workflow;
+// - renders the submission surface beneath the selected requirement.
 //
-// This component does NOT:
-// - fetch Verification;
-// - fetch Verification Requests;
-// - create Verification;
+// It does NOT:
+// - fetch verification data;
+// - create verification;
 // - calculate requirement lifecycle state;
 // - determine eligibility;
-// - determine which requirements are required;
 // - submit verification requests;
 // - cancel requests;
 // - upload assets;
@@ -46,19 +34,23 @@
 //
 // Requirement state
 // -----------------
-// VerificationRequirement is already the frontend projection produced by
-// mapVerificationRequirements().
+// VerificationRequirement is the authoritative frontend projection.
 //
-// This component must therefore treat each requirement as authoritative and
-// must not inspect Verification or VerificationRequest state.
+// Submission placement
+// --------------------
+// The parent supplies the currently selected requirement and a submission
+// renderer. Only the matching card receives the submission surface.
 //
 // Design system
 // -------------
-// This component intentionally contains minimal styling.
-// Visual styling uses the frozen sisiMove design tokens only.
+// Visual styling uses the frozen sisiMove design tokens.
 // -----------------------------------------------------------------------------
 
-import type { VerificationRequirement } from '@/features/verification/models/verification-requirement';
+import type { ReactNode } from 'react';
+
+import type {
+  VerificationRequirement,
+} from '@/features/verification/models/verification-requirement';
 
 import { VerificationRequirementCard } from './verification-requirement-card';
 
@@ -73,32 +65,29 @@ export interface VerificationRequirementsProps {
   readonly requirements: readonly VerificationRequirement[];
 
   /**
+   * Currently selected requirement.
+   */
+  readonly selectedRequirement?: VerificationRequirement | null;
+
+  /**
    * Called when the user selects a requirement.
-   *
-   * Selection belongs to the parent workflow because the parent decides which
-   * submission surface should be opened.
    */
   readonly onSelect?: (
     requirement: VerificationRequirement,
   ) => void;
+
+  /**
+   * Renders the submission surface for the selected requirement.
+   *
+   * The parent owns the submission workflow.
+   */
+  readonly renderSubmission?: (
+    requirement: VerificationRequirement,
+  ) => ReactNode;
 }
 
 // =============================================================================
 // Requirement ordering
-// =============================================================================
-//
-// Ordering is presentation-only.
-//
-// The order does not determine eligibility or requirement importance. Those
-// decisions belong to the backend/application layer and are already reflected
-// in the requirement projection.
-//
-// The fixed visual order is:
-//
-//     1. Profile photo
-//     2. Government ID
-//     3. Driver license
-//
 // =============================================================================
 
 const REQUIREMENT_ORDER: Readonly<
@@ -125,16 +114,12 @@ function sortRequirements(
 
 export function VerificationRequirements({
   requirements,
+  selectedRequirement = null,
   onSelect,
+  renderSubmission,
 }: VerificationRequirementsProps) {
   // ---------------------------------------------------------------------------
   // Presentation filtering
-  // ---------------------------------------------------------------------------
-  //
-  // The `required` flag is already part of the requirement projection.
-  //
-  // We do not calculate this flag here. We only use it to determine which
-  // projected requirements belong in this required-requirements surface.
   // ---------------------------------------------------------------------------
 
   const requiredRequirements = sortRequirements(
@@ -145,13 +130,6 @@ export function VerificationRequirements({
 
   // ---------------------------------------------------------------------------
   // Empty state
-  // ---------------------------------------------------------------------------
-  //
-  // There is nothing to render when the requirement projection contains no
-  // required requirements.
-  //
-  // This component intentionally does not invent an empty-state message or
-  // assume why the collection is empty.
   // ---------------------------------------------------------------------------
 
   if (requiredRequirements.length === 0) {
@@ -164,13 +142,24 @@ export function VerificationRequirements({
 
   return (
     <div className="space-y-3">
-      {requiredRequirements.map((requirement) => (
-        <VerificationRequirementCard
-          key={requirement.type}
-          requirement={requirement}
-          onSelect={onSelect}
-        />
-      ))}
+      {requiredRequirements.map((requirement) => {
+        const isSelected =
+          selectedRequirement?.type === requirement.type;
+
+        const submission =
+          isSelected && renderSubmission
+            ? renderSubmission(requirement)
+            : null;
+
+        return (
+          <VerificationRequirementCard
+            key={requirement.type}
+            requirement={requirement}
+            onSelect={onSelect}
+            submission={submission}
+          />
+        );
+      })}
     </div>
   );
 }

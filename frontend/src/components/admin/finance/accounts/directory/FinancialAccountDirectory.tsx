@@ -32,8 +32,6 @@ export interface FinancialAccountDirectoryProps {
 
   /** Selects an account for the inline overview. */
   onSelectAccount?: (accountPublicId: string) => void;
-
-  formatAmount: (minorUnits: number, currency: string) => string;
 }
 
 export function FinancialAccountDirectory({
@@ -45,7 +43,6 @@ export function FinancialAccountDirectory({
   onRefresh,
   onOpenAccount,
   onSelectAccount,
-  formatAmount,
 }: FinancialAccountDirectoryProps) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<AdminFinancialAccountStatus | 'ALL'>(
@@ -203,7 +200,6 @@ export function FinancialAccountDirectory({
         onResetFilters={resetFilters}
         onOpenAccount={onOpenAccount}
         onSelectAccount={onSelectAccount}
-        formatAmount={formatAmount}
       />
 
       <FinancialAccountPagination

@@ -435,18 +435,17 @@ export function WithdrawalPageContainer(): ReactNode {
     refetch: refetchAccount,
   } = useMyFinancialAccount();
 
-  // ---------------------------------------------------------------------------
-  // Financial Balance
-  // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Financial Balance
+// ---------------------------------------------------------------------------
 
-  const {
-    data: balance,
-    isLoading: balanceLoading,
-    isError: balanceIsError,
-    error: balanceError,
-    refetch: refetchBalance,
-  } = useMyFinancialBalance();
-
+const {
+  data: balance,
+  isLoading: balanceLoading,
+  isError: balanceIsError,
+  error: balanceError,
+  refetch: refetchBalance,
+} = useMyFinancialBalance(account?.publicId);
   // ---------------------------------------------------------------------------
   // Withdrawal Mutation
   // ---------------------------------------------------------------------------
