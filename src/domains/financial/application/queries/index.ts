@@ -129,6 +129,7 @@ export * from './get-financial-account-withdrawals.query';
 
 export * from './get-financial-account-withdrawals-by-status.query';
 
+export * from './get-all-financial-account-withdrawals.query';
 // -----------------------------------------------------------------------------
 // Financial Settlement
 // -----------------------------------------------------------------------------

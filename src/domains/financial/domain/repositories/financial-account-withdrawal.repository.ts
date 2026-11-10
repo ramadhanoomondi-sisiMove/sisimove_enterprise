@@ -69,6 +69,14 @@ export interface FinancialAccountWithdrawalRepository {
   // ===========================================================================
 
   /**
+   * Finds all Financial Account Withdrawal aggregates across the platform.
+   *
+   * Intended for platform-wide administrative queries and withdrawal
+   * oversight across all Financial Accounts.
+   */
+  findAll(): Promise<FinancialAccountWithdrawalAggregate[]>;
+
+  /**
    * Finds a Financial Account Withdrawal aggregate by public identifier.
    */
   findByPublicId(

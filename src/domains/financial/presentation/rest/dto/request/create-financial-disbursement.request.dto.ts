@@ -12,19 +12,11 @@
 // - Represent API request shape.
 // - Keep transport concerns outside the domain.
 //
-// The application layer is responsible for converting this DTO into:
+// The application/presentation boundary converts these raw values into the
+// appropriate domain value objects before dispatching the command.
 //
-// CreateFinancialDisbursementCommand
-//
-// Domain value objects such as:
-//
-// - FinancialAccountPublicId
-// - FinancialDisbursementDestinationPublicId
-// - FinancialReferenceType
-// - FinancialReferencePublicId
-// - Money
-//
-// must be created outside this DTO.
+// The destination is supplied directly as an immutable destination snapshot.
+// It is not a public ID referring to a previously configured destination.
 //
 // The DTO does NOT:
 //
@@ -63,9 +55,9 @@ import {
 // =============================================================================
 
 export class CreateFinancialDisbursementRequestDto {
-  // ===========================================================================
+  // ==========================================================================
   // Source Financial Account
-  // ===========================================================================
+  // ==========================================================================
 
   @ApiProperty({
     description:
@@ -76,22 +68,31 @@ export class CreateFinancialDisbursementRequestDto {
   @IsNotEmpty()
   readonly sourceAccountPublicId!: string;
 
-  // ===========================================================================
-  // Financial Disbursement Destination
-  // ===========================================================================
+  // ==========================================================================
+  // Destination Snapshot
+  // ==========================================================================
 
   @ApiProperty({
     description:
-      'Public identity of the Financial Disbursement Destination receiving the funds.',
-    example: '01J8Q8A1B2C3D4E5F6G7H8I9J0',
+      'Type of the external destination receiving the funds. This is a destination type, not a payout provider.',
+    example: 'MOBILE_MONEY',
   })
   @IsString()
   @IsNotEmpty()
-  readonly destinationPublicId!: string;
+  readonly destinationType!: string;
 
-  // ===========================================================================
+  @ApiProperty({
+    description:
+      'Actual external destination value supplied for this disbursement, such as a mobile-money number or bank-account identifier.',
+    example: '+254712345678',
+  })
+  @IsString()
+  @IsNotEmpty()
+  readonly destinationValue!: string;
+
+  // ==========================================================================
   // Amount
-  // ===========================================================================
+  // ==========================================================================
 
   @ApiProperty({
     description: 'Disbursement amount expressed in the smallest currency unit.',
@@ -102,9 +103,9 @@ export class CreateFinancialDisbursementRequestDto {
   @Min(1)
   readonly amount!: number;
 
-  // ===========================================================================
+  // ==========================================================================
   // Currency
-  // ===========================================================================
+  // ==========================================================================
 
   @ApiProperty({
     description:
@@ -116,9 +117,9 @@ export class CreateFinancialDisbursementRequestDto {
   @Length(3, 3)
   readonly currency!: string;
 
-  // ===========================================================================
+  // ==========================================================================
   // Business Reference Type
-  // ===========================================================================
+  // ==========================================================================
 
   @ApiPropertyOptional({
     description:
@@ -130,9 +131,9 @@ export class CreateFinancialDisbursementRequestDto {
   @IsNotEmpty()
   readonly referenceType?: string;
 
-  // ===========================================================================
+  // ==========================================================================
   // Business Reference Public Identity
-  // ===========================================================================
+  // ==========================================================================
 
   @ApiPropertyOptional({
     description:

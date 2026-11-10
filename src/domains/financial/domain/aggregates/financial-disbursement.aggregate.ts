@@ -9,7 +9,7 @@
 // FinancialDisbursementAggregate
 // ├── FinancialDisbursementEntity
 // │   └── FinancialDisbursementAttemptEntity[]
-// └── FinancialDisbursementDestinationEntity (associated entity)
+// └── FinancialAccountWithdrawalDestination (immutable value object)
 //
 // IMPORTANT:
 //
@@ -18,16 +18,11 @@
 // FinancialDisbursementAttemptEntity[] is owned exclusively by the
 // FinancialDisbursementEntity.
 //
-// FinancialDisbursementDestinationEntity is NOT an owned child entity of the
-// FinancialDisbursement aggregate.
-//
-// The destination is an independently persisted Financial-domain entity
-// associated with the source Financial Account. The disbursement aggregate
-// holds the selected destination as an associated domain object so that it
-// can enforce disbursement-level consistency rules.
-//
-// The Financial Account boundary remains responsible for destination
-// ownership and destination lifecycle.
+// FinancialAccountWithdrawalDestination is an immutable value object
+// captured from the originating withdrawal. It is stored as a snapshot on
+// FinancialDisbursementEntity and is not a configured destination entity.
+// No destination registration, repository lookup, or account-level destination
+// ownership relationship is required.
 //
 // FinancialDisbursementEntity.attempts is the single source of truth for
 // disbursement attempts.
@@ -47,8 +42,8 @@
 // - FinancialDisbursementPublicId
 //     Public identity of this Financial Disbursement.
 //
-// - FinancialDisbursementDestinationPublicId
-//     Public identity of the selected destination.
+// - FinancialAccountWithdrawalDestination
+//     Immutable type/value snapshot of the payout destination.
 //
 // - FinancialDisbursementAttemptPublicId
 //     Public identity of an execution attempt.
@@ -67,12 +62,9 @@
 //
 // - Own the Financial Disbursement entity.
 // - Own the lifecycle of Financial Disbursement Attempts through the root.
-// - Associate the selected Financial Disbursement Destination.
-// - Enforce source-account/destination consistency.
-// - Enforce destination identity consistency.
+// - Preserve the immutable payout destination snapshot.
 // - Enforce amount consistency.
 // - Enforce currency consistency.
-// - Enforce provider consistency.
 // - Enforce attempt ownership.
 // - Enforce attempt lifecycle consistency.
 // - Enforce single-processing-attempt invariant.
@@ -129,7 +121,7 @@ import type { UniqueEntityId } from '../../../../foundation/kernel/domain/unique
 
 import type { FinancialDisbursementEntity } from '../entities/financial-disbursement.entity';
 
-import type { FinancialDisbursementDestinationEntity } from '../entities/financial-disbursement-destination.entity';
+import type { FinancialAccountWithdrawalDestination } from '../value-objects/financial-account-withdrawal-destination.vo';
 
 import type { FinancialDisbursementAttemptEntity } from '../entities/financial-disbursement-attempt.entity';
 
@@ -167,8 +159,6 @@ import type { FinancialDisbursementPublicId } from '../value-objects/financial-d
 
 import type { FinancialDisbursementAttemptPublicId } from '../value-objects/financial-disbursement-attempt-public-id.vo';
 
-import type { FinancialDisbursementDestinationPublicId } from '../value-objects/financial-disbursement-destination-public-id.vo';
-
 import type { FinancialDisbursementStatus } from '../value-objects/financial-disbursement-status.vo';
 
 import type { FinancialReferenceType } from '../value-objects/financial-reference-type.vo';
@@ -186,16 +176,6 @@ export interface FinancialDisbursementAggregateProps {
    * The disbursement owns its execution-attempt collection.
    */
   disbursement: FinancialDisbursementEntity;
-
-  /**
-   * Selected Financial Disbursement Destination.
-   *
-   * This is an associated Financial-domain entity, not an owned child
-   * entity of the Financial Disbursement aggregate.
-   *
-   * Ownership remains with the Financial Account boundary.
-   */
-  destination: FinancialDisbursementDestinationEntity;
 }
 
 // -----------------------------------------------------------------------------
@@ -228,12 +208,8 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
    */
   public static create(
     disbursement: FinancialDisbursementEntity,
-    destination: FinancialDisbursementDestinationEntity,
   ): FinancialDisbursementAggregate {
-    const aggregate = new FinancialDisbursementAggregate({
-      disbursement,
-      destination,
-    });
+    const aggregate = new FinancialDisbursementAggregate({ disbursement });
 
     aggregate.ensureAggregateConsistency();
 
@@ -254,12 +230,8 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
    */
   public static rehydrate(
     disbursement: FinancialDisbursementEntity,
-    destination: FinancialDisbursementDestinationEntity,
   ): FinancialDisbursementAggregate {
-    const aggregate = new FinancialDisbursementAggregate({
-      disbursement,
-      destination,
-    });
+    const aggregate = new FinancialDisbursementAggregate({ disbursement });
 
     aggregate.ensureAggregateConsistency();
 
@@ -278,12 +250,10 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
   }
 
   /**
-   * Returns the selected destination associated with this disbursement.
-   *
-   * The aggregate does not own the destination lifecycle.
+   * Returns the immutable payout destination snapshot.
    */
-  public get destination(): FinancialDisbursementDestinationEntity {
-    return this.props.destination;
+  public get destination(): FinancialAccountWithdrawalDestination {
+    return this.disbursement.destination;
   }
 
   /**
@@ -328,17 +298,17 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
   }
 
   /**
-   * Internal identity of the selected destination.
+   * Destination type captured when the withdrawal was requested.
    */
-  public get destinationId(): UniqueEntityId {
-    return this.disbursement.destinationId;
+  public get destinationType(): string {
+    return this.destination.type;
   }
 
   /**
-   * Public identity of the selected destination.
+   * Destination value captured when the withdrawal was requested.
    */
-  public get destinationPublicId(): FinancialDisbursementDestinationPublicId {
-    return this.destination.publicId;
+  public get destinationValue(): string {
+    return this.destination.value;
   }
 
   /**
@@ -408,59 +378,14 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
   }
 
   // ===========================================================================
-  // Destination
+  // Destination Snapshot
   // ===========================================================================
 
   /**
-   * Returns whether the selected destination belongs to the source account.
-   *
-   * Both sides use internal UniqueEntityId values for this consistency check.
+   * The destination is an immutable type/value snapshot. Provider routing,
+   * destination validation, and external execution belong to the
+   * application/integration boundary.
    */
-  public destinationBelongsToSourceAccount(): boolean {
-    return this.destination.accountId.equals(this.sourceAccountId);
-  }
-
-  /**
-   * Returns whether the destination is currently capable of receiving a
-   * disbursement.
-   */
-  public destinationIsActive(): boolean {
-    return this.destination.canReceiveDisbursement();
-  }
-
-  /**
-   * Returns whether the selected destination currently satisfies both:
-   *
-   * - source-account ownership;
-   * - destination eligibility.
-   */
-  public canUseDestination(): boolean {
-    return (
-      this.destinationBelongsToSourceAccount() && this.destinationIsActive()
-    );
-  }
-
-  /**
-   * Ensures the destination belongs to the source account and is currently
-   * usable for initiating external execution.
-   *
-   * Destination activity is intentionally checked at execution start rather
-   * than as a permanent rehydration invariant. A destination may become
-   * inactive after a historical disbursement has been created.
-   */
-  private ensureDestinationCanReceiveDisbursement(): void {
-    if (!this.destinationBelongsToSourceAccount()) {
-      throw new FinancialInvariantException(
-        'Financial Disbursement Destination must belong to the source Financial Account.',
-      );
-    }
-
-    if (!this.destinationIsActive()) {
-      throw new FinancialInvariantException(
-        'Financial Disbursement Destination is inactive and cannot receive the disbursement.',
-      );
-    }
-  }
 
   // ===========================================================================
   // Attempts
@@ -565,7 +490,6 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
     this.ensureAttemptBelongsToDisbursement(attempt);
     this.ensureAttemptAmountMatches(attempt);
     this.ensureAttemptCurrencyMatches(attempt);
-    this.ensureAttemptProviderMatchesDestination(attempt);
 
     this.disbursement.addAttempt(attempt);
 
@@ -598,16 +522,6 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
     if (!attempt.amount.currency.equals(this.currency)) {
       throw new FinancialInvariantException(
         'Financial Disbursement Attempt currency must match the Financial Disbursement currency.',
-      );
-    }
-  }
-
-  private ensureAttemptProviderMatchesDestination(
-    attempt: FinancialDisbursementAttemptEntity,
-  ): void {
-    if (!attempt.provider.equals(this.destination.provider)) {
-      throw new FinancialInvariantException(
-        'Financial Disbursement Attempt provider must match the selected Financial Disbursement Destination provider.',
       );
     }
   }
@@ -720,7 +634,6 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
     }
 
     this.ensureValidDate(at, 'processing start');
-    this.ensureDestinationCanReceiveDisbursement();
 
     this.disbursement.startProcessing(at);
 
@@ -731,7 +644,8 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
         this.id.value,
         this.publicId,
         this.sourceAccountPublicId,
-        this.destinationPublicId,
+        this.destinationType,
+        this.destinationValue,
         this.amount,
         this.status,
         this.referenceType,
@@ -780,11 +694,96 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
     this.ensureAttemptBelongsToDisbursement(attempt);
     this.ensureAttemptAmountMatches(attempt);
     this.ensureAttemptCurrencyMatches(attempt);
-    this.ensureAttemptProviderMatchesDestination(attempt);
 
     attempt.start(at);
 
     this.ensureAggregateConsistency();
+  }
+
+  // ===========================================================================
+  // Provider Correlation Identifiers
+  // ===========================================================================
+
+  /**
+   * Records the provider-issued OriginatorConversationID for an execution
+   * attempt. The attempt must belong to this aggregate and be PROCESSING.
+   */
+  public setAttemptProviderOriginatorConversationId(
+    attemptPublicId: FinancialDisbursementAttemptPublicId,
+    value: string,
+  ): void {
+    const attempt =
+      this.getProcessingAttemptForProviderCorrelation(attemptPublicId);
+
+    attempt.setProviderOriginatorConversationId(value);
+    this.ensureAggregateConsistency();
+  }
+
+  /**
+   * Records the provider-issued ConversationID for an execution attempt.
+   */
+  public setAttemptProviderConversationId(
+    attemptPublicId: FinancialDisbursementAttemptPublicId,
+    value: string,
+  ): void {
+    const attempt =
+      this.getProcessingAttemptForProviderCorrelation(attemptPublicId);
+
+    attempt.setProviderConversationId(value);
+    this.ensureAggregateConsistency();
+  }
+
+  /**
+   * Records the provider-issued TransactionID for an execution attempt.
+   *
+   * This identifier may arrive in the asynchronous B2C result callback.
+   */
+  public setAttemptProviderTransactionId(
+    attemptPublicId: FinancialDisbursementAttemptPublicId,
+    value: string,
+  ): void {
+    const attempt =
+      this.getProcessingAttemptForProviderCorrelation(attemptPublicId);
+
+    attempt.setProviderTransactionId(value);
+    this.ensureAggregateConsistency();
+  }
+
+  /**
+   * Resolves an attempt eligible to receive provider correlation identifiers.
+   *
+   * Correlation identifiers may only be attached to an active attempt while
+   * its parent disbursement is PROCESSING. This prevents late or unrelated
+   * provider responses from mutating historical attempts.
+   */
+  private getProcessingAttemptForProviderCorrelation(
+    attemptPublicId: FinancialDisbursementAttemptPublicId,
+  ): FinancialDisbursementAttemptEntity {
+    if (!this.isProcessing()) {
+      throw new FinancialInvariantException(
+        'Provider correlation identifiers may only be recorded while the Financial Disbursement is PROCESSING.',
+      );
+    }
+
+    const attempt = this.getAttempt(attemptPublicId);
+
+    if (!attempt) {
+      throw new FinancialInvariantException(
+        `Financial Disbursement Attempt "${attemptPublicId.value}" does not belong to this Financial Disbursement.`,
+      );
+    }
+
+    if (!attempt.isProcessing()) {
+      throw new FinancialInvariantException(
+        `Financial Disbursement Attempt "${attempt.publicId.value}" must be PROCESSING before provider correlation identifiers can be recorded.`,
+      );
+    }
+
+    this.ensureAttemptBelongsToDisbursement(attempt);
+    this.ensureAttemptAmountMatches(attempt);
+    this.ensureAttemptCurrencyMatches(attempt);
+
+    return attempt;
   }
 
   // ===========================================================================
@@ -825,7 +824,6 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
     this.ensureAttemptBelongsToDisbursement(attempt);
     this.ensureAttemptAmountMatches(attempt);
     this.ensureAttemptCurrencyMatches(attempt);
-    this.ensureAttemptProviderMatchesDestination(attempt);
 
     attempt.succeed(at);
 
@@ -875,7 +873,6 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
     this.ensureAttemptBelongsToDisbursement(attempt);
     this.ensureAttemptAmountMatches(attempt);
     this.ensureAttemptCurrencyMatches(attempt);
-    this.ensureAttemptProviderMatchesDestination(attempt);
 
     attempt.fail(failureCode, failureMessage, at);
 
@@ -934,7 +931,8 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
         this.id.value,
         this.publicId,
         this.sourceAccountPublicId,
-        this.destinationPublicId,
+        this.destinationType,
+        this.destinationValue,
         this.amount,
         this.status,
         transactionPublicId,
@@ -972,7 +970,6 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
     this.ensureAttemptBelongsToDisbursement(successfulAttempt);
     this.ensureAttemptAmountMatches(successfulAttempt);
     this.ensureAttemptCurrencyMatches(successfulAttempt);
-    this.ensureAttemptProviderMatchesDestination(successfulAttempt);
 
     // ---------------------------------------------------------------------------
     // Financial Transaction
@@ -1043,7 +1040,8 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
         this.id.value,
         this.publicId,
         this.sourceAccountPublicId,
-        this.destinationPublicId,
+        this.destinationType,
+        this.destinationValue,
         this.amount,
         this.status,
         this.referenceType,
@@ -1120,7 +1118,8 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
         this.id.value,
         this.publicId,
         this.sourceAccountPublicId,
-        this.destinationPublicId,
+        this.destinationType,
+        this.destinationValue,
         this.amount,
         this.status,
         this.referenceType,
@@ -1225,7 +1224,8 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
         this.id.value,
         this.publicId,
         this.sourceAccountPublicId,
-        this.destinationPublicId,
+        this.destinationType,
+        this.destinationValue,
         this.amount,
         this.status,
         this.referenceType,
@@ -1262,32 +1262,15 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
     }
 
     // -------------------------------------------------------------------------
-    // Destination Association
+    // Destination Snapshot
     // -------------------------------------------------------------------------
 
-    if (!this.destination) {
+    if (
+      this.destination.type.trim().length === 0 ||
+      this.destination.value.trim().length === 0
+    ) {
       throw new FinancialInvariantException(
-        'Financial Disbursement aggregate must contain a Financial Disbursement Destination association.',
-      );
-    }
-
-    // -------------------------------------------------------------------------
-    // Destination Identity
-    // -------------------------------------------------------------------------
-
-    if (!this.destinationId.equals(this.destination.id)) {
-      throw new FinancialInvariantException(
-        'Financial Disbursement Destination identity must match the destination referenced by the Financial Disbursement.',
-      );
-    }
-
-    // -------------------------------------------------------------------------
-    // Source Account / Destination Ownership
-    // -------------------------------------------------------------------------
-
-    if (!this.destinationBelongsToSourceAccount()) {
-      throw new FinancialInvariantException(
-        'Financial Disbursement Destination must belong to the Financial Disbursement source Financial Account.',
+        'Financial Disbursement must contain a valid destination type and value snapshot.',
       );
     }
 
@@ -1380,12 +1363,6 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
       // -----------------------------------------------------------------------
 
       this.ensureAttemptCurrencyMatches(attempt);
-
-      // -----------------------------------------------------------------------
-      // Provider
-      // -----------------------------------------------------------------------
-
-      this.ensureAttemptProviderMatchesDestination(attempt);
     }
 
     // -------------------------------------------------------------------------

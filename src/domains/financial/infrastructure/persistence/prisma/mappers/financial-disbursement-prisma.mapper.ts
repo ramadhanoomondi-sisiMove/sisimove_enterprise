@@ -5,65 +5,33 @@
 // Maps the complete Financial Disbursement aggregate:
 //
 // FinancialDisbursementAggregate
-// ├── FinancialDisbursementEntity
-// │   └── FinancialDisbursementAttemptEntity[]
-// └── FinancialDisbursementDestinationEntity
+// └── FinancialDisbursementEntity
+//     ├── FinancialAccountWithdrawalDestination (immutable snapshot)
+//     └── FinancialDisbursementAttemptEntity[]
 //
 // Persistence responsibilities:
 //
 // - Translate Prisma Financial Disbursement records into domain entities.
 // - Rehydrate all Financial Disbursement Attempts.
-// - Rehydrate the selected Financial Disbursement Destination.
-// - Preserve internal database identities.
-// - Preserve public domain identities.
-// - Preserve source Financial Account internal identity.
-// - Preserve source Financial Account public identity.
-// - Preserve destination internal identity.
-// - Preserve destination public identity.
-// - Preserve amount and currency through Money.
-// - Preserve disbursement lifecycle.
-// - Preserve provider execution attempts.
-// - Preserve destination configuration.
-// - Preserve originating business references.
-// - Preserve resulting Financial Transaction reference.
+// - Rehydrate the immutable withdrawal destination snapshot.
+// - Preserve internal and public identities.
+// - Preserve source Financial Account internal and public identities.
+// - Preserve the originating Financial Account Withdrawal public ID.
+// - Preserve destination type and value exactly as captured.
+// - Preserve amount, currency, lifecycle, attempts and business references.
 // - Translate the aggregate back into persistence structures.
 //
-// IMPORTANT:
-//
-// FinancialDisbursementDestinationEntity is NOT an owned child of the
-// FinancialDisbursement aggregate.
-//
-// It belongs to the Financial Account boundary.
-//
-// Therefore:
-//
-// FinancialDisbursementAggregate
-// ├── FinancialDisbursementEntity
-// │   └── FinancialDisbursementAttemptEntity[]
-// └── FinancialDisbursementDestinationEntity
-//                         ↑
-//                         │ associated entity
-//                         │
-//                  Financial Account boundary
-//
-// The mapper rehydrates the selected destination because the disbursement
-// aggregate requires the destination configuration to validate aggregate
-// consistency.
-//
-// The destination is nevertheless persisted as its own persistence structure.
-// It is NOT persisted through a nested disbursement-owned relation.
+// The disbursement does not reference a configured destination record.
+// FinancialDisbursementDestinationEntity remains a separate Financial Account
+// boundary entity; its standalone mapper methods are retained for saved
+// destination workflows, but it is not part of this aggregate graph.
 //
 // The mapper does NOT:
 //
 // - Query Prisma.
-// - Execute provider APIs.
-// - Communicate with external providers.
-// - Move money.
-// - Modify Financial Account balances.
-// - Create Financial Transactions.
-// - Post ledger entries.
-// - Select providers.
-// - Select destinations.
+// - Execute provider APIs or communicate with external providers.
+// - Move money, modify account balances, create transactions or post ledger.
+// - Select providers or destinations.
 // - Decide retry policy.
 // - Persist itself.
 //
@@ -115,6 +83,7 @@ import { FinancialDisbursementDestinationEntity } from '../../../../domain/entit
 import {
   Currency,
   FinancialAccountPublicId,
+  FinancialAccountWithdrawalDestination,
   FinancialDisbursementAttemptPublicId,
   FinancialDisbursementAttemptStatus,
   FinancialDisbursementDestinationPublicId,
@@ -250,6 +219,31 @@ function toDomainDestinationType(
 }
 
 // =============================================================================
+// Domain → Prisma Destination Type
+// =============================================================================
+
+/** Validates the snapshot destination type before persisting it to Prisma. */
+function toPersistenceDestinationType(
+  value: string,
+): PrismaFinancialDisbursementDestinationType {
+  switch (value.trim().toUpperCase()) {
+    case 'MOBILE_MONEY':
+      return 'MOBILE_MONEY';
+
+    case 'BANK_ACCOUNT':
+      return 'BANK_ACCOUNT';
+
+    case 'OTHER':
+      return 'OTHER';
+
+    default:
+      throw new Error(
+        `Invalid domain Financial Disbursement destination type "${String(value)}".`,
+      );
+  }
+}
+
+// =============================================================================
 // Prisma Graph Types
 // =============================================================================
 
@@ -261,23 +255,20 @@ function toDomainDestinationType(
  *
  * FinancialDisbursement
  * ├── FinancialAccount
- * ├── FinancialDisbursementDestination
  * └── FinancialDisbursementAttempt[]
  *
  * The source Financial Account relation is required because the domain
  * disbursement entity stores both:
  *
- * - sourceAccountId      -> internal persistence identity
+ * - sourceAccountId       -> internal persistence identity
  * - sourceAccountPublicId -> public domain identity
  *
- * The destination relation is required because the aggregate contains the
- * selected destination entity.
+ * Destination type and value are persisted directly on the disbursement row.
+ *
+ * withdrawalPublicId is persisted as an opaque cross-domain public ID.
  */
 export type FinancialDisbursementWithRelations = PrismaFinancialDisbursement & {
   sourceAccount: PrismaFinancialAccount;
-
-  destination: PrismaFinancialDisbursementDestination;
-
   attempts: PrismaFinancialDisbursementAttempt[];
 };
 
@@ -290,16 +281,14 @@ export type FinancialDisbursementWithRelations = PrismaFinancialDisbursement & {
  *
  * The disbursement owns its attempts.
  *
- * The destination is associated with the aggregate but belongs to the
- * Financial Account boundary, therefore it is exposed separately.
+ * The immutable destination snapshot and originating withdrawal public ID
+ * are persisted on the disbursement row.
+ *
+ * Configured Financial Account destinations are not part of this structure.
  */
 export interface FinancialDisbursementPersistence {
   disbursement: ReturnType<
     typeof FinancialDisbursementPrismaMapper.toPersistence
-  >;
-
-  destination: ReturnType<
-    typeof FinancialDisbursementPrismaMapper.destinationToPersistence
   >;
 
   attempts: ReturnType<
@@ -323,7 +312,6 @@ export class FinancialDisbursementPrismaMapper {
    *
    * FinancialDisbursement
    * ├── FinancialAccount
-   * ├── FinancialDisbursementDestination
    * └── FinancialDisbursementAttempt[]
    *
    * Rehydration does not emit domain events.
@@ -333,9 +321,7 @@ export class FinancialDisbursementPrismaMapper {
   ): FinancialDisbursementAggregate {
     const disbursement = this.toEntity(record);
 
-    const destination = this.destinationToEntity(record.destination);
-
-    return FinancialDisbursementAggregate.rehydrate(disbursement, destination);
+    return FinancialDisbursementAggregate.rehydrate(disbursement);
   }
 
   // ===========================================================================
@@ -363,16 +349,13 @@ export class FinancialDisbursementPrismaMapper {
     );
 
     // -------------------------------------------------------------------------
-    // Destination
+    // Immutable Withdrawal Destination Snapshot
     // -------------------------------------------------------------------------
 
-    /**
-     * The disbursement stores the internal destination identity.
-     *
-     * The destination entity itself is rehydrated separately because it belongs
-     * to the Financial Account boundary.
-     */
-    const destinationId = new UniqueEntityId(record.destinationId);
+    const destination = FinancialAccountWithdrawalDestination.create(
+      record.destinationType,
+      record.destinationValue,
+    );
 
     // -------------------------------------------------------------------------
     // Public Disbursement Identity
@@ -439,10 +422,16 @@ export class FinancialDisbursementPrismaMapper {
         sourceAccountPublicId,
 
         // ---------------------------------------------------------------------
-        // Destination
+        // Immutable Withdrawal Destination Snapshot
         // ---------------------------------------------------------------------
 
-        destinationId,
+        destination,
+
+        // ---------------------------------------------------------------------
+        // Originating Financial Account Withdrawal
+        // ---------------------------------------------------------------------
+
+        withdrawalPublicId: record.withdrawalPublicId ?? undefined,
 
         // ---------------------------------------------------------------------
         // Amount
@@ -522,118 +511,50 @@ export class FinancialDisbursementPrismaMapper {
   public static attemptToEntity(
     record: PrismaFinancialDisbursementAttempt,
   ): FinancialDisbursementAttemptEntity {
-    // -------------------------------------------------------------------------
-    // Money
-    // -------------------------------------------------------------------------
-
     const amount = Money.create(
       record.amount,
       Currency.create(record.currency),
     );
 
-    // -------------------------------------------------------------------------
-    // Status
-    // -------------------------------------------------------------------------
-
     const status = FinancialDisbursementAttemptStatus.create(
       toDomainDisbursementAttemptStatus(record.status),
     );
 
-    // -------------------------------------------------------------------------
-    // Provider
-    // -------------------------------------------------------------------------
-
     const provider = FinancialProvider.create(record.provider);
-
-    // -------------------------------------------------------------------------
-    // Provider Reference
-    // -------------------------------------------------------------------------
 
     const providerReference =
       record.providerReference !== null
         ? FinancialProviderReference.create(record.providerReference)
         : undefined;
 
-    // -------------------------------------------------------------------------
-    // Entity
-    // -------------------------------------------------------------------------
-
     return new FinancialDisbursementAttemptEntity(
       {
-        // ---------------------------------------------------------------------
-        // Parent Aggregate Identity
-        // ---------------------------------------------------------------------
-
         disbursementId: new UniqueEntityId(record.disbursementId),
-
-        // ---------------------------------------------------------------------
-        // Lifecycle
-        // ---------------------------------------------------------------------
-
         status,
-
-        // ---------------------------------------------------------------------
-        // Provider
-        // ---------------------------------------------------------------------
-
         provider,
-
         providerReference,
 
-        // ---------------------------------------------------------------------
-        // Amount
-        // ---------------------------------------------------------------------
+        // Safaricom B2C callback correlation identifiers.
+        providerOriginatorConversationId:
+          record.providerOriginatorConversationId ?? undefined,
+        providerConversationId: record.providerConversationId ?? undefined,
+        providerTransactionId: record.providerTransactionId ?? undefined,
 
         amount,
 
-        // ---------------------------------------------------------------------
-        // Failure Diagnostics
-        // ---------------------------------------------------------------------
-
         failureCode: record.failureCode ?? undefined,
-
         failureMessage: record.failureMessage ?? undefined,
 
-        // ---------------------------------------------------------------------
-        // Execution Timestamps
-        // ---------------------------------------------------------------------
-
         startedAt: record.startedAt ?? undefined,
-
         completedAt: record.completedAt ?? undefined,
-
         failedAt: record.failedAt ?? undefined,
-
-        // ---------------------------------------------------------------------
-        // IMPORTANT
-        //
-        // FinancialDisbursementAttemptStatus currently has no EXPIRED state,
-        // and the supplied Prisma model does not persist cancelledAt.
-        //
-        // Therefore cancelledAt cannot be reconstructed from persistence.
-        // ---------------------------------------------------------------------
-
-        cancelledAt: undefined,
-
-        // ---------------------------------------------------------------------
-        // Audit
-        // ---------------------------------------------------------------------
+        cancelledAt: record.cancelledAt ?? undefined,
 
         createdAt: record.createdAt,
-
         updatedAt: record.updatedAt,
       },
 
-      // -----------------------------------------------------------------------
-      // Internal Persistence Identity
-      // -----------------------------------------------------------------------
-
       new UniqueEntityId(record.id),
-
-      // -----------------------------------------------------------------------
-      // Public Domain Identity
-      // -----------------------------------------------------------------------
-
       new FinancialDisbursementAttemptPublicId(record.publicId),
     );
   }
@@ -742,16 +663,19 @@ export class FinancialDisbursementPrismaMapper {
   /**
    * Converts FinancialDisbursementEntity into its Prisma persistence shape.
    *
-   * Both sourceAccountId and destinationId are already internal persistence
-   * identities in the domain entity.
+   * The sourceAccountId is an internal persistence identity. The destination
+   * is an immutable type/value snapshot and requires no destination ID lookup.
    *
-   * Therefore the mapper does not perform any ID lookup.
+   * withdrawalPublicId is stored as an opaque public ID reference. It is not
+   * a Prisma relation to the Financial Account Withdrawal aggregate.
    */
   public static toPersistence(entity: FinancialDisbursementEntity): {
     id: string;
     publicId: string;
     sourceAccountId: string;
-    destinationId: string;
+    destinationType: PrismaFinancialDisbursementDestinationType;
+    destinationValue: string;
+    withdrawalPublicId: string | null;
     amount: number;
     currency: string;
     status: PrismaFinancialDisbursementStatus;
@@ -781,10 +705,18 @@ export class FinancialDisbursementPrismaMapper {
       sourceAccountId: entity.sourceAccountId.toString(),
 
       // -----------------------------------------------------------------------
-      // Destination
+      // Immutable Withdrawal Destination Snapshot
       // -----------------------------------------------------------------------
 
-      destinationId: entity.destinationId.toString(),
+      destinationType: toPersistenceDestinationType(entity.destinationType),
+
+      destinationValue: entity.destinationValue,
+
+      // -----------------------------------------------------------------------
+      // Originating Financial Account Withdrawal
+      // -----------------------------------------------------------------------
+
+      withdrawalPublicId: entity.withdrawalPublicId ?? null,
 
       // -----------------------------------------------------------------------
       // Amount
@@ -844,7 +776,8 @@ export class FinancialDisbursementPrismaMapper {
    * Converts FinancialDisbursementAttemptEntity into its Prisma persistence
    * structure.
    *
-   * The supplied Prisma model does not contain cancelledAt.
+   * Provider callback identifiers and all attempt lifecycle timestamps are
+   * persisted and rehydrated without loss.
    */
   public static attemptToPersistence(
     entity: FinancialDisbursementAttemptEntity,
@@ -855,6 +788,9 @@ export class FinancialDisbursementPrismaMapper {
     status: PrismaFinancialDisbursementAttemptStatus;
     provider: string;
     providerReference: string | null;
+    providerOriginatorConversationId: string | null;
+    providerConversationId: string | null;
+    providerTransactionId: string | null;
     amount: number;
     currency: string;
     failureCode: string | null;
@@ -862,70 +798,37 @@ export class FinancialDisbursementPrismaMapper {
     startedAt: Date | null;
     completedAt: Date | null;
     failedAt: Date | null;
+    cancelledAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
   } {
     return {
-      // -----------------------------------------------------------------------
-      // Identity
-      // -----------------------------------------------------------------------
-
       id: entity.id.toString(),
-
       publicId: entity.publicId.value,
-
-      // -----------------------------------------------------------------------
-      // Parent Disbursement
-      // -----------------------------------------------------------------------
-
       disbursementId: entity.disbursementId.toString(),
-
-      // -----------------------------------------------------------------------
-      // Lifecycle
-      // -----------------------------------------------------------------------
 
       status: entity.status.value,
 
-      // -----------------------------------------------------------------------
-      // Provider
-      // -----------------------------------------------------------------------
-
       provider: entity.provider.value,
-
       providerReference: entity.providerReference?.value ?? null,
 
-      // -----------------------------------------------------------------------
-      // Amount
-      // -----------------------------------------------------------------------
+      providerOriginatorConversationId:
+        entity.providerOriginatorConversationId ?? null,
+      providerConversationId: entity.providerConversationId ?? null,
+      providerTransactionId: entity.providerTransactionId ?? null,
 
       amount: entity.amount.amount,
-
       currency: entity.amount.currency.value,
 
-      // -----------------------------------------------------------------------
-      // Failure Diagnostics
-      // -----------------------------------------------------------------------
-
       failureCode: entity.failureCode ?? null,
-
       failureMessage: entity.failureMessage ?? null,
 
-      // -----------------------------------------------------------------------
-      // Execution Timestamps
-      // -----------------------------------------------------------------------
-
       startedAt: entity.startedAt ?? null,
-
       completedAt: entity.completedAt ?? null,
-
       failedAt: entity.failedAt ?? null,
-
-      // -----------------------------------------------------------------------
-      // Audit
-      // -----------------------------------------------------------------------
+      cancelledAt: entity.cancelledAt ?? null,
 
       createdAt: entity.createdAt,
-
       updatedAt: entity.updatedAt,
     };
   }
@@ -1022,14 +925,11 @@ export class FinancialDisbursementPrismaMapper {
    * Converts the complete FinancialDisbursementAggregate into persistence
    * structures.
    *
-   * Ownership semantics remain explicit:
+   * The disbursement row stores the immutable destination snapshot and
+   * originating withdrawal public ID, and attempts remain aggregate-owned
+   * persistence records.
    *
-   * FinancialDisbursement
-   * ├── attempts[]       -> aggregate-owned persistence
-   *
-   * Destination
-   * └── separate record   -> Financial Account boundary persistence
-   *
+   * Configured Financial Account destinations are not part of this aggregate.
    * No database operation is performed here.
    */
   public static aggregateToPersistence(
@@ -1041,12 +941,6 @@ export class FinancialDisbursementPrismaMapper {
       // -----------------------------------------------------------------------
 
       disbursement: this.toPersistence(aggregate.disbursement),
-
-      // -----------------------------------------------------------------------
-      // Associated Destination
-      // -----------------------------------------------------------------------
-
-      destination: this.destinationToPersistence(aggregate.destination),
 
       // -----------------------------------------------------------------------
       // Aggregate-Owned Attempts
@@ -1130,10 +1024,10 @@ export class FinancialDisbursementPrismaMapper {
    *
    * IMPORTANT:
    *
-   * This method does not require the destination relation because it maps only
-   * the disbursement entity itself.
+   * The destination type and value are read directly from the disbursement
+   * record and rehydrated as an immutable value object.
    *
-   * No fake destination relation is constructed.
+   * The originating withdrawal public ID is also rehydrated when present.
    */
   public static disbursementToDomainComponent(
     record: PrismaFinancialDisbursement,
@@ -1197,10 +1091,19 @@ export class FinancialDisbursementPrismaMapper {
         sourceAccountPublicId,
 
         // ---------------------------------------------------------------------
-        // Destination
+        // Immutable Withdrawal Destination Snapshot
         // ---------------------------------------------------------------------
 
-        destinationId: new UniqueEntityId(record.destinationId),
+        destination: FinancialAccountWithdrawalDestination.create(
+          record.destinationType,
+          record.destinationValue,
+        ),
+
+        // ---------------------------------------------------------------------
+        // Originating Financial Account Withdrawal
+        // ---------------------------------------------------------------------
+
+        withdrawalPublicId: record.withdrawalPublicId ?? undefined,
 
         // ---------------------------------------------------------------------
         // Amount
@@ -1393,7 +1296,8 @@ export class FinancialDisbursementPrismaMapper {
   ): record is PrismaFinancialDisbursement {
     return (
       'sourceAccountId' in record &&
-      'destinationId' in record &&
+      'destinationType' in record &&
+      'destinationValue' in record &&
       'requestedAt' in record &&
       'transactionPublicId' in record
     );

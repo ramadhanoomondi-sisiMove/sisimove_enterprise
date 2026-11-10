@@ -1,47 +1,8 @@
-// -----------------------------------------------------------------------------
-// Financial Disbursement Cancelled Domain Event
-// -----------------------------------------------------------------------------
-//
-// Emitted when a Financial Disbursement transitions to CANCELLED.
-//
-// Aggregate:
-// - FinancialDisbursementAggregate
-//
-// Aggregate Root:
-// - FinancialDisbursementEntity
-//
-// The aggregate identity is stored in:
-// - DomainEvent.metadata.aggregateId
-//
-// This event does NOT:
-// - Execute a provider API.
-// - Guarantee provider-side cancellation.
-// - Move funds.
-// - Modify Financial Account balances directly.
-// - Create ledger entries directly.
-// - Persist itself.
-//
-// Cancellation is a Financial Disbursement lifecycle decision.
-// Provider-side cancellation, where supported, belongs to the Integration
-// boundary.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// Foundation
-// -----------------------------------------------------------------------------
-
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
 import type { PublicEntityId } from '../../../../foundation/kernel/domain/public-entity-id';
-
-// -----------------------------------------------------------------------------
-// Financial
-// -----------------------------------------------------------------------------
+import { PublicEntityId as PublicEntityIdValue } from '../../../../foundation/kernel/domain/public-entity-id';
 
 import { FinancialDomainEvent } from './financial-domain.event';
-
-// -----------------------------------------------------------------------------
-// Value Objects
-// -----------------------------------------------------------------------------
 
 import type {
   FinancialDisbursementStatus,
@@ -50,31 +11,29 @@ import type {
   Money,
 } from '../value-objects';
 
-// -----------------------------------------------------------------------------
-// Event
-// -----------------------------------------------------------------------------
+import {
+  FinancialDisbursementStatus as FinancialDisbursementStatusValueObject,
+  FinancialDisbursementStatusValue,
+  FinancialReferencePublicId as FinancialReferencePublicIdValue,
+  FinancialReferenceType as FinancialReferenceTypeValue,
+  Money as MoneyValue,
+} from '../value-objects';
 
-/**
- * Emitted when a Financial Disbursement is cancelled.
- *
- * A disbursement may be cancelled while PENDING or PROCESSING according to
- * the aggregate lifecycle rules.
- *
- * Cancellation does not imply that an external provider request has been
- * cancelled. Provider communication belongs to the Integration boundary.
- *
- * The aggregate identity is stored in DomainEvent.metadata.aggregateId.
- */
+// =============================================================================
+// Event
+// =============================================================================
+
 export class FinancialDisbursementCancelledEvent extends FinancialDomainEvent {
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Constructor
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public constructor(
     aggregateId: string,
     publicId: PublicEntityId,
     sourceAccountId: PublicEntityId,
-    destinationId: PublicEntityId,
+    destinationType: string,
+    destinationValue: string,
     amount: Money,
     status: FinancialDisbursementStatus,
     referenceType: FinancialReferenceType | undefined,
@@ -82,7 +41,8 @@ export class FinancialDisbursementCancelledEvent extends FinancialDomainEvent {
     correlationId: string,
     causationId?: string,
     eventVersion = 1,
-    eventSchemaVersion = '1.0.0',
+    eventSchemaVersion = '2.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       aggregateId,
@@ -92,65 +52,144 @@ export class FinancialDisbursementCancelledEvent extends FinancialDomainEvent {
       causationId,
       eventVersion,
       eventSchemaVersion,
+      restoredMetadata,
     );
 
     this.publicId = publicId;
     this.sourceAccountId = sourceAccountId;
-    this.destinationId = destinationId;
+    this.destinationType = destinationType;
+    this.destinationValue = destinationValue;
     this.amount = amount;
     this.status = status;
     this.referenceType = referenceType;
     this.referencePublicId = referencePublicId;
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Properties
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
-  /**
-   * Public identity of the Financial Disbursement.
-   */
   public readonly publicId: PublicEntityId;
 
-  /**
-   * Public identity of the Financial Account from which the disbursement
-   * originated.
-   */
   public readonly sourceAccountId: PublicEntityId;
 
-  /**
-   * Public identity of the destination to which the disbursement was
-   * intended.
-   */
-  public readonly destinationId: PublicEntityId;
+  public readonly destinationType: string;
 
-  /**
-   * Monetary amount of the cancelled disbursement.
-   *
-   * Money keeps amount and currency inseparable inside the domain event.
-   */
+  public readonly destinationValue: string;
+
   public readonly amount: Money;
 
-  /**
-   * Lifecycle status after cancellation.
-   *
-   * For this event the expected value is CANCELLED.
-   */
   public readonly status: FinancialDisbursementStatus;
 
-  /**
-   * Optional originating business reference.
-   */
   public readonly referenceType: FinancialReferenceType | undefined;
 
-  /**
-   * Public identity of the originating business object.
-   */
   public readonly referencePublicId: FinancialReferencePublicId | undefined;
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Rehydration
+  // ===========================================================================
+
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): FinancialDisbursementCancelledEvent {
+    const publicId = payload.publicId;
+    const sourceAccountId = payload.sourceAccountId;
+    const destinationType = payload.destinationType;
+    const destinationValue = payload.destinationValue;
+    const amount = payload.amount;
+    const currency = payload.currency;
+    const status = payload.status;
+    const referenceType = payload.referenceType;
+    const referencePublicId = payload.referencePublicId;
+
+    if (
+      typeof publicId !== 'string' ||
+      typeof sourceAccountId !== 'string' ||
+      typeof destinationType !== 'string' ||
+      destinationType.trim().length === 0 ||
+      typeof destinationValue !== 'string' ||
+      destinationValue.trim().length === 0 ||
+      typeof amount !== 'number' ||
+      !Number.isFinite(amount) ||
+      typeof currency !== 'string' ||
+      typeof status !== 'string'
+    ) {
+      throw new Error(
+        'Invalid payload for FinancialDisbursementCancelled event',
+      );
+    }
+
+    if (
+      !Object.values(FinancialDisbursementStatusValue).includes(
+        status as FinancialDisbursementStatusValue,
+      )
+    ) {
+      throw new Error(
+        'Invalid status for FinancialDisbursementCancelled event',
+      );
+    }
+
+    if (referenceType !== undefined && typeof referenceType !== 'string') {
+      throw new Error(
+        'Invalid reference type for FinancialDisbursementCancelled event',
+      );
+    }
+
+    if (
+      referencePublicId !== undefined &&
+      typeof referencePublicId !== 'string'
+    ) {
+      throw new Error(
+        'Invalid reference public ID for FinancialDisbursementCancelled event',
+      );
+    }
+
+    if ((referenceType === undefined) !== (referencePublicId === undefined)) {
+      throw new Error(
+        'Reference type and reference public ID must either both be present or both be absent',
+      );
+    }
+
+    return new FinancialDisbursementCancelledEvent(
+      metadata.aggregateId,
+
+      new PublicEntityIdValue(publicId),
+
+      new PublicEntityIdValue(sourceAccountId),
+
+      destinationType,
+      destinationValue,
+
+      MoneyValue.fromCode(amount, currency),
+
+      FinancialDisbursementStatusValueObject.create(
+        status as FinancialDisbursementStatusValue,
+      ),
+
+      referenceType !== undefined
+        ? FinancialReferenceTypeValue.create(referenceType)
+        : undefined,
+
+      referencePublicId !== undefined
+        ? FinancialReferencePublicIdValue.create(referencePublicId)
+        : undefined,
+
+      metadata.correlationId ?? '',
+
+      metadata.causationId,
+
+      metadata.eventVersion,
+
+      metadata.eventSchemaVersion,
+
+      metadata,
+    );
+  }
+
+  // ===========================================================================
   // Payload
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   protected override getPayload(): Record<string, unknown> {
     return {
@@ -160,7 +199,8 @@ export class FinancialDisbursementCancelledEvent extends FinancialDomainEvent {
 
       sourceAccountId: this.sourceAccountId.toString(),
 
-      destinationId: this.destinationId.toString(),
+      destinationType: this.destinationType,
+      destinationValue: this.destinationValue,
 
       amount: this.amount.amount,
 

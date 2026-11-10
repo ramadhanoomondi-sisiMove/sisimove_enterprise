@@ -1,81 +1,39 @@
-// -----------------------------------------------------------------------------
-// Financial Disbursement Created Domain Event
-// -----------------------------------------------------------------------------
-//
-// Emitted when a Financial Disbursement is created.
-//
-// Aggregate:
-// - FinancialDisbursementAggregate
-//
-// Aggregate Root:
-// - FinancialDisbursementEntity
-//
-// The aggregate identity is stored in:
-// - DomainEvent.metadata.aggregateId
-//
-// The externally meaningful Financial Disbursement public identity is included
-// in the event payload.
-//
-// This event does NOT:
-// - Execute a disbursement.
-// - Call an external provider.
-// - Move funds.
-// - Create a Financial Transaction.
-// - Modify Financial Account balances.
-// - Modify the Financial Disbursement Destination.
-//
-// Those responsibilities belong to the appropriate application, integration,
-// account, and transaction boundaries.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// Foundation
-// -----------------------------------------------------------------------------
-
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
 import type { PublicEntityId } from '../../../../foundation/kernel/domain/public-entity-id';
-
-// -----------------------------------------------------------------------------
-// Financial
-// -----------------------------------------------------------------------------
+import { PublicEntityId as PublicEntityIdValue } from '../../../../foundation/kernel/domain/public-entity-id';
 
 import { FinancialDomainEvent } from './financial-domain.event';
 
-// -----------------------------------------------------------------------------
-// Value Objects
-// -----------------------------------------------------------------------------
-
 import type {
-  FinancialDisbursementDestinationPublicId,
   FinancialDisbursementStatus,
   FinancialReferencePublicId,
   FinancialReferenceType,
   Money,
 } from '../value-objects';
 
-// -----------------------------------------------------------------------------
-// Event
-// -----------------------------------------------------------------------------
+import {
+  FinancialDisbursementStatus as FinancialDisbursementStatusValueObject,
+  FinancialDisbursementStatusValue,
+  FinancialReferencePublicId as FinancialReferencePublicIdValue,
+  FinancialReferenceType as FinancialReferenceTypeValue,
+  Money as MoneyValue,
+} from '../value-objects';
 
-/**
- * Emitted when a Financial Disbursement is created.
- *
- * The aggregate identity is stored in DomainEvent.metadata.aggregateId.
- *
- * The disbursement public identity is included in the payload because it is
- * the externally meaningful identity consumed by other bounded contexts and
- * application processes.
- */
+// =============================================================================
+// Event
+// =============================================================================
+
 export class FinancialDisbursementCreatedEvent extends FinancialDomainEvent {
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Constructor
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public constructor(
     aggregateId: string,
     publicId: PublicEntityId,
     sourceAccountId: PublicEntityId,
-    destinationId: FinancialDisbursementDestinationPublicId,
+    destinationType: string,
+    destinationValue: string,
     amount: Money,
     status: FinancialDisbursementStatus,
     referenceType: FinancialReferenceType | undefined,
@@ -84,7 +42,8 @@ export class FinancialDisbursementCreatedEvent extends FinancialDomainEvent {
     correlationId: string,
     causationId?: string,
     eventVersion = 1,
-    eventSchemaVersion = '1.0.0',
+    eventSchemaVersion = '2.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       aggregateId,
@@ -94,11 +53,13 @@ export class FinancialDisbursementCreatedEvent extends FinancialDomainEvent {
       causationId,
       eventVersion,
       eventSchemaVersion,
+      restoredMetadata,
     );
 
     this.publicId = publicId;
     this.sourceAccountId = sourceAccountId;
-    this.destinationId = destinationId;
+    this.destinationType = destinationType;
+    this.destinationValue = destinationValue;
     this.amount = amount;
     this.status = status;
     this.referenceType = referenceType;
@@ -106,62 +67,131 @@ export class FinancialDisbursementCreatedEvent extends FinancialDomainEvent {
     this.requestedAt = requestedAt;
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Properties
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
-  /**
-   * Public identity of the Financial Disbursement.
-   */
   public readonly publicId: PublicEntityId;
 
-  /**
-   * Public identity of the Financial Account from which funds are to be
-   * disbursed.
-   *
-   * This is the externally meaningful Financial Account identity and must not
-   * expose the persistence/internal account identifier.
-   */
   public readonly sourceAccountId: PublicEntityId;
 
-  /**
-   * Public identity of the Financial Disbursement Destination receiving the
-   * funds.
-   */
-  public readonly destinationId: FinancialDisbursementDestinationPublicId;
+  public readonly destinationType: string;
 
-  /**
-   * Monetary amount of the Financial Disbursement.
-   *
-   * Money keeps amount and currency inseparable inside the domain event.
-   */
+  public readonly destinationValue: string;
+
   public readonly amount: Money;
 
-  /**
-   * Initial lifecycle status of the Financial Disbursement.
-   *
-   * Newly created disbursements begin in PENDING state.
-   */
   public readonly status: FinancialDisbursementStatus;
 
-  /**
-   * Optional originating business reference.
-   */
   public readonly referenceType: FinancialReferenceType | undefined;
 
-  /**
-   * Public identity of the originating business object.
-   */
   public readonly referencePublicId: FinancialReferencePublicId | undefined;
 
-  /**
-   * Timestamp at which the Financial Disbursement was requested.
-   */
   public readonly requestedAt: Date;
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Rehydration
+  // ===========================================================================
+
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): FinancialDisbursementCreatedEvent {
+    const publicId = payload.publicId;
+    const sourceAccountId = payload.sourceAccountId;
+    const destinationType = payload.destinationType;
+    const destinationValue = payload.destinationValue;
+    const amount = payload.amount;
+    const currency = payload.currency;
+    const status = payload.status;
+    const referenceType = payload.referenceType;
+    const referencePublicId = payload.referencePublicId;
+    const requestedAt = payload.requestedAt;
+
+    if (
+      typeof publicId !== 'string' ||
+      typeof sourceAccountId !== 'string' ||
+      typeof destinationType !== 'string' ||
+      destinationType.trim().length === 0 ||
+      typeof destinationValue !== 'string' ||
+      destinationValue.trim().length === 0 ||
+      typeof amount !== 'number' ||
+      !Number.isFinite(amount) ||
+      typeof currency !== 'string' ||
+      typeof status !== 'string' ||
+      (typeof requestedAt !== 'string' && !(requestedAt instanceof Date))
+    ) {
+      throw new Error('Invalid payload for FinancialDisbursementCreated event');
+    }
+
+    if (
+      !Object.values(FinancialDisbursementStatusValue).includes(
+        status as FinancialDisbursementStatusValue,
+      )
+    ) {
+      throw new Error('Invalid status for FinancialDisbursementCreated event');
+    }
+
+    if (referenceType !== undefined && typeof referenceType !== 'string') {
+      throw new Error(
+        'Invalid reference type for FinancialDisbursementCreated event',
+      );
+    }
+
+    if (
+      referencePublicId !== undefined &&
+      typeof referencePublicId !== 'string'
+    ) {
+      throw new Error(
+        'Invalid reference public ID for FinancialDisbursementCreated event',
+      );
+    }
+
+    if ((referenceType === undefined) !== (referencePublicId === undefined)) {
+      throw new Error(
+        'Reference type and reference public ID must either both be present or both be absent',
+      );
+    }
+
+    const requestedAtDate =
+      requestedAt instanceof Date
+        ? new Date(requestedAt.getTime())
+        : new Date(requestedAt);
+
+    if (Number.isNaN(requestedAtDate.getTime())) {
+      throw new Error(
+        'Invalid requestedAt date for FinancialDisbursementCreated event',
+      );
+    }
+
+    return new FinancialDisbursementCreatedEvent(
+      metadata.aggregateId,
+      new PublicEntityIdValue(publicId),
+      new PublicEntityIdValue(sourceAccountId),
+      destinationType,
+      destinationValue,
+      MoneyValue.fromCode(amount, currency),
+      FinancialDisbursementStatusValueObject.create(
+        status as FinancialDisbursementStatusValue,
+      ),
+      referenceType !== undefined
+        ? FinancialReferenceTypeValue.create(referenceType)
+        : undefined,
+      referencePublicId !== undefined
+        ? FinancialReferencePublicIdValue.create(referencePublicId)
+        : undefined,
+      requestedAtDate,
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      metadata.eventVersion,
+      metadata.eventSchemaVersion,
+      metadata,
+    );
+  }
+
+  // ===========================================================================
   // Payload
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   protected override getPayload(): Record<string, unknown> {
     return {
@@ -171,7 +201,8 @@ export class FinancialDisbursementCreatedEvent extends FinancialDomainEvent {
 
       sourceAccountId: this.sourceAccountId.toString(),
 
-      destinationId: this.destinationId.toString(),
+      destinationType: this.destinationType,
+      destinationValue: this.destinationValue,
 
       amount: this.amount.amount,
 
@@ -189,7 +220,7 @@ export class FinancialDisbursementCreatedEvent extends FinancialDomainEvent {
           ? this.referencePublicId.toString()
           : undefined,
 
-      requestedAt: this.requestedAt,
+      requestedAt: this.requestedAt.toISOString(),
     };
   }
 }

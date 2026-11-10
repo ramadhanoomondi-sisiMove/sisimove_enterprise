@@ -62,6 +62,10 @@ import { QueryMpesaPaymentStatusService } from '../financial-payment-providers/i
 import { FinancialPaymentProvidersModule } from '../financial-payment-providers/financial-payment-providers.module';
 
 import { FINANCIAL_PAYMENT_CALLBACK_PROVIDERS } from '../financial-payment-providers/infrastructure/dependency-injection';
+
+import { MpesaB2CCallbackService } from '../financial-payment-providers/infrastructure/mpesa/b2c/services/mpesa-b2c-callback.service';
+
+import { MpesaB2CCallbackController } from '../financial-payment-providers/infrastructure/mpesa/b2c/controllers/mpesa-b2c-callback.controller';
 // -----------------------------------------------------------------------------
 // Presentation — Controllers
 // -----------------------------------------------------------------------------
@@ -76,6 +80,7 @@ import {
   FinancialSettlementsController,
   FinancialDisbursementsController,
 } from './presentation/rest/controllers';
+
 import { MpesaCallbackController } from '../financial-payment-providers/infrastructure/mpesa/payments/mpesa-callback.controller';
 
 // -----------------------------------------------------------------------------
@@ -91,6 +96,7 @@ import {
   FINANCIAL_PAYMENT_METHOD_PROVIDERS,
   FINANCIAL_SETTLEMENT_PROVIDERS,
   FINANCIAL_DISBURSEMENT_PROVIDERS,
+  FINANCIAL_DISBURSEMENT_CALLBACK_PROVIDERS,
 } from './infrastructure/dependency-injection';
 
 // -----------------------------------------------------------------------------
@@ -106,6 +112,7 @@ import {
   FINANCIAL_PAYMENT_METHOD_TOKENS,
   FINANCIAL_SETTLEMENT_TOKENS,
   FINANCIAL_DISBURSEMENT_TOKENS,
+  FINANCIAL_DISBURSEMENT_CALLBACK_TOKENS,
 } from './application';
 
 // -----------------------------------------------------------------------------
@@ -217,6 +224,7 @@ import {
   // ---------------------------------------------------------------------------
   // Financial Account Withdrawal
   // ---------------------------------------------------------------------------
+  GetAllFinancialAccountWithdrawalsHandler,
   GetFinancialAccountWithdrawalHandler,
   GetFinancialAccountWithdrawalsHandler,
   GetFinancialAccountWithdrawalsByStatusHandler,
@@ -260,7 +268,7 @@ import {
 import { EventRehydratorRegistry } from '../../infrastructure/events/event-rehydrator.registry';
 import { FinancialPaymentCreatedSubscriber } from './application/subscribers/financial-payment-created.subscriber';
 import { FinancialPaymentSucceededSubscriber } from './application/subscribers/financial-payment-succeeded.subscriber';
-import { FinancialPaymentEventRegistry } from './domain/events/registry/financial-payment-event.registry';
+import { FinancialEventRegistry } from './domain/events/registry/financial-event.registry';
 // =============================================================================
 // Module
 // =============================================================================
@@ -290,7 +298,10 @@ import { FinancialPaymentEventRegistry } from './domain/events/registry/financia
     FinancialPaymentMethodsController,
     FinancialSettlementsController,
     FinancialDisbursementsController,
+
+    // M-PESA Callbacks
     MpesaCallbackController,
+    MpesaB2CCallbackController,
   ],
 
   // ===========================================================================
@@ -310,6 +321,7 @@ import { FinancialPaymentEventRegistry } from './domain/events/registry/financia
     ...FINANCIAL_PAYMENT_METHOD_PROVIDERS,
     ...FINANCIAL_SETTLEMENT_PROVIDERS,
     ...FINANCIAL_DISBURSEMENT_PROVIDERS,
+    ...FINANCIAL_DISBURSEMENT_CALLBACK_PROVIDERS,
     ...FINANCIAL_PAYMENT_CALLBACK_PROVIDERS,
 
     // =========================================================================
@@ -318,11 +330,13 @@ import { FinancialPaymentEventRegistry } from './domain/events/registry/financia
 
     PlatformFinancialAccountsProvisioner,
     QueryMpesaPaymentStatusService,
-    // =========================================================================
+
     // M-PESA — Callback Processing
-    // =========================================================================
+    // -------------------------------------------------------------------------
 
     MpesaCallbackService,
+    MpesaB2CCallbackService,
+
     // -------------------------------------------------------------------------
     // Financial Payment — Event Subscribers
     // -------------------------------------------------------------------------
@@ -447,7 +461,11 @@ import { FinancialPaymentEventRegistry } from './domain/events/registry/financia
       provide: FINANCIAL_ACCOUNT_WITHDRAWAL_TOKENS.QUERY_HANDLERS.GET_BY_STATUS,
       useClass: GetFinancialAccountWithdrawalsByStatusHandler,
     },
-
+    {
+      provide:
+        FINANCIAL_ACCOUNT_WITHDRAWAL_TOKENS.QUERY_HANDLERS.GET_ALL_PLATFORM,
+      useClass: GetAllFinancialAccountWithdrawalsHandler,
+    },
     // =========================================================================
     // Financial Transaction
     // =========================================================================
@@ -540,9 +558,9 @@ import { FinancialPaymentEventRegistry } from './domain/events/registry/financia
       useClass: GetAllFinancialPaymentsQueryHandler,
     },
     {
-      provide: FinancialPaymentEventRegistry,
+      provide: FinancialEventRegistry,
       useFactory: (registry: EventRehydratorRegistry) => {
-        const financialPaymentRegistry = new FinancialPaymentEventRegistry();
+        const financialPaymentRegistry = new FinancialEventRegistry();
 
         registry.register(financialPaymentRegistry);
 
@@ -746,6 +764,7 @@ import { FinancialPaymentEventRegistry } from './domain/events/registry/financia
     // -------------------------------------------------------------------------
 
     FINANCIAL_DISBURSEMENT_TOKENS.REPOSITORY,
+    FINANCIAL_DISBURSEMENT_CALLBACK_TOKENS.REPOSITORY,
   ],
 })
 export class FinancialModule {}

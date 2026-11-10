@@ -217,6 +217,29 @@ export interface FinancialDisbursementAttemptProps {
    */
   providerReference: FinancialProviderReference | undefined;
 
+  /**
+   * Safaricom B2C OriginatorConversationID.
+   *
+   * Used to correlate the asynchronous provider result with this attempt.
+   * This is an identifier, not a credential or secret.
+   */
+  providerOriginatorConversationId: string | undefined;
+
+  /**
+   * Safaricom B2C ConversationID.
+   *
+   * Assigned by the provider after accepting the B2C request.
+   */
+  providerConversationId: string | undefined;
+
+  /**
+   * Safaricom B2C TransactionID.
+   *
+   * Usually supplied in the asynchronous result callback after payout
+   * processing has completed.
+   */
+  providerTransactionId: string | undefined;
+
   // ---------------------------------------------------------------------------
   // Monetary Value
   // ---------------------------------------------------------------------------
@@ -362,6 +385,9 @@ export class FinancialDisbursementAttemptEntity extends Entity<
         // Provider
         provider,
         providerReference: providerReference ?? undefined,
+        providerOriginatorConversationId: undefined,
+        providerConversationId: undefined,
+        providerTransactionId: undefined,
 
         // Monetary Value
         amount,
@@ -419,6 +445,18 @@ export class FinancialDisbursementAttemptEntity extends Entity<
 
   public get providerReference(): FinancialProviderReference | undefined {
     return this.props.providerReference;
+  }
+
+  public get providerOriginatorConversationId(): string | undefined {
+    return this.props.providerOriginatorConversationId;
+  }
+
+  public get providerConversationId(): string | undefined {
+    return this.props.providerConversationId;
+  }
+
+  public get providerTransactionId(): string | undefined {
+    return this.props.providerTransactionId;
   }
 
   public get amount(): Money {
@@ -638,6 +676,107 @@ export class FinancialDisbursementAttemptEntity extends Entity<
    */
   public hasProviderReference(): boolean {
     return this.props.providerReference !== undefined;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Provider Correlation Identifiers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Records the Safaricom B2C OriginatorConversationID.
+   *
+   * Provider identifiers are immutable once recorded. Re-applying the same
+   * value is idempotent, which supports safe callback/request reconciliation.
+   */
+  public setProviderOriginatorConversationId(value: string): void {
+    const nextValue = this.setImmutableProviderIdentifier(
+      this.props.providerOriginatorConversationId,
+      value,
+      'OriginatorConversationID',
+    );
+
+    if (nextValue === this.props.providerOriginatorConversationId) {
+      return;
+    }
+
+    this.props.providerOriginatorConversationId = nextValue;
+    this.touch();
+  }
+
+  /**
+   * Records the Safaricom B2C ConversationID.
+   */
+  public setProviderConversationId(value: string): void {
+    const nextValue = this.setImmutableProviderIdentifier(
+      this.props.providerConversationId,
+      value,
+      'ConversationID',
+    );
+
+    if (nextValue === this.props.providerConversationId) {
+      return;
+    }
+
+    this.props.providerConversationId = nextValue;
+    this.touch();
+  }
+
+  /**
+   * Records the Safaricom B2C TransactionID.
+   *
+   * This identifier may arrive later in the asynchronous result callback.
+   */
+  public setProviderTransactionId(value: string): void {
+    const nextValue = this.setImmutableProviderIdentifier(
+      this.props.providerTransactionId,
+      value,
+      'TransactionID',
+    );
+
+    if (nextValue === this.props.providerTransactionId) {
+      return;
+    }
+
+    this.props.providerTransactionId = nextValue;
+    this.touch();
+  }
+
+  /**
+   * Returns whether the supplied provider identifier can be recorded.
+   *
+   * Provider identifiers are deliberately kept as plain strings in the
+   * domain because their formats are defined by the external provider.
+   */
+  private setImmutableProviderIdentifier(
+    currentValue: string | undefined,
+    value: string,
+    identifierName: string,
+  ): string {
+    if (!this.isProcessing()) {
+      throw new Error(
+        `Cannot set ${identifierName} unless the Financial Disbursement Attempt is PROCESSING`,
+      );
+    }
+
+    const normalized = value.trim();
+
+    if (!normalized) {
+      throw new Error(
+        `Financial Disbursement Attempt ${identifierName} must not be empty`,
+      );
+    }
+
+    if (currentValue !== undefined) {
+      if (currentValue === normalized) {
+        return currentValue;
+      }
+
+      throw new Error(
+        `Financial Disbursement Attempt ${identifierName} is already assigned`,
+      );
+    }
+
+    return normalized;
   }
 
   // ---------------------------------------------------------------------------

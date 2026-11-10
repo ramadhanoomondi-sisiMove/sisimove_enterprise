@@ -1,62 +1,33 @@
 // -----------------------------------------------------------------------------
-// Financial Disbursement — Create Command Handler
-// -----------------------------------------------------------------------------
-//
-// Application handler for creating a Financial Disbursement aggregate.
-//
-// Workflow:
-//
-// 1. Resolve the source Financial Account.
-// 2. Ensure the account is operational.
-// 3. Ensure the disbursement currency matches the account currency.
-// 4. Resolve the selected Financial Disbursement Destination.
-// 5. Ensure the destination belongs to the source Financial Account.
-// 6. Create the Financial Disbursement entity.
-// 7. Create the Financial Disbursement aggregate.
-// 8. Record the Financial Disbursement Created event.
-// 9. Persist the aggregate.
-//
-// Destination handling:
-//
-// The command contains the public identity of the selected destination.
-//
-// FinancialDisbursementDestinationEntity is an independently persisted
-// Financial-domain entity associated with the source Financial Account.
-//
-// It is NOT an owned child of the FinancialDisbursementAggregate.
-//
-// The existing FinancialDisbursementRepository provides destination lookup
-// required by the application workflow.
-//
-// This handler does NOT:
-//
-// - Modify Financial Account balances.
-// - Create or post a Financial Transaction.
-// - Create a Financial Disbursement Attempt.
-// - Execute an external provider.
-// - Move money externally.
-// - Perform settlement.
-// - Perform accounting.
-//
-// Those responsibilities belong to their respective aggregates,
-// application workflows, and integration boundaries.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
 // NestJS
 // -----------------------------------------------------------------------------
 
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
-// Foundation
+// Foundation — Unit of Work
+// -----------------------------------------------------------------------------
+
+import { UNIT_OF_WORK } from '../../../../foundation/persistence/unit-of-work.token';
+
+import type { UnitOfWork } from '../../../../foundation/persistence/unit-of-work.interface';
+
+// -----------------------------------------------------------------------------
+// Foundation — Event Publisher
+// -----------------------------------------------------------------------------
+
+import { EVENT_PUBLISHER } from '../../../../foundation/events/event-publisher.token';
+
+import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
+
+// -----------------------------------------------------------------------------
+// Foundation — Command Handler
 // -----------------------------------------------------------------------------
 
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 
 // -----------------------------------------------------------------------------
-// Application Tokens
+// Application — Tokens
 // -----------------------------------------------------------------------------
 
 import { FINANCIAL_ACCOUNT_TOKENS } from '../financial-account.tokens';
@@ -70,7 +41,7 @@ import { FINANCIAL_DISBURSEMENT_TOKENS } from '../financial-disbursement.tokens'
 import type { CreateFinancialDisbursementCommand } from '../commands/create-financial-disbursement.command';
 
 // -----------------------------------------------------------------------------
-// Domain
+// Aggregate and Entity
 // -----------------------------------------------------------------------------
 
 import { FinancialDisbursementAggregate } from '../../domain/aggregates/financial-disbursement.aggregate';
@@ -89,10 +60,26 @@ import type { FinancialDisbursementRepository } from '../../domain/repositories/
 // Exceptions
 // -----------------------------------------------------------------------------
 
-import {
-  FinancialAccountNotFoundException,
-  FinancialInvariantException,
-} from '../../domain/exceptions';
+import { FinancialAccountNotFoundException } from '../../domain/exceptions';
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+/**
+ * Detects a Prisma unique-constraint violation without coupling this
+ * application handler directly to Prisma's generated runtime classes.
+ *
+ * The handler still performs a repository lookup before deciding whether
+ * the conflict represents an already-created withdrawal disbursement.
+ */
+function isUniqueConstraintViolation(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null || !('code' in error)) {
+    return false;
+  }
+
+  return error.code === 'P2002';
+}
 
 // =============================================================================
 // Handler
@@ -103,6 +90,8 @@ export class CreateFinancialDisbursementHandler implements CommandHandler<
   CreateFinancialDisbursementCommand,
   FinancialDisbursementAggregate
 > {
+  private readonly logger = new Logger(CreateFinancialDisbursementHandler.name);
+
   // ===========================================================================
   // Constructor
   // ===========================================================================
@@ -113,6 +102,12 @@ export class CreateFinancialDisbursementHandler implements CommandHandler<
 
     @Inject(FINANCIAL_ACCOUNT_TOKENS.REPOSITORY)
     private readonly accountRepository: FinancialAccountRepository,
+
+    @Inject(UNIT_OF_WORK)
+    private readonly unitOfWork: UnitOfWork,
+
+    @Inject(EVENT_PUBLISHER)
+    private readonly eventPublisher: EventPublisher,
   ) {}
 
   // ===========================================================================
@@ -123,152 +118,194 @@ export class CreateFinancialDisbursementHandler implements CommandHandler<
     command: CreateFinancialDisbursementCommand,
   ): Promise<FinancialDisbursementAggregate> {
     // -------------------------------------------------------------------------
-    // Resolve Financial Account
+    // Execute Creation Transaction
     // -------------------------------------------------------------------------
 
-    const account = await this.accountRepository.findByPublicId(
-      command.sourceAccountPublicId,
-    );
+    let result: {
+      aggregate: FinancialDisbursementAggregate;
+      created: boolean;
+    };
 
-    if (account === null) {
-      throw new FinancialAccountNotFoundException(
-        command.sourceAccountPublicId.value,
+    try {
+      result = await this.unitOfWork.execute(async () => {
+        // ---------------------------------------------------------------------
+        // 1. Recover Existing Disbursement for Originating Withdrawal
+        // ---------------------------------------------------------------------
+        //
+        // A withdrawal must not create multiple disbursements.
+        //
+        // This lookup handles ordinary retries. The database unique constraint
+        // and recovery outside this transaction handle concurrent deliveries.
+        // ---------------------------------------------------------------------
+
+        if (command.withdrawalPublicId !== undefined) {
+          const existingDisbursement =
+            await this.disbursementRepository.findByWithdrawalPublicId(
+              command.withdrawalPublicId,
+            );
+
+          if (existingDisbursement !== null) {
+            return {
+              aggregate: existingDisbursement,
+              created: false,
+            };
+          }
+        }
+
+        // ---------------------------------------------------------------------
+        // 2. Resolve Financial Account
+        // ---------------------------------------------------------------------
+
+        const account = await this.accountRepository.findByPublicId(
+          command.sourceAccountPublicId,
+        );
+
+        if (account === null) {
+          throw new FinancialAccountNotFoundException(
+            command.sourceAccountPublicId.value,
+          );
+        }
+
+        // ---------------------------------------------------------------------
+        // 3. Validate Financial Account
+        // ---------------------------------------------------------------------
+
+        account.ensureOperational();
+
+        // ---------------------------------------------------------------------
+        // 4. Validate Currency
+        // ---------------------------------------------------------------------
+
+        account.ensureCurrency(command.amount.currency);
+
+        // ---------------------------------------------------------------------
+        // 5. Create Financial Disbursement Entity
+        // ---------------------------------------------------------------------
+        //
+        // The destination is an immutable snapshot carried by the command.
+        //
+        // withdrawalPublicId links this disbursement to its originating
+        // Financial Account Withdrawal when one exists.
+        //
+        // No configured destination lookup or ownership check is performed.
+        // ---------------------------------------------------------------------
+
+        const disbursementEntity = FinancialDisbursementEntity.create(
+          account.id,
+          account.publicId,
+          command.destination,
+          command.amount,
+          command.referenceType,
+          command.referencePublicId,
+          command.withdrawalPublicId,
+        );
+
+        // ---------------------------------------------------------------------
+        // 6. Create Financial Disbursement Aggregate
+        // ---------------------------------------------------------------------
+
+        const disbursementAggregate =
+          FinancialDisbursementAggregate.create(disbursementEntity);
+
+        // ---------------------------------------------------------------------
+        // 7. Record Financial Disbursement Created Event
+        // ---------------------------------------------------------------------
+
+        disbursementAggregate.recordCreated(
+          command.correlationId,
+          command.causationId,
+        );
+
+        // ---------------------------------------------------------------------
+        // 8. Persist Newly Created Financial Disbursement
+        // ---------------------------------------------------------------------
+        //
+        // withdrawalPublicId must be protected by a database unique
+        // constraint when supplied.
+        // ---------------------------------------------------------------------
+
+        await this.disbursementRepository.create(disbursementAggregate);
+
+        // ---------------------------------------------------------------------
+        // 9. Persist Domain Events into Transactional Outbox
+        // ---------------------------------------------------------------------
+        //
+        // EventPublisher delegates event persistence to the EventStore.
+        //
+        // The EventStore must participate in the same ambient transaction.
+        //
+        // If event persistence fails, the disbursement creation is rolled back.
+        // ---------------------------------------------------------------------
+
+        const domainEvents = disbursementAggregate.pullDomainEvents();
+
+        if (domainEvents.length > 0) {
+          await this.eventPublisher.publishAll(domainEvents);
+        }
+
+        return {
+          aggregate: disbursementAggregate,
+          created: true,
+        };
+      });
+    } catch (error: unknown) {
+      // -----------------------------------------------------------------------
+      // 10. Recover Concurrent Duplicate Creation
+      // -----------------------------------------------------------------------
+      //
+      // If another delivery created the disbursement after our initial lookup,
+      // the database unique constraint rejects this transaction.
+      //
+      // The failed transaction has now rolled back. Query again outside that
+      // transaction to recover the winning disbursement.
+      //
+      // If no matching withdrawal disbursement exists, preserve and rethrow
+      // the original error. This prevents unrelated unique violations from
+      // being silently swallowed.
+      // -----------------------------------------------------------------------
+
+      if (
+        command.withdrawalPublicId === undefined ||
+        !isUniqueConstraintViolation(error)
+      ) {
+        throw error;
+      }
+
+      const existingDisbursement =
+        await this.disbursementRepository.findByWithdrawalPublicId(
+          command.withdrawalPublicId,
+        );
+
+      if (existingDisbursement === null) {
+        throw error;
+      }
+
+      this.logger.warn(
+        `Concurrent Financial Disbursement creation recovered for withdrawal: ${command.withdrawalPublicId}`,
+      );
+
+      return existingDisbursement;
+    }
+
+    // -------------------------------------------------------------------------
+    // 11. Log After Successful Transaction Completion
+    // -------------------------------------------------------------------------
+
+    if (result.created) {
+      this.logger.log(
+        `Financial Disbursement created: ${result.aggregate.publicId.value}`,
+      );
+    } else {
+      this.logger.log(
+        `Existing Financial Disbursement recovered: ${result.aggregate.publicId.value}`,
       );
     }
 
     // -------------------------------------------------------------------------
-    // Validate Account
-    // -------------------------------------------------------------------------
-    //
-    // A disbursement may only originate from an operational Financial Account.
-    //
-    // The Financial Account aggregate owns the definition of operational
-    // state.
+    // 12. Return Disbursement Aggregate
     // -------------------------------------------------------------------------
 
-    account.ensureOperational();
-
-    // -------------------------------------------------------------------------
-    // Validate Currency
-    // -------------------------------------------------------------------------
-    //
-    // The disbursement amount must use the same currency as the source
-    // Financial Account.
-    //
-    // The Financial Account aggregate owns this currency invariant.
-    // -------------------------------------------------------------------------
-
-    account.ensureCurrency(command.amount.currency);
-
-    // -------------------------------------------------------------------------
-    // Resolve Financial Disbursement Destination
-    // -------------------------------------------------------------------------
-    //
-    // The destination is independently persisted and is not owned by the
-    // Financial Disbursement aggregate.
-    //
-    // The application workflow resolves the destination before aggregate
-    // construction.
-    // -------------------------------------------------------------------------
-
-    const destination =
-      await this.disbursementRepository.findDestinationByPublicId(
-        command.destinationPublicId,
-      );
-
-    if (destination === null) {
-      throw new FinancialInvariantException(
-        `Financial Disbursement Destination "${command.destinationPublicId.value}" was not found.`,
-      );
-    }
-
-    // -------------------------------------------------------------------------
-    // Validate Destination Ownership
-    // -------------------------------------------------------------------------
-    //
-    // The destination must belong to the source Financial Account.
-    //
-    // This invariant is also enforced by FinancialDisbursementAggregate.create()
-    // through its aggregate consistency checks.
-    // -------------------------------------------------------------------------
-
-    if (!destination.accountId.equals(account.id)) {
-      throw new FinancialInvariantException(
-        `Financial Disbursement Destination "${command.destinationPublicId.value}" does not belong to Financial Account "${command.sourceAccountPublicId.value}".`,
-      );
-    }
-
-    // -------------------------------------------------------------------------
-    // Create Financial Disbursement Entity
-    // -------------------------------------------------------------------------
-    //
-    // The entity owns:
-    //
-    // - internal identity;
-    // - public identity;
-    // - source account identity;
-    // - destination identity;
-    // - amount;
-    // - lifecycle state;
-    // - optional business reference;
-    // - lifecycle timestamps.
-    //
-    // Execution attempts are intentionally NOT created here.
-    // -------------------------------------------------------------------------
-
-    const disbursementEntity = FinancialDisbursementEntity.create(
-      account.id,
-      account.publicId,
-      destination.id,
-      command.amount,
-      command.referenceType,
-      command.referencePublicId,
-    );
-
-    // -------------------------------------------------------------------------
-    // Create Financial Disbursement Aggregate
-    // -------------------------------------------------------------------------
-    //
-    // The aggregate owns the disbursement lifecycle and associates the
-    // selected destination.
-    // -------------------------------------------------------------------------
-
-    const aggregate = FinancialDisbursementAggregate.create(
-      disbursementEntity,
-      destination,
-    );
-
-    // -------------------------------------------------------------------------
-    // Record Created Event
-    // -------------------------------------------------------------------------
-    //
-    // Creation itself does not implicitly emit the event.
-    //
-    // The handler supplies application-level correlation and causation
-    // metadata.
-    // -------------------------------------------------------------------------
-
-    aggregate.recordCreated(command.correlationId, command.causationId);
-
-    // -------------------------------------------------------------------------
-    // Persist Aggregate
-    // -------------------------------------------------------------------------
-    //
-    // Persisting the disbursement does not:
-    //
-    // - modify the Financial Account balance;
-    // - create a Financial Transaction;
-    // - create an execution attempt;
-    // - execute an external provider.
-    // -------------------------------------------------------------------------
-
-    await this.disbursementRepository.save(aggregate);
-
-    // -------------------------------------------------------------------------
-    // Return
-    // -------------------------------------------------------------------------
-
-    return aggregate;
+    return result.aggregate;
   }
 }
 

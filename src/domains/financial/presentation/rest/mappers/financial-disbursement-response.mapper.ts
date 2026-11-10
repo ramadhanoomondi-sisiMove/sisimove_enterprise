@@ -11,23 +11,13 @@
 // └── FinancialDisbursementEntity
 //     └── FinancialDisbursementAttemptEntity[]
 //
-// External entity:
+// Destination:
 //
-// FinancialDisbursementDestinationEntity
+// The disbursement owns an immutable withdrawal destination snapshot
+// (type + value). It does not depend on a separately configured destination.
 //
-// IMPORTANT:
-//
-// FinancialDisbursementDestinationEntity is NOT owned by the
-// FinancialDisbursementAggregate.
-//
-// The application/query layer resolves the destination entity and supplies it
-// to this mapper.
-//
-// The mapper exposes only the destination's PUBLIC identity and safe
-// presentation information.
-//
-// Internal destination/account identities and sensitive provider references
-// are never exposed.
+// FinancialDisbursementDestinationEntity remains a separate saved-destination
+// feature and is mapped independently by the destination-specific methods.
 //
 // -----------------------------------------------------------------------------
 
@@ -163,6 +153,18 @@ export interface FinancialDisbursementDestinationResponse {
 }
 
 /**
+ * REST representation of the immutable destination supplied for a withdrawal.
+ *
+ * This is the destination snapshot stored on the disbursement, not a reference
+ * to a configured FinancialDisbursementDestinationEntity.
+ */
+export interface FinancialDisbursementWithdrawalDestinationResponse {
+  type: string;
+
+  value: string;
+}
+
+/**
  * REST representation of a Financial Disbursement.
  */
 export interface FinancialDisbursementResponse {
@@ -179,16 +181,26 @@ export interface FinancialDisbursementResponse {
   sourceAccountPublicId: string;
 
   // ===========================================================================
+  // Originating Financial Account Withdrawal
+  // ===========================================================================
+
+  /**
+   * Public identity of the Financial Account Withdrawal that originated
+   * this disbursement.
+   *
+   * Optional because a disbursement may also be created independently of
+   * the Financial Account Withdrawal workflow.
+   */
+  withdrawalPublicId: string | undefined;
+
+  // ===========================================================================
   // Destination
   // ===========================================================================
 
   /**
-   * Public representation of the destination.
-   *
-   * The destination itself belongs to a separate boundary and is therefore
-   * represented as a safe nested response.
+   * Immutable destination details supplied when the withdrawal was requested.
    */
-  destination: FinancialDisbursementDestinationResponse;
+  destination: FinancialDisbursementWithdrawalDestinationResponse;
 
   // ===========================================================================
   // Disbursement
@@ -255,17 +267,15 @@ export class FinancialDisbursementResponseMapper {
   // ===========================================================================
 
   /**
-   * Maps a Financial Disbursement aggregate together with its independently
-   * resolved Financial Disbursement Destination.
+   * Maps a Financial Disbursement aggregate.
    *
-   * The destination is intentionally supplied by the application/query layer
-   * because it is outside the Financial Disbursement aggregate boundary.
+   * The immutable withdrawal destination is owned by the disbursement entity;
+   * no configured destination lookup is required.
    */
   public static toResponse(
     aggregate: FinancialDisbursementAggregate,
-    destination: FinancialDisbursementDestinationEntity,
   ): FinancialDisbursementResponse {
-    return this.fromEntity(aggregate.disbursement, destination);
+    return this.fromEntity(aggregate.disbursement);
   }
 
   // ===========================================================================
@@ -273,23 +283,12 @@ export class FinancialDisbursementResponseMapper {
   // ===========================================================================
 
   /**
-   * Maps a Financial Disbursement entity together with its independently
-   * resolved destination entity.
+   * Maps a Financial Disbursement entity and its immutable destination
+   * snapshot.
    */
   public static fromEntity(
     disbursement: FinancialDisbursementEntity,
-    destination: FinancialDisbursementDestinationEntity,
   ): FinancialDisbursementResponse {
-    // -------------------------------------------------------------------------
-    // Destination Ownership Invariant
-    // -------------------------------------------------------------------------
-
-    if (!destination.id.equals(disbursement.destinationId)) {
-      throw new Error(
-        'Financial Disbursement Destination does not match the Financial Disbursement destination identity',
-      );
-    }
-
     // -------------------------------------------------------------------------
     // Response
     // -------------------------------------------------------------------------
@@ -308,10 +307,19 @@ export class FinancialDisbursementResponseMapper {
       sourceAccountPublicId: disbursement.sourceAccountPublicId.value,
 
       // -----------------------------------------------------------------------
+      // Originating Financial Account Withdrawal
+      // -----------------------------------------------------------------------
+
+      withdrawalPublicId: disbursement.withdrawalPublicId,
+
+      // -----------------------------------------------------------------------
       // Destination
       // -----------------------------------------------------------------------
 
-      destination: this.fromDestination(destination),
+      destination: {
+        type: disbursement.destinationType,
+        value: disbursement.destinationValue,
+      },
 
       // -----------------------------------------------------------------------
       // Disbursement
@@ -491,33 +499,13 @@ export class FinancialDisbursementResponseMapper {
   // ===========================================================================
 
   /**
-   * Maps Financial Disbursement aggregates together with their independently
-   * resolved destinations.
-   *
-   * The destination collection corresponds positionally with the aggregate
-   * collection.
+   * Maps Financial Disbursement aggregates without resolving configured
+   * destination entities.
    */
   public static fromAggregates(
     aggregates: readonly FinancialDisbursementAggregate[],
-    destinations: readonly FinancialDisbursementDestinationEntity[],
   ): FinancialDisbursementResponse[] {
-    if (aggregates.length !== destinations.length) {
-      throw new Error(
-        'Financial Disbursement aggregate and destination collections must have equal lengths',
-      );
-    }
-
-    return aggregates.map((aggregate, index) => {
-      const destination = destinations[index];
-
-      if (destination === undefined) {
-        throw new Error(
-          `Financial Disbursement Destination is missing at index ${index}`,
-        );
-      }
-
-      return this.toResponse(aggregate, destination);
-    });
+    return aggregates.map((aggregate) => this.toResponse(aggregate));
   }
 
   // ===========================================================================
@@ -525,30 +513,13 @@ export class FinancialDisbursementResponseMapper {
   // ===========================================================================
 
   /**
-   * Maps Financial Disbursement entities together with their independently
-   * resolved destinations.
+   * Maps Financial Disbursement entities using their stored destination
+   * snapshots.
    */
   public static fromEntities(
     disbursements: readonly FinancialDisbursementEntity[],
-    destinations: readonly FinancialDisbursementDestinationEntity[],
   ): FinancialDisbursementResponse[] {
-    if (disbursements.length !== destinations.length) {
-      throw new Error(
-        'Financial Disbursement entity and destination collections must have equal lengths',
-      );
-    }
-
-    return disbursements.map((disbursement, index) => {
-      const destination = destinations[index];
-
-      if (destination === undefined) {
-        throw new Error(
-          `Financial Disbursement Destination is missing at index ${index}`,
-        );
-      }
-
-      return this.fromEntity(disbursement, destination);
-    });
+    return disbursements.map((disbursement) => this.fromEntity(disbursement));
   }
 
   // ===========================================================================

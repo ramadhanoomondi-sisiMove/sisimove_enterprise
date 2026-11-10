@@ -136,6 +136,7 @@ import {
 // -----------------------------------------------------------------------------
 
 import {
+  GetAllFinancialAccountWithdrawalsQuery,
   GetFinancialAccountWithdrawalQuery,
   GetFinancialAccountWithdrawalsByStatusQuery,
   GetFinancialAccountWithdrawalsQuery,
@@ -259,8 +260,35 @@ export class FinancialAccountWithdrawalsController {
       GetFinancialAccountWithdrawalsByStatusQuery,
       FinancialAccountWithdrawalAggregate[]
     >,
+    @Inject(FINANCIAL_ACCOUNT_WITHDRAWAL_TOKENS.QUERY_HANDLERS.GET_ALL_PLATFORM)
+    private readonly getAllFinancialAccountWithdrawalsHandler: QueryHandler<
+      GetAllFinancialAccountWithdrawalsQuery,
+      FinancialAccountWithdrawalAggregate[]
+    >,
   ) {}
+  // ---------------------------------------------------------------------------
+  // Get All Withdrawals Across Platform
+  // ---------------------------------------------------------------------------
 
+  /**
+   * Returns all Financial Account Withdrawals across the platform.
+   *
+   * Intended for platform-wide administrative withdrawal oversight.
+   *
+   * The repository is responsible for aggregate rehydration and ordering.
+   */
+  @Get()
+  @RequirePermissions('financial:read')
+  public async getAll(): Promise<
+    ReturnType<typeof FinancialAccountWithdrawalResponseMapper.toResponse>[]
+  > {
+    const aggregates =
+      await this.getAllFinancialAccountWithdrawalsHandler.execute(
+        new GetAllFinancialAccountWithdrawalsQuery(),
+      );
+
+    return FinancialAccountWithdrawalResponseMapper.fromAggregates(aggregates);
+  }
   // ===========================================================================
   // Queries
   // ===========================================================================
@@ -280,7 +308,7 @@ export class FinancialAccountWithdrawalsController {
    * This route is declared before the generic public-ID route.
    */
   @Get('accounts/:accountPublicId/status/:status')
-  @RequirePermissions('financial-account-withdrawal:read')
+  @RequirePermissions('financial:read')
   public async getByAccountAndStatus(
     @Param() params: GetFinancialAccountWithdrawalsByStatusQueryDto,
   ): Promise<
@@ -310,7 +338,7 @@ export class FinancialAccountWithdrawalsController {
    * Account.
    */
   @Get('accounts/:accountPublicId')
-  @RequirePermissions('financial-account-withdrawal:read')
+  @RequirePermissions('financial:read')
   public async getByAccount(
     @Param() params: GetFinancialAccountWithdrawalsQueryDto,
   ): Promise<
@@ -336,7 +364,7 @@ export class FinancialAccountWithdrawalsController {
    * public-ID route.
    */
   @Get(':withdrawalPublicId')
-  @RequirePermissions('financial-account-withdrawal:read')
+  @RequirePermissions('financial:read')
   public async get(
     @Param() params: GetFinancialAccountWithdrawalQueryDto,
   ): Promise<

@@ -441,6 +441,7 @@ export class FinancialPaymentProvidersController {
 
     return FinancialPaymentProviderResponseMapper.toResponse(aggregate);
   }
+
   // ---------------------------------------------------------------------------
   // Configure M-PESA
   // ---------------------------------------------------------------------------
@@ -471,6 +472,8 @@ export class FinancialPaymentProvidersController {
       dto.consumerSecret,
       dto.shortcode,
       dto.passkey,
+      dto.initiatorName,
+      dto.securityCredential,
       new Date(),
       randomUUID(),
     );
@@ -483,6 +486,7 @@ export class FinancialPaymentProvidersController {
         'M-PESA credentials saved securely. Connection validation is still pending.',
     };
   }
+
   // ---------------------------------------------------------------------------
   // Test M-PESA Connection
   // ---------------------------------------------------------------------------

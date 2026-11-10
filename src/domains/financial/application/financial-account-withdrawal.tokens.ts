@@ -22,6 +22,7 @@
 //
 // Queries:
 // - get one withdrawal
+// - get all withdrawals across the platform
 // - get account withdrawals
 // - get account withdrawals by status
 //
@@ -58,6 +59,8 @@ export const FINANCIAL_ACCOUNT_WITHDRAWAL_TOKENS = {
     GET: Symbol('GetFinancialAccountWithdrawalHandler'),
 
     GET_ALL: Symbol('GetFinancialAccountWithdrawalsHandler'),
+
+    GET_ALL_PLATFORM: Symbol('GetAllFinancialAccountWithdrawalsHandler'),
 
     GET_BY_STATUS: Symbol('GetFinancialAccountWithdrawalsByStatusHandler'),
   } as const,

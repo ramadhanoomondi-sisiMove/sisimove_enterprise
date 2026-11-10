@@ -2985,37 +2985,79 @@ model FinancialAccountWithdrawal {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())
 
+  // ---------------------------------------------------------------------------
+  // Source Financial Account
+  // ---------------------------------------------------------------------------
+
   accountId String
 
   account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
 
+  // ---------------------------------------------------------------------------
+  // Withdrawal Amount
+  // ---------------------------------------------------------------------------
+
   amount   Int
   currency String @default("KES")
+
+  // ---------------------------------------------------------------------------
+  // Destination Snapshot
+  // ---------------------------------------------------------------------------
 
   destinationType  FinancialDisbursementDestinationType
   destinationValue String
 
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
   status FinancialAccountWithdrawalStatus @default(PENDING)
+
+  // ---------------------------------------------------------------------------
+  // Business Reference
+  // ---------------------------------------------------------------------------
 
   referenceType     String?
   referencePublicId String?
 
-  disbursementPublicId String?
-  transactionPublicId  String?
+  // ---------------------------------------------------------------------------
+  // Disbursement Link
+  // ---------------------------------------------------------------------------
+
+  // Public identity of the disbursement created for this withdrawal.
+  // A disbursement may be linked to only one withdrawal.
+  disbursementPublicId String? @unique
+
+  // ---------------------------------------------------------------------------
+  // Financial Transaction
+  // ---------------------------------------------------------------------------
+
+  transactionPublicId String?
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle Timestamps
+  // ---------------------------------------------------------------------------
 
   requestedAt DateTime  @default(now())
   completedAt DateTime?
   failedAt    DateTime?
   cancelledAt DateTime?
 
+  // ---------------------------------------------------------------------------
+  // Audit
+  // ---------------------------------------------------------------------------
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
 
   @@index([accountId])
   @@index([status])
   @@index([destinationType])
   @@index([referenceType, referencePublicId])
-  @@index([disbursementPublicId])
   @@index([transactionPublicId])
   @@index([requestedAt])
   @@map("financial_account_withdrawals")
@@ -3122,36 +3164,88 @@ model FinancialDisbursement {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())
 
+  // ---------------------------------------------------------------------------
+  // Source Financial Account
+  // ---------------------------------------------------------------------------
+
   sourceAccountId String
 
   sourceAccount FinancialAccount @relation("DisbursementSourceAccount", fields: [sourceAccountId], references: [id], onDelete: Restrict)
 
-  destinationId String
+  // ---------------------------------------------------------------------------
+  // Originating Withdrawal
+  // ---------------------------------------------------------------------------
 
-  destination FinancialDisbursementDestination @relation(fields: [destinationId], references: [id], onDelete: Restrict)
+  // Opaque reference to FinancialAccountWithdrawal.publicId.
+  // Intentionally not a Prisma relation.
+  //
+  // Unique constraint guarantees that one withdrawal cannot create
+  // multiple disbursements.
+  //
+  // Nullable to support disbursements created by other workflows.
+  withdrawalPublicId String? @unique
+
+  // ---------------------------------------------------------------------------
+  // Immutable Destination Snapshot
+  // ---------------------------------------------------------------------------
+
+  destinationType  FinancialDisbursementDestinationType
+  destinationValue String
+
+  // ---------------------------------------------------------------------------
+  // Amount
+  // ---------------------------------------------------------------------------
 
   amount   Int
   currency String @default("KES")
 
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
   status FinancialDisbursementStatus @default(PENDING)
 
+  // ---------------------------------------------------------------------------
+  // Execution Attempts
+  // ---------------------------------------------------------------------------
+
   attempts FinancialDisbursementAttempt[]
+
+  // ---------------------------------------------------------------------------
+  // Business Reference
+  // ---------------------------------------------------------------------------
 
   referenceType     String?
   referencePublicId String?
 
+  // ---------------------------------------------------------------------------
+  // Financial Transaction
+  // ---------------------------------------------------------------------------
+
   transactionPublicId String?
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle Timestamps
+  // ---------------------------------------------------------------------------
 
   requestedAt DateTime  @default(now())
   completedAt DateTime?
   failedAt    DateTime?
   cancelledAt DateTime?
 
+  // ---------------------------------------------------------------------------
+  // Audit
+  // ---------------------------------------------------------------------------
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // ---------------------------------------------------------------------------
+  // Indexes
+  // ---------------------------------------------------------------------------
+
   @@index([sourceAccountId])
-  @@index([destinationId])
+  @@index([destinationType])
   @@index([status])
   @@index([referenceType, referencePublicId])
   @@index([transactionPublicId])
@@ -3163,9 +3257,17 @@ model FinancialDisbursementDestination {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())
 
+  // ---------------------------------------------------------------------------
+  // Source Financial Account
+  // ---------------------------------------------------------------------------
+
   accountId String
 
   account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  // ---------------------------------------------------------------------------
+  // Destination Details
+  // ---------------------------------------------------------------------------
 
   type FinancialDisbursementDestinationType
 
@@ -3175,13 +3277,23 @@ model FinancialDisbursementDestination {
   displayName     String?
   maskedReference String?
 
+  // ---------------------------------------------------------------------------
+  // Configuration
+  // ---------------------------------------------------------------------------
+
   isDefault Boolean @default(false)
   isActive  Boolean @default(true)
 
-  disbursements FinancialDisbursement[]
+  // ---------------------------------------------------------------------------
+  // Audit
+  // ---------------------------------------------------------------------------
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // ---------------------------------------------------------------------------
+  // Constraints and Indexes
+  // ---------------------------------------------------------------------------
 
   @@unique([provider, providerReference])
   @@index([accountId])
@@ -3194,6 +3306,7 @@ model FinancialDisbursementDestination {
 // =============================================================================
 // FINANCIAL DISBURSEMENT ATTEMPT
 // =============================================================================--
+
 model FinancialDisbursementAttempt {
   id       String @id @default(uuid())
   publicId String @unique @default(uuid())
@@ -3207,6 +3320,11 @@ model FinancialDisbursementAttempt {
   provider          String
   providerReference String?
 
+  // M-PESA B2C correlation identifiers
+  providerOriginatorConversationId String?
+  providerConversationId           String?
+  providerTransactionId            String?
+
   amount   Int
   currency String @default("KES")
 
@@ -3216,16 +3334,71 @@ model FinancialDisbursementAttempt {
   startedAt   DateTime?
   completedAt DateTime?
   failedAt    DateTime?
+  cancelledAt DateTime?
+
+  callbacks FinancialDisbursementCallback[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Provider-scoped uniqueness for callback correlation
   @@unique([provider, providerReference])
+  @@unique([provider, providerOriginatorConversationId])
+  @@unique([provider, providerConversationId])
+  @@unique([provider, providerTransactionId])
   @@index([disbursementId])
   @@index([status])
   @@index([provider])
-  @@index([providerReference])
   @@map("financial_disbursement_attempts")
+}
+
+// =============================================================================
+// FINANCIAL DISBURSEMENT CALLBACK
+// =============================================================================
+
+model FinancialDisbursementCallback {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // Provider identity
+  provider String
+
+  // Callback classification
+  type FinancialDisbursementCallbackType
+
+  // B2C correlation identifiers
+  originatorConversationId String
+  conversationId           String?
+  transactionId            String?
+
+  // Optional link to the matching disbursement attempt
+  attemptId String?
+
+  attempt FinancialDisbursementAttempt? @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+
+  // Provider result
+  resultCode Int?
+  resultDesc String?
+
+  // Original callback payload
+  payload Json
+
+  // Callback processing lifecycle
+  status FinancialDisbursementCallbackStatus @default(PENDING)
+
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // A result and timeout callback may share the same originator ID.
+  @@unique([provider, originatorConversationId, type])
+  @@index([attemptId])
+  @@index([status, receivedAt])
+  @@index([provider, conversationId])
+  @@index([provider, transactionId])
+  @@map("financial_disbursement_callbacks")
 }
 
 // =============================================================================
@@ -5336,4 +5509,15 @@ enum FinancialPaymentProviderCapabilityType {
   VERIFY_DISBURSEMENT
   QUERY_BALANCE
   WEBHOOKS
+}
+
+enum FinancialDisbursementCallbackType {
+  RESULT
+  QUEUE_TIMEOUT
+}
+
+enum FinancialDisbursementCallbackStatus {
+  PENDING
+  PROCESSED
+  FAILED
 }

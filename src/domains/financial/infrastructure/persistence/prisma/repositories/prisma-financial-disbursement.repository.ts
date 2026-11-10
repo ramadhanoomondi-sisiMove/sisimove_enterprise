@@ -7,27 +7,16 @@
 // Aggregate:
 //
 // FinancialDisbursementAggregate
-// ├── FinancialDisbursementEntity
-// │   └── FinancialDisbursementAttemptEntity[]
-// └── FinancialDisbursementDestinationEntity
-//
-// IMPORTANT:
-//
-// FinancialDisbursementDestinationEntity is an associated independently
-// persisted Financial-domain entity. It is NOT owned by the
-// FinancialDisbursementAggregate.
+// └── FinancialDisbursementEntity
+//     ├── immutable withdrawal destination snapshot (type + value)
+//     └── FinancialDisbursementAttemptEntity[]
 //
 // FinancialDisbursementAttemptEntity[] IS aggregate-owned.
+// The withdrawal destination is an immutable snapshot persisted directly on
+// the FinancialDisbursement row. It is not a configured destination relation.
 //
-// Frozen persistence model:
-//
-// FinancialDisbursement
-// ├── sourceAccountId
-// ├── destinationId
-// └── attempts[]
-//
-// FinancialDisbursementDestination
-// └── accountId
+// FinancialDisbursementDestinationEntity remains independently persisted
+// under the Financial Account boundary for saved-destination workflows only.
 //
 // FinancialDisbursementAttempt
 // └── disbursementId
@@ -37,15 +26,13 @@
 // - Persist Financial Disbursement aggregates.
 // - Rehydrate complete Financial Disbursement aggregates.
 // - Resolve Financial Account public identities.
-// - Resolve Financial Disbursement Destination public identities.
 // - Preserve internal persistence identities.
 // - Preserve public domain identities.
 // - Preserve source-account ownership.
-// - Preserve destination association.
+// - Preserve the immutable destination snapshot.
 // - Persist aggregate-owned attempts.
 // - Synchronize attempt lifecycle state.
 // - Support aggregate queries.
-// - Support destination resolution.
 // - Support source-account queries.
 // - Support business-reference queries.
 // - Support transaction-reference queries.
@@ -164,6 +151,8 @@ import type { FinancialDisbursementPublicId } from '../../../../domain/value-obj
 
 import type { FinancialDisbursementStatus } from '../../../../domain/value-objects/financial-disbursement-status.vo';
 
+import type { FinancialProvider } from '../../../../domain/value-objects/financial-provider.vo';
+
 import type { FinancialReferenceType } from '../../../../domain/value-objects/financial-reference-type.vo';
 
 import type { FinancialReferencePublicId } from '../../../../domain/value-objects/financial-reference-public-id.vo';
@@ -224,9 +213,8 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
    * FinancialDisbursement
    * └── FinancialDisbursementAttempt[]
    *
-   * The selected Financial Disbursement Destination already exists.
-   *
-   * The destination is referenced but is never created or modified here.
+   * The immutable withdrawal destination snapshot is stored directly on the
+   * disbursement. No configured destination record is required.
    *
    * IMPORTANT:
    *
@@ -253,15 +241,6 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
     );
 
     // -------------------------------------------------------------------------
-    // Resolve Destination
-    // -------------------------------------------------------------------------
-
-    const destinationId = await this.resolveDestinationId(
-      aggregate.destinationPublicId,
-      accountId,
-    );
-
-    // -------------------------------------------------------------------------
     // Map Aggregate
     // -------------------------------------------------------------------------
 
@@ -279,16 +258,6 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
     }
 
     // -------------------------------------------------------------------------
-    // Validate Destination Consistency
-    // -------------------------------------------------------------------------
-
-    if (persistence.disbursement.destinationId !== destinationId) {
-      throw new FinancialDisbursementException(
-        `Financial Disbursement "${aggregate.publicId.value}" contains an inconsistent Financial Disbursement Destination reference.`,
-      );
-    }
-
-    // -------------------------------------------------------------------------
     // Create Disbursement
     // -------------------------------------------------------------------------
 
@@ -300,7 +269,9 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
 
         sourceAccountId: accountId,
 
-        destinationId,
+        destinationType: persistence.disbursement.destinationType,
+
+        destinationValue: persistence.disbursement.destinationValue,
 
         amount: persistence.disbursement.amount,
 
@@ -349,10 +320,9 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
    * 2. Verify public identity stability.
    * 3. Resolve source Financial Account.
    * 4. Verify source-account ownership stability.
-   * 5. Resolve destination.
-   * 6. Verify destination association stability.
-   * 7. Update the Financial Disbursement.
-   * 8. Synchronize aggregate-owned attempts.
+   * 5. Verify immutable destination snapshot stability.
+   * 6. Update the Financial Disbursement.
+   * 7. Synchronize aggregate-owned attempts.
    *
    * IMPORTANT:
    *
@@ -381,7 +351,8 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
         id: true,
         publicId: true,
         sourceAccountId: true,
-        destinationId: true,
+        destinationType: true,
+        destinationValue: true,
       },
     });
 
@@ -424,25 +395,6 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
     }
 
     // -------------------------------------------------------------------------
-    // Resolve Destination
-    // -------------------------------------------------------------------------
-
-    const destinationId = await this.resolveDestinationId(
-      aggregate.destinationPublicId,
-      accountId,
-    );
-
-    // -------------------------------------------------------------------------
-    // Destination Association Stability
-    // -------------------------------------------------------------------------
-
-    if (existing.destinationId !== destinationId) {
-      throw new FinancialDisbursementException(
-        `Financial Disbursement "${aggregate.publicId.value}" cannot be moved to another Financial Disbursement Destination.`,
-      );
-    }
-
-    // -------------------------------------------------------------------------
     // Map Aggregate
     // -------------------------------------------------------------------------
 
@@ -459,9 +411,14 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
       );
     }
 
-    if (persistence.disbursement.destinationId !== destinationId) {
+    // The destination is an immutable snapshot. A persisted disbursement
+    // cannot be redirected by changing its destination type or value.
+    if (
+      existing.destinationType !== persistence.disbursement.destinationType ||
+      existing.destinationValue !== persistence.disbursement.destinationValue
+    ) {
       throw new FinancialDisbursementException(
-        `Financial Disbursement "${aggregate.publicId.value}" contains an inconsistent Financial Disbursement Destination reference.`,
+        `Financial Disbursement "${aggregate.publicId.value}" cannot change its immutable withdrawal destination snapshot.`,
       );
     }
 
@@ -511,10 +468,9 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
   // ===========================================================================
 
   /**
-   * Resolves an independently persisted Financial Disbursement Destination.
-   *
-   * The destination remains outside the ownership boundary of the
-   * FinancialDisbursementAggregate.
+   * Resolves an independently persisted saved Financial Disbursement
+   * Destination for Financial Account workflows. This is not used by the
+   * withdrawal/disbursement aggregate workflow.
    *
    * Returns null when the destination does not exist.
    */
@@ -596,6 +552,145 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
   }
 
   // ===========================================================================
+  // Find by Provider Originator Conversation ID
+  // ===========================================================================
+
+  /**
+   * Locates the parent disbursement through an aggregate-owned attempt.
+   *
+   * Provider is part of the lookup because correlation identifiers are scoped
+   * to a provider. The complete aggregate graph is loaded for callback
+   * processing; the attempt is never returned as an independent root.
+   */
+  public async findByProviderOriginatorConversationId(
+    provider: FinancialProvider,
+    originatorConversationId: string,
+  ): Promise<FinancialDisbursementAggregate | null> {
+    const normalizedProvider = provider.value.trim();
+    const normalizedId = originatorConversationId.trim();
+
+    if (!normalizedProvider || !normalizedId) {
+      throw new FinancialDisbursementException(
+        'Financial Provider and Originator Conversation ID must not be empty.',
+      );
+    }
+
+    const record = await this.prisma.financialDisbursement.findFirst({
+      where: {
+        attempts: {
+          some: {
+            provider: normalizedProvider,
+            providerOriginatorConversationId: normalizedId,
+          },
+        },
+      },
+
+      include: {
+        sourceAccount: true,
+        attempts: true,
+      },
+    });
+
+    if (record === null) {
+      return null;
+    }
+
+    return FinancialDisbursementPrismaMapper.toDomain(record);
+  }
+
+  // ===========================================================================
+  // Find by Provider Conversation ID
+  // ===========================================================================
+
+  /**
+   * Locates the parent disbursement through an aggregate-owned attempt.
+   *
+   * The provider-scoped identifier is used only for internal callback
+   * correlation and is not exposed through REST representations.
+   */
+  public async findByProviderConversationId(
+    provider: FinancialProvider,
+    conversationId: string,
+  ): Promise<FinancialDisbursementAggregate | null> {
+    const normalizedProvider = provider.value.trim();
+    const normalizedId = conversationId.trim();
+
+    if (!normalizedProvider || !normalizedId) {
+      throw new FinancialDisbursementException(
+        'Financial Provider and Conversation ID must not be empty.',
+      );
+    }
+
+    const record = await this.prisma.financialDisbursement.findFirst({
+      where: {
+        attempts: {
+          some: {
+            provider: normalizedProvider,
+            providerConversationId: normalizedId,
+          },
+        },
+      },
+
+      include: {
+        sourceAccount: true,
+        attempts: true,
+      },
+    });
+
+    if (record === null) {
+      return null;
+    }
+
+    return FinancialDisbursementPrismaMapper.toDomain(record);
+  }
+
+  // ===========================================================================
+  // Find by Provider Transaction ID
+  // ===========================================================================
+
+  /**
+   * Locates the parent disbursement through an aggregate-owned attempt.
+   *
+   * Transaction IDs are provider-scoped opaque identifiers supplied by the
+   * provider's final result callback.
+   */
+  public async findByProviderTransactionId(
+    provider: FinancialProvider,
+    transactionId: string,
+  ): Promise<FinancialDisbursementAggregate | null> {
+    const normalizedProvider = provider.value.trim();
+    const normalizedId = transactionId.trim();
+
+    if (!normalizedProvider || !normalizedId) {
+      throw new FinancialDisbursementException(
+        'Financial Provider and Transaction ID must not be empty.',
+      );
+    }
+
+    const record = await this.prisma.financialDisbursement.findFirst({
+      where: {
+        attempts: {
+          some: {
+            provider: normalizedProvider,
+            providerTransactionId: normalizedId,
+          },
+        },
+      },
+
+      include: {
+        sourceAccount: true,
+        attempts: true,
+      },
+    });
+
+    if (record === null) {
+      return null;
+    }
+
+    return FinancialDisbursementPrismaMapper.toDomain(record);
+  }
+
+  // ===========================================================================
   // Find by Source Financial Account
   // ===========================================================================
 
@@ -611,7 +706,6 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
 
       include: {
         sourceAccount: true,
-        destination: true,
         attempts: true,
       },
 
@@ -651,7 +745,6 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
 
       include: {
         sourceAccount: true,
-        destination: true,
         attempts: true,
       },
 
@@ -687,7 +780,6 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
 
       include: {
         sourceAccount: true,
-        destination: true,
         attempts: true,
       },
     });
@@ -713,7 +805,6 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
 
       include: {
         sourceAccount: true,
-        destination: true,
         attempts: true,
       },
 
@@ -775,7 +866,6 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
 
       include: {
         sourceAccount: true,
-        destination: true,
         attempts: true,
       },
     });
@@ -836,70 +926,6 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
     }
 
     return account.id;
-  }
-
-  // ===========================================================================
-  // Resolve Destination
-  // ===========================================================================
-
-  /**
-   * Resolves:
-   *
-   * FinancialDisbursementDestinationPublicId
-   *                 ↓
-   * FinancialDisbursementDestination.id
-   *
-   * Additionally verifies that the destination belongs to the source
-   * Financial Account.
-   *
-   * IMPORTANT:
-   *
-   * Destination ownership is a persistence invariant:
-   *
-   * FinancialAccount
-   *      │
-   *      └── FinancialDisbursementDestination
-   *
-   * A destination belonging to another Financial Account cannot be attached
-   * to this Financial Disbursement.
-   */
-  private async resolveDestinationId(
-    destinationPublicId: FinancialDisbursementDestinationPublicId,
-    accountId: string,
-  ): Promise<string> {
-    const normalized = destinationPublicId.value.trim();
-
-    if (!normalized) {
-      throw new FinancialDisbursementException(
-        'Financial Disbursement Destination public ID must not be empty.',
-      );
-    }
-
-    const destination =
-      await this.prisma.financialDisbursementDestination.findUnique({
-        where: {
-          publicId: normalized,
-        },
-
-        select: {
-          id: true,
-          accountId: true,
-        },
-      });
-
-    if (destination === null) {
-      throw new FinancialDisbursementException(
-        `Financial Disbursement Destination "${normalized}" does not exist.`,
-      );
-    }
-
-    if (destination.accountId !== accountId) {
-      throw new FinancialDisbursementException(
-        `Financial Disbursement Destination "${normalized}" does not belong to the source Financial Account.`,
-      );
-    }
-
-    return destination.id;
   }
 
   // ===========================================================================
@@ -966,6 +992,13 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
 
           providerReference: persistence.providerReference,
 
+          providerOriginatorConversationId:
+            persistence.providerOriginatorConversationId,
+
+          providerConversationId: persistence.providerConversationId,
+
+          providerTransactionId: persistence.providerTransactionId,
+
           amount: persistence.amount,
 
           currency: persistence.currency,
@@ -979,6 +1012,8 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
           completedAt: persistence.completedAt,
 
           failedAt: persistence.failedAt,
+
+          cancelledAt: persistence.cancelledAt,
 
           createdAt: persistence.createdAt,
 
@@ -1073,6 +1108,13 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
 
             providerReference: persistence.providerReference,
 
+            providerOriginatorConversationId:
+              persistence.providerOriginatorConversationId,
+
+            providerConversationId: persistence.providerConversationId,
+
+            providerTransactionId: persistence.providerTransactionId,
+
             amount: persistence.amount,
 
             currency: persistence.currency,
@@ -1086,6 +1128,8 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
             completedAt: persistence.completedAt,
 
             failedAt: persistence.failedAt,
+
+            cancelledAt: persistence.cancelledAt,
 
             createdAt: persistence.createdAt,
 
@@ -1132,6 +1176,13 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
 
           providerReference: persistence.providerReference,
 
+          providerOriginatorConversationId:
+            persistence.providerOriginatorConversationId,
+
+          providerConversationId: persistence.providerConversationId,
+
+          providerTransactionId: persistence.providerTransactionId,
+
           amount: persistence.amount,
 
           currency: persistence.currency,
@@ -1145,6 +1196,8 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
           completedAt: persistence.completedAt,
 
           failedAt: persistence.failedAt,
+
+          cancelledAt: persistence.cancelledAt,
 
           updatedAt: persistence.updatedAt,
         },

@@ -1,48 +1,20 @@
-// -----------------------------------------------------------------------------
-// Financial Account Withdrawal — Process Command Handler
-// -----------------------------------------------------------------------------
-//
-// Application command handler responsible for processing an existing
-// Financial Account Withdrawal.
-//
-// Responsibilities:
-//
-// - Resolve the Financial Account Withdrawal aggregate.
-// - Ensure the withdrawal exists.
-// - Request the aggregate to process the withdrawal.
-// - Persist the updated aggregate.
-//
-// Lifecycle transition:
-//
-//     PENDING -> PROCESSING
-//
-// The FinancialAccountWithdrawalAggregate owns the lifecycle invariant and
-// state mutation.
-//
-// This handler does NOT:
-//
-// - Create a Financial Account Withdrawal.
-// - Create a Financial Disbursement.
-// - Execute a disbursement provider.
-// - Confirm external payout.
-// - Complete the withdrawal.
-// - Move funds.
-// - Modify Financial Account balances.
-// - Create a Financial Transaction.
-// - Perform settlement.
-// - Perform accounting.
-// - Publish domain events.
-//
-// Financial Disbursement creation and external execution belong to the
-// appropriate subsequent workflow.
-//
-// -----------------------------------------------------------------------------
+import { Inject, Injectable, Logger } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
-// NestJS
+// Foundation — Unit of Work
 // -----------------------------------------------------------------------------
 
-import { Inject, Injectable } from '@nestjs/common';
+import { UNIT_OF_WORK } from '../../../../foundation/persistence/unit-of-work.token';
+
+import type { UnitOfWork } from '../../../../foundation/persistence/unit-of-work.interface';
+
+// -----------------------------------------------------------------------------
+// Foundation — Event Publisher
+// -----------------------------------------------------------------------------
+
+import { EVENT_PUBLISHER } from '../../../../foundation/events/event-publisher.token';
+
+import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
 
 // -----------------------------------------------------------------------------
 // Application — Tokens
@@ -51,7 +23,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { FINANCIAL_ACCOUNT_WITHDRAWAL_TOKENS } from '../financial-account-withdrawal.tokens';
 
 // -----------------------------------------------------------------------------
-// Foundation
+// Foundation — Command Handler
 // -----------------------------------------------------------------------------
 
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
@@ -80,55 +52,32 @@ import type { FinancialAccountWithdrawalRepository } from '../../domain/reposito
 
 import { FinancialAccountWithdrawalNotFoundException } from '../../domain/exceptions';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Handler
-// -----------------------------------------------------------------------------
+// =============================================================================
 
-/**
- * Processes an existing Financial Account Withdrawal.
- *
- * Lifecycle transition:
- *
- *     PENDING -> PROCESSING
- *
- * The aggregate owns:
- *
- * - lifecycle validation;
- * - lifecycle mutation;
- * - FinancialAccountWithdrawalProcessingEvent creation.
- *
- * The handler owns application orchestration:
- *
- *     Command
- *        │
- *        ▼
- *     Repository
- *        │
- *        ▼
- *     FinancialAccountWithdrawalAggregate
- *        │
- *        ├── process()
- *        │
- *        └── domain event
- *        │
- *        ▼
- *     Repository.save()
- *
- * Domain events remain collected by the aggregate and are not published
- * directly by this handler.
- */
 @Injectable()
 export class ProcessFinancialAccountWithdrawalHandler implements CommandHandler<
   ProcessFinancialAccountWithdrawalCommand,
   FinancialAccountWithdrawalAggregate
 > {
+  private readonly logger = new Logger(
+    ProcessFinancialAccountWithdrawalHandler.name,
+  );
+
   // ===========================================================================
   // Constructor
   // ===========================================================================
 
   public constructor(
     @Inject(FINANCIAL_ACCOUNT_WITHDRAWAL_TOKENS.REPOSITORY)
-    private readonly repository: FinancialAccountWithdrawalRepository,
+    private readonly withdrawalRepository: FinancialAccountWithdrawalRepository,
+
+    @Inject(UNIT_OF_WORK)
+    private readonly unitOfWork: UnitOfWork,
+
+    @Inject(EVENT_PUBLISHER)
+    private readonly eventPublisher: EventPublisher,
   ) {}
 
   // ===========================================================================
@@ -138,61 +87,104 @@ export class ProcessFinancialAccountWithdrawalHandler implements CommandHandler<
   public async execute(
     command: ProcessFinancialAccountWithdrawalCommand,
   ): Promise<FinancialAccountWithdrawalAggregate> {
+    const result = await this.unitOfWork.execute(async () => {
+      // -----------------------------------------------------------------------
+      // 1. Resolve Financial Account Withdrawal
+      // -----------------------------------------------------------------------
+
+      const aggregate = await this.withdrawalRepository.findByPublicId(
+        command.withdrawalId,
+      );
+
+      if (aggregate === null) {
+        throw new FinancialAccountWithdrawalNotFoundException(
+          command.withdrawalId.value,
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // 2. Idempotency — Check Current Lifecycle State
+      // -----------------------------------------------------------------------
+      //
+      // Processing is only initiated from PENDING.
+      //
+      // If the withdrawal has already transitioned to another state, return
+      // the existing aggregate without creating another processing event.
+      //
+      // This makes sequential command retries safe.
+      // -----------------------------------------------------------------------
+
+      if (!aggregate.isPending) {
+        return {
+          aggregate,
+          transitioned: false,
+        };
+      }
+
+      // -----------------------------------------------------------------------
+      // 3. Process Withdrawal
+      // -----------------------------------------------------------------------
+      //
+      // Expected lifecycle transition:
+      //
+      //     PENDING -> PROCESSING
+      //
+      // The aggregate delegates lifecycle validation and state mutation
+      // to its domain entity.
+      //
+      // The aggregate also records:
+      //
+      //     FinancialAccountWithdrawalProcessingEvent
+      // -----------------------------------------------------------------------
+
+      aggregate.process(command.correlationId, command.causationId);
+
+      // -----------------------------------------------------------------------
+      // 4. Persist Updated Withdrawal
+      // -----------------------------------------------------------------------
+
+      await this.withdrawalRepository.save(aggregate);
+
+      // -----------------------------------------------------------------------
+      // 5. Persist Domain Events into Transactional Outbox
+      // -----------------------------------------------------------------------
+      //
+      // Pull the events collected by the aggregate.
+      //
+      // EventPublisher delegates persistence to EventStore.
+      //
+      // EventStore uses the same ambient Prisma transaction context.
+      //
+      // If event persistence fails, the withdrawal update is rolled back.
+      // -----------------------------------------------------------------------
+
+      const domainEvents = aggregate.pullDomainEvents();
+
+      if (domainEvents.length > 0) {
+        await this.eventPublisher.publishAll(domainEvents);
+      }
+
+      return {
+        aggregate,
+        transitioned: true,
+      };
+    });
+
     // -------------------------------------------------------------------------
-    // 1. Resolve Financial Account Withdrawal
-    // -------------------------------------------------------------------------
-    //
-    // The command carries the public withdrawal identity.
-    //
-    // The repository resolves the complete aggregate from persistence.
+    // 6. Log After Successful Transaction Completion
     // -------------------------------------------------------------------------
 
-    const aggregate = await this.repository.findByPublicId(
-      command.withdrawalId,
-    );
-
-    // -------------------------------------------------------------------------
-    // 2. Ensure withdrawal exists
-    // -------------------------------------------------------------------------
-
-    if (aggregate === null) {
-      throw new FinancialAccountWithdrawalNotFoundException(
-        command.withdrawalId.value,
+    if (result.transitioned) {
+      this.logger.log(
+        `Financial Account Withdrawal entered PROCESSING: ${result.aggregate.publicId.value}`,
       );
     }
 
     // -------------------------------------------------------------------------
-    // 3. Process withdrawal
-    // -------------------------------------------------------------------------
-    //
-    // The aggregate delegates lifecycle validation and mutation to the
-    // FinancialAccountWithdrawalEntity.
-    //
-    // Expected transition:
-    //
-    //     PENDING -> PROCESSING
-    //
-    // The aggregate records:
-    //
-    //     FinancialAccountWithdrawalProcessingEvent
-    //
-    // If the withdrawal is not PENDING, the domain layer raises the
-    // appropriate FinancialAccountWithdrawalException.
+    // 7. Return Updated Aggregate
     // -------------------------------------------------------------------------
 
-    aggregate.process(command.correlationId, command.causationId);
-
-    // -------------------------------------------------------------------------
-    // 4. Persist aggregate
-    // -------------------------------------------------------------------------
-
-    await this.repository.save(aggregate);
-
-    // -------------------------------------------------------------------------
-    // 5. Return aggregate
-    // -------------------------------------------------------------------------
-
-    return aggregate;
+    return result.aggregate;
   }
 }
 

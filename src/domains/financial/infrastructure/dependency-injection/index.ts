@@ -65,3 +65,5 @@ export { FINANCIAL_SETTLEMENT_PROVIDERS } from './financial-settlement.providers
 // -----------------------------------------------------------------------------
 
 export { FINANCIAL_DISBURSEMENT_PROVIDERS } from './financial-disbursement.providers';
+
+export * from './financial-disbursement-callback.providers';

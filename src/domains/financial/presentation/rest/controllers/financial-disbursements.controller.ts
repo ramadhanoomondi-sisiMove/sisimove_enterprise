@@ -7,9 +7,9 @@
 // Aggregate:
 //
 // FinancialDisbursementAggregate
-// ├── FinancialDisbursementEntity
-// │   └── FinancialDisbursementAttemptEntity[]
-// └── FinancialDisbursementDestinationEntity (associated entity)
+// └── FinancialDisbursementEntity
+//     ├── FinancialAccountWithdrawalDestination (immutable snapshot)
+//     └── FinancialDisbursementAttemptEntity[]
 //
 // Controller responsibilities:
 //
@@ -28,78 +28,6 @@
 // Application orchestration remains inside command/query handlers.
 //
 // Persistence remains behind FinancialDisbursementRepository.
-//
-// -----------------------------------------------------------------------------
-// Disbursement Lifecycle
-// -----------------------------------------------------------------------------
-//
-//     PENDING
-//        │
-//        ├── PROCESSING
-//        │      │
-//        │      ├── COMPLETED
-//        │      ├── FAILED
-//        │      └── CANCELLED
-//        │
-//        ├── FAILED
-//        └── CANCELLED
-//
-// COMPLETED, FAILED and CANCELLED are terminal states.
-//
-// -----------------------------------------------------------------------------
-// Destination
-// -----------------------------------------------------------------------------
-//
-// FinancialDisbursementDestinationEntity is an independently persisted
-// Financial-domain entity associated with the source Financial Account.
-//
-// It is associated with the Financial Disbursement aggregate but is NOT owned
-// by the Financial Disbursement aggregate.
-//
-// The aggregate exposes the selected destination through:
-//
-//     aggregate.destination
-//
-// The controller does not mutate destination state.
-//
-// -----------------------------------------------------------------------------
-// REST Routes
-// -----------------------------------------------------------------------------
-//
-// GET
-//     /financial-disbursements/:disbursementPublicId
-//
-// GET
-//     /financial-disbursements/:disbursementPublicId/attempts
-//
-// POST
-//     /financial-disbursements
-//
-// POST
-//     /financial-disbursements/process
-//
-// POST
-//     /financial-disbursements/complete
-//
-// POST
-//     /financial-disbursements/fail
-//
-// POST
-//     /financial-disbursements/cancel
-//
-// -----------------------------------------------------------------------------
-// This controller does NOT:
-//
-// - modify Financial Account balances;
-// - create or post Financial Transactions;
-// - execute external providers;
-// - create or execute disbursement attempts directly;
-// - perform settlement;
-// - perform accounting;
-// - persist aggregates directly.
-//
-// Those responsibilities belong to the appropriate application, domain,
-// repository, and integration boundaries.
 //
 // -----------------------------------------------------------------------------
 
@@ -193,7 +121,7 @@ import type { FinancialDisbursementAttemptEntity } from '../../../domain/entitie
 import {
   Currency,
   FinancialAccountPublicId,
-  FinancialDisbursementDestinationPublicId,
+  FinancialAccountWithdrawalDestination,
   FinancialDisbursementPublicId,
   FinancialReferencePublicId,
   FinancialReferenceType,
@@ -302,9 +230,8 @@ export class FinancialDisbursementsController {
   // ---------------------------------------------------------------------------
   // Get Financial Disbursement Attempts
   // ---------------------------------------------------------------------------
-  //
+
   // This route MUST remain before the generic /:disbursementPublicId route.
-  // ---------------------------------------------------------------------------
 
   @Get(':disbursementPublicId/attempts')
   @RequirePermissions('financial-disbursement:read')
@@ -335,10 +262,7 @@ export class FinancialDisbursementsController {
       ),
     );
 
-    return FinancialDisbursementResponseMapper.toResponse(
-      aggregate,
-      aggregate.destination,
-    );
+    return FinancialDisbursementResponseMapper.toResponse(aggregate);
   }
 
   // ===========================================================================
@@ -354,9 +278,17 @@ export class FinancialDisbursementsController {
   public async create(
     @Body() dto: CreateFinancialDisbursementRequestDto,
   ): Promise<FinancialDisbursementResponse> {
+    // -------------------------------------------------------------------------
+    // Amount
+    // -------------------------------------------------------------------------
+
     const currency = Currency.create(dto.currency);
 
     const amount = Money.create(dto.amount, currency);
+
+    // -------------------------------------------------------------------------
+    // Optional Business Reference
+    // -------------------------------------------------------------------------
 
     const referenceType =
       dto.referenceType !== undefined
@@ -368,10 +300,23 @@ export class FinancialDisbursementsController {
         ? FinancialReferencePublicId.create(dto.referencePublicId)
         : undefined;
 
+    // -------------------------------------------------------------------------
+    // Immutable Withdrawal Destination Snapshot
+    // -------------------------------------------------------------------------
+
+    const destination = FinancialAccountWithdrawalDestination.create(
+      dto.destinationType,
+      dto.destinationValue,
+    );
+
+    // -------------------------------------------------------------------------
+    // Application Command
+    // -------------------------------------------------------------------------
+
     const aggregate = await this.createFinancialDisbursementHandler.execute(
       new CreateFinancialDisbursementCommand(
         new FinancialAccountPublicId(dto.sourceAccountPublicId),
-        new FinancialDisbursementDestinationPublicId(dto.destinationPublicId),
+        destination,
         amount,
         referenceType,
         referencePublicId,
@@ -379,10 +324,7 @@ export class FinancialDisbursementsController {
       ),
     );
 
-    return FinancialDisbursementResponseMapper.toResponse(
-      aggregate,
-      aggregate.destination,
-    );
+    return FinancialDisbursementResponseMapper.toResponse(aggregate);
   }
 
   // ---------------------------------------------------------------------------
@@ -401,10 +343,7 @@ export class FinancialDisbursementsController {
       ),
     );
 
-    return FinancialDisbursementResponseMapper.toResponse(
-      aggregate,
-      aggregate.destination,
-    );
+    return FinancialDisbursementResponseMapper.toResponse(aggregate);
   }
 
   // ---------------------------------------------------------------------------
@@ -423,10 +362,7 @@ export class FinancialDisbursementsController {
       ),
     );
 
-    return FinancialDisbursementResponseMapper.toResponse(
-      aggregate,
-      aggregate.destination,
-    );
+    return FinancialDisbursementResponseMapper.toResponse(aggregate);
   }
 
   // ---------------------------------------------------------------------------
@@ -446,10 +382,7 @@ export class FinancialDisbursementsController {
       ),
     );
 
-    return FinancialDisbursementResponseMapper.toResponse(
-      aggregate,
-      aggregate.destination,
-    );
+    return FinancialDisbursementResponseMapper.toResponse(aggregate);
   }
 
   // ---------------------------------------------------------------------------
@@ -468,10 +401,7 @@ export class FinancialDisbursementsController {
       ),
     );
 
-    return FinancialDisbursementResponseMapper.toResponse(
-      aggregate,
-      aggregate.destination,
-    );
+    return FinancialDisbursementResponseMapper.toResponse(aggregate);
   }
 }
 

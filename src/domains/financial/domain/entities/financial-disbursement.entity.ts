@@ -11,8 +11,8 @@
 //     └── FinancialDisbursementAttemptEntity[]
 //
 // A Financial Disbursement represents an instruction to move a defined amount
-// of funds from an internal Financial Account to a Financial Disbursement
-// Destination.
+// of funds from an internal Financial Account to an external payout destination
+// captured as an immutable snapshot.
 //
 // The disbursement aggregate owns:
 // - the disbursement instruction;
@@ -22,19 +22,19 @@
 // The aggregate does NOT own:
 // - the Financial Account;
 // - the Financial Account balance;
-// - the Financial Disbursement Destination;
+// - a configured Financial Disbursement Destination entity;
 // - the external payment instrument;
 // - provider integrations;
 // - Financial Transactions.
 //
 // -----------------------------------------------------------------------------
-//
 // Responsibilities
 // -----------------------------------------------------------------------------
 //
 // - Maintain disbursement identity.
 // - Maintain source Financial Account identities.
-// - Maintain destination identity.
+// - Maintain the immutable external destination snapshot.
+// - Maintain originating withdrawal identity when applicable.
 // - Maintain disbursement amount.
 // - Maintain disbursement lifecycle.
 // - Maintain originating business reference.
@@ -49,37 +49,6 @@
 // - Enforce valid aggregate lifecycle transitions.
 //
 // -----------------------------------------------------------------------------
-//
-// This entity does NOT
-// -----------------------------------------------------------------------------
-//
-// - Execute provider APIs.
-// - Communicate with external providers.
-// - Select providers.
-// - Perform provider routing.
-// - Determine provider retry strategy.
-// - Store provider credentials or secrets.
-// - Modify Financial Account balances.
-// - Create or post Financial Transactions.
-// - Create ledger entries.
-// - Persist itself.
-// - Guarantee external provider settlement.
-// - Own Financial Account state.
-// - Own Financial Account balance state.
-// - Own the external destination instrument.
-//
-// External provider communication belongs to the Integration/application
-// boundary.
-//
-// Financial Transactions remain the authoritative record of financial
-// movement.
-//
-// The application/integration workflow coordinates provider execution,
-// Financial Account interaction, Financial Transaction creation, and this
-// aggregate's lifecycle.
-//
-// -----------------------------------------------------------------------------
-//
 // Identity model
 // -----------------------------------------------------------------------------
 //
@@ -91,9 +60,14 @@
 //   -> FinancialAccountPublicId
 //   -> Public Financial Account identity.
 //
-// destinationId
-//   -> UniqueEntityId
-//   -> Internal Financial Disbursement Destination identity.
+// destination
+//   -> FinancialAccountWithdrawalDestination
+//   -> Immutable type/value snapshot supplied with the withdrawal.
+//
+// withdrawalPublicId
+//   -> string | undefined
+//   -> Opaque public identity of the originating Financial Account Withdrawal.
+//   -> Not a Prisma relation or internal persistence identifier.
 //
 // publicId
 //   -> FinancialDisbursementPublicId
@@ -116,6 +90,8 @@ import { UniqueEntityId } from '../../../../foundation/kernel/domain/unique-enti
 // -----------------------------------------------------------------------------
 
 import type { FinancialAccountPublicId } from '../value-objects/financial-account-public-id.vo';
+
+import type { FinancialAccountWithdrawalDestination } from '../value-objects/financial-account-withdrawal-destination.vo';
 
 import { FinancialDisbursementPublicId } from '../value-objects/financial-disbursement-public-id.vo';
 
@@ -158,11 +134,29 @@ export interface FinancialDisbursementProps {
   // ---------------------------------------------------------------------------
 
   /**
-   * Internal identity of the Financial Disbursement Destination.
+   * Immutable snapshot of the external payout destination.
    *
-   * The destination is outside this aggregate's ownership.
+   * This value object is captured from the originating withdrawal.
+   * It is not a reference to a configured destination entity and does
+   * not require destination registration or a destination repository.
    */
-  destinationId: UniqueEntityId;
+  destination: FinancialAccountWithdrawalDestination;
+
+  // ---------------------------------------------------------------------------
+  // Originating Withdrawal
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Optional public identity of the originating Financial Account Withdrawal.
+   *
+   * This is an opaque cross-domain public ID reference.
+   *
+   * It is used to associate a disbursement with the withdrawal that initiated
+   * its creation and to support idempotent event processing.
+   *
+   * It is not a Prisma relation or an internal persistence identifier.
+   */
+  withdrawalPublicId: string | undefined;
 
   // ---------------------------------------------------------------------------
   // Monetary Value
@@ -288,21 +282,22 @@ export class FinancialDisbursementEntity extends Entity<
    * - source account existence;
    * - source account status;
    * - source account balance;
-   * - destination existence;
-   * - destination ownership;
-   * - destination activity;
    * - disbursement policy;
    * - provider availability;
    * - provider routing;
    * - provider execution eligibility.
+   *
+   * withdrawalPublicId is optional because a disbursement may originate
+   * from a workflow other than Financial Account Withdrawal.
    */
   public static create(
     sourceAccountId: UniqueEntityId,
     sourceAccountPublicId: FinancialAccountPublicId,
-    destinationId: UniqueEntityId,
+    destination: FinancialAccountWithdrawalDestination,
     amount: Money,
     referenceType?: FinancialReferenceType,
     referencePublicId?: FinancialReferencePublicId,
+    withdrawalPublicId?: string,
   ): FinancialDisbursementEntity {
     // -------------------------------------------------------------------------
     // Amount invariant
@@ -328,6 +323,19 @@ export class FinancialDisbursementEntity extends Entity<
     }
 
     // -------------------------------------------------------------------------
+    // Originating Withdrawal invariant
+    // -------------------------------------------------------------------------
+
+    if (
+      withdrawalPublicId !== undefined &&
+      withdrawalPublicId.trim().length === 0
+    ) {
+      throw new Error(
+        'Financial Disbursement withdrawal public ID cannot be empty',
+      );
+    }
+
+    // -------------------------------------------------------------------------
     // Timestamp
     // -------------------------------------------------------------------------
 
@@ -343,8 +351,11 @@ export class FinancialDisbursementEntity extends Entity<
         sourceAccountId,
         sourceAccountPublicId,
 
-        // Destination
-        destinationId,
+        // Immutable destination snapshot
+        destination,
+
+        // Originating Withdrawal
+        withdrawalPublicId: withdrawalPublicId ?? undefined,
 
         // Monetary Value
         amount,
@@ -405,10 +416,45 @@ export class FinancialDisbursementEntity extends Entity<
   }
 
   /**
-   * Internal identity of the Financial Disbursement Destination.
+   * Immutable external payout destination snapshot.
    */
-  public get destinationId(): UniqueEntityId {
-    return this.props.destinationId;
+  public get destination(): FinancialAccountWithdrawalDestination {
+    return this.props.destination;
+  }
+
+  /**
+   * Destination type captured with the originating withdrawal.
+   */
+  public get destinationType(): string {
+    return this.props.destination.type;
+  }
+
+  /**
+   * Destination value captured with the originating withdrawal.
+   */
+  public get destinationValue(): string {
+    return this.props.destination.value;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Originating Withdrawal
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Public identity of the originating Financial Account Withdrawal.
+   *
+   * Returns undefined when the disbursement was not created from a withdrawal.
+   */
+  public get withdrawalPublicId(): string | undefined {
+    return this.props.withdrawalPublicId;
+  }
+
+  /**
+   * Returns whether this disbursement originated from a Financial Account
+   * Withdrawal.
+   */
+  public hasOriginatingWithdrawal(): boolean {
+    return this.props.withdrawalPublicId !== undefined;
   }
 
   // ---------------------------------------------------------------------------
