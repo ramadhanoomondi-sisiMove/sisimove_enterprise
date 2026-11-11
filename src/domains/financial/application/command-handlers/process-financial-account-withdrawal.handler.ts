@@ -105,14 +105,6 @@ export class ProcessFinancialAccountWithdrawalHandler implements CommandHandler<
       // -----------------------------------------------------------------------
       // 2. Idempotency — Check Current Lifecycle State
       // -----------------------------------------------------------------------
-      //
-      // Processing is only initiated from PENDING.
-      //
-      // If the withdrawal has already transitioned to another state, return
-      // the existing aggregate without creating another processing event.
-      //
-      // This makes sequential command retries safe.
-      // -----------------------------------------------------------------------
 
       if (!aggregate.isPending) {
         return {
@@ -124,38 +116,49 @@ export class ProcessFinancialAccountWithdrawalHandler implements CommandHandler<
       // -----------------------------------------------------------------------
       // 3. Process Withdrawal
       // -----------------------------------------------------------------------
-      //
-      // Expected lifecycle transition:
-      //
-      //     PENDING -> PROCESSING
-      //
-      // The aggregate delegates lifecycle validation and state mutation
-      // to its domain entity.
-      //
-      // The aggregate also records:
-      //
-      //     FinancialAccountWithdrawalProcessingEvent
-      // -----------------------------------------------------------------------
 
       aggregate.process(command.correlationId, command.causationId);
 
       // -----------------------------------------------------------------------
-      // 4. Persist Updated Withdrawal
+      // 4. Conditionally Persist PENDING → PROCESSING
+      // -----------------------------------------------------------------------
+      //
+      // Only one concurrent request can successfully update a withdrawal
+      // whose persisted status is still PENDING.
+      //
+      // A false result means another operation changed its lifecycle state
+      // before this request could persist its transition.
       // -----------------------------------------------------------------------
 
-      await this.withdrawalRepository.save(aggregate);
+      const saved = await this.withdrawalRepository.saveIfPending(aggregate);
+
+      if (!saved) {
+        // ---------------------------------------------------------------------
+        // 4.1 Reload the Latest Persisted Aggregate
+        // ---------------------------------------------------------------------
+
+        const latestAggregate = await this.withdrawalRepository.findByPublicId(
+          command.withdrawalId,
+        );
+
+        if (latestAggregate === null) {
+          throw new FinancialAccountWithdrawalNotFoundException(
+            command.withdrawalId.value,
+          );
+        }
+
+        // ---------------------------------------------------------------------
+        // 4.2 Return Without Publishing Losing Domain Events
+        // ---------------------------------------------------------------------
+
+        return {
+          aggregate: latestAggregate,
+          transitioned: false,
+        };
+      }
 
       // -----------------------------------------------------------------------
       // 5. Persist Domain Events into Transactional Outbox
-      // -----------------------------------------------------------------------
-      //
-      // Pull the events collected by the aggregate.
-      //
-      // EventPublisher delegates persistence to EventStore.
-      //
-      // EventStore uses the same ambient Prisma transaction context.
-      //
-      // If event persistence fails, the withdrawal update is rolled back.
       // -----------------------------------------------------------------------
 
       const domainEvents = aggregate.pullDomainEvents();

@@ -10,6 +10,13 @@
 // - Never reset or modify existing balances.
 // - Fail fast if an existing system account has an unexpected configuration.
 //
+// Operational account responsibilities:
+// - SYSTEM-PLATFORM: General platform operations.
+// - SYSTEM-HOLDING: Funds held by the platform.
+// - SYSTEM-SETTLEMENT: Settlement operations.
+// - SYSTEM-MPESA-CLEARING: Incoming M-PESA collection and wallet-funding flow.
+// - SYSTEM-MPESA-DISBURSEMENT: Outgoing M-PESA B2C disbursement flow.
+//
 // This is application-level bootstrap orchestration.
 // It does NOT contain financial transaction or balance logic.
 // -----------------------------------------------------------------------------
@@ -83,10 +90,18 @@ export class PlatformFinancialAccountsProvisioner implements OnApplicationBootst
       label: 'settlement',
     });
 
+    // Incoming M-PESA collections and wallet funding.
     await this.ensureSystemAccount({
       ownerPublicId: 'SYSTEM-MPESA-CLEARING',
       type: 'PLATFORM',
       label: 'mpesa clearing',
+    });
+
+    // Outgoing M-PESA B2C business payouts.
+    await this.ensureSystemAccount({
+      ownerPublicId: 'SYSTEM-MPESA-DISBURSEMENT',
+      type: 'PLATFORM',
+      label: 'mpesa disbursement',
     });
 
     this.logger.log('Required platform financial accounts are available.');

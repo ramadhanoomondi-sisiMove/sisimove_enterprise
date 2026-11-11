@@ -60,6 +60,53 @@ export interface FinancialAccountWithdrawalRepository {
   save(aggregate: FinancialAccountWithdrawalAggregate): Promise<void>;
 
   /**
+   * Persists a withdrawal's transition from PENDING to PROCESSING only when
+   * the persisted record is still PENDING.
+   *
+   * This is a conditional persistence operation used to prevent two concurrent
+   * processing commands from both winning the same lifecycle transition.
+   *
+   * Returns true when this call changed and persisted the record.
+   * Returns false when the record was no longer PENDING.
+   *
+   * The aggregate must already have performed and validated its domain
+   * transition before this method is called.
+   *
+   * The operation participates in the ambient UnitOfWork and does not create
+   * its own transaction.
+   */
+  saveIfPending(
+    aggregate: FinancialAccountWithdrawalAggregate,
+  ): Promise<boolean>;
+
+  /**
+   * Conditionally links a Financial Disbursement to a withdrawal.
+   *
+   * The withdrawal must still be in PROCESSING status.
+   *
+   * The operation must not overwrite an existing link to a different
+   * Financial Disbursement.
+   *
+   * If the withdrawal is already linked to the supplied disbursement,
+   * the operation is considered successful and returns true.
+   *
+   * Returns false when:
+   * - The withdrawal does not exist.
+   * - The withdrawal is no longer PROCESSING.
+   * - The withdrawal is already linked to a different disbursement.
+   *
+   * This operation updates only the disbursement link and its update
+   * timestamp. It must not overwrite other withdrawal lifecycle fields.
+   *
+   * The operation participates in the ambient UnitOfWork and does not create
+   * its own transaction.
+   */
+  linkDisbursementIfProcessing(
+    withdrawalPublicId: FinancialAccountWithdrawalPublicId,
+    disbursementPublicId: string,
+  ): Promise<boolean>;
+
+  /**
    * Physical deletion is normally unsupported for financial records.
    */
   delete(aggregate: FinancialAccountWithdrawalAggregate): Promise<void>;
@@ -81,6 +128,19 @@ export interface FinancialAccountWithdrawalRepository {
    */
   findByPublicId(
     publicId: FinancialAccountWithdrawalPublicId,
+  ): Promise<FinancialAccountWithdrawalAggregate | null>;
+
+  /**
+   * Finds a Financial Account Withdrawal using the owning account and
+   * its idempotency key.
+   *
+   * Idempotency keys are unique within an account, not globally.
+   *
+   * Returns null when no withdrawal exists for the supplied combination.
+   */
+  findByAccountPublicIdAndIdempotencyKey(
+    accountPublicId: FinancialAccountPublicId,
+    idempotencyKey: string,
   ): Promise<FinancialAccountWithdrawalAggregate | null>;
 
   /**

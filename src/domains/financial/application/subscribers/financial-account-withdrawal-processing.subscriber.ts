@@ -13,7 +13,7 @@
 // 4. Verify the withdrawal belongs to the account in the event.
 // 5. Recover an existing disbursement, if one was already created.
 // 6. Otherwise dispatch CreateFinancialDisbursementCommand.
-// 7. Link the created disbursement to the withdrawal.
+// 7. Atomically link the disbursement to the withdrawal.
 // 8. Mark the event as processed.
 //
 // This subscriber does NOT:
@@ -72,8 +72,6 @@ import { FinancialAccountWithdrawalProcessingEvent } from '../../domain/events/f
 // -----------------------------------------------------------------------------
 // Domain — Aggregates
 // -----------------------------------------------------------------------------
-
-import type { FinancialAccountWithdrawalAggregate } from '../../domain/aggregates/financial-account-withdrawal.aggregate';
 
 import type { FinancialDisbursementAggregate } from '../../domain/aggregates/financial-disbursement.aggregate';
 
@@ -158,8 +156,9 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
     // 2. Load the persisted withdrawal
     // -------------------------------------------------------------------------
 
-    const withdrawal: FinancialAccountWithdrawalAggregate | null =
-      await this.withdrawalRepository.findByPublicId(event.withdrawalPublicId);
+    const withdrawal = await this.withdrawalRepository.findByPublicId(
+      event.withdrawalPublicId,
+    );
 
     if (withdrawal === null) {
       throw new FinancialAccountWithdrawalNotFoundException(
@@ -184,8 +183,8 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
     // The originating withdrawal public ID must be persisted on the
     // Financial Disbursement as a unique link.
     //
-    // This handles retries where disbursement creation succeeded but saving
-    // the withdrawal's disbursementPublicId did not.
+    // This handles retries where disbursement creation succeeded but linking
+    // the disbursement to the withdrawal did not.
     // -------------------------------------------------------------------------
 
     const existingDisbursement =
@@ -196,6 +195,7 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
     if (existingDisbursement !== null) {
       const existingPublicId = existingDisbursement.publicId.value;
 
+      // Verify that an existing withdrawal link is consistent.
       if (
         withdrawal.hasDisbursement &&
         withdrawal.disbursementPublicId !== existingPublicId
@@ -205,11 +205,11 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
         );
       }
 
-      if (!withdrawal.hasDisbursement) {
-        withdrawal.setDisbursementPublicId(existingPublicId);
-
-        await this.withdrawalRepository.save(withdrawal);
-      }
+      // Atomically establish or verify the link.
+      await this.ensureDisbursementLinked(
+        event.withdrawalPublicId,
+        existingPublicId,
+      );
 
       await this.idempotencyStore.markProcessed(CONSUMER_NAME, eventId);
 
@@ -259,12 +259,13 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
     );
 
     // -------------------------------------------------------------------------
-    // 7. Link Disbursement to Withdrawal
+    // 7. Atomically Link Disbursement to Withdrawal
     // -------------------------------------------------------------------------
 
-    withdrawal.setDisbursementPublicId(disbursement.publicId.value);
-
-    await this.withdrawalRepository.save(withdrawal);
+    await this.ensureDisbursementLinked(
+      event.withdrawalPublicId,
+      disbursement.publicId.value,
+    );
 
     // -------------------------------------------------------------------------
     // 8. Mark Event Processed
@@ -278,6 +279,83 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
     // -------------------------------------------------------------------------
 
     await this.idempotencyStore.markProcessed(CONSUMER_NAME, eventId);
+  }
+
+  // ===========================================================================
+  // Ensure Disbursement Link
+  // ===========================================================================
+
+  /**
+   * Atomically links a disbursement to a withdrawal that is still PROCESSING.
+   *
+   * If the conditional update fails, reloads the withdrawal to determine
+   * whether the same link was already persisted by another execution.
+   *
+   * A different link or a missing link after a failed conditional update
+   * is treated as a consistency error.
+   */
+  private async ensureDisbursementLinked(
+    withdrawalPublicId: Parameters<
+      FinancialAccountWithdrawalRepository['linkDisbursementIfProcessing']
+    >[0],
+    disbursementPublicId: string,
+  ): Promise<void> {
+    const linked = await this.withdrawalRepository.linkDisbursementIfProcessing(
+      withdrawalPublicId,
+      disbursementPublicId,
+    );
+
+    if (linked) {
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // Conditional update did not succeed.
+    // Reload the latest persisted withdrawal before deciding what happened.
+    // -------------------------------------------------------------------------
+
+    const latestWithdrawal =
+      await this.withdrawalRepository.findByPublicId(withdrawalPublicId);
+
+    if (latestWithdrawal === null) {
+      throw new FinancialAccountWithdrawalNotFoundException(
+        withdrawalPublicId.value,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // A different disbursement must never replace the existing link.
+    // -------------------------------------------------------------------------
+
+    if (
+      latestWithdrawal.hasDisbursement &&
+      latestWithdrawal.disbursementPublicId !== disbursementPublicId
+    ) {
+      throw new Error(
+        `Withdrawal ${withdrawalPublicId.value} is already linked to a different disbursement`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // The same link may already have been persisted by another execution.
+    //
+    // This is safe even if the withdrawal has since moved out of PROCESSING.
+    // -------------------------------------------------------------------------
+
+    if (
+      latestWithdrawal.hasDisbursement &&
+      latestWithdrawal.disbursementPublicId === disbursementPublicId
+    ) {
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // No matching link exists. Do not silently mark the event as processed.
+    // -------------------------------------------------------------------------
+
+    throw new Error(
+      `Unable to link disbursement ${disbursementPublicId} to withdrawal ${withdrawalPublicId.value}. The withdrawal is no longer eligible for linking or its state changed concurrently.`,
+    );
   }
 }
 

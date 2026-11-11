@@ -1,138 +1,67 @@
-// -----------------------------------------------------------------------------
-// Financial Account Withdrawal — Request Command Handler
-// -----------------------------------------------------------------------------
-//
-// Application command handler responsible for requesting a Financial Account
-// Withdrawal.
-//
-// Workflow:
-//
-// 1. Resolve the source Financial Account.
-// 2. Ensure the account is operational.
-// 3. Ensure the withdrawal currency matches the account currency.
-// 4. Create the Financial Account Withdrawal entity.
-// 5. Create the Financial Account Withdrawal aggregate.
-// 6. Record the withdrawal-requested event.
-// 7. Persist the complete aggregate.
-// 8. Persist domain events into the transactional outbox.
-// 9. Return the created aggregate.
-//
-// Destination handling:
-//
-// The command already contains the selected withdrawal destination.
-//
-// The application boundary is responsible for selecting either:
-//
-// - an explicitly supplied destination; or
-// - the account's configured/default destination.
-//
-// The destination is represented by the
-// FinancialAccountWithdrawalDestination value object.
-//
-// This handler does NOT:
-//
-// - Modify Financial Account balances.
-// - Create a Financial Transaction.
-// - Create a Financial Disbursement.
-// - Execute an external provider.
-// - Move money externally.
-// - Perform settlement.
-// - Perform accounting.
-//
-// Domain construction belongs to the domain entity/aggregate.
-// Persistence belongs to the repositories.
-// Event persistence belongs to the EventPublisher port.
-// Transaction coordination belongs to the UnitOfWork port.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// NestJS
-// -----------------------------------------------------------------------------
-
 import { Inject, Injectable } from '@nestjs/common';
 
-// -----------------------------------------------------------------------------
-// Foundation — Unit of Work
-// -----------------------------------------------------------------------------
-
 import { UNIT_OF_WORK } from '../../../../foundation/persistence/unit-of-work.token';
-
 import type { UnitOfWork } from '../../../../foundation/persistence/unit-of-work.interface';
 
-// -----------------------------------------------------------------------------
-// Foundation — Event Publisher
-// -----------------------------------------------------------------------------
-
 import { EVENT_PUBLISHER } from '../../../../foundation/events/event-publisher.token';
-
 import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
-
-// -----------------------------------------------------------------------------
-// Foundation — Command Handler
-// -----------------------------------------------------------------------------
 
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 
-// -----------------------------------------------------------------------------
-// Application Tokens
-// -----------------------------------------------------------------------------
-
 import { FINANCIAL_ACCOUNT_WITHDRAWAL_TOKENS } from '../financial-account-withdrawal.tokens';
-
 import { FINANCIAL_ACCOUNT_TOKENS } from '../financial-account.tokens';
-
-// -----------------------------------------------------------------------------
-// Command
-// -----------------------------------------------------------------------------
+import { FINANCIAL_ACCOUNT_HOLD_TOKENS } from '../financial-account-hold.tokens';
+import { FINANCIAL_TRANSACTION_TOKENS } from '../financial-transaction.tokens';
 
 import type { RequestFinancialAccountWithdrawalCommand } from '../commands/request-financial-account-withdrawal.command';
 
-// -----------------------------------------------------------------------------
-// Domain — Aggregates
-// -----------------------------------------------------------------------------
-
 import { FinancialAccountWithdrawalAggregate } from '../../domain/aggregates/financial-account-withdrawal.aggregate';
-
-// -----------------------------------------------------------------------------
-// Domain — Entities
-// -----------------------------------------------------------------------------
-
 import { FinancialAccountWithdrawalEntity } from '../../domain/entities/financial-account-withdrawal.entity';
 
-// -----------------------------------------------------------------------------
-// Domain — Repositories
-// -----------------------------------------------------------------------------
+import { FinancialAccountHoldAggregate } from '../../domain/aggregates/financial-account-hold.aggregate';
+import { FinancialAccountHoldEntity } from '../../domain/entities/financial-account-hold.entity';
+
+import { FinancialTransactionAggregate } from '../../domain/aggregates/financial-transaction.aggregate';
 
 import type { FinancialAccountWithdrawalRepository } from '../../domain/repositories/financial-account-withdrawal.repository';
-
 import type { FinancialAccountRepository } from '../../domain/repositories/financial-account.repository';
+import type { FinancialAccountHoldRepository } from '../../domain/repositories/financial-account-hold.repository';
+import type { FinancialTransactionRepository } from '../../domain/repositories/financial-transaction.repository';
 
-// -----------------------------------------------------------------------------
-// Domain — Exceptions
-// -----------------------------------------------------------------------------
+import {
+  FinancialAccountConcurrencyException,
+  FinancialAccountNotFoundException,
+} from '../../domain/exceptions';
 
-import { FinancialAccountNotFoundException } from '../../domain/exceptions';
+import { FinancialAccountWithdrawalException } from '../../domain/exceptions/financial-account-withdrawal.exception';
+import { FinancialAccountWithdrawalIdempotencyConflictException } from '../../domain/exceptions/financial-account-withdrawal-idempotency-conflict.exception';
 
-// =============================================================================
-// Handler
-// =============================================================================
+import { FinancialAccountReference } from '../../domain/value-objects/financial-account-reference.vo';
+import { FinancialAccountHeldAmount } from '../../domain/value-objects/financial-account-held-amount.vo';
+import { FinancialHoldReference } from '../../domain/value-objects/financial-hold-reference.vo';
+
+import { FinancialTransactionReference } from '../../domain/value-objects/financial-transaction-reference.vo';
+import { FinancialTransactionType } from '../../domain/value-objects/financial-transaction-type.vo';
+import { FinancialTransactionEntryType } from '../../domain/value-objects/financial-transaction-entry-type.vo';
+import { FinancialBalanceType } from '../../domain/value-objects/financial-balance-type.vo';
 
 @Injectable()
 export class RequestFinancialAccountWithdrawalHandler implements CommandHandler<
   RequestFinancialAccountWithdrawalCommand,
   FinancialAccountWithdrawalAggregate
 > {
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
   public constructor(
     @Inject(FINANCIAL_ACCOUNT_WITHDRAWAL_TOKENS.REPOSITORY)
     private readonly withdrawalRepository: FinancialAccountWithdrawalRepository,
 
     @Inject(FINANCIAL_ACCOUNT_TOKENS.REPOSITORY)
     private readonly accountRepository: FinancialAccountRepository,
+
+    @Inject(FINANCIAL_ACCOUNT_HOLD_TOKENS.REPOSITORY)
+    private readonly holdRepository: FinancialAccountHoldRepository,
+
+    @Inject(FINANCIAL_TRANSACTION_TOKENS.REPOSITORY)
+    private readonly transactionRepository: FinancialTransactionRepository,
 
     @Inject(UNIT_OF_WORK)
     private readonly unitOfWork: UnitOfWork,
@@ -141,147 +70,259 @@ export class RequestFinancialAccountWithdrawalHandler implements CommandHandler<
     private readonly eventPublisher: EventPublisher,
   ) {}
 
-  // ===========================================================================
-  // Execute
-  // ===========================================================================
-
   public async execute(
     command: RequestFinancialAccountWithdrawalCommand,
   ): Promise<FinancialAccountWithdrawalAggregate> {
-    return this.unitOfWork.execute(async () => {
-      // -----------------------------------------------------------------------
-      // 1. Resolve Financial Account
-      // -----------------------------------------------------------------------
+    const idempotencyKey = command.idempotencyKey?.trim();
 
-      const account = await this.accountRepository.findByPublicId(
-        command.accountId,
+    if (!idempotencyKey || idempotencyKey.length > 128) {
+      throw new FinancialAccountWithdrawalException(
+        'A valid idempotency key is required for a withdrawal request.',
       );
+    }
 
-      if (account === null) {
-        throw new FinancialAccountNotFoundException(command.accountId.value);
+    try {
+      return await this.unitOfWork.execute(async () => {
+        // ---------------------------------------------------------------------
+        // 1. Check for an existing withdrawal request.
+        // ---------------------------------------------------------------------
+
+        const existing =
+          await this.withdrawalRepository.findByAccountPublicIdAndIdempotencyKey(
+            command.accountId,
+            idempotencyKey,
+          );
+
+        if (existing !== null) {
+          this.ensureSameRequest(existing, command);
+          return existing;
+        }
+
+        // ---------------------------------------------------------------------
+        // 2. Load and validate the source Financial Account.
+        // ---------------------------------------------------------------------
+
+        const account = await this.accountRepository.findByPublicId(
+          command.accountId,
+        );
+
+        if (account === null) {
+          throw new FinancialAccountNotFoundException(command.accountId.value);
+        }
+
+        account.ensureOperational();
+        account.ensureCurrency(command.amount.currency);
+
+        const requestedAt = new Date();
+
+        // ---------------------------------------------------------------------
+        // 3. Create the withdrawal aggregate.
+        // ---------------------------------------------------------------------
+
+        const entity = FinancialAccountWithdrawalEntity.create(
+          account.id,
+          account.publicId,
+          command.amount,
+          command.destination,
+          command.referenceType,
+          command.referencePublicId,
+          requestedAt,
+          idempotencyKey,
+        );
+
+        const withdrawal = FinancialAccountWithdrawalAggregate.create(entity);
+
+        withdrawal.recordRequested(command.correlationId, command.causationId);
+
+        // ---------------------------------------------------------------------
+        // 4. Reserve the withdrawal amount.
+        //
+        // AVAILABLE decreases.
+        // HELD increases.
+        // ---------------------------------------------------------------------
+
+        account.holdFunds(
+          command.amount.amount,
+          command.amount.currency,
+          requestedAt,
+        );
+
+        // ---------------------------------------------------------------------
+        // 5. Build the Financial Account reference.
+        // ---------------------------------------------------------------------
+
+        const accountReference = FinancialAccountReference.create(
+          'FINANCIAL_ACCOUNT',
+          account.publicId.value,
+        );
+
+        // ---------------------------------------------------------------------
+        // 6. Create a stable HOLD transaction reference.
+        //
+        // The operation-specific reference type allows this withdrawal to
+        // have separate HOLD, RELEASE and CAPTURE transactions.
+        // ---------------------------------------------------------------------
+
+        const transactionReference = FinancialTransactionReference.create(
+          'FINANCIAL_ACCOUNT_WITHDRAWAL_HOLD',
+          withdrawal.publicId.value,
+        );
+
+        // ---------------------------------------------------------------------
+        // 7. Create the HOLD Financial Transaction.
+        // ---------------------------------------------------------------------
+
+        const transaction = FinancialTransactionAggregate.create(
+          {
+            type: FinancialTransactionType.create('HOLD'),
+            amount: command.amount,
+            reference: transactionReference,
+          },
+          command.correlationId,
+          requestedAt,
+        );
+
+        // AVAILABLE -> DEBIT
+        transaction.addEntry(
+          {
+            account: accountReference,
+            type: FinancialTransactionEntryType.create('DEBIT'),
+            balanceType: FinancialBalanceType.create('AVAILABLE'),
+            amount: command.amount,
+          },
+          requestedAt,
+        );
+
+        // HELD -> CREDIT
+        transaction.addEntry(
+          {
+            account: accountReference,
+            type: FinancialTransactionEntryType.create('CREDIT'),
+            balanceType: FinancialBalanceType.create('HELD'),
+            amount: command.amount,
+          },
+          requestedAt,
+        );
+
+        transaction.complete(command.correlationId, requestedAt);
+
+        // ---------------------------------------------------------------------
+        // 8. Create the Financial Account Hold record.
+        // ---------------------------------------------------------------------
+
+        const holdAmount = FinancialAccountHeldAmount.create(
+          command.amount.amount,
+        );
+
+        const holdReference = FinancialHoldReference.create(
+          'FINANCIAL_ACCOUNT_WITHDRAWAL',
+          withdrawal.publicId.value,
+        );
+
+        const holdEntity = FinancialAccountHoldEntity.create(
+          account.id,
+          account.publicId,
+          holdAmount,
+          command.amount.currency.toString(),
+          holdReference,
+        );
+
+        const hold = FinancialAccountHoldAggregate.create(holdEntity);
+
+        // Link the hold to its initial HOLD transaction.
+        hold.setHoldTransactionPublicId(transaction.publicId.value);
+
+        hold.recordCreated(command.correlationId, command.causationId);
+
+        // ---------------------------------------------------------------------
+        // 9. Persist all aggregates inside the same UnitOfWork.
+        // ---------------------------------------------------------------------
+
+        await this.transactionRepository.save(transaction);
+
+        await this.holdRepository.create(hold);
+
+        await this.accountRepository.save(account);
+
+        await this.withdrawalRepository.save(withdrawal);
+
+        // ---------------------------------------------------------------------
+        // 10. Publish domain events inside the ambient transaction.
+        // ---------------------------------------------------------------------
+
+        const events = [
+          ...withdrawal.pullDomainEvents(),
+          ...transaction.pullDomainEvents(),
+          ...hold.pullDomainEvents(),
+          ...account.pullDomainEvents(),
+        ];
+
+        if (events.length > 0) {
+          await this.eventPublisher.publishAll(events);
+        }
+
+        return withdrawal;
+      });
+    } catch (error: unknown) {
+      // -----------------------------------------------------------------------
+      // Recover concurrent idempotent requests and account version conflicts.
+      // -----------------------------------------------------------------------
+
+      if (!this.isRecoverableConcurrencyError(error)) {
+        throw error;
       }
 
-      // -----------------------------------------------------------------------
-      // 2. Validate Account Operational Status
-      // -----------------------------------------------------------------------
-      //
-      // A withdrawal request may only originate from an operational account.
-      //
-      // The Financial Account aggregate owns this invariant.
-      // -----------------------------------------------------------------------
+      // This lookup happens after the failed UnitOfWork has rolled back.
+      const existing =
+        await this.withdrawalRepository.findByAccountPublicIdAndIdempotencyKey(
+          command.accountId,
+          idempotencyKey,
+        );
 
-      account.ensureOperational();
-
-      // -----------------------------------------------------------------------
-      // 3. Validate Withdrawal Currency
-      // -----------------------------------------------------------------------
-      //
-      // The withdrawal amount must use the same currency as the source
-      // Financial Account.
-      //
-      // The Financial Account aggregate owns this currency invariant.
-      // -----------------------------------------------------------------------
-
-      account.ensureCurrency(command.amount.currency);
-
-      // -----------------------------------------------------------------------
-      // 4. Create Withdrawal Entity
-      // -----------------------------------------------------------------------
-      //
-      // The command already contains the selected destination snapshot.
-      //
-      // No FinancialDisbursementDestination aggregate or repository is
-      // required here.
-      //
-      // Entity factory signature:
-      //
-      // create(
-      //   accountId,
-      //   accountPublicId,
-      //   amount,
-      //   destination,
-      //   referenceType,
-      //   referencePublicId,
-      //   requestedAt?,
-      // )
-      //
-      // The optional reference values are passed before the optional
-      // request timestamp.
-      // -----------------------------------------------------------------------
-
-      const withdrawalEntity = FinancialAccountWithdrawalEntity.create(
-        account.id,
-        account.publicId,
-        command.amount,
-        command.destination,
-        command.referenceType,
-        command.referencePublicId,
-      );
-
-      // -----------------------------------------------------------------------
-      // 5. Create Withdrawal Aggregate
-      // -----------------------------------------------------------------------
-      //
-      // The aggregate owns the withdrawal's domain behavior and lifecycle.
-      // -----------------------------------------------------------------------
-
-      const aggregate =
-        FinancialAccountWithdrawalAggregate.create(withdrawalEntity);
-
-      // -----------------------------------------------------------------------
-      // 6. Record Withdrawal Requested Event
-      // -----------------------------------------------------------------------
-      //
-      // The aggregate records the domain event.
-      //
-      // Correlation and causation identifiers are supplied by the application
-      // command.
-      // -----------------------------------------------------------------------
-
-      aggregate.recordRequested(command.correlationId, command.causationId);
-
-      // -----------------------------------------------------------------------
-      // 7. Persist Withdrawal Aggregate
-      // -----------------------------------------------------------------------
-      //
-      // The repository persists the aggregate.
-      //
-      // This does not reserve or debit funds from the Financial Account.
-      // -----------------------------------------------------------------------
-
-      await this.withdrawalRepository.save(aggregate);
-
-      // -----------------------------------------------------------------------
-      // 8. Persist Domain Events into Transactional Outbox
-      // -----------------------------------------------------------------------
-      //
-      // pullDomainEvents() returns pending events and clears the aggregate's
-      // internal event collection.
-      //
-      // EventPublisher persists the events and their outbox records using the
-      // same transaction context established by UnitOfWork.
-      //
-      // Events are not dispatched directly to subscribers from this handler.
-      // The OutboxWorker handles dispatch after the transaction commits.
-      // -----------------------------------------------------------------------
-
-      const domainEvents = aggregate.pullDomainEvents();
-
-      if (domainEvents.length > 0) {
-        await this.eventPublisher.publishAll(domainEvents);
+      if (existing === null) {
+        throw error;
       }
 
-      // -----------------------------------------------------------------------
-      // 9. Return Created Aggregate
-      // -----------------------------------------------------------------------
+      this.ensureSameRequest(existing, command);
 
-      return aggregate;
-    });
+      return existing;
+    }
+  }
+
+  // ===========================================================================
+  // Concurrency Recovery
+  // ===========================================================================
+
+  private isRecoverableConcurrencyError(error: unknown): boolean {
+    return (
+      error instanceof FinancialAccountConcurrencyException ||
+      error instanceof FinancialAccountWithdrawalIdempotencyConflictException
+    );
+  }
+
+  // ===========================================================================
+  // Idempotency Validation
+  // ===========================================================================
+
+  private ensureSameRequest(
+    existing: FinancialAccountWithdrawalAggregate,
+    command: RequestFinancialAccountWithdrawalCommand,
+  ): void {
+    const sameRequest =
+      existing.accountPublicId.value === command.accountId.value &&
+      existing.amountValue === command.amount.amount &&
+      existing.currency === command.amount.currency.value &&
+      existing.destinationType === command.destination.type &&
+      existing.destinationValue === command.destination.value &&
+      existing.referenceType?.value === command.referenceType?.value &&
+      existing.referencePublicId?.value === command.referencePublicId?.value;
+
+    if (!sameRequest) {
+      throw new FinancialAccountWithdrawalException(
+        'This idempotency key has already been used for a different withdrawal request.',
+      );
+    }
   }
 }
-
-// -----------------------------------------------------------------------------
-// Default Export
-// -----------------------------------------------------------------------------
 
 export default RequestFinancialAccountWithdrawalHandler;

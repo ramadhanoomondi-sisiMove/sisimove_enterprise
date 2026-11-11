@@ -67,18 +67,65 @@ import { FinancialAccountNotFoundException } from '../../domain/exceptions';
 // =============================================================================
 
 /**
- * Detects a Prisma unique-constraint violation without coupling this
- * application handler directly to Prisma's generated runtime classes.
+ * Determines whether a Prisma P2002 error specifically represents a
+ * uniqueness violation involving withdrawalPublicId.
  *
- * The handler still performs a repository lookup before deciding whether
- * the conflict represents an already-created withdrawal disbursement.
+ * Supports Prisma metadata where the target is represented as either
+ * an array of field names or a constraint-name string.
+ *
+ * Unrelated unique-constraint violations must not be treated as successful
+ * duplicate withdrawal-disbursement recovery.
  */
-function isUniqueConstraintViolation(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null || !('code' in error)) {
+function isWithdrawalPublicIdUniqueConstraintViolation(
+  error: unknown,
+): boolean {
+  if (
+    typeof error !== 'object' ||
+    error === null ||
+    !('code' in error) ||
+    error.code !== 'P2002'
+  ) {
     return false;
   }
 
-  return error.code === 'P2002';
+  if (
+    !('meta' in error) ||
+    typeof error.meta !== 'object' ||
+    error.meta === null
+  ) {
+    return false;
+  }
+
+  const metadata = error.meta;
+
+  if (!('target' in metadata)) {
+    return false;
+  }
+
+  const target = metadata.target;
+
+  const matchesWithdrawalPublicId = (value: unknown): boolean => {
+    if (typeof value !== 'string') {
+      return false;
+    }
+
+    const normalized = value.toLowerCase();
+
+    return (
+      normalized.includes('withdrawalpublicid') ||
+      normalized.includes('withdrawal_public_id')
+    );
+  };
+
+  if (typeof target === 'string') {
+    return matchesWithdrawalPublicId(target);
+  }
+
+  if (Array.isArray(target)) {
+    return target.some(matchesWithdrawalPublicId);
+  }
+
+  return false;
 }
 
 // =============================================================================
@@ -250,23 +297,21 @@ export class CreateFinancialDisbursementHandler implements CommandHandler<
       });
     } catch (error: unknown) {
       // -----------------------------------------------------------------------
-      // 10. Recover Concurrent Duplicate Creation
+      // 10. Recover Concurrent Duplicate Withdrawal Disbursement Creation
       // -----------------------------------------------------------------------
       //
-      // If another delivery created the disbursement after our initial lookup,
-      // the database unique constraint rejects this transaction.
+      // Only recover a P2002 violation involving withdrawalPublicId.
       //
       // The failed transaction has now rolled back. Query again outside that
       // transaction to recover the winning disbursement.
       //
       // If no matching withdrawal disbursement exists, preserve and rethrow
-      // the original error. This prevents unrelated unique violations from
-      // being silently swallowed.
+      // the original error.
       // -----------------------------------------------------------------------
 
       if (
         command.withdrawalPublicId === undefined ||
-        !isUniqueConstraintViolation(error)
+        !isWithdrawalPublicIdUniqueConstraintViolation(error)
       ) {
         throw error;
       }

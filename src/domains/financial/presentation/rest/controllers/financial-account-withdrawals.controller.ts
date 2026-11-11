@@ -1,104 +1,16 @@
-// -----------------------------------------------------------------------------
-// Financial Account Withdrawals — HTTP Controller
-// -----------------------------------------------------------------------------
-//
-// REST controller for Financial Account Withdrawal operations.
-//
-// Aggregate:
-//
-// FinancialAccountWithdrawalAggregate
-// └── FinancialAccountWithdrawalEntity
-//
-// Controller responsibilities:
-//
-// - HTTP transport;
-// - request DTO validation;
-// - conversion of transport primitives into domain value objects;
-// - dispatching application commands and queries;
-// - mapping application/domain results into REST responses.
-//
-// Domain lifecycle behavior remains inside:
-// - FinancialAccountWithdrawalAggregate;
-// - FinancialAccountWithdrawalEntity.
-//
-// Application orchestration remains inside command/query handlers.
-//
-// Persistence remains behind FinancialAccountWithdrawalRepository.
-//
-// -----------------------------------------------------------------------------
-// Withdrawal Lifecycle
-// -----------------------------------------------------------------------------
-//
-//     PENDING
-//        │
-//        ├── PROCESSING
-//        │      ├── COMPLETED
-//        │      ├── FAILED
-//        │      └── CANCELLED
-//        │
-//        └── CANCELLED
-//
-// COMPLETED, FAILED and CANCELLED are terminal states.
-//
-// -----------------------------------------------------------------------------
-// Destination
-// -----------------------------------------------------------------------------
-//
-// A withdrawal captures its selected destination as:
-//
-//     FinancialAccountWithdrawalDestination
-//
-// The destination is an immutable snapshot owned by the withdrawal.
-//
-// This controller does NOT:
-//
-// - resolve FinancialDisbursementDestination;
-// - query a destination repository;
-// - expose destination aggregate identities;
-// - mutate configured destination state.
-//
-// Destination selection belongs to the application boundary before the
-// withdrawal command is constructed.
-//
-// -----------------------------------------------------------------------------
-// This controller does NOT:
-//
-// - modify Financial Account balances;
-// - create or execute Financial Transactions;
-// - create or execute Financial Disbursements;
-// - call external providers;
-// - perform settlement;
-// - perform accounting;
-// - persist aggregates directly.
-//
-// Those responsibilities belong to the appropriate application/domain and
-// integration workflows.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// NestJS
-// -----------------------------------------------------------------------------
-
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
+  Headers,
   Inject,
   Param,
   Post,
   UseGuards,
 } from '@nestjs/common';
 
-// -----------------------------------------------------------------------------
-// Swagger
-// -----------------------------------------------------------------------------
-
-import { ApiTags } from '@nestjs/swagger';
-
-// -----------------------------------------------------------------------------
-// Identity — Authentication & Authorization
-// -----------------------------------------------------------------------------
+import { ApiHeader, ApiTags } from '@nestjs/swagger';
 
 import {
   JwtAuthGuard,
@@ -106,22 +18,10 @@ import {
   RequirePermissions,
 } from '../../../../../foundation/security/auth';
 
-// -----------------------------------------------------------------------------
-// Foundation — Application
-// -----------------------------------------------------------------------------
-
 import type { CommandHandler } from '../../../../../foundation/kernel/application/command-handler';
 import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
 
-// -----------------------------------------------------------------------------
-// Application — Tokens
-// -----------------------------------------------------------------------------
-
 import { FINANCIAL_ACCOUNT_WITHDRAWAL_TOKENS } from '../../../application/financial-account-withdrawal.tokens';
-
-// -----------------------------------------------------------------------------
-// Application — Commands
-// -----------------------------------------------------------------------------
 
 import {
   CancelFinancialAccountWithdrawalCommand,
@@ -131,10 +31,6 @@ import {
   RequestFinancialAccountWithdrawalCommand,
 } from '../../../application/commands';
 
-// -----------------------------------------------------------------------------
-// Application — Queries
-// -----------------------------------------------------------------------------
-
 import {
   GetAllFinancialAccountWithdrawalsQuery,
   GetFinancialAccountWithdrawalQuery,
@@ -142,15 +38,7 @@ import {
   GetFinancialAccountWithdrawalsQuery,
 } from '../../../application/queries';
 
-// -----------------------------------------------------------------------------
-// Domain — Aggregate
-// -----------------------------------------------------------------------------
-
 import type { FinancialAccountWithdrawalAggregate } from '../../../domain/aggregates/financial-account-withdrawal.aggregate';
-
-// -----------------------------------------------------------------------------
-// Domain — Value Objects
-// -----------------------------------------------------------------------------
 
 import {
   Currency,
@@ -164,10 +52,6 @@ import {
   Money,
 } from '../../../domain/value-objects';
 
-// -----------------------------------------------------------------------------
-// Presentation — Request DTOs
-// -----------------------------------------------------------------------------
-
 import {
   CancelFinancialAccountWithdrawalRequestDto,
   CompleteFinancialAccountWithdrawalRequestDto,
@@ -176,38 +60,20 @@ import {
   RequestFinancialAccountWithdrawalRequestDto,
 } from '../dto/request';
 
-// -----------------------------------------------------------------------------
-// Presentation — Query DTOs
-// -----------------------------------------------------------------------------
-
 import {
   GetFinancialAccountWithdrawalQueryDto,
   GetFinancialAccountWithdrawalsByStatusQueryDto,
   GetFinancialAccountWithdrawalsQueryDto,
 } from '../queries';
 
-// -----------------------------------------------------------------------------
-// Presentation — Response Mapper
-// -----------------------------------------------------------------------------
-
 import { FinancialAccountWithdrawalResponseMapper } from '../mappers/financial-account-withdrawal-response.mapper';
-
-// =============================================================================
-// Controller
-// =============================================================================
 
 @ApiTags('Financial Account Withdrawals')
 @Controller('financial-account-withdrawals')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class FinancialAccountWithdrawalsController {
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
   public constructor(
-    // -------------------------------------------------------------------------
-    // Command Handlers
-    // -------------------------------------------------------------------------
+    // Command handlers
 
     @Inject(FINANCIAL_ACCOUNT_WITHDRAWAL_TOKENS.COMMAND_HANDLERS.REQUEST)
     private readonly requestFinancialAccountWithdrawalHandler: CommandHandler<
@@ -239,9 +105,7 @@ export class FinancialAccountWithdrawalsController {
       FinancialAccountWithdrawalAggregate
     >,
 
-    // -------------------------------------------------------------------------
-    // Query Handlers
-    // -------------------------------------------------------------------------
+    // Query handlers
 
     @Inject(FINANCIAL_ACCOUNT_WITHDRAWAL_TOKENS.QUERY_HANDLERS.GET)
     private readonly getFinancialAccountWithdrawalHandler: QueryHandler<
@@ -260,23 +124,18 @@ export class FinancialAccountWithdrawalsController {
       GetFinancialAccountWithdrawalsByStatusQuery,
       FinancialAccountWithdrawalAggregate[]
     >,
+
     @Inject(FINANCIAL_ACCOUNT_WITHDRAWAL_TOKENS.QUERY_HANDLERS.GET_ALL_PLATFORM)
     private readonly getAllFinancialAccountWithdrawalsHandler: QueryHandler<
       GetAllFinancialAccountWithdrawalsQuery,
       FinancialAccountWithdrawalAggregate[]
     >,
   ) {}
+
   // ---------------------------------------------------------------------------
   // Get All Withdrawals Across Platform
   // ---------------------------------------------------------------------------
 
-  /**
-   * Returns all Financial Account Withdrawals across the platform.
-   *
-   * Intended for platform-wide administrative withdrawal oversight.
-   *
-   * The repository is responsible for aggregate rehydration and ordering.
-   */
   @Get()
   @RequirePermissions('financial:read')
   public async getAll(): Promise<
@@ -289,6 +148,7 @@ export class FinancialAccountWithdrawalsController {
 
     return FinancialAccountWithdrawalResponseMapper.fromAggregates(aggregates);
   }
+
   // ===========================================================================
   // Queries
   // ===========================================================================
@@ -297,16 +157,6 @@ export class FinancialAccountWithdrawalsController {
   // Get Withdrawals By Account And Status
   // ---------------------------------------------------------------------------
 
-  /**
-   * Returns withdrawals belonging to a Financial Account and matching the
-   * supplied lifecycle status.
-   *
-   * The transport status is converted into the domain
-   * FinancialAccountWithdrawalStatus value object before the application
-   * query is constructed.
-   *
-   * This route is declared before the generic public-ID route.
-   */
   @Get('accounts/:accountPublicId/status/:status')
   @RequirePermissions('financial:read')
   public async getByAccountAndStatus(
@@ -333,10 +183,6 @@ export class FinancialAccountWithdrawalsController {
   // Get Withdrawals By Account
   // ---------------------------------------------------------------------------
 
-  /**
-   * Returns all Financial Account Withdrawals belonging to a Financial
-   * Account.
-   */
   @Get('accounts/:accountPublicId')
   @RequirePermissions('financial:read')
   public async getByAccount(
@@ -357,12 +203,6 @@ export class FinancialAccountWithdrawalsController {
   // Get Withdrawal
   // ---------------------------------------------------------------------------
 
-  /**
-   * Returns a single Financial Account Withdrawal by public identity.
-   *
-   * Static account routes above are intentionally declared before this generic
-   * public-ID route.
-   */
   @Get(':withdrawalPublicId')
   @RequirePermissions('financial:read')
   public async get(
@@ -387,19 +227,33 @@ export class FinancialAccountWithdrawalsController {
   // Request Withdrawal
   // ---------------------------------------------------------------------------
 
-  /**
-   * Creates a new Financial Account Withdrawal in PENDING state.
-   *
-   * The selected external destination is converted into the immutable
-   * FinancialAccountWithdrawalDestination value object.
-   */
   @Post()
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    description:
+      'Unique key for this withdrawal request. Reuse the same key when retrying the same request.',
+    example: 'wdreq-01K3R8Y7Q2',
+  })
   @RequirePermissions('financial-account-withdrawal:create')
   public async request(
     @Body() dto: RequestFinancialAccountWithdrawalRequestDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<
     ReturnType<typeof FinancialAccountWithdrawalResponseMapper.toResponse>
   > {
+    const normalizedIdempotencyKey = idempotencyKey?.trim();
+
+    if (
+      normalizedIdempotencyKey === undefined ||
+      normalizedIdempotencyKey.length === 0 ||
+      normalizedIdempotencyKey.length > 128
+    ) {
+      throw new BadRequestException(
+        'Idempotency-Key header is required and must contain between 1 and 128 characters.',
+      );
+    }
+
     const currency = Currency.create(dto.currency);
 
     const amount = Money.create(dto.amount, currency);
@@ -429,6 +283,7 @@ export class FinancialAccountWithdrawalsController {
           referenceType,
           referencePublicId,
           dto.causationId,
+          normalizedIdempotencyKey,
         ),
       );
 
@@ -439,13 +294,6 @@ export class FinancialAccountWithdrawalsController {
   // Process Withdrawal
   // ---------------------------------------------------------------------------
 
-  /**
-   * Transitions:
-   *
-   *     PENDING -> PROCESSING
-   *
-   * This does not create or execute a Financial Disbursement.
-   */
   @Post(':withdrawalPublicId/process')
   @RequirePermissions('financial-account-withdrawal:process')
   public async process(
@@ -470,11 +318,6 @@ export class FinancialAccountWithdrawalsController {
   // Complete Withdrawal
   // ---------------------------------------------------------------------------
 
-  /**
-   * Transitions:
-   *
-   *     PROCESSING -> COMPLETED
-   */
   @Post(':withdrawalPublicId/complete')
   @RequirePermissions('financial-account-withdrawal:complete')
   public async complete(
@@ -502,14 +345,6 @@ export class FinancialAccountWithdrawalsController {
   // Fail Withdrawal
   // ---------------------------------------------------------------------------
 
-  /**
-   * Transitions:
-   *
-   *     PROCESSING -> FAILED
-   *
-   * The failure reason is workflow/event context and is not persisted as part
-   * of the withdrawal lifecycle state.
-   */
   @Post(':withdrawalPublicId/fail')
   @RequirePermissions('financial-account-withdrawal:fail')
   public async fail(
@@ -537,14 +372,6 @@ export class FinancialAccountWithdrawalsController {
   // Cancel Withdrawal
   // ---------------------------------------------------------------------------
 
-  /**
-   * Transitions:
-   *
-   *     PENDING -> CANCELLED
-   *     PROCESSING -> CANCELLED
-   *
-   * Cancellation does not itself execute an external provider operation.
-   */
   @Post(':withdrawalPublicId/cancel')
   @RequirePermissions('financial-account-withdrawal:cancel')
   public async cancel(
@@ -558,34 +385,10 @@ export class FinancialAccountWithdrawalsController {
     const aggregate =
       await this.cancelFinancialAccountWithdrawalHandler.execute(
         new CancelFinancialAccountWithdrawalCommand(
-          // ---------------------------------------------------------------------
-          // Withdrawal Public ID
-          // ---------------------------------------------------------------------
-
           new FinancialAccountWithdrawalPublicId(withdrawalPublicId),
-
-          // ---------------------------------------------------------------------
-          // Cancellation Reason
-          // ---------------------------------------------------------------------
-
           dto.reason,
-
-          // ---------------------------------------------------------------------
-          // Cancellation Timestamp
-          // ---------------------------------------------------------------------
-
           cancelledAt,
-
-          // ---------------------------------------------------------------------
-          // Correlation
-          // ---------------------------------------------------------------------
-
           dto.correlationId,
-
-          // ---------------------------------------------------------------------
-          // Causation
-          // ---------------------------------------------------------------------
-
           dto.causationId,
         ),
       );
@@ -593,9 +396,5 @@ export class FinancialAccountWithdrawalsController {
     return FinancialAccountWithdrawalResponseMapper.toResponse(aggregate);
   }
 }
-
-// -----------------------------------------------------------------------------
-// Default Export
-// -----------------------------------------------------------------------------
 
 export default FinancialAccountWithdrawalsController;

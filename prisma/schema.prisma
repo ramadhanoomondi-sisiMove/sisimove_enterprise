@@ -3019,6 +3019,7 @@ model FinancialAccountWithdrawal {
 
   referenceType     String?
   referencePublicId String?
+  idempotencyKey    String?
 
   // ---------------------------------------------------------------------------
   // Disbursement Link
@@ -3054,6 +3055,7 @@ model FinancialAccountWithdrawal {
   // Indexes
   // ---------------------------------------------------------------------------
 
+  @@unique([accountId, idempotencyKey])
   @@index([accountId])
   @@index([status])
   @@index([destinationType])

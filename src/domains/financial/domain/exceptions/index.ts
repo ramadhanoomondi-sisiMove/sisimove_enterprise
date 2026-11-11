@@ -107,6 +107,7 @@ export * from './financial-account-withdrawal-invalid-destination.exception';
 
 export * from './financial-account-withdrawal-not-found.exception';
 
+export * from './financial-account-withdrawal-idempotency-conflict.exception';
 // -----------------------------------------------------------------------------
 // Financial Disbursement Exceptions
 // -----------------------------------------------------------------------------

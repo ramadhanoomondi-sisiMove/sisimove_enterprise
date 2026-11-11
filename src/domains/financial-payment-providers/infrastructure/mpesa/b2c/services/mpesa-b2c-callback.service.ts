@@ -418,7 +418,7 @@ export class MpesaB2CCallbackService {
         callback.conversationId !== null &&
         attempt.providerConversationId === undefined
       ) {
-        aggregate.setAttemptProviderOriginatorConversationId(
+        aggregate.setAttemptProviderConversationId(
           attempt.publicId,
           callback.conversationId,
         );

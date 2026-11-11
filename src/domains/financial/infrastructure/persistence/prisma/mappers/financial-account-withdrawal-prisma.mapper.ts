@@ -124,6 +124,8 @@ export class FinancialAccountWithdrawalPrismaMapper {
             ? record.disbursementPublicId
             : undefined,
 
+        idempotencyKey: record.idempotencyKey ?? undefined,
+
         requestedAt: record.requestedAt,
 
         completedAt:
@@ -155,6 +157,7 @@ export class FinancialAccountWithdrawalPrismaMapper {
     destinationType: string;
     destinationValue: string;
     disbursementPublicId: string | null;
+    idempotencyKey: string | null;
     referenceType: string | null;
     referencePublicId: string | null;
     requestedAt: Date;
@@ -182,6 +185,8 @@ export class FinancialAccountWithdrawalPrismaMapper {
       destinationValue: entity.destinationValue,
 
       disbursementPublicId: entity.disbursementPublicId ?? null,
+
+      idempotencyKey: entity.idempotencyKey ?? null,
 
       referenceType: entity.referenceType?.value ?? null,
 

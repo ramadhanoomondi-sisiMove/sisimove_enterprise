@@ -324,7 +324,7 @@ export class MpesaB2CDisbursementService {
       response.OriginatorConversationID,
     );
 
-    const responseCode = this.normalizeIdentifier(response.ResponseCode);
+    const responseCode = this.normalizeResponseCode(response.ResponseCode);
 
     const responseDescription = this.normalizeIdentifier(
       response.ResponseDescription,
@@ -533,6 +533,24 @@ export class MpesaB2CDisbursementService {
     throw new Error(
       'Invalid Kenyan M-PESA phone number. Use 07XXXXXXXX, 01XXXXXXXX, or 254XXXXXXXXX.',
     );
+  }
+
+  // ===========================================================================
+  // Response Code Normalization
+  // ===========================================================================
+
+  private normalizeResponseCode(value: unknown): string | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return String(value);
+    }
+
+    if (typeof value !== 'string') {
+      return null;
+    }
+
+    const normalized = value.trim();
+
+    return normalized.length > 0 ? normalized : null;
   }
 
   // ===========================================================================

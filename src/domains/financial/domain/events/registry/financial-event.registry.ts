@@ -50,6 +50,7 @@ import { FinancialPaymentExpiredEvent } from '../financial-payment-expired.event
 
 import { FinancialPaymentTransactionLinkedEvent } from '../financial-payment-transaction-linked.event';
 
+import { FinancialDisbursementAttemptSucceededEvent } from '../financial-disbursement-attempt-succeeded.event';
 // =============================================================================
 // Financial Account Withdrawal Events
 // =============================================================================
@@ -198,7 +199,11 @@ export class FinancialEventRegistry {
       (metadata, payload) =>
         FinancialDisbursementProcessingEvent.rehydrate(metadata, payload),
     ],
-
+    [
+      'FinancialDisbursementAttemptSucceeded:1',
+      (metadata, payload) =>
+        FinancialDisbursementAttemptSucceededEvent.rehydrate(metadata, payload),
+    ],
     [
       'FinancialDisbursementCompleted:1',
       (metadata, payload) =>

@@ -11,74 +11,43 @@
 // 2. Check whether the event has already been processed.
 // 3. Dispatch ProcessFinancialAccountWithdrawalCommand.
 // 4. Preserve correlation and causation metadata.
-// 5. Mark the event as processed after successful command execution.
+// 5. Mark the event as processed only after successful command execution.
 //
 // Responsibilities:
 //
 // - React to a newly requested withdrawal.
-// - Trigger the withdrawal processing application workflow.
-// - Prevent duplicate processing through idempotency.
+// - Delegate processing to ProcessFinancialAccountWithdrawalHandler.
+// - Prevent duplicate event processing.
 // - Preserve event delivery retry behaviour.
 //
 // This subscriber does NOT:
 //
+// - Request a withdrawal.
+// - Debit or credit Financial Account balances.
+// - Create Financial Transactions.
 // - Execute external payment providers directly.
-// - Modify Financial Account balances directly.
-// - Create Financial Transactions directly.
-// - Perform settlement.
-// - Perform accounting.
+// - Create or process disbursements directly.
+// - Perform settlement or accounting.
 //
-// The ProcessFinancialAccountWithdrawalHandler owns the next application
-// workflow. Provider execution and disbursement responsibilities remain
-// within their respective application and integration boundaries.
+// RequestFinancialAccountWithdrawalHandler owns the initial financial
+// operation. ProcessFinancialAccountWithdrawalHandler owns the next
+// application workflow.
 //
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// NestJS
 // -----------------------------------------------------------------------------
 
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 
-// -----------------------------------------------------------------------------
-// Infrastructure — Event Bus
-// -----------------------------------------------------------------------------
-
 import { EventBus } from '../../../../infrastructure/events/event-bus';
-
-// -----------------------------------------------------------------------------
-// Foundation — Idempotency
-// -----------------------------------------------------------------------------
 
 import type { IdempotencyStore } from '../../../../foundation/events/idempotency.interface';
 
-// -----------------------------------------------------------------------------
-// Foundation — Command Handler
-// -----------------------------------------------------------------------------
-
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
-
-// -----------------------------------------------------------------------------
-// Application — Tokens
-// -----------------------------------------------------------------------------
 
 import { FINANCIAL_ACCOUNT_WITHDRAWAL_TOKENS } from '../financial-account-withdrawal.tokens';
 
-// -----------------------------------------------------------------------------
-// Application — Command
-// -----------------------------------------------------------------------------
-
 import { ProcessFinancialAccountWithdrawalCommand } from '../commands/process-financial-account-withdrawal.command';
 
-// -----------------------------------------------------------------------------
-// Domain — Event
-// -----------------------------------------------------------------------------
-
 import { FinancialAccountWithdrawalRequestedEvent } from '../../domain/events/financial-account-withdrawal-requested.event';
-
-// -----------------------------------------------------------------------------
-// Domain — Aggregate
-// -----------------------------------------------------------------------------
 
 import type { FinancialAccountWithdrawalAggregate } from '../../domain/aggregates/financial-account-withdrawal.aggregate';
 
@@ -88,16 +57,14 @@ import type { FinancialAccountWithdrawalAggregate } from '../../domain/aggregate
 
 const CONSUMER_NAME = 'FinancialAccountWithdrawalRequestedSubscriber';
 
+const EVENT_NAME = 'FinancialAccountWithdrawalRequested';
+
 // =============================================================================
 // Subscriber
 // =============================================================================
 
 @Injectable()
 export class FinancialAccountWithdrawalRequestedSubscriber implements OnModuleInit {
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
   public constructor(
     private readonly eventBus: EventBus,
 
@@ -117,7 +84,7 @@ export class FinancialAccountWithdrawalRequestedSubscriber implements OnModuleIn
 
   public onModuleInit(): void {
     this.eventBus.subscribe<FinancialAccountWithdrawalRequestedEvent>(
-      'FinancialAccountWithdrawalRequested',
+      EVENT_NAME,
       async (event) => this.handle(event),
     );
   }
@@ -132,45 +99,82 @@ export class FinancialAccountWithdrawalRequestedSubscriber implements OnModuleIn
     const eventId = event.metadata.eventId;
 
     // -------------------------------------------------------------------------
-    // 1. Check whether this event has already been processed
+    // 1. Validate Event Identity
     // -------------------------------------------------------------------------
 
-    if (await this.idempotencyStore.exists(CONSUMER_NAME, eventId)) {
+    if (!eventId) {
+      throw new Error(
+        'FinancialAccountWithdrawalRequestedEvent has no event ID.',
+      );
+    }
+
+    if (!event.withdrawalPublicId) {
+      throw new Error(
+        'FinancialAccountWithdrawalRequestedEvent has no withdrawal public ID.',
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. Check Event Idempotency
+    // -------------------------------------------------------------------------
+    //
+    // An already processed event must not dispatch the processing command
+    // again.
+    //
+    // The withdrawal itself also has its own business-level idempotency.
+    // Event idempotency and withdrawal idempotency serve different purposes.
+    // -------------------------------------------------------------------------
+
+    const alreadyProcessed = await this.idempotencyStore.exists(
+      CONSUMER_NAME,
+      eventId,
+    );
+
+    if (alreadyProcessed) {
       return;
     }
 
     // -------------------------------------------------------------------------
-    // 2. Execute withdrawal processing workflow
+    // 3. Preserve Event Correlation and Causation
+    // -------------------------------------------------------------------------
+
+    const correlationId = event.metadata.correlationId ?? eventId;
+
+    const causationId = event.metadata.causationId ?? eventId;
+
+    // -------------------------------------------------------------------------
+    // 4. Dispatch Withdrawal Processing Command
     // -------------------------------------------------------------------------
     //
-    // The subscriber delegates the next workflow to
-    // ProcessFinancialAccountWithdrawalHandler.
+    // The request handler has already:
     //
-    // The handler is responsible for applying the withdrawal processing
-    // business rules and coordinating the appropriate downstream workflow.
+    // - Created and persisted the withdrawal.
+    // - Debited the user's AVAILABLE balance.
+    // - Credited SYSTEM-MPESA-CLEARING AVAILABLE balance.
+    // - Created and persisted the DISBURSEMENT Financial Transaction.
+    // - Published the withdrawal-requested event.
     //
-    // The subscriber does not execute a provider or create a disbursement
-    // directly.
+    // Do not repeat those operations here.
     // -------------------------------------------------------------------------
 
     await this.processWithdrawalHandler.execute(
       new ProcessFinancialAccountWithdrawalCommand(
         event.withdrawalPublicId,
-        event.metadata.correlationId ?? eventId,
-        event.metadata.causationId ?? eventId,
+        correlationId,
+        causationId,
       ),
     );
 
     // -------------------------------------------------------------------------
-    // 3. Mark event processed
+    // 5. Mark Event as Processed
     // -------------------------------------------------------------------------
     //
-    // Only mark after successful command-handler completion.
+    // Mark only after successful command execution.
     //
-    // Do not place this operation in a finally block.
+    // If command execution fails, the error propagates to the event dispatcher.
+    // The event remains eligible for retry.
     //
-    // If processing throws, the error must propagate to the outbox dispatcher
-    // so the event retains its retry behaviour.
+    // Do not move this into a finally block.
     // -------------------------------------------------------------------------
 
     await this.idempotencyStore.markProcessed(CONSUMER_NAME, eventId);

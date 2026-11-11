@@ -44,6 +44,12 @@
 // NestJS
 // -----------------------------------------------------------------------------
 
+import {
+  Prisma,
+  FinancialAccountWithdrawalStatus as PrismaFinancialAccountWithdrawalStatus,
+  FinancialDisbursementDestinationType as PrismaFinancialDisbursementDestinationType,
+} from '@prisma/client';
+
 import { Injectable } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
@@ -54,12 +60,6 @@ import {
   PrismaTransactionContext,
   type PrismaClientLike,
 } from '../../../../../../infrastructure/database/prisma/prisma-transaction.context';
-
-// -----------------------------------------------------------------------------
-// Prisma
-// -----------------------------------------------------------------------------
-
-import { FinancialDisbursementDestinationType as PrismaFinancialDisbursementDestinationType } from '@prisma/client';
 
 // -----------------------------------------------------------------------------
 // Repository Contract
@@ -103,6 +103,8 @@ import type { FinancialReferencePublicId } from '../../../../domain/value-object
 import type { FinancialAccountWithdrawalStatus } from '../../../../domain/value-objects/financial-account-withdrawal-status.vo';
 
 import { FinancialAccountWithdrawalStatus as FinancialAccountWithdrawalStatusFactory } from '../../../../domain/value-objects/financial-account-withdrawal-status.vo';
+
+import { FinancialAccountWithdrawalIdempotencyConflictException } from '../../../../domain/exceptions/financial-account-withdrawal-idempotency-conflict.exception';
 
 // -----------------------------------------------------------------------------
 // Exceptions
@@ -231,6 +233,7 @@ export class PrismaFinancialAccountWithdrawalRepository implements FinancialAcco
         id: true,
         publicId: true,
         accountId: true,
+        idempotencyKey: true,
       },
     });
 
@@ -239,43 +242,36 @@ export class PrismaFinancialAccountWithdrawalRepository implements FinancialAcco
     // -------------------------------------------------------------------------
 
     if (existing === null) {
-      await this.prisma.financialAccountWithdrawal.create({
-        data: {
-          id: withdrawal.id,
+      try {
+        await this.prisma.financialAccountWithdrawal.create({
+          data: {
+            id: withdrawal.id,
+            publicId: withdrawal.publicId,
+            accountId,
+            amount: withdrawal.amount,
+            currency: withdrawal.currency,
+            status: withdrawal.status,
+            destinationType,
+            destinationValue: withdrawal.destinationValue,
+            referenceType: withdrawal.referenceType,
+            referencePublicId: withdrawal.referencePublicId,
+            disbursementPublicId: withdrawal.disbursementPublicId,
+            idempotencyKey: withdrawal.idempotencyKey,
+            requestedAt: withdrawal.requestedAt,
+            completedAt: withdrawal.completedAt,
+            failedAt: withdrawal.failedAt,
+            cancelledAt: withdrawal.cancelledAt,
+            createdAt: withdrawal.createdAt,
+            updatedAt: withdrawal.updatedAt,
+          },
+        });
+      } catch (error: unknown) {
+        if (this.isIdempotencyConstraintViolation(error)) {
+          throw new FinancialAccountWithdrawalIdempotencyConflictException();
+        }
 
-          publicId: withdrawal.publicId,
-
-          accountId,
-
-          amount: withdrawal.amount,
-
-          currency: withdrawal.currency,
-
-          status: withdrawal.status,
-
-          destinationType,
-
-          destinationValue: withdrawal.destinationValue,
-
-          referenceType: withdrawal.referenceType,
-
-          referencePublicId: withdrawal.referencePublicId,
-
-          disbursementPublicId: withdrawal.disbursementPublicId,
-
-          requestedAt: withdrawal.requestedAt,
-
-          completedAt: withdrawal.completedAt,
-
-          failedAt: withdrawal.failedAt,
-
-          cancelledAt: withdrawal.cancelledAt,
-
-          createdAt: withdrawal.createdAt,
-
-          updatedAt: withdrawal.updatedAt,
-        },
-      });
+        throw error;
+      }
 
       return;
     }
@@ -297,6 +293,16 @@ export class PrismaFinancialAccountWithdrawalRepository implements FinancialAcco
     if (existing.accountId !== accountId) {
       throw new FinancialAccountWithdrawalException(
         `Financial Account Withdrawal "${withdrawal.publicId}" cannot be moved to another Financial Account.`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Validate Idempotency Key Immutability
+    // -------------------------------------------------------------------------
+
+    if (existing.idempotencyKey !== withdrawal.idempotencyKey) {
+      throw new FinancialAccountWithdrawalException(
+        `Financial Account Withdrawal "${withdrawal.publicId}" cannot change its idempotency key.`,
       );
     }
 
@@ -337,6 +343,163 @@ export class PrismaFinancialAccountWithdrawalRepository implements FinancialAcco
         updatedAt: withdrawal.updatedAt,
       },
     });
+  }
+
+  // ===========================================================================
+  // Conditional PENDING → PROCESSING Save
+  // ===========================================================================
+
+  /**
+   * Atomically transitions a persisted withdrawal from PENDING to PROCESSING.
+   *
+   * The aggregate must already have performed the domain transition.
+   * The database update succeeds only while the persisted record is still
+   * PENDING. This prevents concurrent processing requests from both winning.
+   *
+   * Only lifecycle fields changed by the PENDING → PROCESSING transition are
+   * updated. Immutable withdrawal data is deliberately left untouched.
+   *
+   * Returns false when the record no longer exists in PENDING status.
+   * Transaction ownership remains with the ambient UnitOfWork.
+   */
+  public async saveIfPending(
+    aggregate: FinancialAccountWithdrawalAggregate,
+  ): Promise<boolean> {
+    if (aggregate === undefined) {
+      throw new FinancialAccountWithdrawalException(
+        'Financial Account Withdrawal aggregate is required.',
+      );
+    }
+
+    const persistence =
+      FinancialAccountWithdrawalPrismaMapper.aggregateToPersistence(aggregate);
+
+    const withdrawal = persistence.withdrawal;
+
+    // Compare Prisma persistence status with the Prisma-generated enum.
+    if (
+      withdrawal.status !== PrismaFinancialAccountWithdrawalStatus.PROCESSING
+    ) {
+      throw new FinancialAccountWithdrawalException(
+        'Only a PROCESSING Financial Account Withdrawal can be conditionally saved from PENDING.',
+      );
+    }
+
+    const accountId = await this.resolveAccountId(aggregate.accountPublicId);
+
+    if (withdrawal.accountId !== accountId) {
+      throw new FinancialAccountWithdrawalException(
+        `Financial Account Withdrawal "${withdrawal.publicId}" contains an inconsistent Financial Account reference.`,
+      );
+    }
+
+    // Conditional update: only one concurrent request can change PENDING.
+    const result = await this.prisma.financialAccountWithdrawal.updateMany({
+      where: {
+        id: withdrawal.id,
+        publicId: withdrawal.publicId,
+        accountId,
+        status: PrismaFinancialAccountWithdrawalStatus.PENDING,
+      },
+
+      data: {
+        status: withdrawal.status,
+        updatedAt: withdrawal.updatedAt,
+      },
+    });
+
+    return result.count === 1;
+  }
+
+  // ===========================================================================
+  // Conditional Disbursement Link
+  // ===========================================================================
+
+  /**
+   * Atomically links a Financial Disbursement to a withdrawal that is still
+   * PROCESSING.
+   *
+   * The operation:
+   * - Does not change the withdrawal lifecycle status.
+   * - Does not overwrite a different existing disbursement link.
+   * - Treats an existing link to the same disbursement as success.
+   * - Updates only disbursementPublicId and updatedAt.
+   *
+   * Returns false when the withdrawal does not exist, is no longer PROCESSING,
+   * or is already linked to a different disbursement.
+   *
+   * Transaction ownership remains with the ambient UnitOfWork.
+   */
+  public async linkDisbursementIfProcessing(
+    withdrawalPublicId: FinancialAccountWithdrawalPublicId,
+    disbursementPublicId: string,
+  ): Promise<boolean> {
+    // -------------------------------------------------------------------------
+    // Validate Withdrawal Public ID
+    // -------------------------------------------------------------------------
+
+    if (withdrawalPublicId === undefined) {
+      throw new FinancialAccountWithdrawalException(
+        'Financial Account Withdrawal public ID is required.',
+      );
+    }
+
+    const normalizedWithdrawalPublicId = withdrawalPublicId.value.trim();
+
+    if (normalizedWithdrawalPublicId.length === 0) {
+      throw new FinancialAccountWithdrawalException(
+        'Financial Account Withdrawal public ID must not be empty.',
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Validate Disbursement Public ID
+    // -------------------------------------------------------------------------
+
+    const normalizedDisbursementPublicId =
+      this.normalizeDisbursementPublicId(disbursementPublicId);
+
+    // -------------------------------------------------------------------------
+    // Conditional Database Update
+    // -------------------------------------------------------------------------
+    //
+    // The update succeeds only when:
+    //
+    // 1. The withdrawal exists.
+    // 2. Its status is PROCESSING.
+    // 3. Its disbursement link is empty OR already matches this disbursement.
+    //
+    // A different existing disbursement link is never overwritten.
+    // -------------------------------------------------------------------------
+
+    const result = await this.prisma.financialAccountWithdrawal.updateMany({
+      where: {
+        publicId: normalizedWithdrawalPublicId,
+
+        status: PrismaFinancialAccountWithdrawalStatus.PROCESSING,
+
+        OR: [
+          {
+            disbursementPublicId: null,
+          },
+          {
+            disbursementPublicId: normalizedDisbursementPublicId,
+          },
+        ],
+      },
+
+      data: {
+        disbursementPublicId: normalizedDisbursementPublicId,
+
+        updatedAt: new Date(),
+      },
+    });
+
+    // -------------------------------------------------------------------------
+    // Return Result
+    // -------------------------------------------------------------------------
+
+    return result.count === 1;
   }
 
   // ===========================================================================
@@ -412,6 +575,46 @@ export class PrismaFinancialAccountWithdrawalRepository implements FinancialAcco
     const record = await this.prisma.financialAccountWithdrawal.findUnique({
       where: {
         publicId: publicId.value,
+      },
+
+      include: {
+        account: true,
+      },
+    });
+
+    if (record === null) {
+      return null;
+    }
+
+    return FinancialAccountWithdrawalPrismaMapper.toDomain(
+      record satisfies FinancialAccountWithdrawalWithRelations,
+    );
+  }
+
+  // ===========================================================================
+  // Find By Account Public ID + Idempotency Key
+  // ===========================================================================
+
+  /**
+   * Finds a withdrawal using its owning account and idempotency key.
+   *
+   * Idempotency keys are unique within an account. The public account identity
+   * is resolved to its internal Prisma foreign key inside infrastructure.
+   */
+  public async findByAccountPublicIdAndIdempotencyKey(
+    accountPublicId: FinancialAccountPublicId,
+    idempotencyKey: string,
+  ): Promise<FinancialAccountWithdrawalAggregate | null> {
+    const accountId = await this.resolveAccountId(accountPublicId);
+
+    const normalizedKey = this.normalizeIdempotencyKey(idempotencyKey);
+
+    const record = await this.prisma.financialAccountWithdrawal.findUnique({
+      where: {
+        accountId_idempotencyKey: {
+          accountId,
+          idempotencyKey: normalizedKey,
+        },
       },
 
       include: {
@@ -870,6 +1073,56 @@ export class PrismaFinancialAccountWithdrawalRepository implements FinancialAcco
           `Invalid Financial Account Withdrawal destination type "${value}".`,
         );
     }
+  }
+
+  // ===========================================================================
+  // Idempotency Constraint Detection
+  // ===========================================================================
+
+  /**
+   * Identifies only the account-scoped idempotency unique constraint.
+   *
+   * Other Prisma unique-constraint violations must remain unchanged so that
+   * unrelated identity or reference conflicts are not mistaken for retries.
+   */
+  private isIdempotencyConstraintViolation(error: unknown): boolean {
+    if (
+      !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+      error.code !== 'P2002'
+    ) {
+      return false;
+    }
+
+    const target = error.meta?.target;
+
+    if (Array.isArray(target)) {
+      return target.includes('accountId') && target.includes('idempotencyKey');
+    }
+
+    if (typeof target === 'string') {
+      return target.includes('accountId') && target.includes('idempotencyKey');
+    }
+
+    return false;
+  }
+
+  // ===========================================================================
+  // Idempotency Key Normalization
+  // ===========================================================================
+
+  /**
+   * Normalizes and validates an account-scoped idempotency key.
+   */
+  private normalizeIdempotencyKey(value: string): string {
+    const normalized = value.trim();
+
+    if (normalized.length === 0) {
+      throw new FinancialAccountWithdrawalException(
+        'Financial Account Withdrawal idempotency key must not be empty.',
+      );
+    }
+
+    return normalized;
   }
 
   // ===========================================================================

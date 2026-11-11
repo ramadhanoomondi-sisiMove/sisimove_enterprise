@@ -216,6 +216,9 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
    * The immutable withdrawal destination snapshot is stored directly on the
    * disbursement. No configured destination record is required.
    *
+   * The optional withdrawalPublicId links this disbursement to its originating
+   * withdrawal and is protected by the database unique constraint.
+   *
    * IMPORTANT:
    *
    * This method does not create its own transaction.
@@ -283,6 +286,9 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
 
         referencePublicId: persistence.disbursement.referencePublicId,
 
+        // Originating withdrawal (nullable for other disbursement workflows).
+        withdrawalPublicId: persistence.disbursement.withdrawalPublicId ?? null,
+
         transactionPublicId: persistence.disbursement.transactionPublicId,
 
         requestedAt: persistence.disbursement.requestedAt,
@@ -321,8 +327,9 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
    * 3. Resolve source Financial Account.
    * 4. Verify source-account ownership stability.
    * 5. Verify immutable destination snapshot stability.
-   * 6. Update the Financial Disbursement.
-   * 7. Synchronize aggregate-owned attempts.
+   * 6. Verify originating withdrawal association stability.
+   * 7. Update the Financial Disbursement.
+   * 8. Synchronize aggregate-owned attempts.
    *
    * IMPORTANT:
    *
@@ -353,6 +360,7 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
         sourceAccountId: true,
         destinationType: true,
         destinationValue: true,
+        withdrawalPublicId: true,
       },
     });
 
@@ -411,14 +419,29 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
       );
     }
 
-    // The destination is an immutable snapshot. A persisted disbursement
-    // cannot be redirected by changing its destination type or value.
+    // -------------------------------------------------------------------------
+    // Immutable Destination Snapshot
+    // -------------------------------------------------------------------------
+
     if (
       existing.destinationType !== persistence.disbursement.destinationType ||
       existing.destinationValue !== persistence.disbursement.destinationValue
     ) {
       throw new FinancialDisbursementException(
         `Financial Disbursement "${aggregate.publicId.value}" cannot change its immutable withdrawal destination snapshot.`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Immutable Originating Withdrawal Association
+    // -------------------------------------------------------------------------
+
+    const persistedWithdrawalPublicId =
+      persistence.disbursement.withdrawalPublicId ?? null;
+
+    if (existing.withdrawalPublicId !== persistedWithdrawalPublicId) {
+      throw new FinancialDisbursementException(
+        `Financial Disbursement "${aggregate.publicId.value}" cannot change its originating withdrawal association.`,
       );
     }
 
@@ -441,6 +464,9 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
         referenceType: persistence.disbursement.referenceType,
 
         referencePublicId: persistence.disbursement.referencePublicId,
+
+        // Preserve the originating withdrawal association.
+        withdrawalPublicId: persistedWithdrawalPublicId,
 
         transactionPublicId: persistence.disbursement.transactionPublicId,
 
@@ -542,6 +568,39 @@ export class PrismaFinancialDisbursementRepository implements FinancialDisbursem
 
     const record = await this.findDisbursementRecordByUnique({
       id: normalized,
+    });
+
+    if (record === null) {
+      return null;
+    }
+
+    return FinancialDisbursementPrismaMapper.toDomain(record);
+  }
+
+  // ===========================================================================
+  // Find by Originating Financial Account Withdrawal
+  // ===========================================================================
+
+  public async findByWithdrawalPublicId(
+    withdrawalPublicId: string,
+  ): Promise<FinancialDisbursementAggregate | null> {
+    const normalized = withdrawalPublicId.trim();
+
+    if (!normalized) {
+      throw new FinancialDisbursementException(
+        'Financial Account Withdrawal public ID must not be empty.',
+      );
+    }
+
+    const record = await this.prisma.financialDisbursement.findUnique({
+      where: {
+        withdrawalPublicId: normalized,
+      },
+
+      include: {
+        sourceAccount: true,
+        attempts: true,
+      },
     });
 
     if (record === null) {

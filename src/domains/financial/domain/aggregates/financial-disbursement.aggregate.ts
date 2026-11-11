@@ -139,6 +139,7 @@ import { FinancialDisbursementFailedEvent } from '../events/financial-disburseme
 
 import { FinancialDisbursementCancelledEvent } from '../events/financial-disbursement-cancelled.event';
 
+import { FinancialDisbursementAttemptSucceededEvent } from '../events/financial-disbursement-attempt-succeeded.event';
 // -----------------------------------------------------------------------------
 // Exceptions
 // -----------------------------------------------------------------------------
@@ -795,9 +796,22 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
    *
    * The parent disbursement remains PROCESSING until complete() is invoked.
    */
+  // ===========================================================================
+  // Attempt Success
+  // ===========================================================================
+
+  /**
+   * Records successful completion of an execution attempt.
+   *
+   * A successful attempt emits FinancialDisbursementAttemptSucceededEvent.
+   *
+   * The parent disbursement remains PROCESSING until complete() is invoked.
+   */
   public succeedAttempt(
     attemptPublicId: FinancialDisbursementAttemptPublicId,
     at: Date = new Date(),
+    correlationId: string = attemptPublicId.value,
+    causationId?: string,
   ): void {
     if (!this.isProcessing()) {
       throw new FinancialInvariantException(
@@ -825,9 +839,32 @@ export class FinancialDisbursementAggregate extends AggregateRoot<
     this.ensureAttemptAmountMatches(attempt);
     this.ensureAttemptCurrencyMatches(attempt);
 
+    const providerTransactionId = attempt.providerTransactionId;
+
+    if (
+      typeof providerTransactionId !== 'string' ||
+      providerTransactionId.trim().length === 0
+    ) {
+      throw new FinancialInvariantException(
+        'Financial Disbursement Attempt cannot succeed without a provider transaction ID.',
+      );
+    }
+
     attempt.succeed(at);
 
     this.ensureAggregateConsistency();
+
+    this.addDomainEvent(
+      new FinancialDisbursementAttemptSucceededEvent(
+        this.id.value,
+        this.publicId,
+        attempt.publicId,
+        providerTransactionId,
+        attempt.amount,
+        correlationId,
+        causationId,
+      ),
+    );
   }
 
   // ===========================================================================

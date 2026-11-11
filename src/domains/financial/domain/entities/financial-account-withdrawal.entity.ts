@@ -14,6 +14,7 @@
 // - Withdrawal amount and currency.
 // - Immutable withdrawal destination snapshot.
 // - Optional immutable business reference.
+// - Optional immutable request idempotency key.
 // - Withdrawal lifecycle.
 // - Optional Financial Disbursement reference.
 // - Lifecycle invariants.
@@ -97,6 +98,7 @@
 // - destination;
 // - referenceType;
 // - referencePublicId;
+// - idempotencyKey;
 // - requestedAt;
 // - createdAt.
 //
@@ -233,6 +235,18 @@ export interface FinancialAccountWithdrawalProps {
   readonly referencePublicId: FinancialReferencePublicId | undefined;
 
   // ---------------------------------------------------------------------------
+  // Request Idempotency
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Optional immutable idempotency key supplied with the original request.
+   *
+   * Undefined for legacy withdrawals created before request idempotency was
+   * introduced.
+   */
+  readonly idempotencyKey: string | undefined;
+
+  // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
 
@@ -337,6 +351,7 @@ export class FinancialAccountWithdrawalEntity extends Entity<
     referenceType: FinancialReferenceType | undefined = undefined,
     referencePublicId: FinancialReferencePublicId | undefined = undefined,
     requestedAt: Date = new Date(),
+    idempotencyKey: string | undefined = undefined,
   ): FinancialAccountWithdrawalEntity {
     FinancialAccountWithdrawalEntity.ensureValidDate(
       requestedAt,
@@ -350,6 +365,13 @@ export class FinancialAccountWithdrawalEntity extends Entity<
       referencePublicId,
     );
 
+    const normalizedIdempotencyKey =
+      idempotencyKey !== undefined
+        ? FinancialAccountWithdrawalEntity.normalizeIdempotencyKey(
+            idempotencyKey,
+          )
+        : undefined;
+
     const requestedTimestamp =
       FinancialAccountWithdrawalEntity.cloneDate(requestedAt);
 
@@ -362,6 +384,8 @@ export class FinancialAccountWithdrawalEntity extends Entity<
 
         referenceType,
         referencePublicId,
+
+        idempotencyKey: normalizedIdempotencyKey,
 
         status: FinancialAccountWithdrawalStatus.pending(),
 
@@ -446,6 +470,13 @@ export class FinancialAccountWithdrawalEntity extends Entity<
 
     FinancialAccountWithdrawalEntity.ensureLifecycleConsistency(props);
 
+    const normalizedIdempotencyKey =
+      props.idempotencyKey !== undefined
+        ? FinancialAccountWithdrawalEntity.normalizeIdempotencyKey(
+            props.idempotencyKey,
+          )
+        : undefined;
+
     const normalizedDisbursementPublicId =
       props.disbursementPublicId !== undefined
         ? FinancialAccountWithdrawalEntity.normalizeDisbursementPublicId(
@@ -462,6 +493,8 @@ export class FinancialAccountWithdrawalEntity extends Entity<
 
         referenceType: props.referenceType,
         referencePublicId: props.referencePublicId,
+
+        idempotencyKey: normalizedIdempotencyKey,
 
         status: props.status,
 
@@ -628,6 +661,19 @@ export class FinancialAccountWithdrawalEntity extends Entity<
       this.props.referenceType !== undefined &&
       this.props.referencePublicId !== undefined
     );
+  }
+
+  // ===========================================================================
+  // Request Idempotency
+  // ===========================================================================
+
+  /**
+   * Optional immutable key identifying the original withdrawal request.
+   *
+   * Legacy withdrawals may not have an idempotency key.
+   */
+  public get idempotencyKey(): string | undefined {
+    return this.props.idempotencyKey;
   }
 
   // ===========================================================================
@@ -1008,6 +1054,21 @@ export class FinancialAccountWithdrawalEntity extends Entity<
         'Financial Account Withdrawal business reference must contain both reference type and reference public ID',
       );
     }
+  }
+
+  /**
+   * Normalizes and validates an optional request idempotency key.
+   */
+  private static normalizeIdempotencyKey(value: string): string {
+    const normalized = value.trim();
+
+    if (normalized.length === 0) {
+      throw new FinancialAccountWithdrawalException(
+        'Financial Account Withdrawal idempotency key must not be empty',
+      );
+    }
+
+    return normalized;
   }
 
   /**
