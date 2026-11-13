@@ -62,7 +62,7 @@ export interface MpesaB2CDisbursementResult {
 interface ResolvedMpesaB2CConfiguration {
   providerPublicId: FinancialPaymentProviderPublicId;
   endpoint: string;
-  shortcode: string;
+  b2cShortcode: string;
   initiatorName: string;
   securityCredential: string;
   resultUrl: string;
@@ -168,7 +168,7 @@ export class MpesaB2CDisbursementService {
       SecurityCredential: configuration.securityCredential,
       CommandID: input.commandId,
       Amount: input.amount / 100,
-      PartyA: configuration.shortcode,
+      PartyA: configuration.b2cShortcode,
       PartyB: phoneNumber,
       Remarks: input.remarks.trim(),
       QueueTimeOutURL: configuration.queueTimeoutUrl,
@@ -361,13 +361,16 @@ export class MpesaB2CDisbursementService {
       throw new Error('M-PESA provider configuration was not found.');
     }
 
-    const shortcode = providerConfiguration.shortcode?.trim();
+    // B2C uses its own Party A shortcode.
+    // Do not fall back to the STK Push / C2B shortcode.
+
+    const b2cShortcode = providerConfiguration.b2cShortcode?.trim();
     const initiatorName = providerConfiguration.initiatorName?.trim();
     const securityCredential = providerConfiguration.securityCredential?.trim();
 
-    if (!shortcode) {
+    if (!b2cShortcode) {
       throw new Error(
-        'M-PESA shortcode is missing from provider configuration.',
+        'M-PESA B2C shortcode is missing from provider configuration.',
       );
     }
 
@@ -404,7 +407,7 @@ export class MpesaB2CDisbursementService {
     return {
       providerPublicId,
       endpoint,
-      shortcode,
+      b2cShortcode,
       initiatorName,
       securityCredential,
       resultUrl,

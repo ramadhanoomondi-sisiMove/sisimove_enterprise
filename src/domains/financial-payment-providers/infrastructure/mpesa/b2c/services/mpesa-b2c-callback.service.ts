@@ -388,18 +388,65 @@ export class MpesaB2CCallbackService {
       // -----------------------------------------------------------------------
 
       if (attempt.isTerminal()) {
-        await this.callbackRepository.markProcessed(
-          callbackRecord.id,
-          attempt.id.toString(),
-          new Date(),
+        // A queue timeout does not establish a final payout outcome.
+        // Once the attempt is terminal, it can safely be acknowledged as
+        // already resolved without changing that outcome.
+        if (callback.type === 'QUEUE_TIMEOUT') {
+          await this.callbackRepository.markProcessed(
+            callbackRecord.id,
+            attempt.id.toString(),
+            new Date(),
+          );
+
+          return {
+            processed: false,
+            duplicate: true,
+            disbursementPublicId: aggregate.publicId.value,
+            attemptPublicId: attempt.publicId.value,
+            message:
+              'Queue timeout received after the attempt reached a terminal state.',
+          };
+        }
+
+        // A RESULT callback must agree with the attempt's existing outcome.
+        const callbackSucceeded = callback.resultCode === 0;
+        const outcomeMatches =
+          (attempt.isSucceeded() && callbackSucceeded) ||
+          (attempt.isFailed() &&
+            !callbackSucceeded &&
+            attempt.failureCode === String(callback.resultCode));
+
+        if (outcomeMatches) {
+          await this.callbackRepository.markProcessed(
+            callbackRecord.id,
+            attempt.id.toString(),
+            new Date(),
+          );
+
+          return {
+            processed: false,
+            duplicate: true,
+            disbursementPublicId: aggregate.publicId.value,
+            attemptPublicId: attempt.publicId.value,
+            message:
+              'Duplicate M-PESA B2C result callback agrees with the recorded attempt outcome.',
+          };
+        }
+
+        // Never overwrite a terminal outcome with a conflicting callback.
+        // Keep the callback pending for investigation.
+        this.logger.error(
+          `Conflicting M-PESA B2C result callback for terminal attempt "${attempt.publicId.value}". ` +
+            `Attempt status: ${attempt.statusValue}; callback ResultCode: ${callback.resultCode}.`,
         );
 
         return {
           processed: false,
-          duplicate: true,
+          duplicate: false,
           disbursementPublicId: aggregate.publicId.value,
           attemptPublicId: attempt.publicId.value,
-          message: 'Disbursement attempt already reached a terminal state.',
+          message:
+            'Conflicting provider result received for a terminal attempt. Callback remains pending for investigation.',
         };
       }
 

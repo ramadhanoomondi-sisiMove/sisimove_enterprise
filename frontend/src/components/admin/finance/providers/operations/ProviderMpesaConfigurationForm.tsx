@@ -92,6 +92,7 @@ function ProviderMpesaConfigurationFormContent({
   // B2C Withdrawal Configuration
   // ---------------------------------------------------------------------------
 
+  const [b2cShortcode, setB2cShortcode] = useState('');
   const [initiatorName, setInitiatorName] = useState('');
   const [securityCredential, setSecurityCredential] = useState('');
 
@@ -108,6 +109,8 @@ function ProviderMpesaConfigurationFormContent({
     shortcode.trim().length <= 20 &&
     passkey.trim().length > 0 &&
     passkey.trim().length <= 255 &&
+    b2cShortcode.trim().length > 0 &&
+    b2cShortcode.trim().length <= 20 &&
     initiatorName.trim().length > 0 &&
     initiatorName.trim().length <= 100 &&
     securityCredential.trim().length > 0 &&
@@ -128,6 +131,7 @@ function ProviderMpesaConfigurationFormContent({
       consumerSecret: consumerSecret.trim(),
       shortcode: shortcode.trim(),
       passkey: passkey.trim(),
+      b2cShortcode: b2cShortcode.trim(),
       initiatorName: initiatorName.trim(),
       securityCredential: securityCredential.trim(),
     });
@@ -149,7 +153,6 @@ function ProviderMpesaConfigurationFormContent({
       onCancel={onCancel}
     >
       <div className="space-y-5">
-
         {/* Environment */}
 
         <div className="space-y-2">
@@ -231,14 +234,14 @@ function ProviderMpesaConfigurationFormContent({
             />
           </div>
 
-          {/* Shortcode */}
+          {/* STK Push / C2B Shortcode */}
 
           <div className="space-y-2">
             <label
               htmlFor="mpesa-shortcode"
               className="text-sm font-medium text-foreground"
             >
-              Business Shortcode *
+              Business Shortcode (STK Push / C2B) *
             </label>
 
             <input
@@ -250,7 +253,7 @@ function ProviderMpesaConfigurationFormContent({
               required
               maxLength={20}
               className={inputClass}
-              placeholder="Enter business shortcode"
+              placeholder="Enter STK Push / C2B shortcode"
             />
           </div>
         </div>
@@ -294,8 +297,37 @@ function ProviderMpesaConfigurationFormContent({
             </h3>
 
             <p className="text-xs leading-5 text-muted-foreground">
-              Configure Safaricom credentials for sending payments
-              from SisiMove to customer M-PESA accounts.
+              Configure Safaricom credentials for sending business
+              payments from SisiMove to customer M-PESA accounts.
+            </p>
+          </div>
+
+          {/* B2C Party A Shortcode */}
+
+          <div className="space-y-2">
+            <label
+              htmlFor="mpesa-b2c-shortcode"
+              className="text-sm font-medium text-foreground"
+            >
+              B2C Party A Shortcode *
+            </label>
+
+            <input
+              id="mpesa-b2c-shortcode"
+              type="text"
+              value={b2cShortcode}
+              onChange={(event) => setB2cShortcode(event.target.value)}
+              disabled={isLoading}
+              required
+              maxLength={20}
+              className={inputClass}
+              placeholder="Enter B2C Party A shortcode"
+            />
+
+            <p className="text-xs leading-5 text-muted-foreground">
+              Use the Party A value supplied in your Daraja B2C
+              credentials. This is configured separately from the
+              STK Push / C2B business shortcode.
             </p>
           </div>
 

@@ -178,6 +178,28 @@ type DestinationMode =
  * - available-balance adjustments;
  * - receive amounts.
  */
+/**
+ * Normalize Kenyan mobile-money destinations to the Daraja PartyB format.
+ * The resulting value is always a string in 254XXXXXXXXX format.
+ */
+function normalizeKenyanMobileNumber(value: string): string | null {
+  const digits = value.replace(/[\\s()+-]/g, '');
+
+  if (/^0[17]\\d{8}$/.test(digits)) {
+    return `254${digits.slice(1)}`;
+  }
+
+  if (/^[17]\\d{8}$/.test(digits)) {
+    return `254${digits}`;
+  }
+
+  if (/^254[17]\\d{8}$/.test(digits)) {
+    return digits;
+  }
+
+  return null;
+}
+
 function toMinorUnitString(
   value: string,
 ): string {
@@ -609,7 +631,8 @@ const {
   // Submit
   // ---------------------------------------------------------------------------
 
-  const handleSubmit = useCallback((): void => {
+  const handleSubmit = useCallback(
+    (formNormalizedDestinationValue?: string): void => {
     // Guard synchronously against rapid repeated clicks.
     if (
       submissionInProgressRef.current ||
@@ -655,13 +678,37 @@ const {
       return;
     }
 
-    // Include every value that changes the financial intent.
+    // Normalize mobile-money destinations before creating the financial
+    // withdrawal request. The form may already provide a normalized value;
+    // this container-level check is intentionally defensive.
+    let submittedDestinationValue = effectiveDestinationValue;
+
+    if (withdrawalDestinationType === 'MOBILE_MONEY') {
+      const candidate =
+        formNormalizedDestinationValue?.trim() ||
+        effectiveDestinationValue;
+
+      const normalizedNumber =
+        normalizeKenyanMobileNumber(candidate);
+
+      if (!normalizedNumber) {
+        setFormError(
+          'Enter a valid Kenyan mobile number, such as 0712 345 678 or 254712345678.',
+        );
+        return;
+      }
+
+      submittedDestinationValue = normalizedNumber;
+    }
+
+    // Include every value that changes the financial intent. Use the exact
+    // normalized destination that will be persisted by the backend.
     const requestFingerprint = JSON.stringify({
       accountPublicId: account.publicId,
       amount: amountInMinorUnits,
       currency: balance.currency || DEFAULT_CURRENCY,
       destinationType: withdrawalDestinationType,
-      destinationValue: effectiveDestinationValue,
+      destinationValue: submittedDestinationValue,
     });
 
     // Reuse the original request and key when retrying the same intent.
@@ -675,7 +722,7 @@ const {
         amount: amountInMinorUnits,
         currency: balance.currency || DEFAULT_CURRENCY,
         destinationType: withdrawalDestinationType,
-        destinationValue: effectiveDestinationValue,
+        destinationValue: submittedDestinationValue,
         correlationId: crypto.randomUUID(),
       };
 
@@ -727,16 +774,18 @@ const {
         },
       },
     );
-  }, [
-    account,
-    balance,
-    amountInMinorUnits,
-    destinationMode,
-    effectiveDestinationValue,
-    hasValidAmount,
-    withdrawalDestinationType,
-    createWithdrawalMutation,
-  ]);
+    },
+    [
+      account,
+      balance,
+      amountInMinorUnits,
+      destinationMode,
+      effectiveDestinationValue,
+      hasValidAmount,
+      withdrawalDestinationType,
+      createWithdrawalMutation,
+    ],
+  );
 
   // ---------------------------------------------------------------------------
   // Cancel / Back
@@ -1118,9 +1167,7 @@ const {
               onCancel={
                 handleCancel
               }
-              onSubmit={
-                handleSubmit
-              }
+              onSubmit={handleSubmit}
             />
 
             <WithdrawalSummary

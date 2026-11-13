@@ -30,8 +30,7 @@
 //
 // -----------------------------------------------------------------------------
 
-import { randomUUID } from 'node:crypto';
-
+import { randomBytes } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 
 import { PrismaUnitOfWork } from '../../../../infrastructure/persistence/prisma-unit-of-work';
@@ -269,7 +268,9 @@ export class ProcessFinancialDisbursementHandler implements CommandHandler<
       // This identifier is generated once and persisted before submission.
       // It must never be regenerated when an execution outcome is uncertain.
 
-      const originatorConversationId = randomUUID();
+      const originatorConversationId = randomBytes(9)
+        .toString('hex')
+        .toUpperCase();
 
       // -----------------------------------------------------------------------
       // Start parent lifecycle

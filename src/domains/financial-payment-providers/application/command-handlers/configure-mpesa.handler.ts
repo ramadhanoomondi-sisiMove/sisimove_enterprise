@@ -27,10 +27,23 @@ import { FinancialPaymentProviderException } from '../../domain/exceptions/finan
 // Supported capabilities:
 //
 // - STK Push: customer payments into SisiMove.
+// - C2B: customer payments into SisiMove.
 // - B2C Disbursement: payments from SisiMove to customer phone numbers.
 //
-// All credentials are stored together through the encrypted configuration
-// service. No plaintext credentials are persisted.
+// Shared authentication:
+// - Consumer Key
+// - Consumer Secret
+//
+// STK Push / C2B:
+// - Business Shortcode
+// - STK Push Passkey
+//
+// B2C Disbursement:
+// - B2C Party A Shortcode
+// - Initiator Name
+// - Security Credential
+//
+// All credentials are encrypted before persistence.
 //
 // =============================================================================
 
@@ -102,14 +115,15 @@ export class ConfigureMpesaHandler implements CommandHandler<
     // Shared authentication:
     // - Consumer Key
     // - Consumer Secret
-    // - Shortcode
     //
-    // STK Push:
-    // - Passkey
+    // STK Push / C2B:
+    // - shortcode
+    // - passkey
     //
     // B2C Disbursement:
-    // - Initiator Name
-    // - Security Credential
+    // - b2cShortcode
+    // - initiatorName
+    // - securityCredential
     //
     // Callback URLs are managed separately through application configuration.
     // -------------------------------------------------------------------------
@@ -120,8 +134,13 @@ export class ConfigureMpesaHandler implements CommandHandler<
       {
         consumerKey: command.consumerKey,
         consumerSecret: command.consumerSecret,
+
+        // Existing STK Push / C2B configuration.
         shortcode: command.shortcode,
         passkey: command.passkey,
+
+        // Separate B2C configuration.
+        b2cShortcode: command.b2cShortcode,
         initiatorName: command.initiatorName,
         securityCredential: command.securityCredential,
       },

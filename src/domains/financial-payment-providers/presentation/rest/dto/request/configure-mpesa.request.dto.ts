@@ -20,6 +20,9 @@ const trimString = ({ value }: TransformFnParams): unknown =>
 // - STK Push
 // - B2C Disbursement
 //
+// Shared Daraja authentication is used for both integrations.
+// STK/C2B and B2C use separate shortcode configuration.
+//
 // All credentials are submitted through the configuration API and encrypted
 // before persistence.
 //
@@ -63,9 +66,14 @@ export class ConfigureMpesaRequestDto {
   @MaxLength(255)
   consumerSecret!: string;
 
+  // ===========================================================================
+  // STK Push / C2B Shortcode
+  // ===========================================================================
+
   @ApiProperty({
     example: '174379',
-    description: 'M-PESA business shortcode.',
+    description:
+      'M-PESA business shortcode used for STK Push and C2B configuration.',
   })
   @Transform(trimString)
   @IsString()
@@ -90,6 +98,17 @@ export class ConfigureMpesaRequestDto {
   // ===========================================================================
   // B2C Disbursement Configuration
   // ===========================================================================
+
+  @ApiProperty({
+    example: '600992',
+    description:
+      'B2C Party A shortcode provided in the Daraja B2C test credentials or production configuration.',
+  })
+  @Transform(trimString)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(20)
+  b2cShortcode!: string;
 
   @ApiProperty({
     example: 'your-b2c-initiator-name',

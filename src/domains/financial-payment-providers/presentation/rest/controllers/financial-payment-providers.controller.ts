@@ -472,6 +472,7 @@ export class FinancialPaymentProvidersController {
       dto.consumerSecret,
       dto.shortcode,
       dto.passkey,
+      dto.b2cShortcode,
       dto.initiatorName,
       dto.securityCredential,
       new Date(),

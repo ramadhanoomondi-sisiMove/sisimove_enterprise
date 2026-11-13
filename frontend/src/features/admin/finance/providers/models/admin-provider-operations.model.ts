@@ -65,7 +65,6 @@ export interface AdminProviderCapabilityOperationParams
 // M-PESA Configuration
 // -----------------------------------------------------------------------------
 
-
 export interface AdminConfigureMpesaInput {
   // Environment
   environment: 'SANDBOX' | 'PRODUCTION';
@@ -73,16 +72,18 @@ export interface AdminConfigureMpesaInput {
   // Shared Daraja Authentication
   consumerKey: string;
   consumerSecret: string;
+
+  // STK Push / C2B
   shortcode: string;
 
   // STK Push
   passkey: string;
 
   // B2C Disbursement
+  b2cShortcode: string;
   initiatorName: string;
   securityCredential: string;
 }
-
 
 export interface AdminConfigureMpesaResponse {
   configurationReference: string;

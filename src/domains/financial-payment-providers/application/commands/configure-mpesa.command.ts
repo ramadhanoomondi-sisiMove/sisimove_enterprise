@@ -13,23 +13,27 @@ import type { FinancialPaymentProviderPublicId } from '../../domain/value-object
 // Supported capabilities:
 //
 // - STK Push: customer payments into SisiMove.
+// - C2B: customer payments into SisiMove.
 // - B2C Disbursement: payments from SisiMove to customer phone numbers.
 //
 // Shared credentials:
 // - Consumer Key
 // - Consumer Secret
-// - Business Shortcode
 //
-// STK Push credentials:
-// - Passkey
+// STK Push / C2B:
+// - Business Shortcode
+// - Passkey (STK Push)
 //
 // B2C credentials:
+// - B2C Party A Shortcode
 // - Initiator Name
 // - Security Credential
 //
-// Callback URLs are derived from the application's public API base URL.
-// Plaintext credentials are encrypted by the configuration service before
-// persistence.
+// Important:
+// - shortcode and b2cShortcode are deliberately separate.
+// - Existing STK Push/C2B configuration remains unchanged.
+// - Callback URLs are derived from application configuration.
+// - Plaintext credentials are encrypted before persistence.
 //
 // =============================================================================
 
@@ -45,18 +49,19 @@ export class ConfigureMpesaCommand implements Command {
 
     public readonly consumerKey: string,
     public readonly consumerSecret: string,
+
+    // -------------------------------------------------------------------------
+    // STK Push / C2B
+    // -------------------------------------------------------------------------
+
     public readonly shortcode: string,
-
-    // -------------------------------------------------------------------------
-    // STK Push
-    // -------------------------------------------------------------------------
-
     public readonly passkey: string,
 
     // -------------------------------------------------------------------------
     // B2C Disbursement
     // -------------------------------------------------------------------------
 
+    public readonly b2cShortcode: string,
     public readonly initiatorName: string,
     public readonly securityCredential: string,
 

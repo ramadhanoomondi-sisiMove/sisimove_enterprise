@@ -62,6 +62,28 @@ export type WithdrawalDestinationMode =
   | 'REGISTERED_NUMBER'
   | 'OTHER_DESTINATION';
 
+/**
+ * Converts a Kenyan mobile number to the Daraja PartyB format.
+ * Returns null when the value is not a valid Kenyan mobile number.
+ */
+export function normalizeKenyanMobileNumber(value: string): string | null {
+  const digits = value.replace(/[\\s()+-]/g, '');
+
+  if (/^0[17]\\d{8}$/.test(digits)) {
+    return `254${digits.slice(1)}`;
+  }
+
+  if (/^[17]\\d{8}$/.test(digits)) {
+    return `254${digits}`;
+  }
+
+  if (/^254[17]\\d{8}$/.test(digits)) {
+    return digits;
+  }
+
+  return null;
+}
+
 export interface WithdrawalDestinationTypeOption {
   value: WithdrawalDestinationType;
   label: string;
@@ -197,7 +219,13 @@ export interface WithdrawalFormProps {
   /**
    * Called when the form is submitted.
    */
-  onSubmit: () => void;
+  /**
+   * For an explicitly entered MOBILE_MONEY destination, the optional
+   * argument is normalized to the Kenyan 254XXXXXXXXX format.
+   * The container must normalize registered numbers from their unmasked
+   * source value.
+   */
+  onSubmit: (normalizedDestinationValue?: string) => void;
 
   /**
    * Optional additional content rendered below the form.
@@ -238,6 +266,18 @@ export function WithdrawalForm({
     event.preventDefault();
 
     if (isSubmitting || isSubmitDisabled) {
+      return;
+    }
+
+    if (
+      destinationMode === 'OTHER_DESTINATION' &&
+      destinationType === 'MOBILE_MONEY'
+    ) {
+      const normalizedNumber =
+        normalizeKenyanMobileNumber(destinationValue);
+
+      // Preserve invalid input for the container's existing validation.
+      onSubmit(normalizedNumber ?? destinationValue.trim());
       return;
     }
 
@@ -442,6 +482,7 @@ export function WithdrawalForm({
               error={destinationError}
               fullWidth
               autoComplete="off"
+              inputMode={destinationType === 'MOBILE_MONEY' ? 'tel' : 'text'}
               disabled={isSubmitting}
               placeholder={
                 destinationType === 'MOBILE_MONEY'
@@ -450,7 +491,11 @@ export function WithdrawalForm({
                     ? 'Enter bank account details'
                     : 'Enter destination details'
               }
-              helperText="Use the destination details required for the selected destination type."
+              helperText={
+                destinationType === 'MOBILE_MONEY'
+                  ? 'Enter a Kenyan number. It will be sent in 254XXXXXXXXX format.'
+                  : 'Use the destination details required for the selected destination type.'
+              }
             />
           </div>
         )}
