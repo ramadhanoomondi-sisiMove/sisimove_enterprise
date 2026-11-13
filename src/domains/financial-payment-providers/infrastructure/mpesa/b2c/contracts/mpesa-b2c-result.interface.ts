@@ -12,17 +12,25 @@
  *   transaction details for successful payouts.
  */
 
+// =============================================================================
+// Result Parameters
+// =============================================================================
+
 export interface MpesaB2CResultParameter {
   /** Name of the additional transaction detail. */
   Key: string;
 
-  /** Value may be text, numeric, or another JSON-compatible scalar. */
+  /** Value may be text, numeric, boolean, or null. */
   Value?: string | number | boolean | null;
 }
 
 export interface MpesaB2CResultParameters {
   ResultParameter: MpesaB2CResultParameter[];
 }
+
+// =============================================================================
+// Reference Data
+// =============================================================================
 
 export interface MpesaB2CReferenceItem {
   Key: string;
@@ -32,6 +40,10 @@ export interface MpesaB2CReferenceItem {
 export interface MpesaB2CReferenceData {
   ReferenceItem: MpesaB2CReferenceItem;
 }
+
+// =============================================================================
+// Result
+// =============================================================================
 
 export interface MpesaB2CResult {
   /** Result notification type. */
@@ -56,12 +68,19 @@ export interface MpesaB2CResult {
   /** Safaricom transaction identifier. */
   TransactionID: string;
 
-  /** Additional transaction details, usually present on success. */
+  /**
+   * Additional transaction details, normally present on successful
+   * transactions. May be absent on unsuccessful transactions.
+   */
   ResultParameters?: MpesaB2CResultParameters;
 
   /** Optional provider reference information. */
   ReferenceData?: MpesaB2CReferenceData;
 }
+
+// =============================================================================
+// Callback Envelope
+// =============================================================================
 
 /** Complete callback body received at the B2C ResultURL. */
 export interface MpesaB2CResultCallback {

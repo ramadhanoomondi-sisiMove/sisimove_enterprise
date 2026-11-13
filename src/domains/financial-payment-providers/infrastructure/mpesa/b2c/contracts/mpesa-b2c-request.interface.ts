@@ -9,10 +9,30 @@
  * This interface describes the provider transport payload only.
  * It must not contain consumer keys, consumer secrets, or
  * plaintext initiator passwords.
+ *
+ * SisiMove B2C scope:
+ * - Journey earnings
+ * - Commissions
+ * - Settlements
+ *
+ * Employee salaries and promotional payments are excluded.
+ * The specific business payout classification is retained
+ * separately in SisiMove's domain metadata.
  */
 
-export type MpesaB2CCommandId =
-  'SalaryPayment' | 'BusinessPayment' | 'PromotionPayment';
+// =============================================================================
+// Command ID
+// =============================================================================
+
+/**
+ * SisiMove uses BusinessPayment for all supported business
+ * disbursements in this workflow.
+ */
+export type MpesaB2CCommandId = 'BusinessPayment';
+
+// =============================================================================
+// Request
+// =============================================================================
 
 export interface MpesaB2CRequest {
   /**
@@ -30,7 +50,7 @@ export interface MpesaB2CRequest {
    */
   SecurityCredential: string;
 
-  /** B2C payment purpose supported by Safaricom. */
+  /** B2C command used for SisiMove business payouts. */
   CommandID: MpesaB2CCommandId;
 
   /** Amount in KES. Must be a positive whole number. */

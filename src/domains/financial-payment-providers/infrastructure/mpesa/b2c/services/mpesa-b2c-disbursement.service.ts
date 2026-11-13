@@ -26,13 +26,9 @@ import type { MpesaB2CResponse } from '../contracts/mpesa-b2c-response.interface
 // =============================================================================
 
 const MPESA_SANDBOX_BASE_URL = 'https://sandbox.safaricom.co.ke';
-
 const MPESA_PRODUCTION_BASE_URL = 'https://api.safaricom.co.ke';
-
 const MPESA_B2C_ENDPOINT = '/mpesa/b2c/v3/paymentrequest';
 
-// Financial amounts are stored in integer minor units.
-// Daraja B2C accepts whole KES amounts.
 const MINIMUM_AMOUNT_MINOR_UNITS = 100;
 
 // =============================================================================
@@ -41,31 +37,14 @@ const MINIMUM_AMOUNT_MINOR_UNITS = 100;
 
 export interface MpesaB2CDisbursementInput {
   providerPublicId: string;
-
-  /**
-   * Must be generated and persisted by the application
-   * before this service is called.
-   */
   originatorConversationId: string;
-
-  /** Financial domain amount in minor units. */
   amount: number;
-
-  /** Recipient phone number. */
   phoneNumber: string;
-
   commandId: MpesaB2CCommandId;
-
   remarks: string;
-
   occasion?: string;
 }
 
-/**
- * Input accepted by the preflight readiness check.
- * The originator conversation ID is not needed because this
- * method does not create or submit a provider request.
- */
 export type MpesaB2CDisbursementReadinessInput = Omit<
   MpesaB2CDisbursementInput,
   'originatorConversationId'
@@ -73,15 +52,10 @@ export type MpesaB2CDisbursementReadinessInput = Omit<
 
 export interface MpesaB2CDisbursementResult {
   outcome: 'ACCEPTED' | 'REJECTED' | 'UNCERTAIN';
-
   accepted: boolean;
-
   conversationId: string | null;
-
   originatorConversationId: string;
-
   responseCode: string | null;
-
   responseDescription: string | null;
 }
 
@@ -93,6 +67,17 @@ interface ResolvedMpesaB2CConfiguration {
   securityCredential: string;
   resultUrl: string;
   queueTimeoutUrl: string;
+}
+
+interface SafeHttpErrorDetails {
+  name: string;
+  message: string;
+  code: string | null;
+  status: number | null;
+  statusText: string | null;
+  method: string | null;
+  url: string | null;
+  responseData: unknown;
 }
 
 // =============================================================================
@@ -115,16 +100,9 @@ export class MpesaB2CDisbursementService {
   ) {}
 
   // ===========================================================================
-  // Validate B2C Disbursement Readiness
+  // Validate Readiness
   // ===========================================================================
 
-  /**
-   * Performs deterministic local/provider-configuration checks before the
-   * application creates and persists a disbursement attempt.
-   *
-   * This method deliberately does not obtain an OAuth token and does not
-   * submit a request to Safaricom.
-   */
   public async validateReadiness(
     input: MpesaB2CDisbursementReadinessInput,
   ): Promise<void> {
@@ -139,8 +117,10 @@ export class MpesaB2CDisbursementService {
   public async submit(
     input: MpesaB2CDisbursementInput,
   ): Promise<MpesaB2CDisbursementResult> {
+    this.logger.log('Starting M-PESA B2C submission.');
+
     // -------------------------------------------------------------------------
-    // 1. Validate caller-supplied input
+    // 1. Validate input
     // -------------------------------------------------------------------------
 
     this.validateInput(input);
@@ -155,22 +135,31 @@ export class MpesaB2CDisbursementService {
       input.providerPublicId,
     );
 
+    this.logger.log(
+      `B2C provider configuration resolved. Environment endpoint: ${configuration.endpoint}`,
+    );
+
     // -------------------------------------------------------------------------
-    // 3. Obtain OAuth access token
+    // 3. Obtain OAuth token
     // -------------------------------------------------------------------------
+
+    // OAuth failures are deliberately allowed to propagate.
+    // They must not be misrepresented as successful B2C submissions.
 
     const accessToken = await this.oauthService.getAccessToken(
       configuration.providerPublicId,
     );
 
+    this.logger.log('M-PESA OAuth access token obtained successfully.');
+
     // -------------------------------------------------------------------------
-    // 4. Normalize recipient phone number
+    // 4. Normalize recipient
     // -------------------------------------------------------------------------
 
     const phoneNumber = this.normalizePhoneNumber(input.phoneNumber);
 
     // -------------------------------------------------------------------------
-    // 5. Build Daraja B2C request
+    // 5. Build provider request
     // -------------------------------------------------------------------------
 
     const request: MpesaB2CRequest = {
@@ -178,10 +167,7 @@ export class MpesaB2CDisbursementService {
       InitiatorName: configuration.initiatorName,
       SecurityCredential: configuration.securityCredential,
       CommandID: input.commandId,
-
-      // Convert domain minor units into whole KES at provider boundary.
       Amount: input.amount / 100,
-
       PartyA: configuration.shortcode,
       PartyB: phoneNumber,
       Remarks: input.remarks.trim(),
@@ -191,17 +177,21 @@ export class MpesaB2CDisbursementService {
     };
 
     // -------------------------------------------------------------------------
-    // 6. Submit B2C request
+    // 6. Submit request
     // -------------------------------------------------------------------------
 
-    // A connection failure or timeout does not prove Safaricom
-    // failed to receive the request.
-    //
-    // Never automatically resubmit from this service.
-    // The application must preserve the attempt for reconciliation.
+    // IMPORTANT:
+    // A transport failure does not prove Safaricom did not receive the request.
+    // Never automatically submit the same payment again.
+
+    this.logger.log(
+      `Submitting M-PESA B2C request. OriginatorConversationID: ${originatorConversationId}; Amount: ${input.amount / 100} KES; CommandID: ${input.commandId}.`,
+    );
+
+    let response;
 
     try {
-      const response = await this.httpClient.post<MpesaB2CResponse>(
+      response = await this.httpClient.post<MpesaB2CResponse>(
         configuration.endpoint,
         request,
         {
@@ -212,26 +202,50 @@ export class MpesaB2CDisbursementService {
           },
         },
       );
-
-      return this.normalizeApiResponse(response.data, originatorConversationId);
     } catch (error: unknown) {
-      // Axios can reject an HTTP response even when Safaricom
-      // returned a structured response body.
-
-      const responseData = this.extractErrorResponseData(error);
-
-      if (responseData !== null) {
-        return this.normalizeApiResponse(
-          responseData,
-          originatorConversationId,
-        );
-      }
-
-      // No structured response was received.
-      // Safaricom may nevertheless have received the request.
+      const details = this.extractHttpErrorDetails(error);
 
       this.logger.error(
-        'M-PESA B2C submission outcome is uncertain. Reconciliation is required.',
+        `M-PESA B2C HTTP submission failed. ` +
+          `OriginatorConversationID: ${originatorConversationId}; ` +
+          `HTTP Status: ${details.status ?? 'NO HTTP RESPONSE'}; ` +
+          `Status Text: ${details.statusText ?? 'N/A'}; ` +
+          `Error Name: ${details.name}; ` +
+          `Error Code: ${details.code ?? 'N/A'}; ` +
+          `Method: ${details.method ?? 'N/A'}; ` +
+          `URL: ${details.url ?? 'N/A'}; ` +
+          `Message: ${details.message}`,
+      );
+
+      // If Safaricom returned an HTTP response, inspect its body.
+      // Never silently discard a structured rejection.
+
+      if (details.status !== null && details.responseData !== null) {
+        this.logger.error(
+          `M-PESA B2C HTTP error response body: ${this.safeResponseSummary(details.responseData)}`,
+        );
+
+        const normalized = this.normalizeApiResponse(
+          details.responseData,
+          originatorConversationId,
+        );
+
+        this.logger.warn(
+          `M-PESA B2C HTTP error response interpreted as ${normalized.outcome}.`,
+        );
+
+        return normalized;
+      }
+
+      // No structured provider response.
+      // The outcome remains uncertain.
+
+      this.logger.error(
+        `M-PESA B2C outcome is UNCERTAIN. ` +
+          `No structured provider response was received. ` +
+          `OriginatorConversationID: ${originatorConversationId}. ` +
+          `Do not resubmit automatically.`,
+        error instanceof Error ? error.stack : undefined,
       );
 
       return {
@@ -241,19 +255,70 @@ export class MpesaB2CDisbursementService {
         originatorConversationId,
         responseCode: null,
         responseDescription:
-          'The B2C submission outcome could not be established.',
+          `Transport failure: ${details.name}; ` +
+          `${details.code ?? 'NO_ERROR_CODE'}; ${details.message}`,
       };
     }
+
+    // -------------------------------------------------------------------------
+    // 7. Log successful HTTP response
+    // -------------------------------------------------------------------------
+
+    this.logger.log(
+      `M-PESA B2C HTTP response received. ` +
+        `HTTP Status: ${response.status}; ` +
+        `Status Text: ${response.statusText}; ` +
+        `OriginatorConversationID: ${originatorConversationId}.`,
+    );
+
+    this.logger.log(
+      `M-PESA B2C response body: ${this.safeResponseSummary(response.data)}`,
+    );
+
+    // -------------------------------------------------------------------------
+    // 8. Normalize and classify response
+    // -------------------------------------------------------------------------
+
+    const result = this.normalizeApiResponse(
+      response.data,
+      originatorConversationId,
+    );
+
+    this.logger.log(
+      `M-PESA B2C submission classification: ${result.outcome}; ` +
+        `Accepted: ${result.accepted}; ` +
+        `ResponseCode: ${result.responseCode ?? 'MISSING'}; ` +
+        `ConversationID: ${result.conversationId ?? 'MISSING'}; ` +
+        `OriginatorConversationID: ${result.originatorConversationId}.`,
+    );
+
+    if (result.outcome === 'ACCEPTED') {
+      this.logger.log(
+        'Safaricom accepted the B2C request for processing. Final payout outcome is still pending the ResultURL callback.',
+      );
+    }
+
+    if (result.outcome === 'REJECTED') {
+      this.logger.error(
+        `Safaricom rejected the B2C submission. Code: ${result.responseCode}; Description: ${result.responseDescription ?? 'No description returned'}.`,
+      );
+    }
+
+    if (result.outcome === 'UNCERTAIN') {
+      this.logger.error(
+        `Safaricom B2C response could not be reliably classified. ` +
+          `Code: ${result.responseCode ?? 'MISSING'}; ` +
+          `Description: ${result.responseDescription ?? 'MISSING'}.`,
+      );
+    }
+
+    return result;
   }
 
   // ===========================================================================
-  // Resolve and Validate Provider Configuration
+  // Resolve Provider Configuration
   // ===========================================================================
 
-  /**
-   * Resolves all deterministic provider settings required by a B2C request.
-   * Shared by readiness validation and the actual submit operation.
-   */
   private async resolveConfiguration(
     providerPublicIdValue: string,
   ): Promise<ResolvedMpesaB2CConfiguration> {
@@ -348,7 +413,7 @@ export class MpesaB2CDisbursementService {
   }
 
   // ===========================================================================
-  // Normalize Safaricom API Response
+  // Normalize Safaricom Response
   // ===========================================================================
 
   private normalizeApiResponse(
@@ -360,9 +425,13 @@ export class MpesaB2CDisbursementService {
       payload === null ||
       Array.isArray(payload)
     ) {
+      this.logger.error(
+        `Invalid M-PESA B2C response type. Expected object; received ${payload === null ? 'null' : Array.isArray(payload) ? 'array' : typeof payload}.`,
+      );
+
       return this.uncertainResult(
         expectedOriginatorConversationId,
-        'Safaricom returned an invalid or incomplete response.',
+        'Safaricom returned a non-object response.',
       );
     }
 
@@ -380,11 +449,46 @@ export class MpesaB2CDisbursementService {
       response.ResponseDescription,
     );
 
-    // Do not accept a response that identifies a different request.
+    // -------------------------------------------------------------------------
+    // Required response fields
+    // -------------------------------------------------------------------------
+
+    const missingFields: string[] = [];
+
+    if (conversationId === null) {
+      missingFields.push('ConversationID');
+    }
+
+    if (returnedOriginatorId === null) {
+      missingFields.push('OriginatorConversationID');
+    }
+
+    if (responseCode === null) {
+      missingFields.push('ResponseCode');
+    }
+
+    if (responseDescription === null) {
+      missingFields.push('ResponseDescription');
+    }
+
+    if (missingFields.length > 0) {
+      this.logger.error(
+        `M-PESA B2C response is incomplete. Missing fields: ${missingFields.join(', ')}. Actual response: ${this.safeResponseSummary(payload)}`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Correlation validation
+    // -------------------------------------------------------------------------
+
     if (
       returnedOriginatorId !== null &&
       returnedOriginatorId !== expectedOriginatorConversationId
     ) {
+      this.logger.error(
+        `M-PESA B2C correlation mismatch. Expected OriginatorConversationID: ${expectedOriginatorConversationId}; Received: ${returnedOriginatorId}.`,
+      );
+
       return this.uncertainResult(
         expectedOriginatorConversationId,
         'Safaricom response correlation identifier did not match the submitted request.',
@@ -393,9 +497,23 @@ export class MpesaB2CDisbursementService {
       );
     }
 
-    // ResponseCode 0 means Safaricom accepted the request for processing.
-    // It does not confirm successful payout.
-    if (responseCode === '0' && returnedOriginatorId !== null) {
+    // Missing correlation ID must never be treated as acceptance/rejection.
+
+    if (returnedOriginatorId === null || responseCode === null) {
+      return this.uncertainResult(
+        expectedOriginatorConversationId,
+        responseDescription ??
+          `Incomplete Safaricom response. Missing: ${missingFields.join(', ')}.`,
+        conversationId,
+        responseCode,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Accepted
+    // -------------------------------------------------------------------------
+
+    if (responseCode === '0') {
       return {
         outcome: 'ACCEPTED',
         accepted: true,
@@ -406,52 +524,148 @@ export class MpesaB2CDisbursementService {
       };
     }
 
-    // An explicit non-zero response code with the matching correlation ID
-    // establishes rejection of the submission.
-    if (
-      responseCode !== null &&
-      responseCode !== '0' &&
-      returnedOriginatorId !== null
-    ) {
-      return {
-        outcome: 'REJECTED',
-        accepted: false,
-        conversationId,
-        originatorConversationId: returnedOriginatorId,
-        responseCode,
-        responseDescription,
-      };
-    }
+    // -------------------------------------------------------------------------
+    // Explicit rejection
+    // -------------------------------------------------------------------------
 
-    return this.uncertainResult(
-      expectedOriginatorConversationId,
-      responseDescription ??
-        'Safaricom response did not establish the submission outcome.',
+    return {
+      outcome: 'REJECTED',
+      accepted: false,
       conversationId,
+      originatorConversationId: returnedOriginatorId,
       responseCode,
-    );
+      responseDescription:
+        responseDescription ??
+        'Safaricom returned a non-zero B2C response code.',
+    };
   }
 
   // ===========================================================================
-  // Extract Axios Error Response
+  // Extract HTTP Error Details
   // ===========================================================================
 
-  private extractErrorResponseData(error: unknown): unknown {
-    if (typeof error !== 'object' || error === null || !('response' in error)) {
-      return null;
+  private extractHttpErrorDetails(error: unknown): SafeHttpErrorDetails {
+    const details: SafeHttpErrorDetails = {
+      name: 'UnknownError',
+      message: 'Unknown HTTP client error.',
+      code: null,
+      status: null,
+      statusText: null,
+      method: null,
+      url: null,
+      responseData: null,
+    };
+
+    if (error instanceof Error) {
+      details.name = error.name;
+      details.message = error.message;
     }
 
-    const response = error.response;
+    if (typeof error !== 'object' || error === null) {
+      return details;
+    }
+
+    if ('code' in error && typeof error.code === 'string') {
+      details.code = error.code;
+    }
 
     if (
-      typeof response !== 'object' ||
-      response === null ||
-      !('data' in response)
+      'config' in error &&
+      typeof error.config === 'object' &&
+      error.config !== null
     ) {
-      return null;
+      const config = error.config as {
+        method?: unknown;
+        url?: unknown;
+      };
+
+      if (typeof config.method === 'string') {
+        details.method = config.method.toUpperCase();
+      }
+
+      // Only record the URL when it is the known Safaricom endpoint.
+      // Never log query parameters or authorization information.
+
+      if (
+        typeof config.url === 'string' &&
+        config.url.includes('/mpesa/b2c/v3/paymentrequest')
+      ) {
+        details.url = config.url;
+      }
     }
 
-    return response.data;
+    if (
+      'response' in error &&
+      typeof error.response === 'object' &&
+      error.response !== null
+    ) {
+      const response = error.response as {
+        status?: unknown;
+        statusText?: unknown;
+        data?: unknown;
+      };
+
+      if (typeof response.status === 'number') {
+        details.status = response.status;
+      }
+
+      if (typeof response.statusText === 'string') {
+        details.statusText = response.statusText;
+      }
+
+      if ('data' in response) {
+        details.responseData = response.data;
+      }
+    }
+
+    return details;
+  }
+
+  // ===========================================================================
+  // Safe Response Summary
+  // ===========================================================================
+
+  /**
+   * Whitelist only known non-secret Daraja response fields.
+   * Never stringify arbitrary provider payloads because they may contain
+   * unexpected sensitive fields.
+   */
+  private safeResponseSummary(payload: unknown): string {
+    if (
+      typeof payload !== 'object' ||
+      payload === null ||
+      Array.isArray(payload)
+    ) {
+      return JSON.stringify({
+        responseType:
+          payload === null
+            ? 'null'
+            : Array.isArray(payload)
+              ? 'array'
+              : typeof payload,
+      });
+    }
+
+    const data = payload as Record<string, unknown>;
+
+    const safe: Record<string, string | null> = {
+      ResponseCode: this.normalizeResponseCode(data.ResponseCode),
+      ResponseDescription: this.normalizeIdentifier(
+        typeof data.ResponseDescription === 'string'
+          ? data.ResponseDescription
+          : null,
+      ),
+      ConversationID: this.normalizeIdentifier(
+        typeof data.ConversationID === 'string' ? data.ConversationID : null,
+      ),
+      OriginatorConversationID: this.normalizeIdentifier(
+        typeof data.OriginatorConversationID === 'string'
+          ? data.OriginatorConversationID
+          : null,
+      ),
+    };
+
+    return JSON.stringify(safe);
   }
 
   // ===========================================================================
@@ -507,12 +721,10 @@ export class MpesaB2CDisbursementService {
       );
     }
 
-    if (
-      !['SalaryPayment', 'BusinessPayment', 'PromotionPayment'].includes(
-        input.commandId,
-      )
-    ) {
-      throw new Error('Invalid M-PESA B2C command ID.');
+    if (input.commandId !== 'BusinessPayment') {
+      throw new Error(
+        'Only BusinessPayment is supported by the SisiMove B2C workflow.',
+      );
     }
 
     if (

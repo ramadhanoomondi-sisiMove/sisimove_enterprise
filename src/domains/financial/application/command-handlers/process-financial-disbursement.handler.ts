@@ -245,8 +245,11 @@ export class ProcessFinancialDisbursementHandler implements CommandHandler<
       // Preflight M-PESA readiness before creating an execution attempt
       // -----------------------------------------------------------------------
 
-      // These checks validate local input, provider configuration and callback
-      // URLs. They do not obtain an OAuth token or contact Safaricom.
+      // The M-PESA B2C disbursement service reads and validates the callback
+      // URLs from MPESA_B2C_RESULT_URL and MPESA_B2C_QUEUE_TIMEOUT_URL in the
+      // environment. The handler deliberately delegates provider configuration
+      // to that service instead of duplicating environment-variable access.
+      // These checks do not obtain an OAuth token or contact Safaricom.
       //
       // If readiness validation fails, the unit of work rolls back without
       // creating an attempt or leaving the disbursement stuck in PROCESSING.
@@ -418,7 +421,6 @@ export class ProcessFinancialDisbursementHandler implements CommandHandler<
               result.conversationId,
             );
           }
-
           // Explicit submission rejection is different from an uncertain
           // transport failure. It is safe to fail the attempt only when it
           // remains PROCESSING.

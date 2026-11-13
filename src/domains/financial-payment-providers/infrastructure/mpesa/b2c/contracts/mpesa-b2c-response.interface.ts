@@ -5,23 +5,30 @@
  * POST /mpesa/b2c/v3/paymentrequest
  *
  * IMPORTANT:
- * ResponseCode === '0' means Safaricom accepted the request for processing.
- * It does NOT confirm that the recipient has received the funds.
+ * - ResponseCode === '0' means Safaricom accepted the request
+ *   for processing.
+ * - Acceptance does NOT confirm that the recipient received funds.
+ * - The final payout outcome must be determined from the
+ *   asynchronous ResultURL callback.
  *
- * The final outcome must be determined from the asynchronous ResultURL
- * callback.
+ * This interface describes the provider transport response only.
  */
+
+// =============================================================================
+// Response
+// =============================================================================
 
 export interface MpesaB2CResponse {
   /**
    * Safaricom-generated identifier for this request journey.
-   * Persist against the corresponding disbursement attempt.
+   * Persist against the corresponding Financial Disbursement Attempt.
    */
   ConversationID: string;
 
   /**
    * Correlation identifier returned by Safaricom.
-   * Persist against the corresponding disbursement attempt.
+   * Must match the OriginatorConversationID submitted by SisiMove.
+   * Persist against the corresponding Financial Disbursement Attempt.
    */
   OriginatorConversationID: string;
 

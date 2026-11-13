@@ -10,9 +10,13 @@
  * - Do not automatically resubmit the B2C request.
  * - Keep the disbursement unresolved until its outcome is reconciled.
  *
- * The timeout payload is represented flexibly to preserve provider
- * fields that may not yet be explicitly modelled.
+ * The timeout payload preserves additional provider fields that
+ * may not yet be explicitly modelled.
  */
+
+// =============================================================================
+// Timeout Result
+// =============================================================================
 
 export interface MpesaB2CTimeout {
   /** Optional result notification type. */
@@ -24,8 +28,12 @@ export interface MpesaB2CTimeout {
   /** Optional timeout description. */
   ResultDesc?: string;
 
-  /** Safaricom API-proxy correlation identifier, when supplied. */
-  OriginatorConversationID?: string;
+  /**
+   * Safaricom API-proxy correlation identifier.
+   * Required by SisiMove to correlate the timeout with its
+   * Financial Disbursement Attempt.
+   */
+  OriginatorConversationID: string;
 
   /** Safaricom conversation correlation identifier, when supplied. */
   ConversationID?: string;
@@ -34,9 +42,14 @@ export interface MpesaB2CTimeout {
   [key: string]: unknown;
 }
 
+// =============================================================================
+// Callback Envelope
+// =============================================================================
+
 /** Complete B2C queue-timeout callback body. */
 export interface MpesaB2CTimeoutCallback {
-  Result?: MpesaB2CTimeout;
+  /** Timeout result supplied by Safaricom. */
+  Result: MpesaB2CTimeout;
 
   /** Additional provider fields not yet explicitly modelled. */
   [key: string]: unknown;

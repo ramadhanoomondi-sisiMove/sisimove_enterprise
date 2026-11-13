@@ -1,4 +1,9 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 
 import { FINANCIAL_DISBURSEMENT_TOKENS } from '../../../../../financial/application';
 import { FINANCIAL_DISBURSEMENT_CALLBACK_TOKENS } from '../../../../../financial/application';
@@ -545,10 +550,19 @@ export class MpesaB2CCallbackService {
 
   private extractResultCallback(body: unknown): MpesaB2CResultCallback {
     if (!this.isRecord(body) || !this.isRecord(body.Result)) {
-      throw new Error('Invalid M-PESA B2C result callback payload.');
+      throw new BadRequestException(
+        'Invalid M-PESA B2C result callback payload.',
+      );
     }
 
     const result = body.Result;
+
+    if (
+      typeof result.ResultType !== 'number' ||
+      !Number.isSafeInteger(result.ResultType)
+    ) {
+      throw new Error('M-PESA B2C callback ResultType is invalid.');
+    }
 
     if (
       typeof result.ResultCode !== 'number' &&
@@ -602,12 +616,9 @@ export class MpesaB2CCallbackService {
 
     const result = body.Result;
 
-    if (
-      result.OriginatorConversationID !== undefined &&
-      typeof result.OriginatorConversationID !== 'string'
-    ) {
+    if (typeof result.OriginatorConversationID !== 'string') {
       throw new Error(
-        'M-PESA B2C timeout OriginatorConversationID is invalid.',
+        'M-PESA B2C timeout OriginatorConversationID is required and must be a string.',
       );
     }
 
@@ -633,7 +644,7 @@ export class MpesaB2CCallbackService {
       throw new Error('M-PESA B2C timeout ResultDesc is invalid.');
     }
 
-    return body;
+    return body as unknown as MpesaB2CTimeoutCallback;
   }
 
   // ===========================================================================
@@ -813,6 +824,12 @@ export class MpesaB2CCallbackService {
   }
 
   private normalizeResultCode(value: number | string): number {
+    if (typeof value === 'string' && value.trim().length === 0) {
+      throw new Error(
+        'M-PESA B2C callback ResultCode must be a valid integer.',
+      );
+    }
+
     const normalized = typeof value === 'number' ? value : Number(value.trim());
 
     if (!Number.isSafeInteger(normalized)) {

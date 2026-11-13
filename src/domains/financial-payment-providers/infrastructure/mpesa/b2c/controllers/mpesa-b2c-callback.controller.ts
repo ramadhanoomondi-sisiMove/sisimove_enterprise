@@ -1,27 +1,3 @@
-// -----------------------------------------------------------------------------
-// M-PESA B2C — Callback HTTP Controller
-// -----------------------------------------------------------------------------
-//
-// REST endpoints for asynchronous Safaricom Daraja B2C callbacks.
-//
-// Responsibilities:
-//
-// - Receive B2C result callbacks.
-// - Receive B2C queue-timeout callbacks.
-// - Delegate callback processing to MpesaB2CCallbackService.
-// - Return the Daraja callback acknowledgement.
-//
-// Security:
-//
-// - These endpoints do not use application JWT authentication.
-// - Callback processing and reconciliation are delegated to the service.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// NestJS
-// -----------------------------------------------------------------------------
-
 import {
   Body,
   Controller,
@@ -31,15 +7,7 @@ import {
   Post,
 } from '@nestjs/common';
 
-// -----------------------------------------------------------------------------
-// Swagger
-// -----------------------------------------------------------------------------
-
 import { ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
-
-// -----------------------------------------------------------------------------
-// M-PESA B2C — Callback Service
-// -----------------------------------------------------------------------------
 
 import { MpesaB2CCallbackService } from '../services/mpesa-b2c-callback.service';
 
@@ -52,13 +20,51 @@ import { MpesaB2CCallbackService } from '../services/mpesa-b2c-callback.service'
 export class MpesaB2CCallbackController {
   private readonly logger = new Logger(MpesaB2CCallbackController.name);
 
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
   public constructor(
     private readonly callbackService: MpesaB2CCallbackService,
   ) {}
+
+  // ===========================================================================
+  // Safe Callback Arrival Diagnostics
+  // ===========================================================================
+
+  private logCallbackArrival(
+    callbackType: 'RESULT' | 'TIMEOUT',
+    body: unknown,
+  ): void {
+    const root =
+      typeof body === 'object' && body !== null && !Array.isArray(body)
+        ? (body as Record<string, unknown>)
+        : null;
+
+    const result =
+      root &&
+      typeof root['Result'] === 'object' &&
+      root['Result'] !== null &&
+      !Array.isArray(root['Result'])
+        ? (root['Result'] as Record<string, unknown>)
+        : null;
+
+    this.logger.log(
+      `[B2C CALLBACK INBOUND] ${JSON.stringify({
+        callbackType,
+        received: true,
+        bodyType: typeof body,
+        topLevelKeys: root ? Object.keys(root) : [],
+        resultFound: result !== null,
+        resultKeys: result ? Object.keys(result) : [],
+        originatorConversationId:
+          typeof result?.['OriginatorConversationID'] === 'string'
+            ? result['OriginatorConversationID']
+            : null,
+        conversationId:
+          typeof result?.['ConversationID'] === 'string'
+            ? result['ConversationID']
+            : null,
+        resultCode: result?.['ResultCode'] ?? null,
+      })}`,
+    );
+  }
 
   // ===========================================================================
   // B2C Result Callback
@@ -79,10 +85,12 @@ export class MpesaB2CCallbackController {
         Result: {
           type: 'object',
           required: [
+            'ResultType',
             'ResultCode',
             'ResultDesc',
             'OriginatorConversationID',
             'ConversationID',
+            'TransactionID',
           ],
           properties: {
             ResultType: { type: 'number' },
@@ -95,20 +103,31 @@ export class MpesaB2CCallbackController {
             TransactionID: { type: 'string' },
             ResultParameters: {
               type: 'object',
+              required: ['ResultParameter'],
               properties: {
                 ResultParameter: {
                   type: 'array',
                   items: {
                     type: 'object',
+                    required: ['Key'],
                     properties: {
                       Key: { type: 'string' },
                       Value: {
-                        oneOf: [{ type: 'string' }, { type: 'number' }],
+                        oneOf: [
+                          { type: 'string' },
+                          { type: 'number' },
+                          { type: 'boolean' },
+                          { type: 'null' },
+                        ],
                       },
                     },
                   },
                 },
               },
+            },
+            ReferenceData: {
+              type: 'object',
+              additionalProperties: true,
             },
           },
         },
@@ -119,30 +138,40 @@ export class MpesaB2CCallbackController {
     ResultCode: number;
     ResultDesc: string;
   }> {
-    // -------------------------------------------------------------------------
-    // 1. Process Safaricom B2C result callback
-    // -------------------------------------------------------------------------
+    // 1. Log arrival BEFORE validation and processing.
+    this.logCallbackArrival('RESULT', body);
 
-    const result = await this.callbackService.processResultCallback(body);
+    // 2. Process callback.
+    try {
+      const result = await this.callbackService.processResultCallback(body);
 
-    // -------------------------------------------------------------------------
-    // 2. Log processing outcome
-    // -------------------------------------------------------------------------
+      if (result.duplicate) {
+        this.logger.warn(
+          '[B2C CALLBACK RESULT] Duplicate callback acknowledged.',
+        );
+      } else if (result.processed) {
+        this.logger.log(
+          '[B2C CALLBACK RESULT] Callback processed successfully.',
+        );
+      } else {
+        this.logger.warn(
+          '[B2C CALLBACK RESULT] Callback received but not fully reconciled.',
+        );
+      }
 
-    if (result.duplicate) {
-      this.logger.warn('Duplicate M-PESA B2C result callback acknowledged.');
-    } else if (result.processed) {
-      this.logger.log('M-PESA B2C result callback processed successfully.');
+      // 3. Return Daraja acknowledgement.
+      return {
+        ResultCode: 0,
+        ResultDesc: 'Accepted',
+      };
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'Unknown processing error';
+
+      this.logger.error(`[B2C CALLBACK RESULT] Processing failed: ${message}`);
+
+      throw error;
     }
-
-    // -------------------------------------------------------------------------
-    // 3. Return Daraja acknowledgement
-    // -------------------------------------------------------------------------
-
-    return {
-      ResultCode: 0,
-      ResultDesc: 'Accepted',
-    };
   }
 
   // ===========================================================================
@@ -172,8 +201,8 @@ export class MpesaB2CCallbackController {
             ResultDesc: { type: 'string' },
             OriginatorConversationID: { type: 'string' },
             ConversationID: { type: 'string' },
-            TransactionID: { type: 'string' },
           },
+          additionalProperties: true,
         },
       },
     },
@@ -182,39 +211,42 @@ export class MpesaB2CCallbackController {
     ResultCode: number;
     ResultDesc: string;
   }> {
-    // -------------------------------------------------------------------------
-    // 1. Process Safaricom B2C queue-timeout callback
-    // -------------------------------------------------------------------------
+    // 1. Log arrival BEFORE validation and processing.
+    this.logCallbackArrival('TIMEOUT', body);
 
-    const result = await this.callbackService.processQueueTimeoutCallback(body);
+    // 2. Process callback.
+    try {
+      const result =
+        await this.callbackService.processQueueTimeoutCallback(body);
 
-    // -------------------------------------------------------------------------
-    // 2. Log processing outcome
-    // -------------------------------------------------------------------------
+      if (result.duplicate) {
+        this.logger.warn(
+          '[B2C CALLBACK TIMEOUT] Duplicate callback acknowledged.',
+        );
+      } else if (result.processed) {
+        this.logger.log(
+          '[B2C CALLBACK TIMEOUT] Callback recorded successfully.',
+        );
+      } else {
+        this.logger.warn(
+          '[B2C CALLBACK TIMEOUT] Callback received but not fully reconciled.',
+        );
+      }
 
-    if (result.duplicate) {
-      this.logger.warn(
-        'Duplicate M-PESA B2C queue-timeout callback acknowledged.',
-      );
-    } else if (result.processed) {
-      this.logger.log(
-        'M-PESA B2C queue-timeout callback recorded successfully.',
-      );
+      // 3. Return Daraja acknowledgement.
+      return {
+        ResultCode: 0,
+        ResultDesc: 'Accepted',
+      };
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'Unknown processing error';
+
+      this.logger.error(`[B2C CALLBACK TIMEOUT] Processing failed: ${message}`);
+
+      throw error;
     }
-
-    // -------------------------------------------------------------------------
-    // 3. Return Daraja acknowledgement
-    // -------------------------------------------------------------------------
-
-    return {
-      ResultCode: 0,
-      ResultDesc: 'Accepted',
-    };
   }
 }
-
-// -----------------------------------------------------------------------------
-// Default Export
-// -----------------------------------------------------------------------------
 
 export default MpesaB2CCallbackController;

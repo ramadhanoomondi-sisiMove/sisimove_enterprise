@@ -1,4 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import type { AxiosError } from 'axios';
 
 import { FINANCIAL_PAYMENT_PROVIDER_TOKENS } from '../../../application/financial-payment-providers.tokens';
 
@@ -33,11 +34,26 @@ const MPESA_OAUTH_ENDPOINTS = {
 const TOKEN_EXPIRY_BUFFER_SECONDS = 60;
 
 // =============================================================================
+// Diagnostic Types
+// =============================================================================
+
+interface SafeOAuthErrorDetails {
+  name: string;
+  message: string;
+  code?: string;
+  status?: number;
+  statusText?: string;
+  responseData?: unknown;
+}
+
+// =============================================================================
 // Service
 // =============================================================================
 
 @Injectable()
 export class MpesaOAuthService {
+  private readonly logger = new Logger(MpesaOAuthService.name);
+
   private readonly tokenCache = new Map<string, MpesaOAuthAccessToken>();
 
   public constructor(
@@ -106,6 +122,10 @@ export class MpesaOAuthService {
       cachedToken &&
       cachedToken.expiresAt > Date.now() + TOKEN_EXPIRY_BUFFER_SECONDS * 1000
     ) {
+      this.logger.debug(
+        `Using cached M-PESA OAuth token for ${environment.value} environment.`,
+      );
+
       return cachedToken;
     }
 
@@ -133,41 +153,160 @@ export class MpesaOAuthService {
       `${consumerKey}:${consumerSecret}`,
     ).toString('base64');
 
+    this.logger.log(
+      `Requesting M-PESA OAuth token. Environment: ${environment.value}.`,
+    );
+
+    let response;
+
     try {
-      const response = await this.httpClient.get<MpesaOAuthApiResponse>(
-        endpoint,
-        {
-          headers: {
-            Authorization: `Basic ${authorization}`,
-            Accept: 'application/json',
-          },
+      response = await this.httpClient.get<MpesaOAuthApiResponse>(endpoint, {
+        headers: {
+          Authorization: `Basic ${authorization}`,
+          Accept: 'application/json',
         },
+      });
+    } catch (error: unknown) {
+      const details = this.extractErrorDetails(error);
+
+      this.logger.error(
+        `M-PESA OAuth HTTP request failed. ${JSON.stringify(details)}`,
+        error instanceof Error ? error.stack : undefined,
       );
 
-      const accessToken = response.data.access_token;
-      const expiresIn = Number(response.data.expires_in);
-
-      if (
-        typeof accessToken !== 'string' ||
-        !accessToken.trim() ||
-        !Number.isFinite(expiresIn) ||
-        expiresIn <= 0
-      ) {
-        throw new Error('Invalid OAuth response.');
-      }
-
-      const token: MpesaOAuthAccessToken = {
-        accessToken,
-        expiresIn,
-        expiresAt: Date.now() + expiresIn * 1000,
-      };
-
-      this.tokenCache.set(cacheKey, token);
-
-      return token;
-    } catch {
-      throw new Error('Safaricom M-PESA OAuth authentication failed.');
+      throw new Error(
+        `Safaricom M-PESA OAuth request failed: ${this.describeError(details)}`,
+        { cause: error },
+      );
     }
+
+    const accessToken = response.data.access_token;
+    const expiresIn = Number(response.data.expires_in);
+
+    if (
+      typeof accessToken !== 'string' ||
+      !accessToken.trim() ||
+      !Number.isFinite(expiresIn) ||
+      expiresIn <= 0
+    ) {
+      this.logger.error(
+        `M-PESA OAuth returned an invalid response. HTTP status: ${response.status}. Response: ${JSON.stringify(
+          this.sanitizeOAuthResponse(response.data),
+        )}`,
+      );
+
+      throw new Error(
+        'M-PESA OAuth returned an invalid access token or expiry value.',
+      );
+    }
+
+    const token: MpesaOAuthAccessToken = {
+      accessToken,
+      expiresIn,
+      expiresAt: Date.now() + expiresIn * 1000,
+    };
+
+    this.tokenCache.set(cacheKey, token);
+
+    this.logger.log(
+      `M-PESA OAuth authentication successful. Environment: ${environment.value}. HTTP status: ${response.status}. Token expiry: ${expiresIn} seconds.`,
+    );
+
+    return token;
+  }
+
+  // ===========================================================================
+  // Extract Safe Error Details
+  // ===========================================================================
+
+  private extractErrorDetails(error: unknown): SafeOAuthErrorDetails {
+    if (this.isAxiosError(error)) {
+      return {
+        name: error.name,
+        message: error.message,
+        ...(error.code ? { code: error.code } : {}),
+        ...(error.response
+          ? {
+              status: error.response.status,
+              statusText: error.response.statusText,
+              responseData: this.sanitizeOAuthResponse(error.response.data),
+            }
+          : {}),
+      };
+    }
+
+    if (error instanceof Error) {
+      return {
+        name: error.name,
+        message: error.message,
+      };
+    }
+
+    return {
+      name: 'UnknownError',
+      message: String(error),
+    };
+  }
+
+  // ===========================================================================
+  // Axios Error Guard
+  // ===========================================================================
+
+  private isAxiosError(error: unknown): error is AxiosError {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'isAxiosError' in error &&
+      error.isAxiosError === true
+    );
+  }
+
+  // ===========================================================================
+  // Sanitize OAuth Response
+  // ===========================================================================
+
+  private sanitizeOAuthResponse(data: unknown): unknown {
+    if (typeof data !== 'object' || data === null) {
+      return data;
+    }
+
+    const response = data as Record<string, unknown>;
+
+    // Never expose access_token or other unapproved response properties.
+    return {
+      ...(typeof response.error === 'string' ? { error: response.error } : {}),
+      ...(typeof response.error_description === 'string'
+        ? { error_description: response.error_description }
+        : {}),
+      ...(typeof response.errorMessage === 'string'
+        ? { errorMessage: response.errorMessage }
+        : {}),
+      ...(typeof response.requestId === 'string'
+        ? { requestId: response.requestId }
+        : {}),
+      ...(typeof response.expires_in === 'string' ||
+      typeof response.expires_in === 'number'
+        ? { expires_in: response.expires_in }
+        : {}),
+      ...(typeof response.access_token === 'string'
+        ? { access_token: '[REDACTED]' }
+        : {}),
+    };
+  }
+
+  // ===========================================================================
+  // Describe Error
+  // ===========================================================================
+
+  private describeError(details: SafeOAuthErrorDetails): string {
+    const parts = [
+      details.message,
+      ...(details.code ? [`Code: ${details.code}`] : []),
+      ...(details.status ? [`HTTP status: ${details.status}`] : []),
+      ...(details.statusText ? [`Status text: ${details.statusText}`] : []),
+    ];
+
+    return parts.join(' | ');
   }
 
   // ===========================================================================
@@ -176,6 +315,8 @@ export class MpesaOAuthService {
 
   public clearTokenCache(): void {
     this.tokenCache.clear();
+
+    this.logger.log('M-PESA OAuth token cache cleared.');
   }
 }
 
