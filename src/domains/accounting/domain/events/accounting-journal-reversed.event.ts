@@ -1,33 +1,13 @@
-// -----------------------------------------------------------------------------
-// Accounting Journal — Reversed Domain Event
-// -----------------------------------------------------------------------------
-//
-// Raised when an Accounting Journal aggregate is reversed.
-//
-// Reversal is a lifecycle transition of the journal aggregate. The original
-// journal remains historically preserved; the event does not mutate or remove
-// its existing entries or lines.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// Accounting
-// -----------------------------------------------------------------------------
-
 import { AccountingDomainEvent } from './accounting-domain.event';
-
-// -----------------------------------------------------------------------------
-// Event
-// -----------------------------------------------------------------------------
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
 
 /**
  * Raised when an Accounting Journal aggregate is reversed.
+ *
+ * The original journal remains historically preserved. Reversal does not
+ * mutate or remove its existing entries or lines.
  */
 export class AccountingJournalReversedEvent extends AccountingDomainEvent {
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
   public constructor(
     journalId: string,
     public readonly publicId: string,
@@ -38,6 +18,9 @@ export class AccountingJournalReversedEvent extends AccountingDomainEvent {
     public readonly reversedAt: Date,
     correlationId?: string,
     causationId?: string,
+    eventVersion = 1,
+    eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       journalId,
@@ -45,14 +28,83 @@ export class AccountingJournalReversedEvent extends AccountingDomainEvent {
       'AccountingJournalReversed',
       correlationId,
       causationId,
+      eventVersion,
+      eventSchemaVersion,
+      restoredMetadata,
     );
 
     Object.freeze(this);
   }
 
-  // ===========================================================================
-  // Payload
-  // ===========================================================================
+  /**
+   * Reconstructs the event from persisted event metadata and payload.
+   */
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): AccountingJournalReversedEvent {
+    if (
+      typeof payload.publicId !== 'string' ||
+      typeof payload.status !== 'string' ||
+      typeof payload.currency !== 'string'
+    ) {
+      throw new Error(
+        'Invalid AccountingJournalReversed event payload: missing or invalid required fields.',
+      );
+    }
+
+    if (
+      payload.periodPublicId !== undefined &&
+      typeof payload.periodPublicId !== 'string'
+    ) {
+      throw new Error(
+        'Invalid AccountingJournalReversed event payload: periodPublicId must be a string when provided.',
+      );
+    }
+
+    if (
+      payload.postingReferencePublicId !== undefined &&
+      typeof payload.postingReferencePublicId !== 'string'
+    ) {
+      throw new Error(
+        'Invalid AccountingJournalReversed event payload: postingReferencePublicId must be a string when provided.',
+      );
+    }
+
+    const reversedAtValue = payload.reversedAt;
+
+    if (
+      typeof reversedAtValue !== 'string' &&
+      !(reversedAtValue instanceof Date)
+    ) {
+      throw new Error(
+        'Invalid AccountingJournalReversed event payload: reversedAt must be a valid date.',
+      );
+    }
+
+    const reversedAt = new Date(reversedAtValue);
+
+    if (Number.isNaN(reversedAt.getTime())) {
+      throw new Error(
+        'Invalid AccountingJournalReversed event payload: reversedAt is not a valid date.',
+      );
+    }
+
+    return new AccountingJournalReversedEvent(
+      metadata.aggregateId,
+      payload.publicId,
+      payload.status,
+      payload.currency,
+      payload.periodPublicId,
+      payload.postingReferencePublicId,
+      reversedAt,
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      1,
+      '1.0.0',
+      metadata,
+    );
+  }
 
   /**
    * Returns the event-specific payload.
@@ -69,7 +121,9 @@ export class AccountingJournalReversedEvent extends AccountingDomainEvent {
       ...(this.postingReferencePublicId !== undefined && {
         postingReferencePublicId: this.postingReferencePublicId,
       }),
-      reversedAt: this.reversedAt,
+      reversedAt: this.reversedAt.toISOString(),
     };
   }
 }
+
+export default AccountingJournalReversedEvent;

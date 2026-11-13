@@ -8,13 +8,18 @@
 //
 // Provider-specific failure details belong to Payment, Settlement,
 // Disbursement, or another appropriate financial workflow aggregate.
+//
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
+
 import type { PublicEntityId } from '../../../../foundation/kernel/domain/public-entity-id';
+
+import { PublicEntityId as PublicEntityIdValue } from '../../../../foundation/kernel/domain/public-entity-id';
 
 // -----------------------------------------------------------------------------
 // Financial
@@ -33,14 +38,77 @@ import type {
   Money,
 } from '../value-objects';
 
-// -----------------------------------------------------------------------------
+import {
+  FinancialTransactionType as FinancialTransactionTypeValue,
+  FinancialAccountReference as FinancialAccountReferenceValue,
+  FinancialTransactionReference as FinancialTransactionReferenceValue,
+  Money as MoneyValue,
+} from '../value-objects';
+
+// =============================================================================
+// Reference Rehydration Helpers
+// =============================================================================
+
+function parseReference(
+  value: string,
+  errorMessage: string,
+): { type: string; publicId: string } {
+  const separatorIndex = value.indexOf(':');
+
+  if (separatorIndex <= 0 || separatorIndex === value.length - 1) {
+    throw new Error(errorMessage);
+  }
+
+  return {
+    type: value.slice(0, separatorIndex),
+    publicId: value.slice(separatorIndex + 1),
+  };
+}
+
+function rehydrateAccountReference(
+  value: string | undefined,
+): FinancialAccountReference | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const reference = parseReference(
+    value,
+    'Invalid Financial Account Reference payload',
+  );
+
+  return FinancialAccountReferenceValue.create(
+    reference.type,
+    reference.publicId,
+  );
+}
+
+function rehydrateTransactionReference(
+  value: string | undefined,
+): FinancialTransactionReference | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const reference = parseReference(
+    value,
+    'Invalid Financial Transaction Reference payload',
+  );
+
+  return FinancialTransactionReferenceValue.create(
+    reference.type,
+    reference.publicId,
+  );
+}
+
+// =============================================================================
 // Event
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export class FinancialTransactionFailedEvent extends FinancialDomainEvent {
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Constructor
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public constructor(
     aggregateId: string,
@@ -56,6 +124,7 @@ export class FinancialTransactionFailedEvent extends FinancialDomainEvent {
     causationId?: string,
     eventVersion = 1,
     eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       aggregateId,
@@ -65,6 +134,7 @@ export class FinancialTransactionFailedEvent extends FinancialDomainEvent {
       causationId,
       eventVersion,
       eventSchemaVersion,
+      restoredMetadata,
     );
 
     this.publicId = publicId;
@@ -77,9 +147,9 @@ export class FinancialTransactionFailedEvent extends FinancialDomainEvent {
     this.reason = reason;
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Properties
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public readonly publicId: PublicEntityId;
 
@@ -103,9 +173,77 @@ export class FinancialTransactionFailedEvent extends FinancialDomainEvent {
    */
   public readonly reason: string | undefined;
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Rehydrate
+  // ===========================================================================
+
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): FinancialTransactionFailedEvent {
+    const {
+      publicId,
+      type,
+      amount,
+      currency,
+      sourceAccount,
+      destinationAccount,
+      reference,
+      failedAt,
+      reason,
+    } = payload;
+
+    if (
+      typeof publicId !== 'string' ||
+      typeof type !== 'string' ||
+      typeof amount !== 'number' ||
+      !Number.isFinite(amount) ||
+      typeof currency !== 'string' ||
+      typeof failedAt !== 'string' ||
+      (sourceAccount !== undefined && typeof sourceAccount !== 'string') ||
+      (destinationAccount !== undefined &&
+        typeof destinationAccount !== 'string') ||
+      (reference !== undefined && typeof reference !== 'string') ||
+      (reason !== undefined && typeof reason !== 'string')
+    ) {
+      throw new Error('Invalid payload for FinancialTransactionFailed event');
+    }
+
+    const failedAtDate = new Date(failedAt);
+
+    if (Number.isNaN(failedAtDate.getTime())) {
+      throw new Error(
+        'Invalid failedAt date for FinancialTransactionFailed event',
+      );
+    }
+
+    return new FinancialTransactionFailedEvent(
+      metadata.aggregateId,
+      new PublicEntityIdValue(publicId),
+      FinancialTransactionTypeValue.create(type),
+      MoneyValue.fromCode(amount, currency),
+      rehydrateAccountReference(
+        typeof sourceAccount === 'string' ? sourceAccount : undefined,
+      ),
+      rehydrateAccountReference(
+        typeof destinationAccount === 'string' ? destinationAccount : undefined,
+      ),
+      rehydrateTransactionReference(
+        typeof reference === 'string' ? reference : undefined,
+      ),
+      failedAtDate,
+      typeof reason === 'string' ? reason : undefined,
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      metadata.eventVersion,
+      metadata.eventSchemaVersion,
+      metadata,
+    );
+  }
+
+  // ===========================================================================
   // Payload
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   protected override getPayload(): Record<string, unknown> {
     return {
@@ -119,18 +257,11 @@ export class FinancialTransactionFailedEvent extends FinancialDomainEvent {
 
       currency: this.amount.currency.toString(),
 
-      sourceAccount:
-        this.sourceAccount !== undefined
-          ? this.sourceAccount.toString()
-          : undefined,
+      sourceAccount: this.sourceAccount?.toString(),
 
-      destinationAccount:
-        this.destinationAccount !== undefined
-          ? this.destinationAccount.toString()
-          : undefined,
+      destinationAccount: this.destinationAccount?.toString(),
 
-      reference:
-        this.reference !== undefined ? this.reference.toString() : undefined,
+      reference: this.reference?.toString(),
 
       failedAt: this.failedAt.toISOString(),
 

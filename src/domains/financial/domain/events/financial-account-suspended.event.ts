@@ -1,3 +1,4 @@
+
 // -----------------------------------------------------------------------------
 // Financial Account Suspended Domain Event
 // -----------------------------------------------------------------------------
@@ -6,7 +7,9 @@
 // Foundation
 // -----------------------------------------------------------------------------
 
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
 import type { PublicEntityId } from '../../../../foundation/kernel/domain/public-entity-id';
+import { PublicEntityId as PublicEntityIdValue } from '../../../../foundation/kernel/domain/public-entity-id';
 
 // -----------------------------------------------------------------------------
 // Financial
@@ -37,6 +40,7 @@ export class FinancialAccountSuspendedEvent extends FinancialDomainEvent {
     causationId?: string,
     eventVersion = 1,
     eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       aggregateId,
@@ -46,6 +50,7 @@ export class FinancialAccountSuspendedEvent extends FinancialDomainEvent {
       causationId,
       eventVersion,
       eventSchemaVersion,
+      restoredMetadata,
     );
 
     this.publicId = publicId;
@@ -56,6 +61,33 @@ export class FinancialAccountSuspendedEvent extends FinancialDomainEvent {
   // ---------------------------------------------------------------------------
 
   public readonly publicId: PublicEntityId;
+
+  // ---------------------------------------------------------------------------
+  // Rehydration
+  // ---------------------------------------------------------------------------
+
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): FinancialAccountSuspendedEvent {
+    const publicId = payload.publicId;
+
+    if (typeof publicId !== 'string' || publicId.trim().length === 0) {
+      throw new Error(
+        'Invalid FinancialAccountSuspended event payload: publicId must be a non-empty string',
+      );
+    }
+
+    return new FinancialAccountSuspendedEvent(
+      metadata.aggregateId,
+      new PublicEntityIdValue(publicId),
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      metadata.eventVersion,
+      metadata.eventSchemaVersion,
+      metadata,
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // Payload

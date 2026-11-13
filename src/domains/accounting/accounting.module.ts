@@ -243,6 +243,8 @@ import type { AccountingPeriodRepository } from './domain/repositories/accountin
 
 import type { UnitOfWork } from '../../foundation/persistence/unit-of-work.interface';
 
+import { EventRehydratorRegistry } from '../../infrastructure/events/event-rehydrator.registry';
+import { AccountingEventRegistry } from './domain/events/registry/AccountingEventRegistry';
 // -----------------------------------------------------------------------------
 // Application — Command Handlers
 // -----------------------------------------------------------------------------
@@ -335,7 +337,21 @@ import {
     // already exist. Existing configuration and lifecycle state are preserved.
     //
     // -------------------------------------------------------------------------
+    // =========================================================================
+    // Accounting — Event Registry
+    // =========================================================================
 
+    {
+      provide: AccountingEventRegistry,
+      useFactory: (registry: EventRehydratorRegistry) => {
+        const accountingEventRegistry = new AccountingEventRegistry();
+
+        registry.register(accountingEventRegistry);
+
+        return accountingEventRegistry;
+      },
+      inject: [EventRehydratorRegistry],
+    },
     {
       provide: PlatformAccountingCalendarProvisioner,
       useFactory: (

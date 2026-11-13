@@ -61,6 +61,16 @@ export interface MpesaB2CDisbursementInput {
   occasion?: string;
 }
 
+/**
+ * Input accepted by the preflight readiness check.
+ * The originator conversation ID is not needed because this
+ * method does not create or submit a provider request.
+ */
+export type MpesaB2CDisbursementReadinessInput = Omit<
+  MpesaB2CDisbursementInput,
+  'originatorConversationId'
+>;
+
 export interface MpesaB2CDisbursementResult {
   outcome: 'ACCEPTED' | 'REJECTED' | 'UNCERTAIN';
 
@@ -73,6 +83,16 @@ export interface MpesaB2CDisbursementResult {
   responseCode: string | null;
 
   responseDescription: string | null;
+}
+
+interface ResolvedMpesaB2CConfiguration {
+  providerPublicId: FinancialPaymentProviderPublicId;
+  endpoint: string;
+  shortcode: string;
+  initiatorName: string;
+  securityCredential: string;
+  resultUrl: string;
+  queueTimeoutUrl: string;
 }
 
 // =============================================================================
@@ -95,6 +115,24 @@ export class MpesaB2CDisbursementService {
   ) {}
 
   // ===========================================================================
+  // Validate B2C Disbursement Readiness
+  // ===========================================================================
+
+  /**
+   * Performs deterministic local/provider-configuration checks before the
+   * application creates and persists a disbursement attempt.
+   *
+   * This method deliberately does not obtain an OAuth token and does not
+   * submit a request to Safaricom.
+   */
+  public async validateReadiness(
+    input: MpesaB2CDisbursementReadinessInput,
+  ): Promise<void> {
+    this.validateReadinessInput(input);
+    await this.resolveConfiguration(input.providerPublicId);
+  }
+
+  // ===========================================================================
   // Submit B2C Disbursement
   // ===========================================================================
 
@@ -107,142 +145,53 @@ export class MpesaB2CDisbursementService {
 
     this.validateInput(input);
 
-    // Normalize once and use the same identifier throughout the request.
     const originatorConversationId = input.originatorConversationId.trim();
 
     // -------------------------------------------------------------------------
-    // 2. Resolve M-PESA provider
+    // 2. Resolve provider configuration
     // -------------------------------------------------------------------------
 
-    const providerPublicId = new FinancialPaymentProviderPublicId(
-      input.providerPublicId.trim(),
+    const configuration = await this.resolveConfiguration(
+      input.providerPublicId,
     );
 
-    const provider =
-      await this.providerRepository.findByPublicId(providerPublicId);
-
-    if (provider === null) {
-      throw new Error('M-PESA payment provider was not found.');
-    }
-
-    const mpesaCode = FinancialPaymentProviderCode.create('MPESA');
-
-    if (!provider.code.equals(mpesaCode)) {
-      throw new Error('The selected payment provider is not M-PESA.');
-    }
-
-    if (!provider.isOperational) {
-      throw new Error('M-PESA payment provider is not operational.');
-    }
-
     // -------------------------------------------------------------------------
-    // 3. Resolve provider environment and endpoint
+    // 3. Obtain OAuth access token
     // -------------------------------------------------------------------------
 
-    const environment = provider.environment;
-
-    const baseUrl = environment.isSandbox()
-      ? MPESA_SANDBOX_BASE_URL
-      : MPESA_PRODUCTION_BASE_URL;
-
-    const endpoint = `${baseUrl}${MPESA_B2C_ENDPOINT}`;
-
-    // -------------------------------------------------------------------------
-    // 4. Retrieve provider configuration
-    // -------------------------------------------------------------------------
-
-    const configuration = await this.configurationService.getConfiguration(
-      provider.id.toString(),
-      environment,
+    const accessToken = await this.oauthService.getAccessToken(
+      configuration.providerPublicId,
     );
 
-    if (configuration === null) {
-      throw new Error('M-PESA provider configuration was not found.');
-    }
-
-    const shortcode = configuration.shortcode?.trim();
-
-    const initiatorName = configuration.initiatorName?.trim();
-
-    const securityCredential = configuration.securityCredential?.trim();
-
-    if (!shortcode) {
-      throw new Error(
-        'M-PESA shortcode is missing from provider configuration.',
-      );
-    }
-
-    if (!initiatorName) {
-      throw new Error(
-        'M-PESA initiator name is missing from provider configuration.',
-      );
-    }
-
-    if (!securityCredential) {
-      throw new Error(
-        'M-PESA security credential is missing from provider configuration.',
-      );
-    }
-
     // -------------------------------------------------------------------------
-    // 5. Resolve and validate callback URLs
-    // -------------------------------------------------------------------------
-
-    const resultUrl = process.env.MPESA_B2C_RESULT_URL?.trim();
-
-    const queueTimeoutUrl = process.env.MPESA_B2C_QUEUE_TIMEOUT_URL?.trim();
-
-    if (!resultUrl) {
-      throw new Error(
-        'MPESA_B2C_RESULT_URL is not configured in the backend environment.',
-      );
-    }
-
-    if (!queueTimeoutUrl) {
-      throw new Error(
-        'MPESA_B2C_QUEUE_TIMEOUT_URL is not configured in the backend environment.',
-      );
-    }
-
-    this.validateCallbackUrl(resultUrl);
-    this.validateCallbackUrl(queueTimeoutUrl);
-
-    // -------------------------------------------------------------------------
-    // 6. Obtain OAuth access token
-    // -------------------------------------------------------------------------
-
-    const accessToken =
-      await this.oauthService.getAccessToken(providerPublicId);
-
-    // -------------------------------------------------------------------------
-    // 7. Normalize recipient phone number
+    // 4. Normalize recipient phone number
     // -------------------------------------------------------------------------
 
     const phoneNumber = this.normalizePhoneNumber(input.phoneNumber);
 
     // -------------------------------------------------------------------------
-    // 8. Build Daraja B2C request
+    // 5. Build Daraja B2C request
     // -------------------------------------------------------------------------
 
     const request: MpesaB2CRequest = {
       OriginatorConversationID: originatorConversationId,
-      InitiatorName: initiatorName,
-      SecurityCredential: securityCredential,
+      InitiatorName: configuration.initiatorName,
+      SecurityCredential: configuration.securityCredential,
       CommandID: input.commandId,
 
       // Convert domain minor units into whole KES at provider boundary.
       Amount: input.amount / 100,
 
-      PartyA: shortcode,
+      PartyA: configuration.shortcode,
       PartyB: phoneNumber,
       Remarks: input.remarks.trim(),
-      QueueTimeOutURL: queueTimeoutUrl,
-      ResultURL: resultUrl,
+      QueueTimeOutURL: configuration.queueTimeoutUrl,
+      ResultURL: configuration.resultUrl,
       ...(input.occasion?.trim() ? { Occassion: input.occasion.trim() } : {}),
     };
 
     // -------------------------------------------------------------------------
-    // 9. Submit B2C request
+    // 6. Submit B2C request
     // -------------------------------------------------------------------------
 
     // A connection failure or timeout does not prove Safaricom
@@ -253,7 +202,7 @@ export class MpesaB2CDisbursementService {
 
     try {
       const response = await this.httpClient.post<MpesaB2CResponse>(
-        endpoint,
+        configuration.endpoint,
         request,
         {
           headers: {
@@ -298,6 +247,107 @@ export class MpesaB2CDisbursementService {
   }
 
   // ===========================================================================
+  // Resolve and Validate Provider Configuration
+  // ===========================================================================
+
+  /**
+   * Resolves all deterministic provider settings required by a B2C request.
+   * Shared by readiness validation and the actual submit operation.
+   */
+  private async resolveConfiguration(
+    providerPublicIdValue: string,
+  ): Promise<ResolvedMpesaB2CConfiguration> {
+    const providerPublicId = new FinancialPaymentProviderPublicId(
+      providerPublicIdValue.trim(),
+    );
+
+    const provider =
+      await this.providerRepository.findByPublicId(providerPublicId);
+
+    if (provider === null) {
+      throw new Error('M-PESA payment provider was not found.');
+    }
+
+    const mpesaCode = FinancialPaymentProviderCode.create('MPESA');
+
+    if (!provider.code.equals(mpesaCode)) {
+      throw new Error('The selected payment provider is not M-PESA.');
+    }
+
+    if (!provider.isOperational) {
+      throw new Error('M-PESA payment provider is not operational.');
+    }
+
+    const environment = provider.environment;
+
+    const baseUrl = environment.isSandbox()
+      ? MPESA_SANDBOX_BASE_URL
+      : MPESA_PRODUCTION_BASE_URL;
+
+    const endpoint = `${baseUrl}${MPESA_B2C_ENDPOINT}`;
+
+    const providerConfiguration =
+      await this.configurationService.getConfiguration(
+        provider.id.toString(),
+        environment,
+      );
+
+    if (providerConfiguration === null) {
+      throw new Error('M-PESA provider configuration was not found.');
+    }
+
+    const shortcode = providerConfiguration.shortcode?.trim();
+    const initiatorName = providerConfiguration.initiatorName?.trim();
+    const securityCredential = providerConfiguration.securityCredential?.trim();
+
+    if (!shortcode) {
+      throw new Error(
+        'M-PESA shortcode is missing from provider configuration.',
+      );
+    }
+
+    if (!initiatorName) {
+      throw new Error(
+        'M-PESA initiator name is missing from provider configuration.',
+      );
+    }
+
+    if (!securityCredential) {
+      throw new Error(
+        'M-PESA security credential is missing from provider configuration.',
+      );
+    }
+
+    const resultUrl = process.env.MPESA_B2C_RESULT_URL?.trim();
+    const queueTimeoutUrl = process.env.MPESA_B2C_QUEUE_TIMEOUT_URL?.trim();
+
+    if (!resultUrl) {
+      throw new Error(
+        'MPESA_B2C_RESULT_URL is not configured in the backend environment.',
+      );
+    }
+
+    if (!queueTimeoutUrl) {
+      throw new Error(
+        'MPESA_B2C_QUEUE_TIMEOUT_URL is not configured in the backend environment.',
+      );
+    }
+
+    this.validateCallbackUrl(resultUrl);
+    this.validateCallbackUrl(queueTimeoutUrl);
+
+    return {
+      providerPublicId,
+      endpoint,
+      shortcode,
+      initiatorName,
+      securityCredential,
+      resultUrl,
+      queueTimeoutUrl,
+    };
+  }
+
+  // ===========================================================================
   // Normalize Safaricom API Response
   // ===========================================================================
 
@@ -330,10 +380,6 @@ export class MpesaB2CDisbursementService {
       response.ResponseDescription,
     );
 
-    // -------------------------------------------------------------------------
-    // Verify correlation identifier
-    // -------------------------------------------------------------------------
-
     // Do not accept a response that identifies a different request.
     if (
       returnedOriginatorId !== null &&
@@ -347,13 +393,8 @@ export class MpesaB2CDisbursementService {
       );
     }
 
-    // -------------------------------------------------------------------------
-    // Explicit acceptance
-    // -------------------------------------------------------------------------
-
     // ResponseCode 0 means Safaricom accepted the request for processing.
     // It does not confirm successful payout.
-
     if (responseCode === '0' && returnedOriginatorId !== null) {
       return {
         outcome: 'ACCEPTED',
@@ -365,10 +406,8 @@ export class MpesaB2CDisbursementService {
       };
     }
 
-    // -------------------------------------------------------------------------
-    // Explicit rejection
-    // -------------------------------------------------------------------------
-
+    // An explicit non-zero response code with the matching correlation ID
+    // establishes rejection of the submission.
     if (
       responseCode !== null &&
       responseCode !== '0' &&
@@ -383,10 +422,6 @@ export class MpesaB2CDisbursementService {
         responseDescription,
       };
     }
-
-    // -------------------------------------------------------------------------
-    // Incomplete or ambiguous response
-    // -------------------------------------------------------------------------
 
     return this.uncertainResult(
       expectedOriginatorConversationId,
@@ -443,13 +478,23 @@ export class MpesaB2CDisbursementService {
   // Input Validation
   // ===========================================================================
 
+  private validateReadinessInput(
+    input: MpesaB2CDisbursementReadinessInput,
+  ): void {
+    this.validateCommonInput(input);
+  }
+
   private validateInput(input: MpesaB2CDisbursementInput): void {
-    if (!input.providerPublicId?.trim()) {
-      throw new Error('M-PESA provider public ID is required.');
-    }
+    this.validateCommonInput(input);
 
     if (!input.originatorConversationId?.trim()) {
       throw new Error('B2C originator conversation ID is required.');
+    }
+  }
+
+  private validateCommonInput(input: MpesaB2CDisbursementReadinessInput): void {
+    if (!input.providerPublicId?.trim()) {
+      throw new Error('M-PESA provider public ID is required.');
     }
 
     if (
@@ -478,7 +523,10 @@ export class MpesaB2CDisbursementService {
       throw new Error('B2C remarks must contain between 2 and 100 characters.');
     }
 
-    if (input.occasion !== undefined && input.occasion.trim().length > 100) {
+    if (
+      input.occasion !== undefined &&
+      (typeof input.occasion !== 'string' || input.occasion.trim().length > 100)
+    ) {
       throw new Error('B2C occasion must not exceed 100 characters.');
     }
 

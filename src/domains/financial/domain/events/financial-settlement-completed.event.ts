@@ -49,14 +49,20 @@
 import { FinancialDomainEvent } from './financial-domain.event';
 
 // -----------------------------------------------------------------------------
+// Domain Event Metadata
+// -----------------------------------------------------------------------------
+
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
+
+// -----------------------------------------------------------------------------
 // Value Objects
 // -----------------------------------------------------------------------------
 
-import type {
+import {
   FinancialSettlementPublicId,
   FinancialSettlementStatus,
-  Money,
   Currency,
+  Money,
 } from '../value-objects';
 
 // -----------------------------------------------------------------------------
@@ -105,6 +111,7 @@ export class FinancialSettlementCompletedEvent extends FinancialDomainEvent {
     causationId?: string,
     eventVersion = 1,
     eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       aggregateId,
@@ -114,13 +121,16 @@ export class FinancialSettlementCompletedEvent extends FinancialDomainEvent {
       causationId,
       eventVersion,
       eventSchemaVersion,
+      restoredMetadata,
     );
+
+    this.ensureValidDate(completedAt);
 
     this.publicId = publicId;
     this.status = status;
     this.currency = currency;
     this.totalAmount = totalAmount;
-    this.completedAt = completedAt;
+    this.completedAt = new Date(completedAt.getTime());
   }
 
   // ---------------------------------------------------------------------------
@@ -174,5 +184,149 @@ export class FinancialSettlementCompletedEvent extends FinancialDomainEvent {
 
       completedAt: this.completedAt.toISOString(),
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rehydration
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Reconstructs a FinancialSettlementCompletedEvent from persisted event
+   * metadata and payload.
+   *
+   * Rehydration restores the original completion event without executing
+   * settlement processing or modifying Financial Account balances.
+   */
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): FinancialSettlementCompletedEvent {
+    const publicIdValue = payload['publicId'];
+    const statusValue = payload['status'];
+    const currencyValue = payload['currency'];
+    const totalAmountValue = payload['totalAmount'];
+    const completedAtValue = payload['completedAt'];
+
+    if (
+      typeof publicIdValue !== 'string' ||
+      publicIdValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementCompleted event payload: publicId is required',
+      );
+    }
+
+    if (typeof statusValue !== 'string' || statusValue.trim().length === 0) {
+      throw new Error(
+        'Invalid FinancialSettlementCompleted event payload: status is required',
+      );
+    }
+
+    if (
+      typeof currencyValue !== 'string' ||
+      currencyValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementCompleted event payload: currency is required',
+      );
+    }
+
+    if (
+      typeof totalAmountValue !== 'string' ||
+      totalAmountValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementCompleted event payload: totalAmount is required',
+      );
+    }
+
+    if (
+      typeof completedAtValue !== 'string' ||
+      completedAtValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementCompleted event payload: completedAt is required',
+      );
+    }
+
+    const totalAmountNumber = Number(totalAmountValue);
+
+    if (!Number.isFinite(totalAmountNumber) || totalAmountNumber < 0) {
+      throw new Error(
+        'Invalid FinancialSettlementCompleted event payload: totalAmount must be a non-negative number',
+      );
+    }
+
+    const completedAt = new Date(completedAtValue);
+
+    if (Number.isNaN(completedAt.getTime())) {
+      throw new Error(
+        'Invalid FinancialSettlementCompleted event payload: completedAt must be a valid date',
+      );
+    }
+
+    const status = this.getStatus(statusValue);
+
+    const currency = Currency.create(currencyValue);
+
+    const totalAmount = Money.fromCode(totalAmountNumber, currencyValue);
+
+    return new FinancialSettlementCompletedEvent(
+      metadata.aggregateId,
+      new FinancialSettlementPublicId(publicIdValue),
+      status,
+      currency,
+      totalAmount,
+      completedAt,
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      metadata.eventVersion,
+      metadata.eventSchemaVersion,
+      metadata,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rehydration Helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Restores the settlement lifecycle status.
+   */
+  private static getStatus(value: string): FinancialSettlementStatus {
+    switch (value) {
+      case 'PENDING':
+        return FinancialSettlementStatus.pending();
+
+      case 'PROCESSING':
+        return FinancialSettlementStatus.processing();
+
+      case 'COMPLETED':
+        return FinancialSettlementStatus.completed();
+
+      case 'FAILED':
+        return FinancialSettlementStatus.failed();
+
+      case 'CANCELLED':
+        return FinancialSettlementStatus.cancelled();
+
+      default:
+        throw new Error(
+          `Invalid FinancialSettlementCompleted event payload: unsupported status ${value}`,
+        );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Validation
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Ensures the completion lifecycle timestamp is valid.
+   */
+  private ensureValidDate(value: Date): void {
+    if (Number.isNaN(value.getTime())) {
+      throw new Error('Financial Settlement completedAt must be a valid date');
+    }
   }
 }

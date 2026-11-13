@@ -9,12 +9,13 @@
 //
 // 1. Load and validate the Financial Disbursement.
 // 2. Resolve the M-PESA provider and validate its capability.
-// 3. Create and persist a PROCESSING attempt and OriginatorConversationID.
-// 4. Submit the B2C request outside the database transaction.
-// 5. Persist the immediate provider response.
-// 6. Reconcile callbacks that arrived before response persistence.
-// 7. Preserve uncertain outcomes without automatic resubmission.
-// 8. Return the latest persisted aggregate.
+// 3. Preflight provider configuration and callback URLs.
+// 4. Create and persist a PROCESSING attempt and OriginatorConversationID.
+// 5. Submit the B2C request outside the database transaction.
+// 6. Persist the immediate provider response.
+// 7. Reconcile callbacks that arrived before response persistence.
+// 8. Preserve uncertain outcomes without automatic resubmission.
+// 9. Return the latest persisted aggregate.
 //
 // IMPORTANT:
 //
@@ -239,6 +240,24 @@ export class ProcessFinancialDisbursementHandler implements CommandHandler<
       provider.ensureCanPerform(
         FinancialPaymentProviderCapabilityType.create('INITIATE_DISBURSEMENT'),
       );
+
+      // -----------------------------------------------------------------------
+      // Preflight M-PESA readiness before creating an execution attempt
+      // -----------------------------------------------------------------------
+
+      // These checks validate local input, provider configuration and callback
+      // URLs. They do not obtain an OAuth token or contact Safaricom.
+      //
+      // If readiness validation fails, the unit of work rolls back without
+      // creating an attempt or leaving the disbursement stuck in PROCESSING.
+
+      await this.mpesaB2CDisbursementService.validateReadiness({
+        providerPublicId: provider.publicId.value,
+        amount,
+        phoneNumber,
+        commandId: MPESA_B2C_COMMAND_ID,
+        remarks: MPESA_B2C_REMARKS,
+      });
 
       // -----------------------------------------------------------------------
       // Generate the application-owned provider correlation identifier

@@ -29,10 +29,16 @@
 import { FinancialDomainEvent } from './financial-domain.event';
 
 // -----------------------------------------------------------------------------
+// Domain Event Metadata
+// -----------------------------------------------------------------------------
+
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
+
+// -----------------------------------------------------------------------------
 // Value Objects
 // -----------------------------------------------------------------------------
 
-import type {
+import {
   FinancialSettlementPublicId,
   FinancialSettlementStatus,
   Currency,
@@ -69,6 +75,7 @@ export class FinancialSettlementCancelledEvent extends FinancialDomainEvent {
     causationId?: string,
     eventVersion = 1,
     eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       aggregateId,
@@ -78,6 +85,7 @@ export class FinancialSettlementCancelledEvent extends FinancialDomainEvent {
       causationId,
       eventVersion,
       eventSchemaVersion,
+      restoredMetadata,
     );
 
     if (!status.isCancelled()) {
@@ -104,7 +112,8 @@ export class FinancialSettlementCancelledEvent extends FinancialDomainEvent {
         ? cancellationReason.trim()
         : undefined;
 
-    this.cancelledAt = cancelledAt;
+    this.cancelledAt =
+      cancelledAt !== undefined ? new Date(cancelledAt.getTime()) : undefined;
   }
 
   // ---------------------------------------------------------------------------
@@ -165,6 +174,117 @@ export class FinancialSettlementCancelledEvent extends FinancialDomainEvent {
 
       cancelledAt: this.cancelledAt?.toISOString(),
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rehydration
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Reconstructs a FinancialSettlementCancelledEvent from persisted event
+   * metadata and payload.
+   *
+   * Rehydration restores the original cancellation event without executing
+   * settlement processing or modifying Financial Account balances.
+   */
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): FinancialSettlementCancelledEvent {
+    const publicIdValue = payload['publicId'];
+    const statusValue = payload['status'];
+    const currencyValue = payload['currency'];
+    const totalAmountValue = payload['totalAmount'];
+    const cancellationReasonValue = payload['cancellationReason'];
+    const cancelledAtValue = payload['cancelledAt'];
+
+    if (
+      typeof publicIdValue !== 'string' ||
+      publicIdValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementCancelled event payload: publicId is required',
+      );
+    }
+
+    if (typeof statusValue !== 'string' || statusValue !== 'CANCELLED') {
+      throw new Error(
+        'Invalid FinancialSettlementCancelled event payload: status must be CANCELLED',
+      );
+    }
+
+    if (
+      typeof currencyValue !== 'string' ||
+      currencyValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementCancelled event payload: currency is required',
+      );
+    }
+
+    if (
+      typeof totalAmountValue !== 'number' ||
+      !Number.isInteger(totalAmountValue)
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementCancelled event payload: totalAmount must be an integer',
+      );
+    }
+
+    if (
+      cancellationReasonValue !== undefined &&
+      cancellationReasonValue !== null &&
+      typeof cancellationReasonValue !== 'string'
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementCancelled event payload: cancellationReason must be a string',
+      );
+    }
+
+    if (
+      cancelledAtValue !== undefined &&
+      cancelledAtValue !== null &&
+      typeof cancelledAtValue !== 'string'
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementCancelled event payload: cancelledAt must be a date string',
+      );
+    }
+
+    let cancelledAt: Date | undefined;
+
+    if (typeof cancelledAtValue === 'string') {
+      if (cancelledAtValue.trim().length === 0) {
+        throw new Error(
+          'Invalid FinancialSettlementCancelled event payload: cancelledAt must be a valid date',
+        );
+      }
+
+      cancelledAt = new Date(cancelledAtValue);
+
+      if (Number.isNaN(cancelledAt.getTime())) {
+        throw new Error(
+          'Invalid FinancialSettlementCancelled event payload: cancelledAt must be a valid date',
+        );
+      }
+    }
+
+    return new FinancialSettlementCancelledEvent(
+      metadata.aggregateId,
+      new FinancialSettlementPublicId(publicIdValue),
+      FinancialSettlementStatus.cancelled(),
+      Currency.create(currencyValue),
+      totalAmountValue,
+      typeof cancellationReasonValue === 'string'
+        ? cancellationReasonValue
+        : undefined,
+      cancelledAt,
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      metadata.eventVersion,
+      metadata.eventSchemaVersion,
+      metadata,
+    );
   }
 
   // ---------------------------------------------------------------------------

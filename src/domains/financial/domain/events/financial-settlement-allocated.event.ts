@@ -48,10 +48,16 @@
 import { FinancialDomainEvent } from './financial-domain.event';
 
 // -----------------------------------------------------------------------------
+// Domain Event Metadata
+// -----------------------------------------------------------------------------
+
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
+
+// -----------------------------------------------------------------------------
 // Value Objects
 // -----------------------------------------------------------------------------
 
-import type {
+import {
   FinancialSettlementPublicId,
   FinancialSettlementStatus,
   Money,
@@ -103,6 +109,7 @@ export class FinancialSettlementAllocatedEvent extends FinancialDomainEvent {
     causationId?: string,
     eventVersion = 1,
     eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       aggregateId,
@@ -112,13 +119,16 @@ export class FinancialSettlementAllocatedEvent extends FinancialDomainEvent {
       causationId,
       eventVersion,
       eventSchemaVersion,
+      restoredMetadata,
     );
+
+    this.ensureValidDate(allocatedAt);
 
     this.publicId = publicId;
     this.status = status;
     this.currency = currency;
     this.totalAmount = totalAmount;
-    this.allocatedAt = allocatedAt;
+    this.allocatedAt = new Date(allocatedAt.getTime());
   }
 
   // ---------------------------------------------------------------------------
@@ -172,5 +182,148 @@ export class FinancialSettlementAllocatedEvent extends FinancialDomainEvent {
 
       allocatedAt: this.allocatedAt.toISOString(),
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rehydration
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Reconstructs a FinancialSettlementAllocatedEvent from persisted event
+   * metadata and payload.
+   *
+   * Rehydration restores the original event and does not execute settlement
+   * allocation or move funds.
+   */
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): FinancialSettlementAllocatedEvent {
+    const publicIdValue = payload['publicId'];
+    const statusValue = payload['status'];
+    const currencyValue = payload['currency'];
+    const totalAmountValue = payload['totalAmount'];
+    const allocatedAtValue = payload['allocatedAt'];
+
+    if (
+      typeof publicIdValue !== 'string' ||
+      publicIdValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementAllocated event payload: publicId is required',
+      );
+    }
+
+    if (typeof statusValue !== 'string' || statusValue.trim().length === 0) {
+      throw new Error(
+        'Invalid FinancialSettlementAllocated event payload: status is required',
+      );
+    }
+
+    if (
+      typeof currencyValue !== 'string' ||
+      currencyValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementAllocated event payload: currency is required',
+      );
+    }
+
+    if (
+      typeof totalAmountValue !== 'string' ||
+      totalAmountValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementAllocated event payload: totalAmount is required',
+      );
+    }
+
+    if (
+      typeof allocatedAtValue !== 'string' ||
+      allocatedAtValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementAllocated event payload: allocatedAt is required',
+      );
+    }
+
+    const status = this.getStatus(statusValue);
+
+    const currency = Currency.create(currencyValue);
+
+    const totalAmountNumber = Number(totalAmountValue);
+
+    if (!Number.isFinite(totalAmountNumber) || totalAmountNumber < 0) {
+      throw new Error(
+        'Invalid FinancialSettlementAllocated event payload: totalAmount must be a non-negative number',
+      );
+    }
+
+    const totalAmount = Money.fromCode(totalAmountNumber, currencyValue);
+    const allocatedAt = new Date(allocatedAtValue);
+
+    if (Number.isNaN(allocatedAt.getTime())) {
+      throw new Error(
+        'Invalid FinancialSettlementAllocated event payload: allocatedAt must be a valid date',
+      );
+    }
+
+    return new FinancialSettlementAllocatedEvent(
+      metadata.aggregateId,
+      new FinancialSettlementPublicId(publicIdValue),
+      status,
+      currency,
+      totalAmount,
+      allocatedAt,
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      metadata.eventVersion,
+      metadata.eventSchemaVersion,
+      metadata,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rehydration Helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Restores the settlement lifecycle status.
+   */
+  private static getStatus(value: string): FinancialSettlementStatus {
+    switch (value) {
+      case 'PENDING':
+        return FinancialSettlementStatus.pending();
+
+      case 'PROCESSING':
+        return FinancialSettlementStatus.processing();
+
+      case 'COMPLETED':
+        return FinancialSettlementStatus.completed();
+
+      case 'FAILED':
+        return FinancialSettlementStatus.failed();
+
+      case 'CANCELLED':
+        return FinancialSettlementStatus.cancelled();
+
+      default:
+        throw new Error(
+          `Invalid FinancialSettlementAllocated event payload: unsupported status ${value}`,
+        );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Validation
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Ensures the allocation lifecycle timestamp is valid.
+   */
+  private ensureValidDate(value: Date): void {
+    if (Number.isNaN(value.getTime())) {
+      throw new Error('Financial Settlement allocatedAt must be a valid date');
+    }
   }
 }

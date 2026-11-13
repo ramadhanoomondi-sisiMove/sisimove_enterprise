@@ -29,10 +29,16 @@
 import { FinancialDomainEvent } from './financial-domain.event';
 
 // -----------------------------------------------------------------------------
+// Domain Event Metadata
+// -----------------------------------------------------------------------------
+
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
+
+// -----------------------------------------------------------------------------
 // Value Objects
 // -----------------------------------------------------------------------------
 
-import type {
+import {
   FinancialSettlementPublicId,
   FinancialSettlementStatus,
   Currency,
@@ -70,6 +76,7 @@ export class FinancialSettlementFailedEvent extends FinancialDomainEvent {
     causationId?: string,
     eventVersion = 1,
     eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       aggregateId,
@@ -79,6 +86,7 @@ export class FinancialSettlementFailedEvent extends FinancialDomainEvent {
       causationId,
       eventVersion,
       eventSchemaVersion,
+      restoredMetadata,
     );
 
     if (!status.isFailed()) {
@@ -110,7 +118,8 @@ export class FinancialSettlementFailedEvent extends FinancialDomainEvent {
         ? failureMessage.trim()
         : undefined;
 
-    this.failedAt = failedAt;
+    this.failedAt =
+      failedAt !== undefined ? new Date(failedAt.getTime()) : undefined;
   }
 
   // ---------------------------------------------------------------------------
@@ -178,6 +187,121 @@ export class FinancialSettlementFailedEvent extends FinancialDomainEvent {
 
       failedAt: this.failedAt?.toISOString(),
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rehydration
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Reconstructs a FinancialSettlementFailedEvent from persisted event
+   * metadata and payload.
+   *
+   * Rehydration restores the original failure event without executing
+   * settlement processing or modifying Financial Account balances.
+   */
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): FinancialSettlementFailedEvent {
+    const publicIdValue = payload['publicId'];
+    const statusValue = payload['status'];
+    const currencyValue = payload['currency'];
+    const totalAmountValue = payload['totalAmount'];
+    const failureCodeValue = payload['failureCode'];
+    const failureMessageValue = payload['failureMessage'];
+    const failedAtValue = payload['failedAt'];
+
+    if (
+      typeof publicIdValue !== 'string' ||
+      publicIdValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementFailed event payload: publicId is required',
+      );
+    }
+
+    if (statusValue !== 'FAILED') {
+      throw new Error(
+        'Invalid FinancialSettlementFailed event payload: status must be FAILED',
+      );
+    }
+
+    if (
+      typeof currencyValue !== 'string' ||
+      currencyValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementFailed event payload: currency is required',
+      );
+    }
+
+    if (
+      typeof totalAmountValue !== 'number' ||
+      !Number.isSafeInteger(totalAmountValue) ||
+      totalAmountValue < 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementFailed event payload: totalAmount must be a non-negative safe integer',
+      );
+    }
+
+    if (
+      failureCodeValue !== undefined &&
+      failureCodeValue !== null &&
+      typeof failureCodeValue !== 'string'
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementFailed event payload: failureCode must be a string',
+      );
+    }
+
+    if (
+      failureMessageValue !== undefined &&
+      failureMessageValue !== null &&
+      typeof failureMessageValue !== 'string'
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementFailed event payload: failureMessage must be a string',
+      );
+    }
+
+    let failedAt: Date | undefined;
+
+    if (failedAtValue !== undefined && failedAtValue !== null) {
+      if (
+        typeof failedAtValue !== 'string' ||
+        failedAtValue.trim().length === 0
+      ) {
+        throw new Error(
+          'Invalid FinancialSettlementFailed event payload: failedAt must be a valid date string',
+        );
+      }
+
+      failedAt = new Date(failedAtValue);
+
+      if (Number.isNaN(failedAt.getTime())) {
+        throw new Error(
+          'Invalid FinancialSettlementFailed event payload: failedAt must be a valid date',
+        );
+      }
+    }
+
+    return new FinancialSettlementFailedEvent(
+      metadata.aggregateId,
+      new FinancialSettlementPublicId(publicIdValue),
+      FinancialSettlementStatus.failed(),
+      Currency.create(currencyValue),
+      totalAmountValue,
+      typeof failureCodeValue === 'string' ? failureCodeValue : undefined,
+      typeof failureMessageValue === 'string' ? failureMessageValue : undefined,
+      failedAt,
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      metadata.eventVersion,
+      metadata.eventSchemaVersion,
+      metadata,
+    );
   }
 
   // ---------------------------------------------------------------------------

@@ -34,7 +34,12 @@ import { MpesaStkQueryService } from './payments/mpesa-stk-query.service';
 
   providers: [MpesaOAuthService, MpesaStkPushService, MpesaStkQueryService],
 
-  exports: [MpesaOAuthService, MpesaStkPushService, MpesaStkQueryService],
+  exports: [
+    MpesaOAuthService,
+    MpesaStkPushService,
+    MpesaStkQueryService,
+    MpesaHttpModule,
+  ],
 })
 export class MpesaModule {}
 

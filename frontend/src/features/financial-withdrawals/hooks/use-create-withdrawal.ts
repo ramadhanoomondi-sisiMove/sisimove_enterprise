@@ -1,3 +1,4 @@
+
 // =============================================================================
 // sisiMove — Create Withdrawal Hook
 // =============================================================================
@@ -6,17 +7,17 @@
 //
 // Responsibilities:
 //
-// - Expose the createWithdrawal API operation to React components.
-// - Keep server-state mutation handling outside presentation components.
+// - Expose the createWithdrawal API operation.
+// - Require an idempotency key for every withdrawal intent.
 // - Preserve the backend-owned withdrawal lifecycle boundary.
-// - Invalidate affected withdrawal collection queries after successful
-//   creation so wallet/history views do not remain stale.
+// - Invalidate affected withdrawal collection queries after success.
 //
 // The hook does NOT:
 // - process, complete, fail, or cancel withdrawals;
 // - calculate balances;
 // - perform financial authorization;
-// - resolve the member's financial account.
+// - resolve the member's financial account;
+// - generate new idempotency keys during retries.
 //
 // =============================================================================
 
@@ -36,13 +37,11 @@ import type {
 
 /**
  * Variables required to create a withdrawal.
- *
- * The account public ID is supplied separately from the request body because
- * it belongs to the account-scoped API boundary.
  */
 export interface CreateWithdrawalMutationVariables {
   readonly accountPublicId: string;
   readonly request: CreateWithdrawalRequest;
+  readonly idempotencyKey: string;
 }
 
 /**
@@ -56,14 +55,21 @@ export function useCreateWithdrawal() {
     Error,
     CreateWithdrawalMutationVariables
   >({
-    mutationFn: ({ accountPublicId, request }) =>
-      createWithdrawal(accountPublicId, request),
+    mutationFn: ({
+      accountPublicId,
+      request,
+      idempotencyKey,
+    }) =>
+      createWithdrawal(
+        accountPublicId,
+        request,
+        idempotencyKey,
+      ),
 
     onSuccess: async (_withdrawal, { accountPublicId }) => {
       const normalizedAccountPublicId = accountPublicId.trim();
 
-      // Invalidate the account-scoped withdrawal collection so the next
-      // render/refetch reflects the newly created withdrawal.
+      // Invalidate the account-scoped withdrawal collection.
       await queryClient.invalidateQueries({
         queryKey: [
           'financial-withdrawals',
@@ -72,10 +78,7 @@ export function useCreateWithdrawal() {
         ],
       });
 
-      // Also invalidate status-filtered collections belonging to the same
-      // account. The newly created withdrawal normally starts as PENDING,
-      // but invalidating the collection family keeps every status view
-      // consistent with the server.
+      // Invalidate status-filtered withdrawal collections.
       await queryClient.invalidateQueries({
         queryKey: [
           'financial-withdrawals',
@@ -87,4 +90,3 @@ export function useCreateWithdrawal() {
     },
   });
 }
-

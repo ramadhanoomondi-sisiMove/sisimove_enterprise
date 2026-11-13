@@ -1,3 +1,4 @@
+
 // =============================================================================
 // sisiMove — Create Financial Withdrawal API
 // =============================================================================
@@ -10,18 +11,14 @@
 //
 // Important boundaries:
 //
-// - The caller supplies the member's financial account public ID separately.
-// - The request body maps frontend `accountPublicId` to the backend DTO's
-//   `accountId` field because the existing backend contract uses that name.
-// - The request is validated against the frontend schema before posting.
-// - Frontend validation provides immediate feedback and protects the API
-//   boundary from obviously malformed input.
-// - The backend remains authoritative for authorization, account ownership,
-//   balance availability, withdrawal limits, destination validation, and all
-//   financial invariants.
-// - Lifecycle operations such as process, complete, fail, and cancel are not
-//   exposed through this member-facing API.
+// - The caller supplies the financial account public ID separately.
+// - Frontend accountPublicId maps to backend DTO accountId.
+// - Request validation occurs before transport.
+// - The backend remains authoritative for all financial invariants.
 // - Monetary amounts remain integer minor-unit strings during transport.
+// - Every new withdrawal intent receives a unique idempotency key.
+// - Retries of the same withdrawal must reuse the original key.
+// - Lifecycle operations are not exposed through this member-facing API.
 //
 // =============================================================================
 
@@ -32,32 +29,37 @@ import type {
   FinancialWithdrawal,
 } from '../models';
 
-import {
-  createWithdrawalSchema,
-} from '../schemas';
+import { createWithdrawalSchema } from '../schemas';
 
 import {
   mapFinancialWithdrawal,
   type FinancialWithdrawalApiResponse,
 } from '../mappers';
 
-const FINANCIAL_WITHDRAWALS_PATH = '/financial-account-withdrawals';
+const FINANCIAL_WITHDRAWALS_PATH =
+  '/financial-account-withdrawals';
 
 /**
- * Creates a financial withdrawal for the specified financial account.
+ * Creates a financial withdrawal.
  *
- * The request is validated locally before the HTTP request is made.
- *
- * Backend validation remains authoritative.
- *
- * @param accountPublicId Public identifier of the member's financial account.
- * @param request Withdrawal creation request.
+ * The idempotency key must be generated once for each new withdrawal
+ * intent and reused if that same request is retried.
  */
 export async function createWithdrawal(
   accountPublicId: string,
   request: CreateWithdrawalRequest,
+  idempotencyKey: string,
 ): Promise<FinancialWithdrawal> {
   const validatedRequest = createWithdrawalSchema.parse(request);
+
+  if (
+    !idempotencyKey ||
+    idempotencyKey.length > 128
+  ) {
+    throw new Error(
+      'A valid withdrawal idempotency key is required.',
+    );
+  }
 
   const response =
     await authenticatedApiClient.post<FinancialWithdrawalApiResponse>(
@@ -73,8 +75,12 @@ export async function createWithdrawal(
         correlationId: validatedRequest.correlationId,
         causationId: validatedRequest.causationId,
       },
+      {
+        headers: {
+          'Idempotency-Key': idempotencyKey,
+        },
+      },
     );
 
   return mapFinancialWithdrawal(response);
 }
-

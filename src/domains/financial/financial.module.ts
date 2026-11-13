@@ -65,6 +65,8 @@ import { FINANCIAL_PAYMENT_CALLBACK_PROVIDERS } from '../financial-payment-provi
 
 import { MpesaB2CCallbackService } from '../financial-payment-providers/infrastructure/mpesa/b2c/services/mpesa-b2c-callback.service';
 
+import { MpesaB2CDisbursementService } from '../financial-payment-providers/infrastructure/mpesa/b2c/services/mpesa-b2c-disbursement.service';
+
 import { MpesaB2CCallbackController } from '../financial-payment-providers/infrastructure/mpesa/b2c/controllers/mpesa-b2c-callback.controller';
 // -----------------------------------------------------------------------------
 // Presentation — Controllers
@@ -269,6 +271,13 @@ import { EventRehydratorRegistry } from '../../infrastructure/events/event-rehyd
 import { FinancialPaymentCreatedSubscriber } from './application/subscribers/financial-payment-created.subscriber';
 import { FinancialPaymentSucceededSubscriber } from './application/subscribers/financial-payment-succeeded.subscriber';
 import { FinancialEventRegistry } from './domain/events/registry/financial-event.registry';
+import { FinancialAccountWithdrawalProcessingSubscriber } from './application/subscribers/financial-account-withdrawal-processing.subscriber';
+
+import { FinancialAccountWithdrawalRequestedSubscriber } from './application/subscribers/financial-account-withdrawal-requested.subscriber';
+
+import { FinancialDisbursementCreatedSubscriber } from './application/subscribers/financial-disbursement-created.subscriber';
+
+import { FinancialDisbursementAttemptSucceededSubscriber } from './application/subscribers/financial-disbursement-attempt-succeeded-subscriber';
 // =============================================================================
 // Module
 // =============================================================================
@@ -331,15 +340,31 @@ import { FinancialEventRegistry } from './domain/events/registry/financial-event
     PlatformFinancialAccountsProvisioner,
     QueryMpesaPaymentStatusService,
 
-    // M-PESA — Callback Processing
+    // M-PESA — Disbursement and Callback Processing
     // -------------------------------------------------------------------------
 
     MpesaCallbackService,
+    MpesaB2CDisbursementService,
     MpesaB2CCallbackService,
 
     // -------------------------------------------------------------------------
     // Financial Payment — Event Subscribers
     // -------------------------------------------------------------------------
+
+    FinancialPaymentCreatedSubscriber,
+    FinancialPaymentSucceededSubscriber,
+
+    // Financial Account Withdrawal — Event Subscribers
+
+    FinancialAccountWithdrawalRequestedSubscriber,
+    FinancialAccountWithdrawalProcessingSubscriber,
+
+    // Financial Disbursement — Event Subscribers
+
+    FinancialDisbursementCreatedSubscriber,
+    FinancialDisbursementAttemptSucceededSubscriber,
+
+    // Financial Payment — Event Subscribers
 
     FinancialPaymentCreatedSubscriber,
     FinancialPaymentSucceededSubscriber,

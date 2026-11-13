@@ -10,13 +10,18 @@
 //
 // Accounting remains outside the Financial bounded context and is referenced
 // only through an opaque accounting journal public identifier when applicable.
+//
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
 // Foundation
 // -----------------------------------------------------------------------------
 
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
+
 import type { PublicEntityId } from '../../../../foundation/kernel/domain/public-entity-id';
+
+import { PublicEntityId as PublicEntityIdValue } from '../../../../foundation/kernel/domain/public-entity-id';
 
 // -----------------------------------------------------------------------------
 // Financial
@@ -36,14 +41,78 @@ import type {
   Money,
 } from '../value-objects';
 
-// -----------------------------------------------------------------------------
+import {
+  FinancialTransactionType as FinancialTransactionTypeValue,
+  FinancialTransactionStatus as FinancialTransactionStatusValue,
+  FinancialTransactionReference as FinancialTransactionReferenceValue,
+  FinancialAccountReference as FinancialAccountReferenceValue,
+  Money as MoneyValue,
+} from '../value-objects';
+
+// =============================================================================
+// Reference Rehydration Helpers
+// =============================================================================
+
+function parseReference(
+  value: string,
+  errorMessage: string,
+): { type: string; publicId: string } {
+  const separatorIndex = value.indexOf(':');
+
+  if (separatorIndex <= 0 || separatorIndex === value.length - 1) {
+    throw new Error(errorMessage);
+  }
+
+  return {
+    type: value.slice(0, separatorIndex),
+    publicId: value.slice(separatorIndex + 1),
+  };
+}
+
+function rehydrateAccountReference(
+  value: string | undefined,
+): FinancialAccountReference | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const reference = parseReference(
+    value,
+    'Invalid Financial Account Reference payload',
+  );
+
+  return FinancialAccountReferenceValue.create(
+    reference.type,
+    reference.publicId,
+  );
+}
+
+function rehydrateTransactionReference(
+  value: string | undefined,
+): FinancialTransactionReference | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const reference = parseReference(
+    value,
+    'Invalid Financial Transaction Reference payload',
+  );
+
+  return FinancialTransactionReferenceValue.create(
+    reference.type,
+    reference.publicId,
+  );
+}
+
+// =============================================================================
 // Event
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export class FinancialTransactionCreatedEvent extends FinancialDomainEvent {
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Constructor
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public constructor(
     aggregateId: string,
@@ -59,6 +128,7 @@ export class FinancialTransactionCreatedEvent extends FinancialDomainEvent {
     causationId?: string,
     eventVersion = 1,
     eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       aggregateId,
@@ -68,6 +138,7 @@ export class FinancialTransactionCreatedEvent extends FinancialDomainEvent {
       causationId,
       eventVersion,
       eventSchemaVersion,
+      restoredMetadata,
     );
 
     this.publicId = publicId;
@@ -80,9 +151,9 @@ export class FinancialTransactionCreatedEvent extends FinancialDomainEvent {
     this.accountingJournalPublicId = accountingJournalPublicId;
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Properties
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public readonly publicId: PublicEntityId;
 
@@ -105,9 +176,72 @@ export class FinancialTransactionCreatedEvent extends FinancialDomainEvent {
    */
   public readonly accountingJournalPublicId: string | undefined;
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Rehydrate
+  // ===========================================================================
+
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): FinancialTransactionCreatedEvent {
+    const {
+      publicId,
+      type,
+      status,
+      amount,
+      currency,
+      sourceAccount,
+      destinationAccount,
+      reference,
+      accountingJournalPublicId,
+    } = payload;
+
+    if (
+      typeof publicId !== 'string' ||
+      typeof type !== 'string' ||
+      typeof status !== 'string' ||
+      typeof amount !== 'number' ||
+      !Number.isFinite(amount) ||
+      typeof currency !== 'string' ||
+      (sourceAccount !== undefined && typeof sourceAccount !== 'string') ||
+      (destinationAccount !== undefined &&
+        typeof destinationAccount !== 'string') ||
+      (reference !== undefined && typeof reference !== 'string') ||
+      (accountingJournalPublicId !== undefined &&
+        typeof accountingJournalPublicId !== 'string')
+    ) {
+      throw new Error('Invalid payload for FinancialTransactionCreated event');
+    }
+
+    return new FinancialTransactionCreatedEvent(
+      metadata.aggregateId,
+      new PublicEntityIdValue(publicId),
+      FinancialTransactionTypeValue.create(type),
+      FinancialTransactionStatusValue.create(status),
+      MoneyValue.fromCode(amount, currency),
+      rehydrateAccountReference(
+        typeof sourceAccount === 'string' ? sourceAccount : undefined,
+      ),
+      rehydrateAccountReference(
+        typeof destinationAccount === 'string' ? destinationAccount : undefined,
+      ),
+      rehydrateTransactionReference(
+        typeof reference === 'string' ? reference : undefined,
+      ),
+      typeof accountingJournalPublicId === 'string'
+        ? accountingJournalPublicId
+        : undefined,
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      metadata.eventVersion,
+      metadata.eventSchemaVersion,
+      metadata,
+    );
+  }
+
+  // ===========================================================================
   // Payload
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   protected override getPayload(): Record<string, unknown> {
     return {
@@ -123,18 +257,11 @@ export class FinancialTransactionCreatedEvent extends FinancialDomainEvent {
 
       currency: this.amount.currency.toString(),
 
-      sourceAccount:
-        this.sourceAccount !== undefined
-          ? this.sourceAccount.toString()
-          : undefined,
+      sourceAccount: this.sourceAccount?.toString(),
 
-      destinationAccount:
-        this.destinationAccount !== undefined
-          ? this.destinationAccount.toString()
-          : undefined,
+      destinationAccount: this.destinationAccount?.toString(),
 
-      reference:
-        this.reference !== undefined ? this.reference.toString() : undefined,
+      reference: this.reference?.toString(),
 
       accountingJournalPublicId: this.accountingJournalPublicId,
     };

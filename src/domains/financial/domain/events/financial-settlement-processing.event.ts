@@ -49,14 +49,20 @@
 import { FinancialDomainEvent } from './financial-domain.event';
 
 // -----------------------------------------------------------------------------
+// Domain Event Metadata
+// -----------------------------------------------------------------------------
+
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
+
+// -----------------------------------------------------------------------------
 // Value Objects
 // -----------------------------------------------------------------------------
 
-import type {
+import {
   FinancialSettlementPublicId,
   FinancialSettlementStatus,
-  Money,
   Currency,
+  Money,
 } from '../value-objects';
 
 // -----------------------------------------------------------------------------
@@ -103,6 +109,7 @@ export class FinancialSettlementProcessingEvent extends FinancialDomainEvent {
     causationId?: string,
     eventVersion = 1,
     eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       aggregateId,
@@ -112,13 +119,16 @@ export class FinancialSettlementProcessingEvent extends FinancialDomainEvent {
       causationId,
       eventVersion,
       eventSchemaVersion,
+      restoredMetadata,
     );
+
+    this.ensureValidDate(startedAt);
 
     this.publicId = publicId;
     this.status = status;
     this.currency = currency;
     this.totalAmount = totalAmount;
-    this.startedAt = startedAt;
+    this.startedAt = new Date(startedAt.getTime());
   }
 
   // ---------------------------------------------------------------------------
@@ -172,5 +182,149 @@ export class FinancialSettlementProcessingEvent extends FinancialDomainEvent {
 
       startedAt: this.startedAt.toISOString(),
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rehydration
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Reconstructs a FinancialSettlementProcessingEvent from persisted event
+   * metadata and payload.
+   *
+   * Rehydration restores the original processing event without allocating
+   * settlement amounts, creating transactions, or modifying balances.
+   */
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): FinancialSettlementProcessingEvent {
+    const publicIdValue = payload['publicId'];
+    const statusValue = payload['status'];
+    const currencyValue = payload['currency'];
+    const totalAmountValue = payload['totalAmount'];
+    const startedAtValue = payload['startedAt'];
+
+    if (
+      typeof publicIdValue !== 'string' ||
+      publicIdValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementProcessing event payload: publicId is required',
+      );
+    }
+
+    if (typeof statusValue !== 'string' || statusValue.trim().length === 0) {
+      throw new Error(
+        'Invalid FinancialSettlementProcessing event payload: status is required',
+      );
+    }
+
+    if (
+      typeof currencyValue !== 'string' ||
+      currencyValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementProcessing event payload: currency is required',
+      );
+    }
+
+    if (
+      typeof totalAmountValue !== 'string' ||
+      totalAmountValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementProcessing event payload: totalAmount is required',
+      );
+    }
+
+    if (
+      typeof startedAtValue !== 'string' ||
+      startedAtValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementProcessing event payload: startedAt is required',
+      );
+    }
+
+    const totalAmountNumber = Number(totalAmountValue);
+
+    if (!Number.isFinite(totalAmountNumber) || totalAmountNumber < 0) {
+      throw new Error(
+        'Invalid FinancialSettlementProcessing event payload: totalAmount must be a non-negative number',
+      );
+    }
+
+    const startedAt = new Date(startedAtValue);
+
+    if (Number.isNaN(startedAt.getTime())) {
+      throw new Error(
+        'Invalid FinancialSettlementProcessing event payload: startedAt must be a valid date',
+      );
+    }
+
+    const status = this.getStatus(statusValue);
+
+    const currency = Currency.create(currencyValue);
+
+    const totalAmount = Money.fromCode(totalAmountNumber, currencyValue);
+
+    return new FinancialSettlementProcessingEvent(
+      metadata.aggregateId,
+      new FinancialSettlementPublicId(publicIdValue),
+      status,
+      currency,
+      totalAmount,
+      startedAt,
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      metadata.eventVersion,
+      metadata.eventSchemaVersion,
+      metadata,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rehydration Helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Restores the settlement lifecycle status.
+   */
+  private static getStatus(value: string): FinancialSettlementStatus {
+    switch (value) {
+      case 'PENDING':
+        return FinancialSettlementStatus.pending();
+
+      case 'PROCESSING':
+        return FinancialSettlementStatus.processing();
+
+      case 'COMPLETED':
+        return FinancialSettlementStatus.completed();
+
+      case 'FAILED':
+        return FinancialSettlementStatus.failed();
+
+      case 'CANCELLED':
+        return FinancialSettlementStatus.cancelled();
+
+      default:
+        throw new Error(
+          `Invalid FinancialSettlementProcessing event payload: unsupported status ${value}`,
+        );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Validation
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Ensures the processing lifecycle timestamp is valid.
+   */
+  private ensureValidDate(value: Date): void {
+    if (Number.isNaN(value.getTime())) {
+      throw new Error('Financial Settlement startedAt must be a valid date');
+    }
   }
 }

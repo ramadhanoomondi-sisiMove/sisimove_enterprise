@@ -1,43 +1,5 @@
-// -----------------------------------------------------------------------------
-// Accounting Account — Created Domain Event
-// -----------------------------------------------------------------------------
-//
-// Raised when an Accounting Account aggregate is created.
-//
-// Aggregate:
-//
-// AccountingAccountAggregate
-// └── AccountingAccountEntity
-//
-// -----------------------------------------------------------------------------
-//
-// Event data:
-//
-// - Accounting Account public identity;
-// - account code;
-// - account name;
-// - account type;
-// - account status;
-// - creation timestamp.
-//
-// The Accounting Account internal identity remains in
-// DomainEvent.metadata.aggregateId.
-//
-// Parent-account hierarchy is intentionally not included here because the
-// AccountingAccountEntity stores the parent as an internal UniqueEntityId and
-// does not expose a parent public identity.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// Accounting
-// -----------------------------------------------------------------------------
-
 import { AccountingDomainEvent } from './accounting-domain.event';
-
-// -----------------------------------------------------------------------------
-// Event
-// -----------------------------------------------------------------------------
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
 
 /**
  * Raised when an Accounting Account aggregate is created.
@@ -49,10 +11,6 @@ import { AccountingDomainEvent } from './accounting-domain.event';
  * downstream consumers.
  */
 export class AccountingAccountCreatedEvent extends AccountingDomainEvent {
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
   public constructor(
     accountId: string,
     public readonly publicId: string,
@@ -63,6 +21,9 @@ export class AccountingAccountCreatedEvent extends AccountingDomainEvent {
     public readonly createdAt: Date,
     correlationId?: string,
     causationId?: string,
+    eventVersion = 1,
+    eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       accountId,
@@ -70,14 +31,67 @@ export class AccountingAccountCreatedEvent extends AccountingDomainEvent {
       'AccountingAccountCreated',
       correlationId,
       causationId,
+      eventVersion,
+      eventSchemaVersion,
+      restoredMetadata,
     );
 
     Object.freeze(this);
   }
 
-  // ===========================================================================
-  // Payload
-  // ===========================================================================
+  /**
+   * Reconstructs the event from persisted event metadata and payload.
+   */
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): AccountingAccountCreatedEvent {
+    if (
+      typeof payload.publicId !== 'string' ||
+      typeof payload.code !== 'string' ||
+      typeof payload.name !== 'string' ||
+      typeof payload.type !== 'string' ||
+      typeof payload.status !== 'string'
+    ) {
+      throw new Error(
+        'Invalid AccountingAccountCreated event payload: missing or invalid required fields.',
+      );
+    }
+
+    const createdAtValue = payload.createdAt;
+
+    if (
+      typeof createdAtValue !== 'string' &&
+      !(createdAtValue instanceof Date)
+    ) {
+      throw new Error(
+        'Invalid AccountingAccountCreated event payload: createdAt must be a valid date.',
+      );
+    }
+
+    const createdAt = new Date(createdAtValue);
+
+    if (Number.isNaN(createdAt.getTime())) {
+      throw new Error(
+        'Invalid AccountingAccountCreated event payload: createdAt is not a valid date.',
+      );
+    }
+
+    return new AccountingAccountCreatedEvent(
+      metadata.aggregateId,
+      payload.publicId,
+      payload.code,
+      payload.name,
+      payload.type,
+      payload.status,
+      createdAt,
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      1,
+      '1.0.0',
+      metadata,
+    );
+  }
 
   /**
    * Returns the event-specific payload.
@@ -93,7 +107,9 @@ export class AccountingAccountCreatedEvent extends AccountingDomainEvent {
       name: this.name,
       type: this.type,
       status: this.status,
-      createdAt: this.createdAt,
+      createdAt: this.createdAt.toISOString(),
     };
   }
 }
+
+export default AccountingAccountCreatedEvent;

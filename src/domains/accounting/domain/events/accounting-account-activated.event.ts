@@ -1,31 +1,4 @@
-// -----------------------------------------------------------------------------
-// Accounting Account — Activated Domain Event
-// -----------------------------------------------------------------------------
-//
-// Raised when an Accounting Account aggregate transitions to ACTIVE.
-//
-// Aggregate:
-//
-// AccountingAccountAggregate
-// └── AccountingAccountEntity
-//
-// -----------------------------------------------------------------------------
-//
-// Event data:
-//
-// - Accounting Account public identity;
-// - account code;
-// - account type;
-// - resulting status;
-// - activation timestamp.
-//
-// Internal aggregate identity remains in DomainEvent.metadata.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// Accounting
-// -----------------------------------------------------------------------------
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
 
 import { AccountingDomainEvent } from './accounting-domain.event';
 
@@ -50,6 +23,9 @@ export class AccountingAccountActivatedEvent extends AccountingDomainEvent {
     public readonly activatedAt: Date,
     correlationId?: string,
     causationId?: string,
+    eventVersion = 1,
+    eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       accountId,
@@ -57,26 +33,95 @@ export class AccountingAccountActivatedEvent extends AccountingDomainEvent {
       'AccountingAccountActivated',
       correlationId,
       causationId,
+      eventVersion,
+      eventSchemaVersion,
+      restoredMetadata,
     );
 
     Object.freeze(this);
   }
 
   // ===========================================================================
+  // Rehydrate
+  // ===========================================================================
+
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): AccountingAccountActivatedEvent {
+    const { publicId, code, type, status, activatedAt } = payload;
+
+    // -------------------------------------------------------------------------
+    // Validate Required Properties
+    // -------------------------------------------------------------------------
+
+    if (
+      typeof publicId !== 'string' ||
+      !publicId.trim() ||
+      typeof code !== 'string' ||
+      !code.trim() ||
+      typeof type !== 'string' ||
+      !type.trim() ||
+      typeof status !== 'string' ||
+      !status.trim()
+    ) {
+      throw new Error('Invalid payload for AccountingAccountActivated event');
+    }
+
+    // -------------------------------------------------------------------------
+    // Restore Activation Date
+    // -------------------------------------------------------------------------
+
+    if (typeof activatedAt !== 'string' && !(activatedAt instanceof Date)) {
+      throw new Error(
+        'Invalid activatedAt value for AccountingAccountActivated event',
+      );
+    }
+
+    const restoredActivatedAt =
+      activatedAt instanceof Date
+        ? new Date(activatedAt.getTime())
+        : new Date(activatedAt);
+
+    if (Number.isNaN(restoredActivatedAt.getTime())) {
+      throw new Error(
+        'Invalid activatedAt date for AccountingAccountActivated event',
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Restore Event
+    // -------------------------------------------------------------------------
+
+    return new AccountingAccountActivatedEvent(
+      metadata.aggregateId,
+      publicId,
+      code,
+      type,
+      status,
+      restoredActivatedAt,
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      metadata.eventVersion,
+      metadata.eventSchemaVersion,
+      metadata,
+    );
+  }
+
+  // ===========================================================================
   // Payload
   // ===========================================================================
 
-  /**
-   * Returns the event-specific payload.
-   */
-  protected getPayload(): Record<string, unknown> {
+  protected override getPayload(): Record<string, unknown> {
     return {
       ...this.getBasePayload(),
       publicId: this.publicId,
       code: this.code,
       type: this.type,
       status: this.status,
-      activatedAt: this.activatedAt,
+      activatedAt: this.activatedAt.toISOString(),
     };
   }
 }
+
+export default AccountingAccountActivatedEvent;

@@ -78,6 +78,7 @@
 
 import {
   useCallback,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -417,6 +418,22 @@ function WithdrawalState({
 }
 
 // =============================================================================
+// Withdrawal Attempt
+// =============================================================================
+
+/**
+ * Retains the exact request and idempotency key for one withdrawal intent.
+ *
+ * A retry of the same request reuses both values. A materially different
+ * request receives a new idempotency key and correlation ID.
+ */
+interface WithdrawalAttempt {
+  readonly fingerprint: string;
+  readonly idempotencyKey: string;
+  readonly request: CreateWithdrawalRequest;
+}
+
+// =============================================================================
 // Component
 // =============================================================================
 
@@ -480,6 +497,15 @@ const {
 
   const [formError, setFormError] =
     useState<string>();
+
+  // Retain the same request identity when the same withdrawal is retried.
+  const withdrawalAttemptRef =
+    useRef<WithdrawalAttempt | null>(null);
+
+  // Protect against multiple submit events before React has rerendered
+  // with the mutation's isPending state.
+  const submissionInProgressRef =
+    useRef(false);
 
   // ---------------------------------------------------------------------------
   // Created Withdrawal
@@ -584,13 +610,20 @@ const {
   // ---------------------------------------------------------------------------
 
   const handleSubmit = useCallback((): void => {
+    // Guard synchronously against rapid repeated clicks.
+    if (
+      submissionInProgressRef.current ||
+      createWithdrawalMutation.isPending
+    ) {
+      return;
+    }
+
     setFormError(undefined);
 
     if (!account) {
       setFormError(
         'Your financial account could not be loaded.',
       );
-
       return;
     }
 
@@ -598,7 +631,6 @@ const {
       setFormError(
         'Your financial account balance could not be loaded.',
       );
-
       return;
     }
 
@@ -606,48 +638,63 @@ const {
       setFormError(
         'Enter a valid withdrawal amount.',
       );
-
       return;
     }
 
-    if (
-      destinationMode === 'REGISTERED_NUMBER'
-    ) {
+    if (destinationMode === 'REGISTERED_NUMBER') {
       setFormError(
         'Your registered withdrawal number is not currently available to the withdrawal flow.',
       );
-
       return;
     }
 
-    if (
-      effectiveDestinationValue.length === 0
-    ) {
+    if (effectiveDestinationValue.length === 0) {
       setFormError(
         'Enter a withdrawal destination.',
       );
-
       return;
     }
 
-    const request: CreateWithdrawalRequest = {
+    // Include every value that changes the financial intent.
+    const requestFingerprint = JSON.stringify({
+      accountPublicId: account.publicId,
       amount: amountInMinorUnits,
-      currency:
-        balance.currency ||
-        DEFAULT_CURRENCY,
-      destinationType:
-        withdrawalDestinationType,
-      destinationValue:
-        effectiveDestinationValue,
-      correlationId:
-        crypto.randomUUID(),
-    };
+      currency: balance.currency || DEFAULT_CURRENCY,
+      destinationType: withdrawalDestinationType,
+      destinationValue: effectiveDestinationValue,
+    });
+
+    // Reuse the original request and key when retrying the same intent.
+    let attempt = withdrawalAttemptRef.current;
+
+    if (
+      attempt === null ||
+      attempt.fingerprint !== requestFingerprint
+    ) {
+      const request: CreateWithdrawalRequest = {
+        amount: amountInMinorUnits,
+        currency: balance.currency || DEFAULT_CURRENCY,
+        destinationType: withdrawalDestinationType,
+        destinationValue: effectiveDestinationValue,
+        correlationId: crypto.randomUUID(),
+      };
+
+      attempt = {
+        fingerprint: requestFingerprint,
+        idempotencyKey: crypto.randomUUID(),
+        request,
+      };
+
+      withdrawalAttemptRef.current = attempt;
+    }
+
+    submissionInProgressRef.current = true;
 
     createWithdrawalMutation.mutate(
       {
-        accountPublicId:
-          account.publicId,
-        request,
+        accountPublicId: account.publicId,
+        request: attempt.request,
+        idempotencyKey: attempt.idempotencyKey,
       },
       {
         onSuccess: (
@@ -655,20 +702,28 @@ const {
         ): void => {
           setFormError(undefined);
 
+          // The backend-created withdrawal is now the lifecycle authority.
           setCreatedWithdrawalPublicId(
             createdWithdrawal.publicId,
           );
+
+          // Do not allow this completed attempt to be resubmitted.
+          withdrawalAttemptRef.current = null;
         },
 
-        onError: (
-          error: Error,
-        ): void => {
+        onError: (error: Error): void => {
+          // Keep the attempt and key. A retry of this exact intent must
+          // reuse the same idempotency key.
           setFormError(
             getErrorMessage(
               error,
               'Your withdrawal could not be submitted.',
             ),
           );
+        },
+
+        onSettled: (): void => {
+          submissionInProgressRef.current = false;
         },
       },
     );

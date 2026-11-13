@@ -51,14 +51,20 @@
 import { FinancialDomainEvent } from './financial-domain.event';
 
 // -----------------------------------------------------------------------------
+// Domain Event Metadata
+// -----------------------------------------------------------------------------
+
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
+
+// -----------------------------------------------------------------------------
 // Value Objects
 // -----------------------------------------------------------------------------
 
-import type {
+import {
   FinancialSettlementPublicId,
   FinancialSettlementStatus,
-  Money,
   Currency,
+  Money,
 } from '../value-objects';
 
 // -----------------------------------------------------------------------------
@@ -101,6 +107,7 @@ export class FinancialSettlementCreatedEvent extends FinancialDomainEvent {
     causationId?: string,
     eventVersion = 1,
     eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       aggregateId,
@@ -110,6 +117,7 @@ export class FinancialSettlementCreatedEvent extends FinancialDomainEvent {
       causationId,
       eventVersion,
       eventSchemaVersion,
+      restoredMetadata,
     );
 
     this.publicId = publicId;
@@ -167,5 +175,117 @@ export class FinancialSettlementCreatedEvent extends FinancialDomainEvent {
 
       totalAmount: this.totalAmount.toString(),
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rehydration
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Reconstructs a FinancialSettlementCreatedEvent from persisted event
+   * metadata and payload.
+   *
+   * Rehydration restores the original creation event without beginning
+   * settlement processing, allocating funds, or modifying balances.
+   */
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): FinancialSettlementCreatedEvent {
+    const publicIdValue = payload['publicId'];
+    const statusValue = payload['status'];
+    const currencyValue = payload['currency'];
+    const totalAmountValue = payload['totalAmount'];
+
+    if (
+      typeof publicIdValue !== 'string' ||
+      publicIdValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementCreated event payload: publicId is required',
+      );
+    }
+
+    if (typeof statusValue !== 'string' || statusValue.trim().length === 0) {
+      throw new Error(
+        'Invalid FinancialSettlementCreated event payload: status is required',
+      );
+    }
+
+    if (
+      typeof currencyValue !== 'string' ||
+      currencyValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementCreated event payload: currency is required',
+      );
+    }
+
+    if (
+      typeof totalAmountValue !== 'string' ||
+      totalAmountValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialSettlementCreated event payload: totalAmount is required',
+      );
+    }
+
+    const totalAmountNumber = Number(totalAmountValue);
+
+    if (!Number.isFinite(totalAmountNumber) || totalAmountNumber < 0) {
+      throw new Error(
+        'Invalid FinancialSettlementCreated event payload: totalAmount must be a non-negative number',
+      );
+    }
+
+    const status = this.getStatus(statusValue);
+
+    const currency = Currency.create(currencyValue);
+
+    const totalAmount = Money.fromCode(totalAmountNumber, currencyValue);
+
+    return new FinancialSettlementCreatedEvent(
+      metadata.aggregateId,
+      new FinancialSettlementPublicId(publicIdValue),
+      status,
+      currency,
+      totalAmount,
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      metadata.eventVersion,
+      metadata.eventSchemaVersion,
+      metadata,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rehydration Helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Restores the settlement lifecycle status.
+   */
+  private static getStatus(value: string): FinancialSettlementStatus {
+    switch (value) {
+      case 'PENDING':
+        return FinancialSettlementStatus.pending();
+
+      case 'PROCESSING':
+        return FinancialSettlementStatus.processing();
+
+      case 'COMPLETED':
+        return FinancialSettlementStatus.completed();
+
+      case 'FAILED':
+        return FinancialSettlementStatus.failed();
+
+      case 'CANCELLED':
+        return FinancialSettlementStatus.cancelled();
+
+      default:
+        throw new Error(
+          `Invalid FinancialSettlementCreated event payload: unsupported status ${value}`,
+        );
+    }
   }
 }

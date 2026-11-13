@@ -22,10 +22,16 @@
 import { FinancialDomainEvent } from './financial-domain.event';
 
 // -----------------------------------------------------------------------------
+// Domain Event Metadata
+// -----------------------------------------------------------------------------
+
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
+
+// -----------------------------------------------------------------------------
 // Value Objects
 // -----------------------------------------------------------------------------
 
-import type {
+import {
   FinancialAccountHoldPublicId,
   FinancialAccountHoldStatus,
   FinancialAccountPublicId,
@@ -77,6 +83,7 @@ export class FinancialAccountHoldCreatedEvent extends FinancialDomainEvent {
     causationId?: string,
     eventVersion = 1,
     eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       aggregateId,
@@ -86,6 +93,7 @@ export class FinancialAccountHoldCreatedEvent extends FinancialDomainEvent {
       causationId,
       eventVersion,
       eventSchemaVersion,
+      restoredMetadata,
     );
 
     FinancialAccountHoldCreatedEvent.ensureValidCurrency(currency);
@@ -175,6 +183,194 @@ export class FinancialAccountHoldCreatedEvent extends FinancialDomainEvent {
       expiresAt:
         this.expiresAt !== undefined ? this.expiresAt.toString() : undefined,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rehydration
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Reconstructs a FinancialAccountHoldCreatedEvent from persisted event
+   * metadata and payload.
+   *
+   * This method restores the original event without executing domain
+   * operations or modifying Financial Account balances.
+   */
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): FinancialAccountHoldCreatedEvent {
+    const publicIdValue = payload['publicId'];
+    const accountPublicIdValue = payload['accountPublicId'];
+    const amountValue = payload['amount'];
+    const currencyValue = payload['currency'];
+    const statusValue = payload['status'];
+    const referenceValue = payload['reference'];
+    const expiresAtValue = payload['expiresAt'];
+
+    if (
+      typeof publicIdValue !== 'string' ||
+      publicIdValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialAccountHoldCreated event payload: publicId is required',
+      );
+    }
+
+    if (
+      typeof accountPublicIdValue !== 'string' ||
+      accountPublicIdValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialAccountHoldCreated event payload: accountPublicId is required',
+      );
+    }
+
+    if (typeof amountValue !== 'string' || amountValue.trim().length === 0) {
+      throw new Error(
+        'Invalid FinancialAccountHoldCreated event payload: amount is required',
+      );
+    }
+
+    if (
+      typeof currencyValue !== 'string' ||
+      currencyValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialAccountHoldCreated event payload: currency is required',
+      );
+    }
+
+    if (typeof statusValue !== 'string' || statusValue.trim().length === 0) {
+      throw new Error(
+        'Invalid FinancialAccountHoldCreated event payload: status is required',
+      );
+    }
+
+    const amountNumber = Number(amountValue);
+
+    if (!Number.isSafeInteger(amountNumber) || amountNumber < 0) {
+      throw new Error(
+        'Invalid FinancialAccountHoldCreated event payload: amount must be a non-negative safe integer',
+      );
+    }
+
+    const amount = FinancialAccountHeldAmount.create(amountNumber);
+
+    const status = this.getStatus(statusValue);
+
+    const reference = this.rehydrateReference(referenceValue);
+
+    const expiresAt = this.rehydrateExpiry(expiresAtValue);
+
+    return new FinancialAccountHoldCreatedEvent(
+      metadata.aggregateId,
+      new FinancialAccountHoldPublicId(publicIdValue),
+      new FinancialAccountPublicId(accountPublicIdValue),
+      amount,
+      currencyValue,
+      status,
+      reference,
+      expiresAt,
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      metadata.eventVersion,
+      metadata.eventSchemaVersion,
+      metadata,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rehydration Helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Restores the hold lifecycle status.
+   */
+  private static getStatus(value: string): FinancialAccountHoldStatus {
+    switch (value) {
+      case 'ACTIVE':
+        return FinancialAccountHoldStatus.active();
+
+      case 'RELEASED':
+        return FinancialAccountHoldStatus.released();
+
+      case 'CAPTURED':
+        return FinancialAccountHoldStatus.captured();
+
+      case 'CANCELLED':
+        return FinancialAccountHoldStatus.cancelled();
+
+      default:
+        throw new Error(
+          `Invalid FinancialAccountHoldCreated event payload: unsupported status ${value}`,
+        );
+    }
+  }
+
+  /**
+   * Restores the optional business reference.
+   */
+  private static rehydrateReference(
+    value: unknown,
+  ): FinancialHoldReference | undefined {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+
+    if (
+      typeof value !== 'object' ||
+      Array.isArray(value) ||
+      !('type' in value) ||
+      !('publicId' in value)
+    ) {
+      throw new Error(
+        'Invalid FinancialAccountHoldCreated event payload: reference must contain type and publicId',
+      );
+    }
+
+    const typeValue = value.type;
+    const publicIdValue = value.publicId;
+
+    if (
+      typeof typeValue !== 'string' ||
+      typeValue.trim().length === 0 ||
+      typeof publicIdValue !== 'string' ||
+      publicIdValue.trim().length === 0
+    ) {
+      throw new Error(
+        'Invalid FinancialAccountHoldCreated event payload: reference type and publicId must be non-empty strings',
+      );
+    }
+
+    return FinancialHoldReference.create(typeValue, publicIdValue);
+  }
+
+  /**
+   * Restores the optional hold expiry.
+   */
+  private static rehydrateExpiry(
+    value: unknown,
+  ): FinancialHoldExpiry | undefined {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      throw new Error(
+        'Invalid FinancialAccountHoldCreated event payload: expiresAt must be a valid date string',
+      );
+    }
+
+    const expiryDate = new Date(value);
+
+    if (Number.isNaN(expiryDate.getTime())) {
+      throw new Error(
+        'Invalid FinancialAccountHoldCreated event payload: expiresAt must be a valid date',
+      );
+    }
+
+    return FinancialHoldExpiry.create(expiryDate);
   }
 
   // ---------------------------------------------------------------------------

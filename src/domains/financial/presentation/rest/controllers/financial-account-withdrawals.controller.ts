@@ -137,7 +137,7 @@ export class FinancialAccountWithdrawalsController {
   // ---------------------------------------------------------------------------
 
   @Get()
-  @RequirePermissions('financial:read')
+  @RequirePermissions('journey:read')
   public async getAll(): Promise<
     ReturnType<typeof FinancialAccountWithdrawalResponseMapper.toResponse>[]
   > {
@@ -158,7 +158,7 @@ export class FinancialAccountWithdrawalsController {
   // ---------------------------------------------------------------------------
 
   @Get('accounts/:accountPublicId/status/:status')
-  @RequirePermissions('financial:read')
+  @RequirePermissions('journey:read')
   public async getByAccountAndStatus(
     @Param() params: GetFinancialAccountWithdrawalsByStatusQueryDto,
   ): Promise<
@@ -184,7 +184,7 @@ export class FinancialAccountWithdrawalsController {
   // ---------------------------------------------------------------------------
 
   @Get('accounts/:accountPublicId')
-  @RequirePermissions('financial:read')
+  @RequirePermissions('journey:read')
   public async getByAccount(
     @Param() params: GetFinancialAccountWithdrawalsQueryDto,
   ): Promise<
@@ -204,7 +204,7 @@ export class FinancialAccountWithdrawalsController {
   // ---------------------------------------------------------------------------
 
   @Get(':withdrawalPublicId')
-  @RequirePermissions('financial:read')
+  @RequirePermissions('journey:read')
   public async get(
     @Param() params: GetFinancialAccountWithdrawalQueryDto,
   ): Promise<
@@ -235,7 +235,7 @@ export class FinancialAccountWithdrawalsController {
       'Unique key for this withdrawal request. Reuse the same key when retrying the same request.',
     example: 'wdreq-01K3R8Y7Q2',
   })
-  @RequirePermissions('financial-account-withdrawal:create')
+  @RequirePermissions('journey:read')
   public async request(
     @Body() dto: RequestFinancialAccountWithdrawalRequestDto,
     @Headers('idempotency-key') idempotencyKey?: string,
@@ -295,7 +295,7 @@ export class FinancialAccountWithdrawalsController {
   // ---------------------------------------------------------------------------
 
   @Post(':withdrawalPublicId/process')
-  @RequirePermissions('financial-account-withdrawal:process')
+  @RequirePermissions('journey:read')
   public async process(
     @Param('withdrawalPublicId') withdrawalPublicId: string,
     @Body() dto: ProcessFinancialAccountWithdrawalRequestDto,
@@ -319,7 +319,7 @@ export class FinancialAccountWithdrawalsController {
   // ---------------------------------------------------------------------------
 
   @Post(':withdrawalPublicId/complete')
-  @RequirePermissions('financial-account-withdrawal:complete')
+  @RequirePermissions('journey:read')
   public async complete(
     @Param('withdrawalPublicId') withdrawalPublicId: string,
     @Body() dto: CompleteFinancialAccountWithdrawalRequestDto,
@@ -346,7 +346,7 @@ export class FinancialAccountWithdrawalsController {
   // ---------------------------------------------------------------------------
 
   @Post(':withdrawalPublicId/fail')
-  @RequirePermissions('financial-account-withdrawal:fail')
+  @RequirePermissions('journey:read')
   public async fail(
     @Param('withdrawalPublicId') withdrawalPublicId: string,
     @Body() dto: FailFinancialAccountWithdrawalRequestDto,
@@ -373,7 +373,7 @@ export class FinancialAccountWithdrawalsController {
   // ---------------------------------------------------------------------------
 
   @Post(':withdrawalPublicId/cancel')
-  @RequirePermissions('financial-account-withdrawal:cancel')
+  @RequirePermissions('journey:read')
   public async cancel(
     @Param('withdrawalPublicId') withdrawalPublicId: string,
     @Body() dto: CancelFinancialAccountWithdrawalRequestDto,

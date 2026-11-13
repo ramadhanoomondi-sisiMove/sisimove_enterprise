@@ -14,8 +14,6 @@
 // Accounting aggregate roots. It does not represent a fictional parent
 // Accounting aggregate or the entire Accounting bounded context.
 //
-// Aggregate identity is stored in the inherited DomainEvent metadata.
-//
 // -----------------------------------------------------------------------------
 //
 // Aggregate boundaries:
@@ -172,6 +170,8 @@
 
 import { DomainEvent } from '../../../../foundation/kernel/domain/domain-event';
 
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
+
 // -----------------------------------------------------------------------------
 // Accounting Domain Event
 // -----------------------------------------------------------------------------
@@ -203,6 +203,7 @@ export abstract class AccountingDomainEvent extends DomainEvent {
     causationId?: string,
     eventVersion = 1,
     eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       aggregateId,
@@ -212,6 +213,8 @@ export abstract class AccountingDomainEvent extends DomainEvent {
       causationId,
       eventVersion,
       eventSchemaVersion,
+      'SisiMove Enterprise',
+      restoredMetadata,
     );
   }
 
@@ -234,3 +237,9 @@ export abstract class AccountingDomainEvent extends DomainEvent {
     return {};
   }
 }
+
+// -----------------------------------------------------------------------------
+// Default Export
+// -----------------------------------------------------------------------------
+
+export default AccountingDomainEvent;

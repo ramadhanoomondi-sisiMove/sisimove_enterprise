@@ -6,7 +6,11 @@
 // Foundation
 // -----------------------------------------------------------------------------
 
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
+
 import type { PublicEntityId } from '../../../../foundation/kernel/domain/public-entity-id';
+
+import { PublicEntityId as PublicEntityIdValue } from '../../../../foundation/kernel/domain/public-entity-id';
 
 // -----------------------------------------------------------------------------
 // Financial
@@ -14,9 +18,9 @@ import type { PublicEntityId } from '../../../../foundation/kernel/domain/public
 
 import { FinancialDomainEvent } from './financial-domain.event';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Event
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 /**
  * Emitted when a Financial Account transitions into the CLOSED state.
@@ -26,9 +30,9 @@ import { FinancialDomainEvent } from './financial-domain.event';
  * meaningful identity of the Financial Account.
  */
 export class FinancialAccountClosedEvent extends FinancialDomainEvent {
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Constructor
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public constructor(
     aggregateId: string,
@@ -37,6 +41,7 @@ export class FinancialAccountClosedEvent extends FinancialDomainEvent {
     causationId?: string,
     eventVersion = 1,
     eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       aggregateId,
@@ -46,20 +51,46 @@ export class FinancialAccountClosedEvent extends FinancialDomainEvent {
       causationId,
       eventVersion,
       eventSchemaVersion,
+      restoredMetadata,
     );
 
     this.publicId = publicId;
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Properties
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   public readonly publicId: PublicEntityId;
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // Rehydrate
+  // ===========================================================================
+
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): FinancialAccountClosedEvent {
+    const { publicId } = payload;
+
+    if (typeof publicId !== 'string') {
+      throw new Error('Invalid payload for FinancialAccountClosed event');
+    }
+
+    return new FinancialAccountClosedEvent(
+      metadata.aggregateId,
+      new PublicEntityIdValue(publicId),
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      metadata.eventVersion,
+      metadata.eventSchemaVersion,
+      metadata,
+    );
+  }
+
+  // ===========================================================================
   // Payload
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   protected override getPayload(): Record<string, unknown> {
     return {

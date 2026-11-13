@@ -1,37 +1,10 @@
-// -----------------------------------------------------------------------------
-// Accounting Journal — Created Domain Event
-// -----------------------------------------------------------------------------
-//
-// Raised when an Accounting Journal aggregate is created.
-//
-// Aggregate:
-//
-// AccountingJournalAggregate
-// ├── AccountingJournalEntity
-// ├── AccountingJournalEntryEntity[]
-// │   └── AccountingJournalLineEntity[]
-// └── AccountingPostingReferenceEntity?
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// Accounting
-// -----------------------------------------------------------------------------
-
 import { AccountingDomainEvent } from './accounting-domain.event';
-
-// -----------------------------------------------------------------------------
-// Event
-// -----------------------------------------------------------------------------
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
 
 /**
  * Raised when an Accounting Journal aggregate is created.
  */
 export class AccountingJournalCreatedEvent extends AccountingDomainEvent {
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
   public constructor(
     journalId: string,
     public readonly publicId: string,
@@ -41,6 +14,9 @@ export class AccountingJournalCreatedEvent extends AccountingDomainEvent {
     public readonly createdAt: Date,
     correlationId?: string,
     causationId?: string,
+    eventVersion = 1,
+    eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       journalId,
@@ -48,14 +24,73 @@ export class AccountingJournalCreatedEvent extends AccountingDomainEvent {
       'AccountingJournalCreated',
       correlationId,
       causationId,
+      eventVersion,
+      eventSchemaVersion,
+      restoredMetadata,
     );
 
     Object.freeze(this);
   }
 
-  // ===========================================================================
-  // Payload
-  // ===========================================================================
+  /**
+   * Reconstructs the event from persisted event metadata and payload.
+   */
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): AccountingJournalCreatedEvent {
+    if (
+      typeof payload.publicId !== 'string' ||
+      typeof payload.status !== 'string' ||
+      typeof payload.currency !== 'string'
+    ) {
+      throw new Error(
+        'Invalid AccountingJournalCreated event payload: missing or invalid required fields.',
+      );
+    }
+
+    if (
+      payload.periodPublicId !== undefined &&
+      typeof payload.periodPublicId !== 'string'
+    ) {
+      throw new Error(
+        'Invalid AccountingJournalCreated event payload: periodPublicId must be a string when provided.',
+      );
+    }
+
+    const createdAtValue = payload.createdAt;
+
+    if (
+      typeof createdAtValue !== 'string' &&
+      !(createdAtValue instanceof Date)
+    ) {
+      throw new Error(
+        'Invalid AccountingJournalCreated event payload: createdAt must be a valid date.',
+      );
+    }
+
+    const createdAt = new Date(createdAtValue);
+
+    if (Number.isNaN(createdAt.getTime())) {
+      throw new Error(
+        'Invalid AccountingJournalCreated event payload: createdAt is not a valid date.',
+      );
+    }
+
+    return new AccountingJournalCreatedEvent(
+      metadata.aggregateId,
+      payload.publicId,
+      payload.status,
+      payload.currency,
+      payload.periodPublicId,
+      createdAt,
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      1,
+      '1.0.0',
+      metadata,
+    );
+  }
 
   /**
    * Returns the event-specific payload.
@@ -69,7 +104,9 @@ export class AccountingJournalCreatedEvent extends AccountingDomainEvent {
       ...(this.periodPublicId !== undefined && {
         periodPublicId: this.periodPublicId,
       }),
-      createdAt: this.createdAt,
+      createdAt: this.createdAt.toISOString(),
     };
   }
 }
+
+export default AccountingJournalCreatedEvent;

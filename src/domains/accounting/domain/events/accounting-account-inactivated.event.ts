@@ -1,46 +1,10 @@
-// -----------------------------------------------------------------------------
-// Accounting Account — Inactivated Domain Event
-// -----------------------------------------------------------------------------
-//
-// Raised when an Accounting Account aggregate transitions to INACTIVE.
-//
-// Aggregate:
-//
-// AccountingAccountAggregate
-// └── AccountingAccountEntity
-//
-// -----------------------------------------------------------------------------
-//
-// Event data:
-//
-// - Accounting Account public identity;
-// - account code;
-// - account type;
-// - resulting status;
-// - inactivation timestamp.
-//
-// Internal aggregate identity remains in DomainEvent.metadata.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// Accounting
-// -----------------------------------------------------------------------------
-
 import { AccountingDomainEvent } from './accounting-domain.event';
-
-// -----------------------------------------------------------------------------
-// Event
-// -----------------------------------------------------------------------------
+import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
 
 /**
  * Raised when an Accounting Account aggregate is inactivated.
  */
 export class AccountingAccountInactivatedEvent extends AccountingDomainEvent {
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
   public constructor(
     accountId: string,
     public readonly publicId: string,
@@ -50,6 +14,9 @@ export class AccountingAccountInactivatedEvent extends AccountingDomainEvent {
     public readonly inactivatedAt: Date,
     correlationId?: string,
     causationId?: string,
+    eventVersion = 1,
+    eventSchemaVersion = '1.0.0',
+    restoredMetadata?: EventMetadata,
   ) {
     super(
       accountId,
@@ -57,14 +24,65 @@ export class AccountingAccountInactivatedEvent extends AccountingDomainEvent {
       'AccountingAccountInactivated',
       correlationId,
       causationId,
+      eventVersion,
+      eventSchemaVersion,
+      restoredMetadata,
     );
 
     Object.freeze(this);
   }
 
-  // ===========================================================================
-  // Payload
-  // ===========================================================================
+  /**
+   * Reconstructs the event from persisted event metadata and payload.
+   */
+  public static rehydrate(
+    metadata: EventMetadata,
+    payload: Record<string, unknown>,
+  ): AccountingAccountInactivatedEvent {
+    if (
+      typeof payload.publicId !== 'string' ||
+      typeof payload.code !== 'string' ||
+      typeof payload.type !== 'string' ||
+      typeof payload.status !== 'string'
+    ) {
+      throw new Error(
+        'Invalid AccountingAccountInactivated event payload: missing or invalid required fields.',
+      );
+    }
+
+    const inactivatedAtValue = payload.inactivatedAt;
+
+    if (
+      typeof inactivatedAtValue !== 'string' &&
+      !(inactivatedAtValue instanceof Date)
+    ) {
+      throw new Error(
+        'Invalid AccountingAccountInactivated event payload: inactivatedAt must be a valid date.',
+      );
+    }
+
+    const inactivatedAt = new Date(inactivatedAtValue);
+
+    if (Number.isNaN(inactivatedAt.getTime())) {
+      throw new Error(
+        'Invalid AccountingAccountInactivated event payload: inactivatedAt is not a valid date.',
+      );
+    }
+
+    return new AccountingAccountInactivatedEvent(
+      metadata.aggregateId,
+      payload.publicId,
+      payload.code,
+      payload.type,
+      payload.status,
+      inactivatedAt,
+      metadata.correlationId ?? '',
+      metadata.causationId,
+      1,
+      '1.0.0',
+      metadata,
+    );
+  }
 
   /**
    * Returns the event-specific payload.
@@ -76,7 +94,9 @@ export class AccountingAccountInactivatedEvent extends AccountingDomainEvent {
       code: this.code,
       type: this.type,
       status: this.status,
-      inactivatedAt: this.inactivatedAt,
+      inactivatedAt: this.inactivatedAt.toISOString(),
     };
   }
 }
+
+export default AccountingAccountInactivatedEvent;

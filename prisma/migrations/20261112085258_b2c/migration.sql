@@ -1,4 +1,10 @@
 -- CreateEnum
+CREATE TYPE "AccountingPeriodFrequency" AS ENUM ('MONTHLY');
+
+-- CreateEnum
+CREATE TYPE "AccountingCalendarStatus" AS ENUM ('ACTIVE', 'INACTIVE');
+
+-- CreateEnum
 CREATE TYPE "FinancialPaymentCallbackStatus" AS ENUM ('PENDING', 'PROCESSED', 'FAILED');
 
 -- CreateEnum
@@ -300,6 +306,12 @@ CREATE TYPE "FinancialPaymentProviderEnvironment" AS ENUM ('SANDBOX', 'PRODUCTIO
 
 -- CreateEnum
 CREATE TYPE "FinancialPaymentProviderCapabilityType" AS ENUM ('INITIATE_PAYMENT', 'VERIFY_PAYMENT', 'QUERY_PAYMENT', 'REFUND_PAYMENT', 'INITIATE_DISBURSEMENT', 'VERIFY_DISBURSEMENT', 'QUERY_BALANCE', 'WEBHOOKS');
+
+-- CreateEnum
+CREATE TYPE "FinancialDisbursementCallbackType" AS ENUM ('RESULT', 'QUEUE_TIMEOUT');
+
+-- CreateEnum
+CREATE TYPE "FinancialDisbursementCallbackStatus" AS ENUM ('PENDING', 'PROCESSED', 'FAILED');
 
 -- CreateTable
 CREATE TABLE "identities" (
@@ -1429,6 +1441,7 @@ CREATE TABLE "financial_account_withdrawals" (
     "status" "FinancialAccountWithdrawalStatus" NOT NULL DEFAULT 'PENDING',
     "referenceType" TEXT,
     "referencePublicId" TEXT,
+    "idempotencyKey" TEXT,
     "disbursementPublicId" TEXT,
     "transactionPublicId" TEXT,
     "requestedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1495,7 +1508,9 @@ CREATE TABLE "financial_disbursements" (
     "id" TEXT NOT NULL,
     "publicId" TEXT NOT NULL,
     "sourceAccountId" TEXT NOT NULL,
-    "destinationId" TEXT NOT NULL,
+    "withdrawalPublicId" TEXT,
+    "destinationType" "FinancialDisbursementDestinationType" NOT NULL,
+    "destinationValue" TEXT NOT NULL,
     "amount" INTEGER NOT NULL,
     "currency" TEXT NOT NULL DEFAULT 'KES',
     "status" "FinancialDisbursementStatus" NOT NULL DEFAULT 'PENDING',
@@ -1538,6 +1553,9 @@ CREATE TABLE "financial_disbursement_attempts" (
     "status" "FinancialDisbursementAttemptStatus" NOT NULL DEFAULT 'PENDING',
     "provider" TEXT NOT NULL,
     "providerReference" TEXT,
+    "providerOriginatorConversationId" TEXT,
+    "providerConversationId" TEXT,
+    "providerTransactionId" TEXT,
     "amount" INTEGER NOT NULL,
     "currency" TEXT NOT NULL DEFAULT 'KES',
     "failureCode" TEXT,
@@ -1545,10 +1563,33 @@ CREATE TABLE "financial_disbursement_attempts" (
     "startedAt" TIMESTAMP(3),
     "completedAt" TIMESTAMP(3),
     "failedAt" TIMESTAMP(3),
+    "cancelledAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "financial_disbursement_attempts_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "financial_disbursement_callbacks" (
+    "id" TEXT NOT NULL,
+    "publicId" TEXT NOT NULL,
+    "provider" TEXT NOT NULL,
+    "type" "FinancialDisbursementCallbackType" NOT NULL,
+    "originatorConversationId" TEXT NOT NULL,
+    "conversationId" TEXT,
+    "transactionId" TEXT,
+    "attemptId" TEXT,
+    "resultCode" INTEGER,
+    "resultDesc" TEXT,
+    "payload" JSONB NOT NULL,
+    "status" "FinancialDisbursementCallbackStatus" NOT NULL DEFAULT 'PENDING',
+    "receivedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "processedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "financial_disbursement_callbacks_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -1571,6 +1612,8 @@ CREATE TABLE "accounting_periods" (
     "id" TEXT NOT NULL,
     "publicId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
+    "calendarId" TEXT,
+    "periodKey" TEXT,
     "startsAt" TIMESTAMP(3) NOT NULL,
     "endsAt" TIMESTAMP(3) NOT NULL,
     "status" "AccountingPeriodStatus" NOT NULL DEFAULT 'OPEN',
@@ -1579,6 +1622,22 @@ CREATE TABLE "accounting_periods" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "accounting_periods_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "accounting_calendars" (
+    "id" TEXT NOT NULL,
+    "publicId" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "timezone" TEXT NOT NULL,
+    "fiscalYearStartMonth" INTEGER NOT NULL,
+    "frequency" "AccountingPeriodFrequency" NOT NULL DEFAULT 'MONTHLY',
+    "status" "AccountingCalendarStatus" NOT NULL DEFAULT 'ACTIVE',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "accounting_calendars_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -3051,6 +3110,9 @@ CREATE INDEX "financial_account_holds_captureTransactionPublicId_idx" ON "financ
 CREATE UNIQUE INDEX "financial_account_withdrawals_publicId_key" ON "financial_account_withdrawals"("publicId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "financial_account_withdrawals_disbursementPublicId_key" ON "financial_account_withdrawals"("disbursementPublicId");
+
+-- CreateIndex
 CREATE INDEX "financial_account_withdrawals_accountId_idx" ON "financial_account_withdrawals"("accountId");
 
 -- CreateIndex
@@ -3063,13 +3125,13 @@ CREATE INDEX "financial_account_withdrawals_destinationType_idx" ON "financial_a
 CREATE INDEX "financial_account_withdrawals_referenceType_referencePublic_idx" ON "financial_account_withdrawals"("referenceType", "referencePublicId");
 
 -- CreateIndex
-CREATE INDEX "financial_account_withdrawals_disbursementPublicId_idx" ON "financial_account_withdrawals"("disbursementPublicId");
-
--- CreateIndex
 CREATE INDEX "financial_account_withdrawals_transactionPublicId_idx" ON "financial_account_withdrawals"("transactionPublicId");
 
 -- CreateIndex
 CREATE INDEX "financial_account_withdrawals_requestedAt_idx" ON "financial_account_withdrawals"("requestedAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "financial_account_withdrawals_accountId_idempotencyKey_key" ON "financial_account_withdrawals"("accountId", "idempotencyKey");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "financial_settlements_publicId_key" ON "financial_settlements"("publicId");
@@ -3111,10 +3173,13 @@ CREATE INDEX "financial_settlement_allocations_transactionPublicId_idx" ON "fina
 CREATE UNIQUE INDEX "financial_disbursements_publicId_key" ON "financial_disbursements"("publicId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "financial_disbursements_withdrawalPublicId_key" ON "financial_disbursements"("withdrawalPublicId");
+
+-- CreateIndex
 CREATE INDEX "financial_disbursements_sourceAccountId_idx" ON "financial_disbursements"("sourceAccountId");
 
 -- CreateIndex
-CREATE INDEX "financial_disbursements_destinationId_idx" ON "financial_disbursements"("destinationId");
+CREATE INDEX "financial_disbursements_destinationType_idx" ON "financial_disbursements"("destinationType");
 
 -- CreateIndex
 CREATE INDEX "financial_disbursements_status_idx" ON "financial_disbursements"("status");
@@ -3159,10 +3224,34 @@ CREATE INDEX "financial_disbursement_attempts_status_idx" ON "financial_disburse
 CREATE INDEX "financial_disbursement_attempts_provider_idx" ON "financial_disbursement_attempts"("provider");
 
 -- CreateIndex
-CREATE INDEX "financial_disbursement_attempts_providerReference_idx" ON "financial_disbursement_attempts"("providerReference");
+CREATE UNIQUE INDEX "financial_disbursement_attempts_provider_providerReference_key" ON "financial_disbursement_attempts"("provider", "providerReference");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "financial_disbursement_attempts_provider_providerReference_key" ON "financial_disbursement_attempts"("provider", "providerReference");
+CREATE UNIQUE INDEX "financial_disbursement_attempts_provider_providerOriginator_key" ON "financial_disbursement_attempts"("provider", "providerOriginatorConversationId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "financial_disbursement_attempts_provider_providerConversati_key" ON "financial_disbursement_attempts"("provider", "providerConversationId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "financial_disbursement_attempts_provider_providerTransactio_key" ON "financial_disbursement_attempts"("provider", "providerTransactionId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "financial_disbursement_callbacks_publicId_key" ON "financial_disbursement_callbacks"("publicId");
+
+-- CreateIndex
+CREATE INDEX "financial_disbursement_callbacks_attemptId_idx" ON "financial_disbursement_callbacks"("attemptId");
+
+-- CreateIndex
+CREATE INDEX "financial_disbursement_callbacks_status_receivedAt_idx" ON "financial_disbursement_callbacks"("status", "receivedAt");
+
+-- CreateIndex
+CREATE INDEX "financial_disbursement_callbacks_provider_conversationId_idx" ON "financial_disbursement_callbacks"("provider", "conversationId");
+
+-- CreateIndex
+CREATE INDEX "financial_disbursement_callbacks_provider_transactionId_idx" ON "financial_disbursement_callbacks"("provider", "transactionId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "financial_disbursement_callbacks_provider_originatorConvers_key" ON "financial_disbursement_callbacks"("provider", "originatorConversationId", "type");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "accounting_accounts_publicId_key" ON "accounting_accounts"("publicId");
@@ -3183,10 +3272,28 @@ CREATE INDEX "accounting_accounts_parentAccountId_idx" ON "accounting_accounts"(
 CREATE UNIQUE INDEX "accounting_periods_publicId_key" ON "accounting_periods"("publicId");
 
 -- CreateIndex
+CREATE INDEX "accounting_periods_calendarId_startsAt_endsAt_idx" ON "accounting_periods"("calendarId", "startsAt", "endsAt");
+
+-- CreateIndex
 CREATE INDEX "accounting_periods_startsAt_endsAt_idx" ON "accounting_periods"("startsAt", "endsAt");
 
 -- CreateIndex
 CREATE INDEX "accounting_periods_status_idx" ON "accounting_periods"("status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "accounting_periods_calendarId_periodKey_key" ON "accounting_periods"("calendarId", "periodKey");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "accounting_calendars_publicId_key" ON "accounting_calendars"("publicId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "accounting_calendars_code_key" ON "accounting_calendars"("code");
+
+-- CreateIndex
+CREATE INDEX "accounting_calendars_status_idx" ON "accounting_calendars"("status");
+
+-- CreateIndex
+CREATE INDEX "accounting_calendars_frequency_idx" ON "accounting_calendars"("frequency");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "accounting_journals_publicId_key" ON "accounting_journals"("publicId");
@@ -3702,16 +3809,19 @@ ALTER TABLE "financial_settlement_allocations" ADD CONSTRAINT "financial_settlem
 ALTER TABLE "financial_disbursements" ADD CONSTRAINT "financial_disbursements_sourceAccountId_fkey" FOREIGN KEY ("sourceAccountId") REFERENCES "financial_accounts"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "financial_disbursements" ADD CONSTRAINT "financial_disbursements_destinationId_fkey" FOREIGN KEY ("destinationId") REFERENCES "financial_disbursement_destinations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE "financial_disbursement_destinations" ADD CONSTRAINT "financial_disbursement_destinations_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "financial_accounts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "financial_disbursement_attempts" ADD CONSTRAINT "financial_disbursement_attempts_disbursementId_fkey" FOREIGN KEY ("disbursementId") REFERENCES "financial_disbursements"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "financial_disbursement_callbacks" ADD CONSTRAINT "financial_disbursement_callbacks_attemptId_fkey" FOREIGN KEY ("attemptId") REFERENCES "financial_disbursement_attempts"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "accounting_accounts" ADD CONSTRAINT "accounting_accounts_parentAccountId_fkey" FOREIGN KEY ("parentAccountId") REFERENCES "accounting_accounts"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "accounting_periods" ADD CONSTRAINT "accounting_periods_calendarId_fkey" FOREIGN KEY ("calendarId") REFERENCES "accounting_calendars"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "accounting_journals" ADD CONSTRAINT "accounting_journals_periodId_fkey" FOREIGN KEY ("periodId") REFERENCES "accounting_periods"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
