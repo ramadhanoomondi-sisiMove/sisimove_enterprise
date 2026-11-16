@@ -1,8 +1,15 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 import { Transform, type TransformFnParams } from 'class-transformer';
 
-import { IsIn, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsIn,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
 
 // =============================================================================
 // Transformation
@@ -18,13 +25,20 @@ const trimString = ({ value }: TransformFnParams): unknown =>
 // Supports Safaricom Daraja 3.0:
 //
 // - STK Push
+// - C2B Customer Payments
 // - B2C Disbursement
 //
-// Shared Daraja authentication is used for both integrations.
-// STK/C2B and B2C use separate shortcode configuration.
+// Shared Daraja OAuth authentication is used across integrations.
 //
-// All credentials are submitted through the configuration API and encrypted
-// before persistence.
+// STK Push, C2B and B2C have independently configurable shortcodes.
+//
+// C2B business type must be explicitly selected:
+// - PAYBILL
+// - BUY_GOODS
+//
+// C2B configuration is optional.
+// B2C configuration is optional. When supplied, all B2C fields
+// must be provided together.
 //
 // =============================================================================
 
@@ -67,23 +81,18 @@ export class ConfigureMpesaRequestDto {
   consumerSecret!: string;
 
   // ===========================================================================
-  // STK Push / C2B Shortcode
+  // STK Push Configuration
   // ===========================================================================
 
   @ApiProperty({
     example: '174379',
-    description:
-      'M-PESA business shortcode used for STK Push and C2B configuration.',
+    description: 'M-PESA business shortcode used for STK Push.',
   })
   @Transform(trimString)
   @IsString()
   @MinLength(1)
   @MaxLength(20)
   shortcode!: string;
-
-  // ===========================================================================
-  // STK Push Configuration
-  // ===========================================================================
 
   @ApiProperty({
     example: 'your-stk-passkey',
@@ -96,39 +105,83 @@ export class ConfigureMpesaRequestDto {
   passkey!: string;
 
   // ===========================================================================
-  // B2C Disbursement Configuration
+  // C2B Customer Payment Configuration — Optional
   // ===========================================================================
 
-  @ApiProperty({
-    example: '600992',
-    description:
-      'B2C Party A shortcode provided in the Daraja B2C test credentials or production configuration.',
+  @ApiPropertyOptional({
+    example: '600000',
+    description: 'M-PESA shortcode used for C2B customer payments.',
   })
   @Transform(trimString)
+  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(20)
-  b2cShortcode!: string;
+  c2bShortcode?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
+    example: 'PAYBILL',
+    enum: ['PAYBILL', 'BUY_GOODS'],
+    description:
+      'C2B business type. Use PAYBILL for PayBill payments or BUY_GOODS for Buy Goods/Till payments.',
+  })
+  @Transform(trimString)
+  @IsOptional()
+  @IsIn(['PAYBILL', 'BUY_GOODS'])
+  c2bBusinessType?: string;
+
+  // ===========================================================================
+  // B2C Disbursement Configuration — Optional
+  // ===========================================================================
+
+  @ApiPropertyOptional({
+    example: '600992',
+    description:
+      'B2C Party A shortcode provided in the Daraja B2C credentials.',
+  })
+  @Transform(trimString)
+  @ValidateIf(
+    (object: ConfigureMpesaRequestDto) =>
+      object.initiatorName !== undefined ||
+      object.securityCredential !== undefined ||
+      object.b2cShortcode !== undefined,
+  )
+  @IsString()
+  @MinLength(1)
+  @MaxLength(20)
+  b2cShortcode?: string;
+
+  @ApiPropertyOptional({
     example: 'your-b2c-initiator-name',
     description: 'Safaricom B2C initiator username.',
   })
   @Transform(trimString)
+  @ValidateIf(
+    (object: ConfigureMpesaRequestDto) =>
+      object.b2cShortcode !== undefined ||
+      object.securityCredential !== undefined ||
+      object.initiatorName !== undefined,
+  )
   @IsString()
   @MinLength(1)
   @MaxLength(100)
-  initiatorName!: string;
+  initiatorName?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: 'your-encrypted-security-credential',
     description: 'Safaricom-generated RSA-encrypted B2C security credential.',
   })
   @Transform(trimString)
+  @ValidateIf(
+    (object: ConfigureMpesaRequestDto) =>
+      object.b2cShortcode !== undefined ||
+      object.initiatorName !== undefined ||
+      object.securityCredential !== undefined,
+  )
   @IsString()
   @MinLength(1)
   @MaxLength(4096)
-  securityCredential!: string;
+  securityCredential?: string;
 }
 
 export default ConfigureMpesaRequestDto;

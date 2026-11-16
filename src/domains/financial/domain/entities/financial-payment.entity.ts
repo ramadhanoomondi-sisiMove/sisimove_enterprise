@@ -54,6 +54,8 @@ import { FinancialPaymentPublicId } from '../value-objects/financial-payment-pub
 
 import { FinancialPaymentStatus } from '../value-objects/financial-payment-status.vo';
 
+import type { FinancialPaymentChannel } from '../value-objects/financial-payment-channel.vo';
+
 import type { Money } from '../value-objects/money.vo';
 
 import type { FinancialPaymentMethodPublicId } from '../value-objects/financial-payment-method-public-id.vo';
@@ -91,6 +93,13 @@ export interface FinancialPaymentProps {
    * Money keeps amount and currency inseparable.
    */
   amount: Money;
+
+  /**
+   * Channel through which the customer makes this payment.
+   *
+   * This is distinct from the payment provider and payment method type.
+   */
+  channel: FinancialPaymentChannel;
 
   /**
    * Payment lifecycle.
@@ -179,6 +188,7 @@ export class FinancialPaymentEntity extends Entity<
   public static create(
     accountId: PublicEntityId,
     amount: Money,
+    channel: FinancialPaymentChannel,
     methodId?: FinancialPaymentMethodPublicId,
     referenceType?: FinancialReferenceType,
     referencePublicId?: FinancialReferencePublicId,
@@ -216,6 +226,8 @@ export class FinancialPaymentEntity extends Entity<
         accountId,
 
         amount,
+
+        channel,
 
         status: FinancialPaymentStatus.create('PENDING'),
 
@@ -274,6 +286,13 @@ export class FinancialPaymentEntity extends Entity<
    */
   public get amount(): Money {
     return this.props.amount;
+  }
+
+  /**
+   * Channel through which the customer makes this payment.
+   */
+  public get channel(): FinancialPaymentChannel {
+    return this.props.channel;
   }
 
   /**

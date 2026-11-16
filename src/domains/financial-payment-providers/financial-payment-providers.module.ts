@@ -1,27 +1,29 @@
-// -----------------------------------------------------------------------------
-// Financial Payment Providers — NestJS Module
-// -----------------------------------------------------------------------------
-//
-// Central NestJS module for the Financial Payment Providers bounded context.
-//
-// Registered capabilities:
-//
-// - Financial Payment Provider
-// - Financial Payment Provider Capability
-//
-// The module wires:
-//
-// - REST controllers;
-// - infrastructure repository providers;
-// - application command handlers;
-// - application query handlers;
-// - dependency-injection tokens.
-//
-// Domain behavior remains inside aggregate roots.
-// Application handlers coordinate workflows.
-// Persistence remains behind domain repository contracts.
-//
-// -----------------------------------------------------------------------------
+/**
+ * -----------------------------------------------------------------------------
+ * Financial Payment Providers — NestJS Module
+ * -----------------------------------------------------------------------------
+ *
+ * Central NestJS module for the Financial Payment Providers bounded context.
+ *
+ * Registered capabilities:
+ *
+ * - Financial Payment Provider
+ * - Financial Payment Provider Capability
+ *
+ * The module wires:
+ *
+ * - REST controllers;
+ * - infrastructure repository providers;
+ * - application command handlers;
+ * - application query handlers;
+ * - dependency-injection tokens.
+ *
+ * Domain behavior remains inside aggregate roots.
+ * Application handlers coordinate workflows.
+ * Persistence remains behind domain repository contracts.
+ *
+ * -----------------------------------------------------------------------------
+ */
 
 // -----------------------------------------------------------------------------
 // NestJS
@@ -60,12 +62,6 @@ import { FINANCIAL_PAYMENT_PROVIDER_TOKENS } from './application/financial-payme
 import { FinancialPaymentProviderConfigurationService } from './application/services/financial-payment-provider-configuration.service';
 
 // -----------------------------------------------------------------------------
-// Infrastructure — M-PESA HTTP
-// -----------------------------------------------------------------------------
-
-import { MpesaHttpModule } from './infrastructure/mpesa/http/mpesa-http.module';
-
-// -----------------------------------------------------------------------------
 // Infrastructure — Security
 // -----------------------------------------------------------------------------
 
@@ -83,7 +79,6 @@ import {
   DisableFinancialPaymentProviderHandler,
   EnableFinancialPaymentProviderCapabilityHandler,
   EnableFinancialPaymentProviderHandler,
-  TestMpesaConnectionHandler,
   UpdateFinancialPaymentProviderHandler,
 } from './application/command-handlers';
 
@@ -107,7 +102,7 @@ import {
   // Imports
   // ===========================================================================
 
-  imports: [PrismaModule, SecurityModule, MpesaHttpModule],
+  imports: [PrismaModule, SecurityModule],
 
   // ===========================================================================
   // Controllers
@@ -121,7 +116,7 @@ import {
 
   providers: [
     // =========================================================================
-    // Infrastructure — Repository Providers
+    // Infrastructure — Repository and Service Providers
     // =========================================================================
 
     ...FINANCIAL_PAYMENT_PROVIDER_PROVIDERS,
@@ -139,13 +134,6 @@ import {
       provide:
         FINANCIAL_PAYMENT_PROVIDER_TOKENS.COMMAND_HANDLERS.CONFIGURE_MPESA,
       useClass: ConfigureMpesaHandler,
-    },
-
-    {
-      provide:
-        FINANCIAL_PAYMENT_PROVIDER_TOKENS.COMMAND_HANDLERS
-          .TEST_MPESA_CONNECTION,
-      useClass: TestMpesaConnectionHandler,
     },
 
     {
@@ -210,16 +198,7 @@ import {
   // ===========================================================================
 
   exports: [
-    // -------------------------------------------------------------------------
-    // Financial Payment Provider Repository
-    // -------------------------------------------------------------------------
-
     FINANCIAL_PAYMENT_PROVIDER_TOKENS.REPOSITORY,
-
-    // -------------------------------------------------------------------------
-    // Financial Payment Provider Configuration Service
-    // -------------------------------------------------------------------------
-
     FinancialPaymentProviderConfigurationService,
   ],
 })

@@ -1,38 +1,24 @@
-// -----------------------------------------------------------------------------
-// Financial Payment — HTTP Controller
-// -----------------------------------------------------------------------------
-//
-// REST controller for Financial Payment operations.
-//
-// Aggregate:
-//
-// FinancialPaymentAggregate
-// ├── FinancialPaymentEntity
-// └── FinancialPaymentAttemptEntity[]
-//
-// The controller is responsible only for:
-// - HTTP transport;
-// - DTO validation;
-// - conversion from transport primitives to domain value objects;
-// - dispatching application commands and queries.
-//
-// Domain behavior remains inside FinancialPaymentAggregate.
-// Application orchestration remains inside command/query handlers.
-// Persistence remains behind FinancialPaymentRepository.
-//
-// FinancialPaymentAttemptEntity is owned by the FinancialPaymentAggregate and
-// is therefore returned through the Financial Payment response mapper.
-//
-// Payment provider execution remains outside this controller and aggregate,
-// within the appropriate integration/application workflow.
-//
-// Financial Transaction creation and posting remain separate concerns.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// NestJS
-// -----------------------------------------------------------------------------
+/**
+ * -----------------------------------------------------------------------------
+ * Financial Payment — HTTP Controller
+ * -----------------------------------------------------------------------------
+ *
+ * REST controller for Financial Payment operations.
+ *
+ * Responsibilities:
+ * - HTTP transport;
+ * - DTO validation;
+ * - conversion from transport primitives to domain value objects;
+ * - dispatching application commands and queries.
+ *
+ * Domain behavior remains inside FinancialPaymentAggregate.
+ * Application orchestration remains inside command/query handlers.
+ * Persistence remains behind FinancialPaymentRepository.
+ *
+ * Financial Transaction creation and posting remain separate concerns.
+ *
+ * -----------------------------------------------------------------------------
+ */
 
 import {
   BadRequestException,
@@ -45,15 +31,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
-// -----------------------------------------------------------------------------
-// Swagger
-// -----------------------------------------------------------------------------
-
 import { ApiTags } from '@nestjs/swagger';
-
-// -----------------------------------------------------------------------------
-// Identity — Authentication & Authorization
-// -----------------------------------------------------------------------------
 
 import {
   JwtAuthGuard,
@@ -61,23 +39,10 @@ import {
   RequirePermissions,
 } from '../../../../../foundation/security/auth';
 
-// -----------------------------------------------------------------------------
-// Foundation — Application
-// -----------------------------------------------------------------------------
-
 import type { CommandHandler } from '../../../../../foundation/kernel/application/command-handler';
-
 import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
 
-// -----------------------------------------------------------------------------
-// Application — Tokens
-// -----------------------------------------------------------------------------
-
 import { FINANCIAL_PAYMENT_TOKENS } from '../../../application/financial-payment.tokens';
-
-// -----------------------------------------------------------------------------
-// Application — Commands
-// -----------------------------------------------------------------------------
 
 import {
   CancelFinancialPaymentCommand,
@@ -89,31 +54,18 @@ import {
   SucceedFinancialPaymentCommand,
 } from '../../../application/commands';
 
-// -----------------------------------------------------------------------------
-// Application — Queries
-// -----------------------------------------------------------------------------
-import { QueryMpesaPaymentStatusService } from '../../../../financial-payment-providers/infrastructure/mpesa/payments/query-mpesa-payment-status.service';
-// -----------------------------------------------------------------------------
-// Application — Queries
-// -----------------------------------------------------------------------------
-
+import { QueryMpesaPaymentStatusService } from '../../../application/services/query-mpesa-payment-status.service';
 import {
   CountFinancialPaymentsQuery,
   GetAllFinancialPaymentsQuery,
   GetFinancialPaymentQuery,
 } from '../../../application/queries';
-// -----------------------------------------------------------------------------
-// Domain — Aggregate
-// -----------------------------------------------------------------------------
 
 import type { FinancialPaymentAggregate } from '../../../domain/aggregates/financial-payment.aggregate';
 
-// -----------------------------------------------------------------------------
-// Domain — Value Objects
-// -----------------------------------------------------------------------------
-
 import {
   Currency,
+  FinancialPaymentChannel,
   FinancialPaymentMethodPublicId,
   FinancialPaymentPublicId,
   FinancialReferencePublicId,
@@ -121,15 +73,7 @@ import {
   Money,
 } from '../../../domain/value-objects';
 
-// -----------------------------------------------------------------------------
-// Foundation — Value Objects
-// -----------------------------------------------------------------------------
-
 import { PublicEntityId } from '../../../../../foundation/kernel/domain/public-entity-id';
-
-// -----------------------------------------------------------------------------
-// Presentation — Request DTOs
-// -----------------------------------------------------------------------------
 
 import {
   CancelFinancialPaymentDto,
@@ -141,24 +85,16 @@ import {
   SucceedFinancialPaymentDto,
 } from '../dto/request';
 
-// -----------------------------------------------------------------------------
-// Presentation — Response Mapper
-// -----------------------------------------------------------------------------
-
 import { FinancialPaymentResponseMapper } from '../mappers/financial-payment.response.mapper';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Controller
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 @ApiTags('Financial Payments')
 @Controller('financial-payments')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class FinancialPaymentsController {
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
   public constructor(
     // -------------------------------------------------------------------------
     // Command Handlers
@@ -221,20 +157,19 @@ export class FinancialPaymentsController {
       CountFinancialPaymentsQuery,
       number
     >,
+
     @Inject(FINANCIAL_PAYMENT_TOKENS.QUERY_HANDLERS.GET_ALL)
     private readonly getAllFinancialPaymentsHandler: QueryHandler<
       GetAllFinancialPaymentsQuery,
       FinancialPaymentAggregate[]
     >,
+
     private readonly queryMpesaPaymentStatusService: QueryMpesaPaymentStatusService,
   ) {}
 
   // ===========================================================================
   // Queries
   // ===========================================================================
-  // ---------------------------------------------------------------------------
-  // Count Financial Payments
-  // ---------------------------------------------------------------------------
 
   @Get('count')
   @RequirePermissions('financial:read')
@@ -243,38 +178,20 @@ export class FinancialPaymentsController {
       new CountFinancialPaymentsQuery(),
     );
   }
-  // ---------------------------------------------------------------------------
-  // Get All Financial Payments
-  // ---------------------------------------------------------------------------
 
   @Get()
   @RequirePermissions('financial:read')
   public async getAll(): Promise<
     ReturnType<typeof FinancialPaymentResponseMapper.toResponse>[]
   > {
-    // -------------------------------------------------------------------------
-    // 1. Retrieve all payment aggregates
-    // -------------------------------------------------------------------------
-
     const aggregates = await this.getAllFinancialPaymentsHandler.execute(
       new GetAllFinancialPaymentsQuery(),
     );
-
-    // -------------------------------------------------------------------------
-    // 2. Map aggregates to REST responses
-    // -------------------------------------------------------------------------
-    //
-    // Domain aggregates are never exposed directly through the REST boundary.
-    // Each aggregate is converted using the existing response mapper.
-    // -------------------------------------------------------------------------
 
     return aggregates.map((aggregate) =>
       FinancialPaymentResponseMapper.toResponse(aggregate),
     );
   }
-  // ---------------------------------------------------------------------------
-  // Get Financial Payment
-  // ---------------------------------------------------------------------------
 
   @Get(':paymentPublicId')
   public async get(
@@ -308,6 +225,18 @@ export class FinancialPaymentsController {
     @Body() dto: CreateFinancialPaymentDto,
   ): Promise<ReturnType<typeof FinancialPaymentResponseMapper.toResponse>> {
     // -------------------------------------------------------------------------
+    // Payment Channel
+    // -------------------------------------------------------------------------
+
+    if (dto.channel !== 'STK_PUSH' && dto.channel !== 'C2B') {
+      throw new BadRequestException(
+        'Financial Payment channel must be STK_PUSH or C2B.',
+      );
+    }
+
+    const channel = FinancialPaymentChannel.create(dto.channel);
+
+    // -------------------------------------------------------------------------
     // Payment Method
     // -------------------------------------------------------------------------
 
@@ -315,6 +244,22 @@ export class FinancialPaymentsController {
       dto.methodId !== undefined
         ? new FinancialPaymentMethodPublicId(dto.methodId)
         : undefined;
+
+    // -------------------------------------------------------------------------
+    // Channel-specific payment method validation
+    // -------------------------------------------------------------------------
+
+    if (channel.isC2B() && methodId !== undefined) {
+      throw new BadRequestException(
+        'C2B payments do not require a registered Financial Payment Method.',
+      );
+    }
+
+    if (channel.isStkPush() && methodId === undefined) {
+      throw new BadRequestException(
+        'A Financial Payment Method is required for STK Push.',
+      );
+    }
 
     // -------------------------------------------------------------------------
     // Business Reference
@@ -381,46 +326,28 @@ export class FinancialPaymentsController {
 
     const aggregate = await this.createFinancialPaymentHandler.execute(
       new CreateFinancialPaymentCommand(
-        // ---------------------------------------------------------------------
         // Financial Account
-        // ---------------------------------------------------------------------
-
         new PublicEntityId(dto.accountId),
 
-        // ---------------------------------------------------------------------
         // Payment Amount
-        // ---------------------------------------------------------------------
-
         Money.create(amountMinorUnits, Currency.create(dto.currency)),
 
-        // ---------------------------------------------------------------------
-        // Correlation
-        // ---------------------------------------------------------------------
+        // Payment Channel
+        channel,
 
+        // Correlation
         dto.correlationId,
 
-        // ---------------------------------------------------------------------
         // Payment Method
-        // ---------------------------------------------------------------------
-
         methodId,
 
-        // ---------------------------------------------------------------------
         // Reference Type
-        // ---------------------------------------------------------------------
-
         referenceType,
 
-        // ---------------------------------------------------------------------
         // Reference Public ID
-        // ---------------------------------------------------------------------
-
         referencePublicId,
 
-        // ---------------------------------------------------------------------
         // Causation
-        // ---------------------------------------------------------------------
-
         dto.causationId,
       ),
     );
@@ -444,13 +371,8 @@ export class FinancialPaymentsController {
   ): Promise<ReturnType<typeof FinancialPaymentResponseMapper.toResponse>> {
     const aggregate = await this.processFinancialPaymentHandler.execute(
       new ProcessFinancialPaymentCommand(
-        // Payment Public ID
         new PublicEntityId(paymentPublicId),
-
-        // Correlation
         dto.correlationId,
-
-        // Causation
         dto.causationId,
       ),
     );
@@ -470,13 +392,8 @@ export class FinancialPaymentsController {
   ): Promise<ReturnType<typeof FinancialPaymentResponseMapper.toResponse>> {
     const aggregate = await this.succeedFinancialPaymentHandler.execute(
       new SucceedFinancialPaymentCommand(
-        // Payment Public ID
         new PublicEntityId(paymentPublicId),
-
-        // Correlation
         dto.correlationId,
-
-        // Causation
         dto.causationId,
       ),
     );
@@ -496,13 +413,8 @@ export class FinancialPaymentsController {
   ): Promise<ReturnType<typeof FinancialPaymentResponseMapper.toResponse>> {
     const aggregate = await this.failFinancialPaymentHandler.execute(
       new FailFinancialPaymentCommand(
-        // Payment Public ID
         new PublicEntityId(paymentPublicId),
-
-        // Correlation
         dto.correlationId,
-
-        // Causation
         dto.causationId,
       ),
     );
@@ -522,13 +434,8 @@ export class FinancialPaymentsController {
   ): Promise<ReturnType<typeof FinancialPaymentResponseMapper.toResponse>> {
     const aggregate = await this.cancelFinancialPaymentHandler.execute(
       new CancelFinancialPaymentCommand(
-        // Payment Public ID
         new PublicEntityId(paymentPublicId),
-
-        // Correlation
         dto.correlationId,
-
-        // Causation
         dto.causationId,
       ),
     );
@@ -548,13 +455,8 @@ export class FinancialPaymentsController {
   ): Promise<ReturnType<typeof FinancialPaymentResponseMapper.toResponse>> {
     const aggregate = await this.expireFinancialPaymentHandler.execute(
       new ExpireFinancialPaymentCommand(
-        // Payment Public ID
         new PublicEntityId(paymentPublicId),
-
-        // Correlation
         dto.correlationId,
-
-        // Causation
         dto.causationId,
       ),
     );
@@ -574,22 +476,16 @@ export class FinancialPaymentsController {
   ): Promise<ReturnType<typeof FinancialPaymentResponseMapper.toResponse>> {
     const aggregate = await this.linkFinancialPaymentTransactionHandler.execute(
       new LinkFinancialPaymentTransactionCommand(
-        // Payment Public ID
         new PublicEntityId(paymentPublicId),
-
-        // Transaction Public ID
         dto.transactionPublicId,
-
-        // Correlation
         dto.correlationId,
-
-        // Causation
         dto.causationId,
       ),
     );
 
     return FinancialPaymentResponseMapper.toResponse(aggregate);
   }
+
   // ---------------------------------------------------------------------------
   // Query M-PESA Payment Status
   // ---------------------------------------------------------------------------

@@ -1,37 +1,49 @@
-// -----------------------------------------------------------------------------
-// Financial Disbursement — Process Command Handler
-// -----------------------------------------------------------------------------
-//
-// Application orchestration for executing a Financial Disbursement through
-// Safaricom M-PESA B2C.
-//
-// Workflow:
-//
-// 1. Load and validate the Financial Disbursement.
-// 2. Resolve the M-PESA provider and validate its capability.
-// 3. Preflight provider configuration and callback URLs.
-// 4. Create and persist a PROCESSING attempt and OriginatorConversationID.
-// 5. Submit the B2C request outside the database transaction.
-// 6. Persist the immediate provider response.
-// 7. Reconcile callbacks that arrived before response persistence.
-// 8. Preserve uncertain outcomes without automatic resubmission.
-// 9. Return the latest persisted aggregate.
-//
-// IMPORTANT:
-//
-// - Only BusinessPayment is used for this SisiMove business payout workflow.
-// - Journey earnings, commissions and settlements remain distinguished by
-//   their SisiMove business reference metadata.
-// - An ACCEPTED response does not mean the recipient received the funds.
-// - Final payout success/failure is determined by the B2C result callback.
-// - This handler does not post Financial Transactions or mutate account
-//   balances.
-// - A repeated command must never automatically submit another B2C request.
-//
-// -----------------------------------------------------------------------------
+/**
+ * -----------------------------------------------------------------------------
+ * Financial Disbursement — Process Command Handler
+ * -----------------------------------------------------------------------------
+ *
+ * Application orchestration for executing a Financial Account withdrawal
+ * through Safaricom M-PESA B2C.
+ *
+ * Workflow:
+ *
+ * 1. Load and validate the Financial Disbursement.
+ * 2. Resolve the M-PESA provider and validate its capability.
+ * 3. Preflight provider configuration and callback URLs.
+ * 4. Create and persist a PROCESSING attempt before provider submission.
+ * 5. Submit the B2C request outside the database transaction.
+ * 6. Persist provider identifiers returned in the immediate response.
+ * 7. Preserve callback correlation information for FinancialModule processing.
+ * 8. Preserve uncertain outcomes without automatic resubmission.
+ * 9. Return the latest persisted aggregate.
+ *
+ * IMPORTANT:
+ *
+ * - This handler processes withdrawals of funds already available in
+ *   Financial Accounts.
+ * - It does not determine how funds became available.
+ * - The B2C request does not contain OriginatorConversationID.
+ * - SisiMove must not generate an application ID and pretend it was sent to
+ *   Safaricom as OriginatorConversationID.
+ * - Provider OriginatorConversationID, when returned by Safaricom, is stored
+ *   against the Financial Disbursement Attempt and used for callback matching.
+ * - An ACCEPTED response does not mean the recipient received the funds.
+ * - Final success/failure is determined by the B2C result callback.
+ * - FinancialModule owns callback correlation, reconciliation and financial
+ *   lifecycle transitions.
+ * - This handler does not directly post Financial Transactions or mutate
+ *   account balances.
+ * - A repeated command must never automatically submit another B2C request.
+ *
+ * -----------------------------------------------------------------------------
+ */
 
-import { randomBytes } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
+
+// -----------------------------------------------------------------------------
+// Infrastructure
+// -----------------------------------------------------------------------------
 
 import { PrismaUnitOfWork } from '../../../../infrastructure/persistence/prisma-unit-of-work';
 
@@ -69,11 +81,7 @@ import { FinancialPaymentProviderCapabilityType } from '../../../financial-payme
 // M-PESA B2C
 // -----------------------------------------------------------------------------
 
-import { MpesaB2CDisbursementService } from '../../../financial-payment-providers/infrastructure/mpesa/b2c/services/mpesa-b2c-disbursement.service';
-
-import { MpesaB2CCallbackService } from '../../../financial-payment-providers/infrastructure/mpesa/b2c/services/mpesa-b2c-callback.service';
-
-import type { MpesaB2CCommandId } from '../../../financial-payment-providers/infrastructure/mpesa/b2c/contracts/mpesa-b2c-request.interface';
+import { B2CService } from '../../../../mpesa/b2c/b2c.service';
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -83,9 +91,7 @@ const MPESA_PROVIDER_CODE = 'MPESA';
 
 const MPESA_DESTINATION_TYPE = 'MOBILE_MONEY';
 
-const MPESA_B2C_COMMAND_ID: MpesaB2CCommandId = 'BusinessPayment';
-
-const MPESA_B2C_REMARKS = 'SisiMove business payout';
+const MPESA_B2C_REMARKS = 'SisiMove Financial Account withdrawal';
 
 // -----------------------------------------------------------------------------
 // Prepared execution
@@ -97,8 +103,6 @@ interface PreparedDisbursement {
   attemptPublicId: NonNullable<
     ReturnType<FinancialDisbursementAggregate['getLatestAttempt']>
   >['publicId'];
-
-  originatorConversationId: string;
 
   providerPublicId: string;
 
@@ -127,9 +131,7 @@ export class ProcessFinancialDisbursementHandler implements CommandHandler<
     @Inject(FINANCIAL_PAYMENT_PROVIDER_TOKENS.REPOSITORY)
     private readonly providerRepository: FinancialPaymentProviderRepository,
 
-    private readonly mpesaB2CDisbursementService: MpesaB2CDisbursementService,
-
-    private readonly mpesaB2CCallbackService: MpesaB2CCallbackService,
+    private readonly b2cService: B2CService,
 
     private readonly unitOfWork: PrismaUnitOfWork,
   ) {}
@@ -160,9 +162,8 @@ export class ProcessFinancialDisbursementHandler implements CommandHandler<
       // Idempotency protection
       // -----------------------------------------------------------------------
 
-      // A previously created attempt means this command must not submit
-      // another B2C request. This also protects against event redelivery
-      // after an application crash or uncertain provider response.
+      // An existing attempt means this command must not submit another B2C
+      // request. This protects against event redelivery and application crashes.
 
       if (aggregate.hasAttempts()) {
         return null;
@@ -203,9 +204,7 @@ export class ProcessFinancialDisbursementHandler implements CommandHandler<
       // -----------------------------------------------------------------------
 
       if (aggregate.currency.value !== 'KES') {
-        throw new Error(
-          'M-PESA B2C currently supports KES disbursements only.',
-        );
+        throw new Error('M-PESA B2C currently supports KES withdrawals only.');
       }
 
       if (!aggregate.amount.isPositive()) {
@@ -213,6 +212,9 @@ export class ProcessFinancialDisbursementHandler implements CommandHandler<
           'Financial Disbursement amount must be greater than zero.',
         );
       }
+
+      // Financial domain amounts are stored in minor units.
+      // Daraja B2C expects whole KES. The B2C service performs the conversion.
 
       const amount = aggregate.amount.amount;
 
@@ -244,36 +246,18 @@ export class ProcessFinancialDisbursementHandler implements CommandHandler<
       // Preflight M-PESA readiness before creating an execution attempt
       // -----------------------------------------------------------------------
 
-      // The M-PESA B2C disbursement service reads and validates the callback
-      // URLs from MPESA_B2C_RESULT_URL and MPESA_B2C_QUEUE_TIMEOUT_URL in the
-      // environment. The handler deliberately delegates provider configuration
-      // to that service instead of duplicating environment-variable access.
-      // These checks do not obtain an OAuth token or contact Safaricom.
-      //
-      // If readiness validation fails, the unit of work rolls back without
-      // creating an attempt or leaving the disbursement stuck in PROCESSING.
+      // This validates the provider configuration and callback URLs.
+      // It does not obtain an OAuth token or contact Safaricom.
 
-      await this.mpesaB2CDisbursementService.validateReadiness({
+      await this.b2cService.validateReadiness({
         providerPublicId: provider.publicId.value,
         amount,
         phoneNumber,
-        commandId: MPESA_B2C_COMMAND_ID,
         remarks: MPESA_B2C_REMARKS,
       });
 
       // -----------------------------------------------------------------------
-      // Generate the application-owned provider correlation identifier
-      // -----------------------------------------------------------------------
-
-      // This identifier is generated once and persisted before submission.
-      // It must never be regenerated when an execution outcome is uncertain.
-
-      const originatorConversationId = randomBytes(9)
-        .toString('hex')
-        .toUpperCase();
-
-      // -----------------------------------------------------------------------
-      // Start parent lifecycle
+      // Start parent lifecycle and create attempt
       // -----------------------------------------------------------------------
 
       const now = new Date();
@@ -283,10 +267,6 @@ export class ProcessFinancialDisbursementHandler implements CommandHandler<
         command.correlationId,
         command.causationId,
       );
-
-      // -----------------------------------------------------------------------
-      // Create and attach attempt
-      // -----------------------------------------------------------------------
 
       const attempt = FinancialDisbursementAttemptEntity.create(
         aggregate.id,
@@ -298,22 +278,14 @@ export class ProcessFinancialDisbursementHandler implements CommandHandler<
 
       aggregate.startAttempt(attempt.publicId, now);
 
-      // -----------------------------------------------------------------------
-      // Persist OriginatorConversationID before provider submission
-      // -----------------------------------------------------------------------
+      // B2C does not accept OriginatorConversationID in its request body.
+      // Store the provider-issued identifier only after Safaricom returns it.
 
-      aggregate.setAttemptProviderOriginatorConversationId(
-        attempt.publicId,
-        originatorConversationId,
-      );
-
-      // Persist the parent and its aggregate-owned attempt atomically.
       await this.disbursementRepository.save(aggregate);
 
       return {
         disbursementPublicId: aggregate.publicId,
         attemptPublicId: attempt.publicId,
-        originatorConversationId,
         providerPublicId: provider.publicId.value,
         phoneNumber,
         amount,
@@ -336,59 +308,30 @@ export class ProcessFinancialDisbursementHandler implements CommandHandler<
     // 3. Submit B2C request outside the database transaction
     // -------------------------------------------------------------------------
 
-    let result: Awaited<ReturnType<MpesaB2CDisbursementService['submit']>>;
+    let result: Awaited<ReturnType<B2CService['submit']>>;
 
     try {
-      result = await this.mpesaB2CDisbursementService.submit({
+      result = await this.b2cService.submit({
         providerPublicId: prepared.providerPublicId,
-
-        originatorConversationId: prepared.originatorConversationId,
-
         amount: prepared.amount,
-
         phoneNumber: prepared.phoneNumber,
-
-        commandId: MPESA_B2C_COMMAND_ID,
-
         remarks: MPESA_B2C_REMARKS,
       });
     } catch (error) {
       // A thrown exception does not prove that Safaricom rejected the request.
       // The request may already have reached Safaricom.
-      //
-      // Keep the attempt PROCESSING.
-      // Never automatically submit another B2C request.
+      // Keep the attempt PROCESSING; never automatically submit it again.
 
       this.logger.error(
         `M-PESA B2C submission outcome is unresolved. Disbursement: ${prepared.disbursementPublicId.value}; Attempt: ${prepared.attemptPublicId.value}.`,
         error instanceof Error ? error.stack : undefined,
       );
 
-      // A callback may have arrived before the HTTP request returned.
-      await this.reconcileCallbackSafely(prepared);
-
       return this.loadDisbursement(command);
     }
 
     // -------------------------------------------------------------------------
-    // 4. Validate provider correlation
-    // -------------------------------------------------------------------------
-
-    if (result.originatorConversationId !== prepared.originatorConversationId) {
-      this.logger.error(
-        `M-PESA B2C response correlation mismatch. Disbursement: ${prepared.disbursementPublicId.value}; Attempt: ${prepared.attemptPublicId.value}.`,
-      );
-
-      // Do not mutate the attempt using an unrelated response.
-      // The original request outcome remains unresolved.
-
-      await this.reconcileCallbackSafely(prepared);
-
-      return this.loadDisbursement(command);
-    }
-
-    // -------------------------------------------------------------------------
-    // 5. Persist immediate provider response transactionally
+    // 4. Persist provider response and provider-issued identifiers
     // -------------------------------------------------------------------------
 
     try {
@@ -412,28 +355,33 @@ export class ProcessFinancialDisbursementHandler implements CommandHandler<
         }
 
         // A callback may have completed the attempt before this HTTP response
-        // was persisted. In that case, do not attempt to mutate a terminal
-        // attempt or overwrite its callback-supplied identifiers.
+        // was persisted. Never overwrite a terminal attempt.
 
         if (attempt.isProcessing() && aggregate.isProcessing()) {
+          if (result.originatorConversationId !== null) {
+            aggregate.setAttemptProviderOriginatorConversationId(
+              prepared.attemptPublicId,
+              result.originatorConversationId,
+            );
+          }
+
           if (result.conversationId !== null) {
             aggregate.setAttemptProviderConversationId(
               prepared.attemptPublicId,
               result.conversationId,
             );
           }
-          // Explicit submission rejection is different from an uncertain
-          // transport failure. It is safe to fail the attempt only when it
-          // remains PROCESSING.
-          //
-          // The parent disbursement lifecycle remains a separate workflow.
+
+          // An explicit provider rejection may safely fail the attempt,
+          // provided it is still PROCESSING.
+          // ACCEPTED and UNCERTAIN are not final outcomes.
 
           if (result.outcome === 'REJECTED') {
             aggregate.failAttempt(
               prepared.attemptPublicId,
               result.responseCode ?? 'MPESA_B2C_REJECTED',
               result.responseDescription ??
-                'Safaricom rejected the B2C disbursement request.',
+                'Safaricom rejected the B2C withdrawal request.',
             );
           }
 
@@ -449,24 +397,34 @@ export class ProcessFinancialDisbursementHandler implements CommandHandler<
         error instanceof Error ? error.stack : undefined,
       );
 
-      await this.reconcileCallbackSafely(prepared);
-
       return this.loadDisbursement(command);
     }
 
     // -------------------------------------------------------------------------
-    // 6. Reconcile callbacks received before response persistence
+    // 5. Preserve callback correlation information
     // -------------------------------------------------------------------------
 
-    await this.reconcileCallbackSafely(prepared);
+    // FinancialModule owns callback correlation and reconciliation.
+    // The M-PESA callback handler only validates and normalizes provider
+    // callback payloads.
+    //
+    // No callback reconciliation is performed here. A callback received before
+    // provider identifiers are persisted must be handled by the FinancialModule
+    // callback infrastructure when that workflow is connected.
+
+    if (result.originatorConversationId === null) {
+      this.logger.warn(
+        `M-PESA B2C response did not provide OriginatorConversationID. Disbursement: ${prepared.disbursementPublicId.value}; Attempt: ${prepared.attemptPublicId.value}. Callback correlation remains unresolved; no automatic resubmission will occur.`,
+      );
+    }
 
     // -------------------------------------------------------------------------
-    // 7. Log unresolved outcomes
+    // 6. Log unresolved outcomes
     // -------------------------------------------------------------------------
 
     if (result.outcome === 'UNCERTAIN') {
       this.logger.warn(
-        `M-PESA B2C disbursement remains unresolved. Disbursement: ${prepared.disbursementPublicId.value}; Attempt: ${prepared.attemptPublicId.value}; OriginatorConversationID: ${prepared.originatorConversationId}. No automatic resubmission will occur.`,
+        `M-PESA B2C withdrawal remains unresolved. Disbursement: ${prepared.disbursementPublicId.value}; Attempt: ${prepared.attemptPublicId.value}; Provider OriginatorConversationID: ${result.originatorConversationId ?? 'NOT RETURNED'}. No automatic resubmission will occur.`,
       );
     }
 
@@ -477,29 +435,10 @@ export class ProcessFinancialDisbursementHandler implements CommandHandler<
     }
 
     // -------------------------------------------------------------------------
-    // 8. Return the latest persisted aggregate
+    // 7. Return the latest persisted aggregate
     // -------------------------------------------------------------------------
 
     return this.loadDisbursement(command);
-  }
-
-  // ===========================================================================
-  // Callback Reconciliation
-  // ===========================================================================
-
-  private async reconcileCallbackSafely(
-    prepared: PreparedDisbursement,
-  ): Promise<void> {
-    try {
-      await this.mpesaB2CCallbackService.reconcilePendingCallback(
-        prepared.originatorConversationId,
-      );
-    } catch (error) {
-      this.logger.error(
-        `Pending M-PESA B2C callback reconciliation failed. Disbursement: ${prepared.disbursementPublicId.value}; Attempt: ${prepared.attemptPublicId.value}.`,
-        error instanceof Error ? error.stack : undefined,
-      );
-    }
   }
 
   // ===========================================================================

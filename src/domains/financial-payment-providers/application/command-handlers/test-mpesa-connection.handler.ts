@@ -12,9 +12,9 @@ import { FinancialPaymentProviderCode } from '../../domain/value-objects/financi
 
 import { FinancialPaymentProviderException } from '../../domain/exceptions/financial-payment-provider.exception';
 
-import { MpesaOAuthService } from '../../infrastructure/mpesa/authentication/mpesa-oauth.service';
+import { MpesaOAuthService } from '../../../../mpesa/auth/mpesa-oauth.service';
 
-import type { MpesaOAuthAuthenticationResult } from '../../infrastructure/mpesa/authentication/mpesa-oauth.types';
+import type { MpesaOAuthAuthenticationResult } from '../../../../mpesa/auth/mpesa-token.interface';
 
 @Injectable()
 export class TestMpesaConnectionHandler implements CommandHandler<
@@ -49,7 +49,14 @@ export class TestMpesaConnectionHandler implements CommandHandler<
       );
     }
 
-    return this.mpesaOAuthService.authenticate(command.providerPublicId);
+    const token = await this.mpesaOAuthService.authenticate(
+      command.providerPublicId.value,
+    );
+
+    return {
+      authenticated: true,
+      expiresAt: token.expiresAt,
+    };
   }
 }
 

@@ -7,6 +7,7 @@ import type {
   FinancialPayment as PrismaFinancialPayment,
   FinancialPaymentAttempt as PrismaFinancialPaymentAttempt,
   FinancialPaymentAttemptStatus as PrismaFinancialPaymentAttemptStatus,
+  FinancialPaymentChannel as PrismaFinancialPaymentChannel,
   FinancialPaymentMethod as PrismaFinancialPaymentMethod,
   FinancialPaymentStatus as PrismaFinancialPaymentStatus,
 } from '@prisma/client';
@@ -14,6 +15,8 @@ import type {
 import { UniqueEntityId } from '../../../../../../foundation/kernel/domain/unique-entity-id';
 
 import { FinancialPaymentAggregate } from '../../../../domain/aggregates/financial-payment.aggregate';
+
+import { FinancialPaymentChannel } from '../../../../domain/value-objects/financial-payment-channel.vo';
 
 import { FinancialPaymentEntity } from '../../../../domain/entities/financial-payment.entity';
 
@@ -103,6 +106,27 @@ function toDomainPaymentStatus(
 }
 
 // =============================================================================
+// Prisma → Domain Payment Channel
+// =============================================================================
+
+function toDomainPaymentChannel(
+  value: PrismaFinancialPaymentChannel,
+): FinancialPaymentChannel {
+  switch (value) {
+    case 'STK_PUSH':
+      return FinancialPaymentChannel.create('STK_PUSH');
+
+    case 'C2B':
+      return FinancialPaymentChannel.create('C2B');
+
+    default:
+      throw new Error(
+        `Invalid persisted Financial Payment channel "${String(value)}".`,
+      );
+  }
+}
+
+// =============================================================================
 // Prisma Graph Types
 // =============================================================================
 
@@ -163,6 +187,8 @@ export class FinancialPaymentPrismaMapper {
 
     const status = toDomainPaymentStatus(record.status);
 
+    const channel = toDomainPaymentChannel(record.channel);
+
     const methodId =
       record.methodId !== null
         ? this.resolvePaymentMethodPublicId(
@@ -189,6 +215,8 @@ export class FinancialPaymentPrismaMapper {
         amount,
 
         status,
+
+        channel,
 
         methodId,
 
@@ -300,6 +328,7 @@ export class FinancialPaymentPrismaMapper {
     amount: number;
     currency: string;
     status: PrismaFinancialPaymentStatus;
+    channel: PrismaFinancialPaymentChannel;
     methodId: string | null;
     transactionPublicId: string | null;
     referenceType: string | null;
@@ -323,6 +352,8 @@ export class FinancialPaymentPrismaMapper {
       currency: entity.amount.currency.value,
 
       status: entity.status.value,
+
+      channel: entity.channel.value,
 
       methodId: methodId ?? null,
 

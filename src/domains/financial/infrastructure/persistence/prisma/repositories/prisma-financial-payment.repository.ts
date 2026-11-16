@@ -271,6 +271,8 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
 
         referencePublicId: persistence.payment.referencePublicId,
 
+        channel: persistence.payment.channel,
+
         initiatedAt: persistence.payment.initiatedAt,
 
         completedAt: persistence.payment.completedAt,
@@ -334,6 +336,7 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
         publicId: true,
         accountId: true,
         methodId: true,
+        channel: true,
       },
     });
 
@@ -350,6 +353,16 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
     if (existingPayment.publicId !== aggregate.publicId.value) {
       throw new FinancialPaymentException(
         `Financial Payment internal identity "${aggregate.id.toString()}" is associated with a different public identity.`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Preserve Payment Channel
+    // -------------------------------------------------------------------------
+
+    if (existingPayment.channel !== aggregate.channel.value) {
+      throw new FinancialPaymentException(
+        `Financial Payment "${aggregate.publicId.value}" cannot change its payment channel.`,
       );
     }
 

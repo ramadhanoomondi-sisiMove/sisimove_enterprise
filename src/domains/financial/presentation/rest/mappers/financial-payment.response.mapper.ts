@@ -1,59 +1,63 @@
-// -----------------------------------------------------------------------------
-// Financial Payment Response Mapper
-// -----------------------------------------------------------------------------
-//
-// Maps the complete Financial Payment aggregate into an application/API-safe
-// response representation.
-//
-// Aggregate:
-//
-// FinancialPaymentAggregate
-// ├── FinancialPaymentEntity
-// └── FinancialPaymentAttemptEntity[]
-//
-// Mapping responsibilities:
-//
-// - Translate FinancialPaymentAggregate into a response DTO.
-// - Translate the owned FinancialPaymentAttemptEntity[].
-// - Convert domain value objects into response-safe primitives.
-// - Preserve payment lifecycle timestamps.
-// - Preserve payment-method and transaction references.
-// - Preserve originating business references.
-// - Expose safe provider references.
-// - Expose safe failure information.
-//
-// Monetary representation:
-//
-// - Domain monetary values use integer minor units.
-// - REST responses preserve integer minor units.
-// - No monetary conversion is performed by this mapper.
-// - Frontends are responsible for formatting amounts for display.
-//
-// For KES:
-//
-// 100   = KES 1.00
-// 1260  = KES 12.60
-// 10000 = KES 100.00
-//
-// This mapper does NOT:
-//
-// - Execute provider operations.
-// - Load Financial Payment Methods.
-// - Load Financial Transactions.
-// - Load Financial Accounts.
-// - Resolve cross-aggregate references.
-// - Expose internal entity IDs.
-// - Expose raw payment credentials.
-// - Mutate the aggregate.
-// - Persist anything.
-//
-// Cross-aggregate references remain opaque public identities.
-//
-// exactOptionalPropertyTypes:
-// Optional response properties are omitted when their domain value is
-// undefined. They are never explicitly assigned undefined.
-//
-// -----------------------------------------------------------------------------
+
+/**
+ * -----------------------------------------------------------------------------
+ * Financial Payment Response Mapper
+ * -----------------------------------------------------------------------------
+ *
+ * Maps the complete Financial Payment aggregate into an application/API-safe
+ * response representation.
+ *
+ * Aggregate:
+ *
+ * FinancialPaymentAggregate
+ * ├── FinancialPaymentEntity
+ * └── FinancialPaymentAttemptEntity[]
+ *
+ * Mapping responsibilities:
+ *
+ * - Translate FinancialPaymentAggregate into a response DTO.
+ * - Translate the owned FinancialPaymentAttemptEntity[].
+ * - Convert domain value objects into response-safe primitives.
+ * - Expose the selected payment channel (STK_PUSH or C2B).
+ * - Preserve payment lifecycle timestamps.
+ * - Preserve payment-method and transaction references.
+ * - Preserve originating business references.
+ * - Expose safe provider references.
+ * - Expose safe failure information.
+ *
+ * Monetary representation:
+ *
+ * - Domain monetary values use integer minor units.
+ * - REST responses preserve integer minor units.
+ * - No monetary conversion is performed by this mapper.
+ * - Frontends are responsible for formatting amounts for display.
+ *
+ * For KES:
+ *
+ * 100   = KES 1.00
+ * 1260  = KES 12.60
+ * 10000 = KES 100.00
+ *
+ * This mapper does NOT:
+ *
+ * - Execute provider operations.
+ * - Load Financial Payment Methods.
+ * - Load Financial Transactions.
+ * - Load Financial Accounts.
+ * - Resolve cross-aggregate references.
+ * - Expose internal entity IDs.
+ * - Expose raw payment credentials.
+ * - Mutate the aggregate.
+ * - Persist anything.
+ *
+ * Cross-aggregate references remain opaque public identities.
+ *
+ * exactOptionalPropertyTypes:
+ * Optional response properties are omitted when their domain value is
+ * undefined. They are never explicitly assigned undefined.
+ *
+ * -----------------------------------------------------------------------------
+ */
 
 // -----------------------------------------------------------------------------
 // Aggregate
@@ -183,6 +187,15 @@ export interface FinancialPaymentResponse {
   status: string;
 
   /**
+   * Payment channel used to complete the payment.
+   *
+   * Supported values:
+   * - STK_PUSH
+   * - C2B
+   */
+  channel: string;
+
+  /**
    * Selected Financial Payment Method public identity.
    */
   methodId?: string;
@@ -285,6 +298,8 @@ export class FinancialPaymentResponseMapper {
       currency: aggregate.amount.currency.value,
 
       status: aggregate.status.value,
+
+      channel: aggregate.channel.value,
 
       // -----------------------------------------------------------------------
       // Lifecycle

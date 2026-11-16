@@ -91,6 +91,8 @@ import type { FinancialPaymentStatus } from '../value-objects/financial-payment-
 
 import type { Money } from '../value-objects/money.vo';
 
+import type { FinancialPaymentChannel } from '../value-objects/financial-payment-channel.vo';
+
 import type { FinancialReferencePublicId } from '../value-objects/financial-reference-public-id.vo';
 
 import type { FinancialReferenceType } from '../value-objects/financial-reference-type.vo';
@@ -186,6 +188,10 @@ export class FinancialPaymentAggregate extends AggregateRoot<FinancialPaymentAgg
 
   public get amount(): Money {
     return this.payment.amount;
+  }
+
+  public get channel(): FinancialPaymentChannel {
+    return this.payment.channel;
   }
 
   public get status(): FinancialPaymentStatus {
@@ -644,6 +650,9 @@ export class FinancialPaymentAggregate extends AggregateRoot<FinancialPaymentAgg
   /**
    * Emits the FinancialPaymentCreated event.
    *
+   * Includes the payment channel so downstream subscribers can distinguish
+   * STK Push from C2B payments.
+   *
    * This is intentionally separate from create() so that aggregate creation
    * and event recording remain explicit.
    *
@@ -656,6 +665,7 @@ export class FinancialPaymentAggregate extends AggregateRoot<FinancialPaymentAgg
         this.publicId,
         this.accountId,
         this.amount,
+        this.channel,
         this.status,
         this.methodId,
         this.referenceType,

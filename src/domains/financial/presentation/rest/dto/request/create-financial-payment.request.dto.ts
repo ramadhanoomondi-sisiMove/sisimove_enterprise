@@ -43,7 +43,7 @@
 // Validation
 // -----------------------------------------------------------------------------
 
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 // -----------------------------------------------------------------------------
 // DTO
@@ -54,10 +54,11 @@ import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
  *
  * Transport values remain primitives at the HTTP boundary.
  *
- * The controller/application boundary converts them into:
+ * The application boundary converts them into:
  *
  * - PublicEntityId
  * - Money
+ * - FinancialPaymentChannel
  * - FinancialPaymentMethodPublicId
  * - FinancialReferenceType
  * - FinancialReferencePublicId
@@ -122,6 +123,29 @@ export class CreateFinancialPaymentDto {
   public readonly currency!: string;
 
   // ===========================================================================
+  // Payment Channel
+  // ===========================================================================
+
+  /**
+   * Channel through which the Financial Payment will be funded.
+   *
+   * Supported channels:
+   *
+   * - STK_PUSH: SisiMove initiates an M-PESA payment prompt.
+   * - C2B: The customer independently pays through the registered
+   *        M-PESA PayBill or Till.
+   *
+   * This describes the payment execution channel, not the payment method.
+   *
+   * The application boundary converts this primitive value into the
+   * FinancialPaymentChannel value object.
+   */
+  @IsString()
+  @IsNotEmpty()
+  @IsIn(['STK_PUSH', 'C2B'])
+  public readonly channel!: string;
+
+  // ===========================================================================
   // Payment Method
   // ===========================================================================
 
@@ -133,6 +157,8 @@ export class CreateFinancialPaymentDto {
    *
    * The DTO does not accept provider credentials, card details, mobile-money
    * credentials, tokens, or other payment-sensitive information.
+   *
+   * A C2B payment does not require a registered Financial Payment Method.
    */
   @IsOptional()
   @IsString()

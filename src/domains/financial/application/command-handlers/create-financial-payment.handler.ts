@@ -158,6 +158,7 @@ export class CreateFinancialPaymentHandler implements CommandHandler<
       const payment = FinancialPaymentEntity.create(
         command.accountId,
         command.amount,
+        command.channel,
         command.methodId,
         command.referenceType,
         command.referencePublicId,

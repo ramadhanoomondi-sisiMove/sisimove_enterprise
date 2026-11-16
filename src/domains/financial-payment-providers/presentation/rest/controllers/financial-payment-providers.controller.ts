@@ -66,7 +66,6 @@ import {
   DisableFinancialPaymentProviderCommand,
   EnableFinancialPaymentProviderCapabilityCommand,
   EnableFinancialPaymentProviderCommand,
-  TestMpesaConnectionCommand,
   UpdateFinancialPaymentProviderCommand,
 } from '../../../application/commands';
 
@@ -130,8 +129,6 @@ import type { FinancialPaymentProviderResponse } from '../mappers/financial-paym
 // -----------------------------------------------------------------------------
 
 import { FinancialPaymentProviderResponseMapper } from '../mappers/financial-payment-provider.response.mapper';
-import type { MpesaOAuthAuthenticationResult } from '../../../infrastructure/mpesa/authentication/mpesa-oauth.types';
-// =============================================================================
 // Controller
 // =============================================================================
 
@@ -196,13 +193,6 @@ export class FinancialPaymentProvidersController {
     private readonly configureMpesaHandler: CommandHandler<
       ConfigureMpesaCommand,
       string
-    >,
-    @Inject(
-      FINANCIAL_PAYMENT_PROVIDER_TOKENS.COMMAND_HANDLERS.TEST_MPESA_CONNECTION,
-    )
-    private readonly testMpesaConnectionHandler: CommandHandler<
-      TestMpesaConnectionCommand,
-      MpesaOAuthAuthenticationResult
     >,
     // -------------------------------------------------------------------------
     // Query Handlers
@@ -465,19 +455,75 @@ export class FinancialPaymentProvidersController {
     @Param('providerPublicId') providerPublicId: string,
     @Body() dto: ConfigureMpesaRequestDto,
   ): Promise<{ configurationReference: string; message: string }> {
+    // -------------------------------------------------------------------------
+    // 1. Validate optional C2B configuration
+    // -------------------------------------------------------------------------
+
+    const hasC2BShortcode = dto.c2bShortcode !== undefined;
+    const hasC2BBusinessType = dto.c2bBusinessType !== undefined;
+
+    if (hasC2BShortcode !== hasC2BBusinessType) {
+      throw new BadRequestException(
+        'C2B configuration requires both c2bShortcode and c2bBusinessType.',
+      );
+    }
+
+    const c2b =
+      hasC2BShortcode && hasC2BBusinessType
+        ? {
+            shortcode: dto.c2bShortcode!,
+            businessType: dto.c2bBusinessType! as 'PAYBILL' | 'BUY_GOODS',
+          }
+        : undefined;
+
+    // -------------------------------------------------------------------------
+    // 2. Map optional B2C configuration
+    // -------------------------------------------------------------------------
+
+    const hasB2CConfiguration =
+      dto.b2cShortcode !== undefined ||
+      dto.initiatorName !== undefined ||
+      dto.securityCredential !== undefined;
+
+    const b2c = hasB2CConfiguration
+      ? {
+          shortcode: dto.b2cShortcode!,
+          initiatorName: dto.initiatorName!,
+          securityCredential: dto.securityCredential!,
+        }
+      : undefined;
+
+    // -------------------------------------------------------------------------
+    // 3. Create configuration command
+    // -------------------------------------------------------------------------
+
     const command = new ConfigureMpesaCommand(
       new FinancialPaymentProviderPublicId(providerPublicId),
       FinancialPaymentProviderEnvironment.create(dto.environment),
+
+      // Shared Daraja authentication.
       dto.consumerKey,
       dto.consumerSecret,
+
+      // STK Push configuration.
       dto.shortcode,
       dto.passkey,
-      dto.b2cShortcode,
-      dto.initiatorName,
-      dto.securityCredential,
+
+      // Audit metadata.
       new Date(),
       randomUUID(),
+      undefined,
+
+      // Optional C2B configuration.
+      c2b,
+
+      // Optional B2C configuration.
+      b2c,
     );
+
+    // -------------------------------------------------------------------------
+    // 4. Execute configuration
+    // -------------------------------------------------------------------------
 
     const reference = await this.configureMpesaHandler.execute(command);
 
@@ -486,35 +532,6 @@ export class FinancialPaymentProvidersController {
       message:
         'M-PESA credentials saved securely. Connection validation is still pending.',
     };
-  }
-
-  // ---------------------------------------------------------------------------
-  // Test M-PESA Connection
-  // ---------------------------------------------------------------------------
-
-  @ApiBearerAuth('access-token')
-  @ApiOperation({
-    summary: 'Test M-PESA connection',
-    description:
-      'Validates M-PESA Daraja OAuth authentication using the stored credentials. Access tokens and credentials are never returned.',
-  })
-  @ApiParam({
-    name: 'providerPublicId',
-    type: String,
-    required: true,
-    description: 'Public ID of the M-PESA provider.',
-  })
-  @Post(':providerPublicId/test-connection')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('financial:manage')
-  public async testMpesaConnection(
-    @Param('providerPublicId') providerPublicId: string,
-  ): Promise<MpesaOAuthAuthenticationResult> {
-    const command = new TestMpesaConnectionCommand(
-      new FinancialPaymentProviderPublicId(providerPublicId),
-    );
-
-    return this.testMpesaConnectionHandler.execute(command);
   }
   // ---------------------------------------------------------------------------
   // Update Provider Details

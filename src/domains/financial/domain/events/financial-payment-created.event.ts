@@ -1,10 +1,36 @@
+// -----------------------------------------------------------------------------
+// Financial Payment — Created Event
+// -----------------------------------------------------------------------------
+//
+// Domain event raised when a Financial Payment aggregate is created.
+//
+// The event carries the payment channel so downstream subscribers can
+// distinguish STK Push from customer-initiated C2B payments.
+//
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Foundation
+// -----------------------------------------------------------------------------
+
 import type { EventMetadata } from '../../../../foundation/kernel/domain/domain-event';
+
 import type { PublicEntityId } from '../../../../foundation/kernel/domain/public-entity-id';
+
 import { PublicEntityId as PublicEntityIdValue } from '../../../../foundation/kernel/domain/public-entity-id';
+
+// -----------------------------------------------------------------------------
+// Financial Domain Event
+// -----------------------------------------------------------------------------
 
 import { FinancialDomainEvent } from './financial-domain.event';
 
+// -----------------------------------------------------------------------------
+// Domain Value Objects — Types
+// -----------------------------------------------------------------------------
+
 import type {
+  FinancialPaymentChannel,
   FinancialPaymentMethodPublicId,
   FinancialPaymentStatus,
   FinancialReferencePublicId,
@@ -12,7 +38,12 @@ import type {
   Money,
 } from '../value-objects';
 
+// -----------------------------------------------------------------------------
+// Domain Value Objects — Runtime Values
+// -----------------------------------------------------------------------------
+
 import {
+  FinancialPaymentChannel as FinancialPaymentChannelValue,
   FinancialPaymentMethodPublicId as FinancialPaymentMethodPublicIdValue,
   FinancialPaymentStatus as FinancialPaymentStatusValue,
   FinancialReferencePublicId as FinancialReferencePublicIdValue,
@@ -30,6 +61,7 @@ export class FinancialPaymentCreatedEvent extends FinancialDomainEvent {
     publicId: PublicEntityId,
     accountId: PublicEntityId,
     amount: Money,
+    channel: FinancialPaymentChannel,
     status: FinancialPaymentStatus,
     methodId: FinancialPaymentMethodPublicId | undefined,
     referenceType: FinancialReferenceType | undefined,
@@ -37,7 +69,7 @@ export class FinancialPaymentCreatedEvent extends FinancialDomainEvent {
     correlationId: string,
     causationId?: string,
     eventVersion = 1,
-    eventSchemaVersion = '1.0.0',
+    eventSchemaVersion = '1.1.0',
     restoredMetadata?: EventMetadata,
   ) {
     super(
@@ -54,6 +86,7 @@ export class FinancialPaymentCreatedEvent extends FinancialDomainEvent {
     this.publicId = publicId;
     this.accountId = accountId;
     this.amount = amount;
+    this.channel = channel;
     this.status = status;
     this.methodId = methodId;
     this.referenceType = referenceType;
@@ -63,10 +96,15 @@ export class FinancialPaymentCreatedEvent extends FinancialDomainEvent {
   public readonly publicId: PublicEntityId;
   public readonly accountId: PublicEntityId;
   public readonly amount: Money;
+  public readonly channel: FinancialPaymentChannel;
   public readonly status: FinancialPaymentStatus;
   public readonly methodId: FinancialPaymentMethodPublicId | undefined;
   public readonly referenceType: FinancialReferenceType | undefined;
   public readonly referencePublicId: FinancialReferencePublicId | undefined;
+
+  // ===========================================================================
+  // Rehydrate
+  // ===========================================================================
 
   public static rehydrate(
     metadata: EventMetadata,
@@ -77,6 +115,7 @@ export class FinancialPaymentCreatedEvent extends FinancialDomainEvent {
       accountId,
       amount,
       currency,
+      channel,
       status,
       methodId,
       referenceType,
@@ -88,6 +127,7 @@ export class FinancialPaymentCreatedEvent extends FinancialDomainEvent {
       typeof accountId !== 'string' ||
       typeof amount !== 'number' ||
       typeof currency !== 'string' ||
+      (channel !== undefined && typeof channel !== 'string') ||
       typeof status !== 'string' ||
       (methodId !== undefined && typeof methodId !== 'string') ||
       (referenceType !== undefined && typeof referenceType !== 'string') ||
@@ -102,11 +142,19 @@ export class FinancialPaymentCreatedEvent extends FinancialDomainEvent {
       );
     }
 
+    // Older persisted events were created before payment channels existed.
+    // Those payments used the original STK Push workflow.
+    const paymentChannel =
+      typeof channel === 'string'
+        ? FinancialPaymentChannelValue.create(channel)
+        : FinancialPaymentChannelValue.create('STK_PUSH');
+
     return new FinancialPaymentCreatedEvent(
       metadata.aggregateId,
       new PublicEntityIdValue(publicId),
       new PublicEntityIdValue(accountId),
       MoneyValue.fromCode(amount, currency),
+      paymentChannel,
       FinancialPaymentStatusValue.create(status),
       typeof methodId === 'string'
         ? new FinancialPaymentMethodPublicIdValue(methodId)
@@ -125,6 +173,10 @@ export class FinancialPaymentCreatedEvent extends FinancialDomainEvent {
     );
   }
 
+  // ===========================================================================
+  // Payload
+  // ===========================================================================
+
   protected override getPayload(): Record<string, unknown> {
     return {
       ...this.getBasePayload(),
@@ -132,6 +184,7 @@ export class FinancialPaymentCreatedEvent extends FinancialDomainEvent {
       accountId: this.accountId.toString(),
       amount: this.amount.amount,
       currency: this.amount.currency.toString(),
+      channel: this.channel.toString(),
       status: this.status.toString(),
       methodId: this.methodId?.toString(),
       referenceType: this.referenceType?.toString(),

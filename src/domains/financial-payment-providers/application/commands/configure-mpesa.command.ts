@@ -5,6 +5,27 @@ import type { FinancialPaymentProviderEnvironment } from '../../domain/value-obj
 import type { FinancialPaymentProviderPublicId } from '../../domain/value-objects/financial-payment-provider-public-id.vo';
 
 // =============================================================================
+// M-PESA C2B Configuration
+// =============================================================================
+
+export type MpesaC2BBusinessType = 'PAYBILL' | 'BUY_GOODS';
+
+export interface MpesaC2BConfiguration {
+  readonly shortcode: string;
+  readonly businessType: MpesaC2BBusinessType;
+}
+
+// =============================================================================
+// M-PESA B2C Configuration
+// =============================================================================
+
+export interface MpesaB2CConfiguration {
+  readonly shortcode: string;
+  readonly initiatorName: string;
+  readonly securityCredential: string;
+}
+
+// =============================================================================
 // Configure M-PESA Command
 // =============================================================================
 //
@@ -13,27 +34,37 @@ import type { FinancialPaymentProviderPublicId } from '../../domain/value-object
 // Supported capabilities:
 //
 // - STK Push: customer payments into SisiMove.
-// - C2B: customer payments into SisiMove.
-// - B2C Disbursement: payments from SisiMove to customer phone numbers.
+// - C2B: customer payments into SisiMove through PayBill or Buy Goods.
+// - B2C Disbursement: payments from SisiMove to beneficiaries.
 //
-// Shared credentials:
+// Shared Daraja authentication:
 // - Consumer Key
 // - Consumer Secret
 //
-// STK Push / C2B:
+// STK Push configuration:
 // - Business Shortcode
-// - Passkey (STK Push)
+// - Passkey
 //
-// B2C credentials:
+// C2B configuration (optional):
+// - C2B Business Shortcode
+// - Business Type: PAYBILL or BUY_GOODS
+// - Confirmation and Validation URLs (where applicable)
+//
+// B2C configuration (optional):
 // - B2C Party A Shortcode
 // - Initiator Name
 // - Security Credential
 //
 // Important:
-// - shortcode and b2cShortcode are deliberately separate.
-// - Existing STK Push/C2B configuration remains unchanged.
+// - C2B and B2C configurations are optional.
+// - STK Push must work independently of C2B and B2C.
+// - Existing STK shortcode and passkey remain unchanged.
+// - C2B shortcode is independently configurable.
+// - B2C shortcode is deliberately separate from the STK shortcode.
+// - C2B business type must be explicitly configured.
+// - B2C credentials are validated only when B2C is configured.
+// - Plaintext credentials must be encrypted before persistence.
 // - Callback URLs are derived from application configuration.
-// - Plaintext credentials are encrypted before persistence.
 //
 // =============================================================================
 
@@ -51,19 +82,11 @@ export class ConfigureMpesaCommand implements Command {
     public readonly consumerSecret: string,
 
     // -------------------------------------------------------------------------
-    // STK Push / C2B
+    // STK Push Configuration
     // -------------------------------------------------------------------------
 
     public readonly shortcode: string,
     public readonly passkey: string,
-
-    // -------------------------------------------------------------------------
-    // B2C Disbursement
-    // -------------------------------------------------------------------------
-
-    public readonly b2cShortcode: string,
-    public readonly initiatorName: string,
-    public readonly securityCredential: string,
 
     // -------------------------------------------------------------------------
     // Audit Metadata
@@ -72,6 +95,18 @@ export class ConfigureMpesaCommand implements Command {
     public readonly createdAt: Date,
     public readonly correlationId: string,
     public readonly causationId?: string,
+
+    // -------------------------------------------------------------------------
+    // Optional C2B Customer Payment Configuration
+    // -------------------------------------------------------------------------
+
+    public readonly c2b?: MpesaC2BConfiguration,
+
+    // -------------------------------------------------------------------------
+    // Optional B2C Disbursement Configuration
+    // -------------------------------------------------------------------------
+
+    public readonly b2c?: MpesaB2CConfiguration,
   ) {}
 }
 

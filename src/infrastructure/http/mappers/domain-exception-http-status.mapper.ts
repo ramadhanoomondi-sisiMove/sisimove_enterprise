@@ -1,3 +1,5 @@
+////src/infrasture/http/mappers/domain-exception-http-status.mappers
+
 // -----------------------------------------------------------------------------
 // Domain Exception → HTTP Status Mapper
 // -----------------------------------------------------------------------------

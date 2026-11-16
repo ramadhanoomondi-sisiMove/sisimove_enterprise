@@ -89,7 +89,7 @@ function ProviderMpesaConfigurationFormContent({
   const [passkey, setPasskey] = useState('');
 
   // ---------------------------------------------------------------------------
-  // B2C Withdrawal Configuration
+  // B2C Withdrawal Configuration — Optional
   // ---------------------------------------------------------------------------
 
   const [b2cShortcode, setB2cShortcode] = useState('');
@@ -100,6 +100,22 @@ function ProviderMpesaConfigurationFormContent({
   // Validation
   // ---------------------------------------------------------------------------
 
+  const hasAnyB2CField =
+    b2cShortcode.trim().length > 0 ||
+    initiatorName.trim().length > 0 ||
+    securityCredential.trim().length > 0;
+
+  const isB2CValid =
+    !hasAnyB2CField ||
+    (
+      b2cShortcode.trim().length > 0 &&
+      b2cShortcode.trim().length <= 20 &&
+      initiatorName.trim().length > 0 &&
+      initiatorName.trim().length <= 100 &&
+      securityCredential.trim().length > 0 &&
+      securityCredential.trim().length <= 4096
+    );
+
   const isValid =
     consumerKey.trim().length > 0 &&
     consumerKey.trim().length <= 255 &&
@@ -109,12 +125,7 @@ function ProviderMpesaConfigurationFormContent({
     shortcode.trim().length <= 20 &&
     passkey.trim().length > 0 &&
     passkey.trim().length <= 255 &&
-    b2cShortcode.trim().length > 0 &&
-    b2cShortcode.trim().length <= 20 &&
-    initiatorName.trim().length > 0 &&
-    initiatorName.trim().length <= 100 &&
-    securityCredential.trim().length > 0 &&
-    securityCredential.trim().length <= 4096;
+    isB2CValid;
 
   // ---------------------------------------------------------------------------
   // Submission
@@ -131,9 +142,15 @@ function ProviderMpesaConfigurationFormContent({
       consumerSecret: consumerSecret.trim(),
       shortcode: shortcode.trim(),
       passkey: passkey.trim(),
-      b2cShortcode: b2cShortcode.trim(),
-      initiatorName: initiatorName.trim(),
-      securityCredential: securityCredential.trim(),
+
+      // Include B2C credentials only when all three fields are completed.
+      ...(hasAnyB2CField
+        ? {
+            b2cShortcode: b2cShortcode.trim(),
+            initiatorName: initiatorName.trim(),
+            securityCredential: securityCredential.trim(),
+          }
+        : {}),
     });
   };
 
@@ -297,8 +314,14 @@ function ProviderMpesaConfigurationFormContent({
             </h3>
 
             <p className="text-xs leading-5 text-muted-foreground">
+              B2C configuration is optional. Leave all three fields blank
+              if you only want to configure STK Push. If you enter any
+              B2C field, all three must be completed.
+            </p>
+
+            <p className="text-xs leading-5 text-muted-foreground">
               Configure Safaricom credentials for sending business
-              payments from SisiMove to customer M-PESA accounts.
+              payments from SisiMove to beneficiary M-PESA accounts.
             </p>
           </div>
 
@@ -309,7 +332,7 @@ function ProviderMpesaConfigurationFormContent({
               htmlFor="mpesa-b2c-shortcode"
               className="text-sm font-medium text-foreground"
             >
-              B2C Party A Shortcode *
+              B2C Party A Shortcode (Optional)
             </label>
 
             <input
@@ -318,7 +341,7 @@ function ProviderMpesaConfigurationFormContent({
               value={b2cShortcode}
               onChange={(event) => setB2cShortcode(event.target.value)}
               disabled={isLoading}
-              required
+              required={hasAnyB2CField}
               maxLength={20}
               className={inputClass}
               placeholder="Enter B2C Party A shortcode"
@@ -338,7 +361,7 @@ function ProviderMpesaConfigurationFormContent({
               htmlFor="mpesa-initiator-name"
               className="text-sm font-medium text-foreground"
             >
-              B2C Initiator Name *
+              B2C Initiator Name (Optional)
             </label>
 
             <input
@@ -348,7 +371,7 @@ function ProviderMpesaConfigurationFormContent({
               value={initiatorName}
               onChange={(event) => setInitiatorName(event.target.value)}
               disabled={isLoading}
-              required
+              required={hasAnyB2CField}
               maxLength={100}
               className={inputClass}
               placeholder="Enter B2C initiator username"
@@ -362,7 +385,7 @@ function ProviderMpesaConfigurationFormContent({
               htmlFor="mpesa-security-credential"
               className="text-sm font-medium text-foreground"
             >
-              B2C Security Credential *
+              B2C Security Credential (Optional)
             </label>
 
             <input
@@ -374,7 +397,7 @@ function ProviderMpesaConfigurationFormContent({
                 setSecurityCredential(event.target.value)
               }
               disabled={isLoading}
-              required
+              required={hasAnyB2CField}
               maxLength={4096}
               className={inputClass}
               placeholder="Paste RSA-encrypted security credential"
@@ -392,8 +415,9 @@ function ProviderMpesaConfigurationFormContent({
 
         {!isValid && (
           <p className="text-xs text-amber-700">
-            Complete all required fields and check their maximum
-            lengths before saving.
+            {hasAnyB2CField && !isB2CValid
+              ? 'Complete all three B2C fields or leave all three blank.'
+              : 'Complete all required STK Push fields and check their maximum lengths.'}
           </p>
         )}
 

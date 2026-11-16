@@ -65,43 +65,36 @@ export class FinancialPaymentCreatedSubscriber implements OnModuleInit {
     }
 
     // -------------------------------------------------------------------------
-    // 2. Execute payment processing
-    // -------------------------------------------------------------------------
-    //
-    // The handler is responsible for safely classifying the M-PESA outcome.
-    //
-    // ACCEPTED:
-    //   The provider accepted the request. Await callback confirmation.
-    //
-    // UNCERTAIN:
-    //   Preserve the active attempt. Do not submit another STK Push.
-    //
-    // REJECTED:
-    //   Record the explicit provider rejection.
-    //
-    // When the handler safely records any of these outcomes and returns
-    // normally, this event can be marked as processed.
-    //
-    // Genuine processing errors must propagate to the outbox dispatcher.
+    // 2. Route payment according to its execution channel
     // -------------------------------------------------------------------------
 
-    await this.processPaymentHandler.execute(
-      new ProcessFinancialPaymentCommand(
-        event.publicId,
-        event.metadata.correlationId ?? eventId,
-        event.metadata.causationId ?? eventId,
-      ),
-    );
+    if (event.channel.isStkPush()) {
+      // STK Push is initiated by SisiMove.
+      // Preserve the existing payment-processing workflow.
+
+      await this.processPaymentHandler.execute(
+        new ProcessFinancialPaymentCommand(
+          event.publicId,
+          event.metadata.correlationId ?? eventId,
+          event.metadata.causationId ?? eventId,
+        ),
+      );
+    } else if (event.channel.isC2B()) {
+      // C2B is an incoming customer-initiated payment.
+      // Do not initiate STK Push or execute the outbound payment handler.
+      // The Daraja C2B callback will drive payment processing.
+    } else {
+      throw new Error(
+        `Unsupported Financial Payment Channel: ${event.channel.toString()}`,
+      );
+    }
 
     // -------------------------------------------------------------------------
     // 3. Mark event processed
     // -------------------------------------------------------------------------
-    //
-    // Only mark after successful handler completion.
-    // Do not put this operation in a finally block.
-    //
-    // If the handler throws, the outbox must retain its retry behaviour.
-    // -------------------------------------------------------------------------
+
+    // Mark only after the relevant channel handling completes.
+    // If STK processing throws, allow the outbox retry behaviour to continue.
 
     await this.idempotencyStore.markProcessed(CONSUMER_NAME, eventId);
   }

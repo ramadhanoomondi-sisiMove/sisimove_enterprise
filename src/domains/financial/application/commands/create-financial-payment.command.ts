@@ -18,8 +18,8 @@
 // Payment attempts are intentionally NOT created by this command.
 // Provider execution attempts are created later through the payment lifecycle.
 //
-// The command establishes the payment intent and its originating business
-// reference, when applicable.
+// The command establishes the payment intent, its payment channel, and its
+// originating business reference, when applicable.
 //
 // This command does NOT:
 // - Execute a payment provider.
@@ -46,10 +46,11 @@ import type { Command } from '../../../../foundation/kernel/application/command'
 // -----------------------------------------------------------------------------
 
 import type {
+  FinancialPaymentChannel,
+  FinancialPaymentMethodPublicId,
   FinancialReferencePublicId,
   FinancialReferenceType,
   Money,
-  FinancialPaymentMethodPublicId,
 } from '../../domain/value-objects';
 
 // -----------------------------------------------------------------------------
@@ -71,6 +72,7 @@ import type { PublicEntityId } from '../../../../foundation/kernel/domain/public
  *
  * - accountId
  * - amount
+ * - channel
  *
  * Optional domain inputs:
  *
@@ -103,6 +105,15 @@ export class CreateFinancialPaymentCommand implements Command {
      * Monetary amount of the Financial Payment.
      */
     public readonly amount: Money,
+
+    /**
+     * Channel through which the Financial Payment will be funded.
+     *
+     * STK_PUSH: SisiMove initiates the M-PESA payment prompt.
+     * C2B: The customer independently pays through the registered PayBill
+     *      or Till.
+     */
+    public readonly channel: FinancialPaymentChannel,
 
     /**
      * Correlation identifier for the command and resulting domain events.

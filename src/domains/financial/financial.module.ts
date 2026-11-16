@@ -1,37 +1,40 @@
-// -----------------------------------------------------------------------------
-// Financial — NestJS Module
-// -----------------------------------------------------------------------------
-//
-// Central NestJS module for the Financial bounded context.
-//
-// Registered capabilities:
-//
-// - Financial Account
-// - Financial Account Hold
-// - Financial Account Withdrawal
-// - Financial Transaction
-// - Financial Payment
-// - Financial Payment Method
-// - Financial Settlement
-// - Financial Disbursement
-//
-// The module wires:
-//
-// - REST controllers;
-// - infrastructure repository providers;
-// - application command handlers;
-// - application query handlers;
-// - dependency-injection tokens;
-// - platform financial account provisioning.
-//
-// Domain behavior remains inside aggregate roots.
-//
-// Application handlers coordinate workflows and delegate behavior to the
-// appropriate aggregates.
-//
-// Persistence remains behind domain repository contracts.
-//
-// -----------------------------------------------------------------------------
+/**
+ * -----------------------------------------------------------------------------
+ * Financial — NestJS Module
+ * -----------------------------------------------------------------------------
+ *
+ * Central NestJS module for the Financial bounded context.
+ *
+ * Registered capabilities:
+ *
+ * - Financial Account
+ * - Financial Account Hold
+ * - Financial Account Withdrawal
+ * - Financial Transaction
+ * - Financial Payment
+ * - Financial Payment Method
+ * - Financial Settlement
+ * - Financial Disbursement
+ * - M-PESA HTTP Controllers
+ *
+ * The module wires:
+ *
+ * - REST controllers;
+ * - infrastructure repository providers;
+ * - application command handlers;
+ * - application query handlers;
+ * - dependency-injection tokens;
+ * - platform financial account provisioning.
+ *
+ * Domain behavior remains inside aggregate roots.
+ *
+ * Application handlers coordinate workflows and delegate behavior to the
+ * appropriate aggregates.
+ *
+ * Persistence remains behind domain repository contracts.
+ *
+ * -----------------------------------------------------------------------------
+ */
 
 // -----------------------------------------------------------------------------
 // NestJS
@@ -49,27 +52,14 @@ import { AccountingModule } from '../accounting/accounting.module';
 
 import { PrismaModule } from '../../infrastructure/database/prisma/prisma.module';
 
-// -----------------------------------------------------------------------------
-// M-PESA Integration
-// -----------------------------------------------------------------------------
-
-import { MpesaModule } from '../financial-payment-providers/infrastructure/mpesa/mpesa.module';
-
-import { MpesaCallbackService } from '../financial-payment-providers/infrastructure/mpesa/payments/mpesa-callback.service';
-
-import { QueryMpesaPaymentStatusService } from '../financial-payment-providers/infrastructure/mpesa/payments/query-mpesa-payment-status.service';
-
 import { FinancialPaymentProvidersModule } from '../financial-payment-providers/financial-payment-providers.module';
 
-import { FINANCIAL_PAYMENT_CALLBACK_PROVIDERS } from '../financial-payment-providers/infrastructure/dependency-injection';
+import { MpesaModule } from '../../mpesa/mpesa.module';
 
-import { MpesaB2CCallbackService } from '../financial-payment-providers/infrastructure/mpesa/b2c/services/mpesa-b2c-callback.service';
+import { QueryMpesaPaymentStatusService } from './application/services/query-mpesa-payment-status.service';
 
-import { MpesaB2CDisbursementService } from '../financial-payment-providers/infrastructure/mpesa/b2c/services/mpesa-b2c-disbursement.service';
-
-import { MpesaB2CCallbackController } from '../financial-payment-providers/infrastructure/mpesa/b2c/controllers/mpesa-b2c-callback.controller';
 // -----------------------------------------------------------------------------
-// Presentation — Controllers
+// Presentation — Financial Controllers
 // -----------------------------------------------------------------------------
 
 import {
@@ -83,7 +73,14 @@ import {
   FinancialDisbursementsController,
 } from './presentation/rest/controllers';
 
-import { MpesaCallbackController } from '../financial-payment-providers/infrastructure/mpesa/payments/mpesa-callback.controller';
+// -----------------------------------------------------------------------------
+// Presentation — M-PESA Controllers
+// -----------------------------------------------------------------------------
+
+import { StkPushController } from '../../mpesa/stk-push/stk-push.controller';
+import { C2BController } from '../../mpesa/c2b/c2b.controller';
+import { B2CController } from '../../mpesa/b2c/b2c.controller';
+import { MpesaConnectionController } from '../../mpesa/mpesa-connection.controller';
 
 // -----------------------------------------------------------------------------
 // Infrastructure — Dependency Injection
@@ -205,6 +202,9 @@ import {
 // -----------------------------------------------------------------------------
 // Application — Query Handlers
 // -----------------------------------------------------------------------------
+// -------------------------------------------------------------------------
+// M-PESA Payment Status Query
+// -------------------------------------------------------------------------
 
 import {
   // ---------------------------------------------------------------------------
@@ -246,9 +246,6 @@ import {
   // ---------------------------------------------------------------------------
   // Financial Payment Method
   // ---------------------------------------------------------------------------
-  // ---------------------------------------------------------------------------
-  // Financial Payment Method
-  // ---------------------------------------------------------------------------
   GetAccountFinancialPaymentMethodsHandler,
   GetDefaultFinancialPaymentMethodHandler,
   GetFinancialPaymentMethodHandler,
@@ -267,10 +264,19 @@ import {
   GetFinancialDisbursementAttemptsHandler,
   CountFinancialPaymentsQueryHandler,
 } from './application/query-handlers';
+
+// -----------------------------------------------------------------------------
+// Events and Subscribers
+// -----------------------------------------------------------------------------
+
 import { EventRehydratorRegistry } from '../../infrastructure/events/event-rehydrator.registry';
+
 import { FinancialPaymentCreatedSubscriber } from './application/subscribers/financial-payment-created.subscriber';
+
 import { FinancialPaymentSucceededSubscriber } from './application/subscribers/financial-payment-succeeded.subscriber';
+
 import { FinancialEventRegistry } from './domain/events/registry/financial-event.registry';
+
 import { FinancialAccountWithdrawalProcessingSubscriber } from './application/subscribers/financial-account-withdrawal-processing.subscriber';
 
 import { FinancialAccountWithdrawalRequestedSubscriber } from './application/subscribers/financial-account-withdrawal-requested.subscriber';
@@ -278,6 +284,7 @@ import { FinancialAccountWithdrawalRequestedSubscriber } from './application/sub
 import { FinancialDisbursementCreatedSubscriber } from './application/subscribers/financial-disbursement-created.subscriber';
 
 import { FinancialDisbursementAttemptSucceededSubscriber } from './application/subscribers/financial-disbursement-attempt-succeeded-subscriber';
+
 // =============================================================================
 // Module
 // =============================================================================
@@ -291,14 +298,19 @@ import { FinancialDisbursementAttemptSucceededSubscriber } from './application/s
     IdentityModule,
     AccountingModule,
     PrismaModule,
-    MpesaModule,
     FinancialPaymentProvidersModule,
+    MpesaModule,
   ],
+
   // ===========================================================================
   // Controllers
   // ===========================================================================
 
   controllers: [
+    // -------------------------------------------------------------------------
+    // Financial Controllers
+    // -------------------------------------------------------------------------
+
     FinancialAccountsController,
     FinancialAccountHoldsController,
     FinancialAccountWithdrawalsController,
@@ -308,9 +320,14 @@ import { FinancialDisbursementAttemptSucceededSubscriber } from './application/s
     FinancialSettlementsController,
     FinancialDisbursementsController,
 
-    // M-PESA Callbacks
-    MpesaCallbackController,
-    MpesaB2CCallbackController,
+    // -------------------------------------------------------------------------
+    // M-PESA Controllers
+    // -------------------------------------------------------------------------
+
+    StkPushController,
+    C2BController,
+    B2CController,
+    MpesaConnectionController,
   ],
 
   // ===========================================================================
@@ -331,21 +348,12 @@ import { FinancialDisbursementAttemptSucceededSubscriber } from './application/s
     ...FINANCIAL_SETTLEMENT_PROVIDERS,
     ...FINANCIAL_DISBURSEMENT_PROVIDERS,
     ...FINANCIAL_DISBURSEMENT_CALLBACK_PROVIDERS,
-    ...FINANCIAL_PAYMENT_CALLBACK_PROVIDERS,
 
     // =========================================================================
     // Application — System Financial Account Provisioning
     // =========================================================================
 
     PlatformFinancialAccountsProvisioner,
-    QueryMpesaPaymentStatusService,
-
-    // M-PESA — Disbursement and Callback Processing
-    // -------------------------------------------------------------------------
-
-    MpesaCallbackService,
-    MpesaB2CDisbursementService,
-    MpesaB2CCallbackService,
 
     // -------------------------------------------------------------------------
     // Financial Payment — Event Subscribers
@@ -354,20 +362,26 @@ import { FinancialDisbursementAttemptSucceededSubscriber } from './application/s
     FinancialPaymentCreatedSubscriber,
     FinancialPaymentSucceededSubscriber,
 
+    // -------------------------------------------------------------------------
     // Financial Account Withdrawal — Event Subscribers
+    // -------------------------------------------------------------------------
 
     FinancialAccountWithdrawalRequestedSubscriber,
     FinancialAccountWithdrawalProcessingSubscriber,
 
+    // -------------------------------------------------------------------------
     // Financial Disbursement — Event Subscribers
+    // -------------------------------------------------------------------------
 
     FinancialDisbursementCreatedSubscriber,
     FinancialDisbursementAttemptSucceededSubscriber,
 
-    // Financial Payment — Event Subscribers
+    // -------------------------------------------------------------------------
+    // M-PESA Payment Status Query
+    // -------------------------------------------------------------------------
 
-    FinancialPaymentCreatedSubscriber,
-    FinancialPaymentSucceededSubscriber,
+    QueryMpesaPaymentStatusService,
+
     // =========================================================================
     // Financial Account
     // =========================================================================
@@ -396,10 +410,12 @@ import { FinancialDisbursementAttemptSucceededSubscriber } from './application/s
       provide: FINANCIAL_ACCOUNT_TOKENS.QUERY_HANDLERS.GET,
       useClass: GetFinancialAccountHandler,
     },
+
     {
       provide: FINANCIAL_ACCOUNT_HOLD_TOKENS.QUERY_HANDLERS.GET_ALL,
       useClass: GetAllFinancialAccountHoldsHandler,
     },
+
     {
       provide: FINANCIAL_ACCOUNT_TOKENS.QUERY_HANDLERS.GET_ME,
       useClass: GetMyFinancialAccountHandler,
@@ -409,6 +425,7 @@ import { FinancialDisbursementAttemptSucceededSubscriber } from './application/s
       provide: FINANCIAL_ACCOUNT_TOKENS.QUERY_HANDLERS.GET_BALANCE,
       useClass: GetFinancialAccountBalanceHandler,
     },
+
     {
       provide: FINANCIAL_ACCOUNT_TOKENS.QUERY_HANDLERS.GET_ALL,
       useClass: GetFinancialAccountsHandler,
@@ -486,11 +503,13 @@ import { FinancialDisbursementAttemptSucceededSubscriber } from './application/s
       provide: FINANCIAL_ACCOUNT_WITHDRAWAL_TOKENS.QUERY_HANDLERS.GET_BY_STATUS,
       useClass: GetFinancialAccountWithdrawalsByStatusHandler,
     },
+
     {
       provide:
         FINANCIAL_ACCOUNT_WITHDRAWAL_TOKENS.QUERY_HANDLERS.GET_ALL_PLATFORM,
       useClass: GetAllFinancialAccountWithdrawalsHandler,
     },
+
     // =========================================================================
     // Financial Transaction
     // =========================================================================
@@ -524,6 +543,7 @@ import { FinancialDisbursementAttemptSucceededSubscriber } from './application/s
       provide: FINANCIAL_TRANSACTION_TOKENS.QUERY_HANDLERS.GET,
       useClass: GetFinancialTransactionHandler,
     },
+
     {
       provide: FINANCIAL_TRANSACTION_TOKENS.QUERY_HANDLERS.GET_ALL,
       useClass: GetAllFinancialTransactionsHandler,
@@ -578,10 +598,12 @@ import { FinancialDisbursementAttemptSucceededSubscriber } from './application/s
       provide: FINANCIAL_PAYMENT_TOKENS.QUERY_HANDLERS.GET,
       useClass: GetFinancialPaymentHandler,
     },
+
     {
       provide: FINANCIAL_PAYMENT_TOKENS.QUERY_HANDLERS.GET_ALL,
       useClass: GetAllFinancialPaymentsQueryHandler,
     },
+
     {
       provide: FinancialEventRegistry,
       useFactory: (registry: EventRehydratorRegistry) => {
@@ -593,10 +615,12 @@ import { FinancialDisbursementAttemptSucceededSubscriber } from './application/s
       },
       inject: [EventRehydratorRegistry],
     },
+
     {
       provide: FINANCIAL_PAYMENT_TOKENS.COMMAND_HANDLERS.POST_SUCCESSFUL,
       useClass: PostSuccessfulFinancialPaymentHandler,
     },
+
     // =========================================================================
     // Financial Payment Method
     // =========================================================================
@@ -605,6 +629,7 @@ import { FinancialDisbursementAttemptSucceededSubscriber } from './application/s
       provide: FINANCIAL_PAYMENT_METHOD_TOKENS.COMMAND_HANDLERS.ADD,
       useClass: AddFinancialPaymentMethodHandler,
     },
+
     {
       provide: FINANCIAL_PAYMENT_METHOD_TOKENS.QUERY_HANDLERS.GET_ALL,
       useClass: GetAllFinancialPaymentMethodsHandler,
@@ -629,6 +654,7 @@ import { FinancialDisbursementAttemptSucceededSubscriber } from './application/s
       provide: FINANCIAL_PAYMENT_METHOD_TOKENS.QUERY_HANDLERS.GET_DEFAULT,
       useClass: GetDefaultFinancialPaymentMethodHandler,
     },
+
     {
       provide: FINANCIAL_PAYMENT_METHOD_TOKENS.QUERY_HANDLERS.GET_ACCOUNT,
       useClass: GetAccountFinancialPaymentMethodsHandler,
@@ -677,6 +703,7 @@ import { FinancialDisbursementAttemptSucceededSubscriber } from './application/s
       provide: FINANCIAL_SETTLEMENT_TOKENS.QUERY_HANDLERS.GET_ITEMS,
       useClass: GetFinancialSettlementItemsHandler,
     },
+
     {
       provide: FINANCIAL_PAYMENT_TOKENS.QUERY_HANDLERS.COUNT,
       useClass: CountFinancialPaymentsQueryHandler,
@@ -724,19 +751,6 @@ import { FinancialDisbursementAttemptSucceededSubscriber } from './application/s
 
   // ===========================================================================
   // Exports
-  // ===========================================================================
-  //
-  // The Financial bounded context normally exposes repository contracts to
-  // other modules that need to coordinate directly with Financial aggregates.
-  //
-  // Registration is a cross-bounded-context application workflow that also
-  // needs to initialize the user's FinancialAccount. Therefore the specific
-  // Financial Account creation command handler is exposed as an application
-  // capability.
-  //
-  // We deliberately export only the handler required by the registration
-  // workflow rather than exposing every Financial command handler.
-  //
   // ===========================================================================
 
   exports: [

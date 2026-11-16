@@ -2835,6 +2835,7 @@ model FinancialPayment {
 
   referenceType     String?
   referencePublicId String?
+  channel           FinancialPaymentChannel @default(STK_PUSH)
 
   initiatedAt DateTime  @default(now())
   completedAt DateTime?
@@ -2904,9 +2905,9 @@ model FinancialPaymentAttempt {
 
   paymentId String
 
-  payment FinancialPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-
-  status FinancialPaymentAttemptStatus @default(PENDING)
+  payment                      FinancialPayment              @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  financialPaymentC2BCallbacks FinancialPaymentC2BCallback[]
+  status                       FinancialPaymentAttemptStatus @default(PENDING)
 
   provider          String
   providerReference String?
@@ -4628,6 +4629,61 @@ model FinancialPaymentCallback {
   @@map("financial_payment_callbacks")
 }
 
+// =============================================================================
+// FINANCIAL PAYMENT C2B CALLBACK
+// =============================================================================
+//
+// Durable record of incoming M-PESA C2B confirmation callbacks.
+//
+// C2B callbacks are identified by the provider transaction ID (TransID).
+// This model remains separate from the STK Push callback model because
+// C2B does not use MerchantRequestID or CheckoutRequestID.
+//
+
+model FinancialPaymentC2BCallback {
+  id       String @id @default(uuid())
+  publicId String @unique @default(uuid())
+
+  // Provider identity
+  provider String
+
+  // M-PESA C2B transaction identifiers
+  transId           String
+  billRefNumber     String?
+  businessShortCode String
+  transTime         String?
+
+  // Incoming payment details
+  transAmount Decimal @db.Decimal(18, 2)
+  msisdn      String
+
+  // Optional link to the matching payment attempt
+  attemptId String?
+
+  attempt FinancialPaymentAttempt? @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+
+  // Original callback payload for audit and reconciliation
+  payload Json
+
+  // Callback processing lifecycle
+  status FinancialPaymentCallbackStatus @default(PENDING)
+
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+
+  // Audit timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Provider transaction IDs must be unique
+  @@unique([provider, transId])
+  @@index([attemptId])
+  @@index([billRefNumber])
+  @@index([status, receivedAt])
+  @@index([msisdn])
+  @@map("financial_payment_c2b_callbacks")
+}
+
 enum AccountingPeriodFrequency {
   MONTHLY
 }
@@ -5522,4 +5578,9 @@ enum FinancialDisbursementCallbackStatus {
   PENDING
   PROCESSED
   FAILED
+}
+
+enum FinancialPaymentChannel {
+  STK_PUSH
+  C2B
 }

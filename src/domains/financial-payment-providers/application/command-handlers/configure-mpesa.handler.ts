@@ -27,23 +27,35 @@ import { FinancialPaymentProviderException } from '../../domain/exceptions/finan
 // Supported capabilities:
 //
 // - STK Push: customer payments into SisiMove.
-// - C2B: customer payments into SisiMove.
-// - B2C Disbursement: payments from SisiMove to customer phone numbers.
+// - C2B: customer payments into SisiMove through PayBill or Buy Goods.
+// - B2C Disbursement: payments from SisiMove to beneficiaries.
 //
 // Shared authentication:
 // - Consumer Key
 // - Consumer Secret
 //
-// STK Push / C2B:
+// STK Push:
 // - Business Shortcode
-// - STK Push Passkey
+// - Passkey
 //
-// B2C Disbursement:
+// Optional C2B configuration:
+// - C2B Business Shortcode
+// - Business Type (PAYBILL or BUY_GOODS)
+//
+// Optional B2C configuration:
 // - B2C Party A Shortcode
 // - Initiator Name
 // - Security Credential
 //
-// All credentials are encrypted before persistence.
+// Important:
+// - C2B and B2C configurations are optional.
+// - Existing STK Push configuration remains unchanged.
+// - C2B shortcode is independently configurable.
+// - B2C shortcode remains separate from the STK shortcode.
+// - C2B business type is explicitly persisted.
+// - B2C credentials are saved only when supplied.
+// - All plaintext credentials are encrypted before persistence.
+// - Callback URLs are managed separately.
 //
 // =============================================================================
 
@@ -109,45 +121,53 @@ export class ConfigureMpesaHandler implements CommandHandler<
     }
 
     // -------------------------------------------------------------------------
-    // 4. Save encrypted Daraja configuration
+    // 4. Build Daraja configuration
     // -------------------------------------------------------------------------
     //
-    // Shared authentication:
-    // - Consumer Key
-    // - Consumer Secret
+    // Preserve the existing STK Push configuration.
     //
-    // STK Push / C2B:
-    // - shortcode
-    // - passkey
-    //
-    // B2C Disbursement:
-    // - b2cShortcode
-    // - initiatorName
-    // - securityCredential
-    //
-    // Callback URLs are managed separately through application configuration.
+    // C2B and B2C configurations are added independently and only when supplied.
+    // -------------------------------------------------------------------------
+
+    const darajaConfiguration = {
+      // Shared authentication.
+      consumerKey: command.consumerKey,
+      consumerSecret: command.consumerSecret,
+
+      // Existing STK Push configuration.
+      shortcode: command.shortcode,
+      passkey: command.passkey,
+
+      // Optional C2B customer payment configuration.
+      ...(command.c2b
+        ? {
+            c2bShortcode: command.c2b.shortcode,
+            c2bBusinessType: command.c2b.businessType,
+          }
+        : {}),
+
+      // Optional B2C disbursement configuration.
+      ...(command.b2c
+        ? {
+            b2cShortcode: command.b2c.shortcode,
+            initiatorName: command.b2c.initiatorName,
+            securityCredential: command.b2c.securityCredential,
+          }
+        : {}),
+    };
+
+    // -------------------------------------------------------------------------
+    // 5. Save encrypted Daraja configuration
     // -------------------------------------------------------------------------
 
     const reference = await this.configurationService.saveConfiguration(
       provider.id.toString(),
       command.environment,
-      {
-        consumerKey: command.consumerKey,
-        consumerSecret: command.consumerSecret,
-
-        // Existing STK Push / C2B configuration.
-        shortcode: command.shortcode,
-        passkey: command.passkey,
-
-        // Separate B2C configuration.
-        b2cShortcode: command.b2cShortcode,
-        initiatorName: command.initiatorName,
-        securityCredential: command.securityCredential,
-      },
+      darajaConfiguration,
     );
 
     // -------------------------------------------------------------------------
-    // 5. Update provider environment
+    // 6. Update provider environment
     // -------------------------------------------------------------------------
 
     provider.updateEnvironment(
@@ -157,7 +177,7 @@ export class ConfigureMpesaHandler implements CommandHandler<
     );
 
     // -------------------------------------------------------------------------
-    // 6. Update configuration reference
+    // 7. Update configuration reference
     // -------------------------------------------------------------------------
 
     provider.updateConfigurationReference(
@@ -167,7 +187,7 @@ export class ConfigureMpesaHandler implements CommandHandler<
     );
 
     // -------------------------------------------------------------------------
-    // 7. Move provider into configuring state
+    // 8. Move provider into configuring state
     // -------------------------------------------------------------------------
 
     provider.changeStatus(
@@ -177,7 +197,7 @@ export class ConfigureMpesaHandler implements CommandHandler<
     );
 
     // -------------------------------------------------------------------------
-    // 8. Persist provider
+    // 9. Persist provider
     // -------------------------------------------------------------------------
 
     await this.providerRepository.save(provider);

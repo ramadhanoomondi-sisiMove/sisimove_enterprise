@@ -5,7 +5,12 @@
 // Application service responsible for:
 // - encrypting configuration before persistence;
 // - retrieving and decrypting stored configuration;
+// - preserving existing configuration fields when updating;
 // - keeping plaintext credentials out of persistence and API responses.
+//
+// Configuration updates merge with the existing configuration for the same
+// provider and environment. This prevents an STK-only update from accidentally
+// deleting previously stored B2C credentials.
 //
 // -----------------------------------------------------------------------------
 
@@ -57,12 +62,29 @@ export class FinancialPaymentProviderConfigurationService {
 
     this.validateConfiguration(configuration);
 
-    const plaintext = JSON.stringify(configuration);
+    const normalizedProviderId = providerId.trim();
+
+    // Retrieve existing configuration for this provider and environment.
+    const existingConfiguration = await this.getConfiguration(
+      normalizedProviderId,
+      environment,
+    );
+
+    // Merge new values with existing values.
+    // Supplied values take precedence over previously stored values.
+    const mergedConfiguration: FinancialPaymentProviderConfigurationPayload = {
+      ...(existingConfiguration ?? {}),
+      ...configuration,
+    };
+
+    this.validateConfiguration(mergedConfiguration);
+
+    const plaintext = JSON.stringify(mergedConfiguration);
 
     const encryptedPayload = this.encryptionService.encrypt(plaintext);
 
     return this.configurationPort.save({
-      providerId: providerId.trim(),
+      providerId: normalizedProviderId,
       environment,
       encryptedPayload,
     });

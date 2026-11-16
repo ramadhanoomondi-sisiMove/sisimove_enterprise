@@ -16,8 +16,6 @@ import type { EncryptionService } from '../../../../foundation/security';
 
 import { SECURITY_ENCRYPTION } from '../../../../infrastructure/security/security.tokens';
 
-import { MpesaOAuthService } from '../mpesa/authentication/mpesa-oauth.service';
-
 // =============================================================================
 // Providers
 // =============================================================================
@@ -60,10 +58,4 @@ export const FINANCIAL_PAYMENT_PROVIDER_PROVIDERS: Provider[] = [
     provide: FinancialPaymentProviderConfigurationService,
     useClass: FinancialPaymentProviderConfigurationService,
   },
-
-  // ===========================================================================
-  // M-PESA OAuth Authentication Service
-  // ===========================================================================
-
-  MpesaOAuthService,
 ];
