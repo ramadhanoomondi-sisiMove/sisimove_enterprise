@@ -8,13 +8,13 @@
 // Workflow:
 //
 // 1. Subscribe to FinancialAccountWithdrawalProcessing.
-// 2. Check event idempotency.
+// 2. Acquire an idempotent processing claim.
 // 3. Load the persisted withdrawal.
 // 4. Verify the withdrawal belongs to the account in the event.
 // 5. Recover an existing disbursement, if one was already created.
 // 6. Otherwise dispatch CreateFinancialDisbursementCommand.
 // 7. Atomically link the disbursement to the withdrawal.
-// 8. Mark the event as processed.
+// 8. Mark the event as processed using the claim token.
 //
 // This subscriber does NOT:
 //
@@ -95,6 +95,10 @@ import { FinancialAccountWithdrawalNotFoundException } from '../../domain/except
 
 const CONSUMER_NAME = 'FinancialAccountWithdrawalProcessingSubscriber';
 
+const EVENT_NAME = 'FinancialAccountWithdrawalProcessing';
+
+const CLAIM_LEASE_DURATION_MS = 120_000;
+
 // =============================================================================
 // Subscriber
 // =============================================================================
@@ -130,7 +134,7 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
 
   public onModuleInit(): void {
     this.eventBus.subscribe<FinancialAccountWithdrawalProcessingEvent>(
-      'FinancialAccountWithdrawalProcessing',
+      EVENT_NAME,
       async (event) => this.handle(event),
     );
   }
@@ -145,15 +149,49 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
     const eventId = event.metadata.eventId;
 
     // -------------------------------------------------------------------------
-    // 1. Check whether this event has already been processed
+    // 1. Validate Event Identity
     // -------------------------------------------------------------------------
 
-    if (await this.idempotencyStore.exists(CONSUMER_NAME, eventId)) {
+    if (!eventId) {
+      throw new Error(
+        'FinancialAccountWithdrawalProcessingEvent has no event ID.',
+      );
+    }
+
+    if (!event.withdrawalPublicId) {
+      throw new Error(
+        'FinancialAccountWithdrawalProcessingEvent has no withdrawal public ID.',
+      );
+    }
+
+    if (!event.accountPublicId) {
+      throw new Error(
+        'FinancialAccountWithdrawalProcessingEvent has no account public ID.',
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. Acquire an Exclusive Processing Claim
+    // -------------------------------------------------------------------------
+    //
+    // A null token means the event has already been processed or another
+    // worker currently owns an unexpired claim.
+    //
+    // In either case, this worker must not continue.
+    // -------------------------------------------------------------------------
+
+    const claimToken = await this.idempotencyStore.acquireClaim(
+      CONSUMER_NAME,
+      eventId,
+      CLAIM_LEASE_DURATION_MS,
+    );
+
+    if (claimToken === null) {
       return;
     }
 
     // -------------------------------------------------------------------------
-    // 2. Load the persisted withdrawal
+    // 3. Load the Persisted Withdrawal
     // -------------------------------------------------------------------------
 
     const withdrawal = await this.withdrawalRepository.findByPublicId(
@@ -167,7 +205,7 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
     }
 
     // -------------------------------------------------------------------------
-    // 3. Verify account ownership
+    // 4. Verify Account Ownership
     // -------------------------------------------------------------------------
 
     if (withdrawal.accountPublicId.value !== event.accountPublicId.value) {
@@ -177,7 +215,7 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
     }
 
     // -------------------------------------------------------------------------
-    // 4. Recover an existing disbursement
+    // 5. Recover an Existing Disbursement
     // -------------------------------------------------------------------------
     //
     // The originating withdrawal public ID must be persisted on the
@@ -211,13 +249,18 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
         existingPublicId,
       );
 
-      await this.idempotencyStore.markProcessed(CONSUMER_NAME, eventId);
+      // Complete event processing using the current claim.
+      await this.idempotencyStore.markProcessed(
+        CONSUMER_NAME,
+        eventId,
+        claimToken,
+      );
 
       return;
     }
 
     // -------------------------------------------------------------------------
-    // 5. Check withdrawal link consistency
+    // 6. Check Withdrawal Link Consistency
     // -------------------------------------------------------------------------
 
     if (withdrawal.hasDisbursement) {
@@ -227,7 +270,7 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
     }
 
     // -------------------------------------------------------------------------
-    // 6. Create Financial Disbursement
+    // 7. Create Financial Disbursement
     // -------------------------------------------------------------------------
     //
     // IMPORTANT:
@@ -259,7 +302,7 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
     );
 
     // -------------------------------------------------------------------------
-    // 7. Atomically Link Disbursement to Withdrawal
+    // 8. Atomically Link Disbursement to Withdrawal
     // -------------------------------------------------------------------------
 
     await this.ensureDisbursementLinked(
@@ -268,17 +311,24 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
     );
 
     // -------------------------------------------------------------------------
-    // 8. Mark Event Processed
+    // 9. Mark Event as Processed
     // -------------------------------------------------------------------------
     //
     // Only mark after disbursement creation and withdrawal linking succeed.
     //
-    // If either operation fails, propagate the error so event delivery can
-    // retry. A subsequent delivery can recover the disbursement using its
-    // unique withdrawalPublicId.
+    // The claim token proves ownership. If the claim has expired or been
+    // replaced, the idempotency store must reject completion.
+    //
+    // If either operation fails, the error propagates so event delivery
+    // can retry. A subsequent delivery can recover the disbursement using
+    // its unique withdrawalPublicId.
     // -------------------------------------------------------------------------
 
-    await this.idempotencyStore.markProcessed(CONSUMER_NAME, eventId);
+    await this.idempotencyStore.markProcessed(
+      CONSUMER_NAME,
+      eventId,
+      claimToken,
+    );
   }
 
   // ===========================================================================

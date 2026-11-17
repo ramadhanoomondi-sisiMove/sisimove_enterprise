@@ -1,4 +1,3 @@
-
 import type {
   AdminProviderCapabilityType,
 } from './admin-provider.enums';
@@ -64,17 +63,6 @@ export interface AdminProviderCapabilityOperationParams
 // -----------------------------------------------------------------------------
 // M-PESA Configuration
 // -----------------------------------------------------------------------------
-//
-// SisiMove M-PESA purposes:
-//
-// 1. TOP-UP
-//    - STK Push
-//    - C2B PayBill / Buy Goods
-//
-// 2. WITHDRAWAL
-//    - B2C withdrawal of customer available funds
-//
-// -----------------------------------------------------------------------------
 
 export type AdminMpesaEnvironment = 'SANDBOX' | 'PRODUCTION';
 
@@ -83,37 +71,22 @@ export type AdminMpesaC2BBusinessType =
   | 'BUY_GOODS';
 
 export interface AdminConfigureMpesaInput {
-  // ---------------------------------------------------------------------------
   // Environment
-  // ---------------------------------------------------------------------------
-
   environment: AdminMpesaEnvironment;
 
-  // ---------------------------------------------------------------------------
   // Shared Daraja Authentication
-  // ---------------------------------------------------------------------------
-
   consumerKey: string;
   consumerSecret: string;
 
-  // ---------------------------------------------------------------------------
   // STK Push — Customer Top-up
-  // ---------------------------------------------------------------------------
-
   shortcode: string;
   passkey: string;
 
-  // ---------------------------------------------------------------------------
-  // C2B — Customer Top-up Through PayBill / Buy Goods
-  // ---------------------------------------------------------------------------
-
+  // C2B — Customer Top-up
   c2bShortcode?: string;
   c2bBusinessType?: AdminMpesaC2BBusinessType;
 
-  // ---------------------------------------------------------------------------
-  // B2C — Withdrawal of Customer Available Funds
-  // ---------------------------------------------------------------------------
-
+  // B2C — Available-Funds Withdrawal
   b2cShortcode?: string;
   initiatorName?: string;
   securityCredential?: string;
@@ -127,6 +100,27 @@ export interface AdminConfigureMpesaResponse {
   configurationReference: string;
   message: string;
 }
+
+// -----------------------------------------------------------------------------
+// M-PESA Configuration Status
+// -----------------------------------------------------------------------------
+
+export interface AdminGetMpesaConfigurationStatusParams
+  extends AdminProviderOperationParams {
+  environment: AdminMpesaEnvironment;
+}
+
+export interface AdminMpesaConfigurationStatus {
+  environment: AdminMpesaEnvironment;
+
+  sharedAuthenticationConfigured: boolean;
+  stkPushConfigured: boolean;
+  c2bConfigured: boolean;
+  b2cConfigured: boolean;
+}
+
+export type AdminMpesaConfigurationStatusResponse =
+  AdminMpesaConfigurationStatus;
 
 // -----------------------------------------------------------------------------
 // M-PESA Connection Test

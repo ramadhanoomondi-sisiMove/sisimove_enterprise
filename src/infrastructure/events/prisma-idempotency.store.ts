@@ -125,6 +125,13 @@ export class PrismaIdempotencyStore implements IdempotencyStore {
    * Only the worker holding the current claim token can complete
    * processing. A stale worker cannot complete a newer worker's claim.
    */
+  /**
+   * Atomically records successful processing and releases the claim.
+   *
+   * Only the worker holding the current, unexpired claim token can
+   * complete processing. A stale worker cannot complete a newer
+   * worker's claim.
+   */
   public async markProcessed(
     consumerName: string,
     eventId: string,
@@ -136,13 +143,17 @@ export class PrismaIdempotencyStore implements IdempotencyStore {
       Array<{ storedEventId: string }>
     >(Prisma.sql`
       WITH owned_claim AS (
-        DELETE FROM event_processing_claims AS claim
-        USING stored_events AS stored_event
-        WHERE claim."storedEventId" = stored_event.id
-          AND stored_event."eventId" = ${eventId}
+        SELECT
+          claim.id,
+          claim."storedEventId"
+        FROM event_processing_claims AS claim
+        INNER JOIN stored_events AS stored_event
+          ON stored_event.id = claim."storedEventId"
+        WHERE stored_event."eventId" = ${eventId}
           AND claim."consumerName" = ${consumerName}
           AND claim."claimToken" = ${claimToken}
-        RETURNING claim."storedEventId"
+          AND claim."lockedUntil" > NOW()
+        FOR UPDATE OF claim
       ),
       inserted_event AS (
         INSERT INTO processed_events (
@@ -160,14 +171,21 @@ export class PrismaIdempotencyStore implements IdempotencyStore {
         ON CONFLICT ("consumerName", "storedEventId")
         DO NOTHING
         RETURNING id
+      ),
+      deleted_claim AS (
+        DELETE FROM event_processing_claims AS claim
+        USING owned_claim, inserted_event
+        WHERE claim.id = owned_claim.id
+          AND claim."claimToken" = ${claimToken}
+        RETURNING claim."storedEventId"
       )
       SELECT "storedEventId"
-      FROM owned_claim
+      FROM deleted_claim
     `);
 
     if (completedClaims.length === 0) {
       throw new Error(
-        `Cannot mark event "${eventId}" as processed: claim ownership is missing or has expired.`,
+        `Cannot mark event "${eventId}" as processed: claim ownership is missing, stale, expired, or the event has already been processed.`,
       );
     }
   }

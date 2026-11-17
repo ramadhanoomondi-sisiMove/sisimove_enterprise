@@ -8,7 +8,7 @@
 // Responsibilities:
 //
 // 1. Subscribe to FinancialPaymentSucceededEvent.
-// 2. Check event idempotency.
+// 2. Acquire an idempotent processing claim.
 // 3. Execute PostSuccessfulFinancialPaymentCommand.
 // 4. Mark the event as processed after successful handler completion.
 //
@@ -68,6 +68,15 @@ import { FinancialPaymentSucceededEvent } from '../../domain/events/financial-pa
 
 const CONSUMER_NAME = 'FinancialPaymentSucceededSubscriber';
 
+/**
+ * Maximum time a worker may hold a processing claim.
+ *
+ * This should exceed the normal execution time of the financial posting
+ * handler. If processing can exceed this duration, claim renewal should
+ * be introduced in the idempotency infrastructure.
+ */
+const CLAIM_LEASE_DURATION_MS = 5 * 60 * 1000;
+
 // -----------------------------------------------------------------------------
 // Subscriber
 // -----------------------------------------------------------------------------
@@ -118,7 +127,32 @@ export class FinancialPaymentSucceededSubscriber implements OnModuleInit {
     }
 
     // -------------------------------------------------------------------------
-    // 2. Execute financial posting
+    // 2. Acquire an exclusive processing claim
+    // -------------------------------------------------------------------------
+    //
+    // The claim prevents multiple workers from processing the same event
+    // concurrently for this consumer.
+    //
+    // A null token means:
+    //
+    // - Another worker currently owns an unexpired claim; or
+    // - The event has already been processed.
+    //
+    // In either case, this worker must not execute the command.
+    // -------------------------------------------------------------------------
+
+    const claimToken = await this.idempotencyStore.acquireClaim(
+      CONSUMER_NAME,
+      eventId,
+      CLAIM_LEASE_DURATION_MS,
+    );
+
+    if (claimToken === null) {
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // 3. Execute financial posting
     // -------------------------------------------------------------------------
     //
     // The posting handler is responsible for:
@@ -131,6 +165,9 @@ export class FinancialPaymentSucceededSubscriber implements OnModuleInit {
     // - Persisting the complete financial posting atomically.
     //
     // Genuine posting errors must propagate to the event dispatcher.
+    //
+    // If posting fails, the event is NOT marked as processed.
+    // The claim expires naturally, allowing a later retry.
     // -------------------------------------------------------------------------
 
     await this.postSuccessfulPaymentHandler.execute(
@@ -142,17 +179,22 @@ export class FinancialPaymentSucceededSubscriber implements OnModuleInit {
     );
 
     // -------------------------------------------------------------------------
-    // 3. Mark event processed
+    // 4. Mark event processed
     // -------------------------------------------------------------------------
     //
-    // Only mark after successful posting handler completion.
+    // The claim token proves ownership.
+    //
+    // The idempotency store must verify that this token still owns a valid,
+    // unexpired claim before recording successful processing.
     //
     // Never put this operation in a finally block.
-    //
-    // If posting fails, the event must remain eligible for retry.
     // -------------------------------------------------------------------------
 
-    await this.idempotencyStore.markProcessed(CONSUMER_NAME, eventId);
+    await this.idempotencyStore.markProcessed(
+      CONSUMER_NAME,
+      eventId,
+      claimToken,
+    );
   }
 }
 

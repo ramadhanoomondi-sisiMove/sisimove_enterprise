@@ -9,6 +9,8 @@
  *
  * - Financial Payment Provider
  * - Financial Payment Provider Capability
+ * - Financial Payment Callback
+ * - Financial Payment C2B Callback
  *
  * The module wires:
  *
@@ -47,13 +49,19 @@ import { FinancialPaymentProvidersController } from './presentation/rest/control
 // Infrastructure — Dependency Injection
 // -----------------------------------------------------------------------------
 
-import { FINANCIAL_PAYMENT_PROVIDER_PROVIDERS } from './infrastructure/dependency-injection';
+import {
+  FINANCIAL_PAYMENT_PROVIDER_PROVIDERS,
+  FINANCIAL_PAYMENT_CALLBACK_PROVIDERS,
+  FINANCIAL_PAYMENT_C2B_CALLBACK_PROVIDERS,
+} from './infrastructure/dependency-injection';
 
 // -----------------------------------------------------------------------------
 // Application — Tokens
 // -----------------------------------------------------------------------------
 
 import { FINANCIAL_PAYMENT_PROVIDER_TOKENS } from './application/financial-payment-providers.tokens';
+
+import { FINANCIAL_PAYMENT_C2B_CALLBACK_TOKENS } from './application/financial-payment-c2b-callback.tokens';
 
 // -----------------------------------------------------------------------------
 // Application — Services
@@ -120,6 +128,8 @@ import {
     // =========================================================================
 
     ...FINANCIAL_PAYMENT_PROVIDER_PROVIDERS,
+    ...FINANCIAL_PAYMENT_CALLBACK_PROVIDERS,
+    ...FINANCIAL_PAYMENT_C2B_CALLBACK_PROVIDERS,
 
     // =========================================================================
     // Financial Payment Provider — Command Handlers
@@ -198,8 +208,19 @@ import {
   // ===========================================================================
 
   exports: [
+    // -------------------------------------------------------------------------
+    // Financial Payment Provider
+    // -------------------------------------------------------------------------
+
     FINANCIAL_PAYMENT_PROVIDER_TOKENS.REPOSITORY,
+
     FinancialPaymentProviderConfigurationService,
+
+    // -------------------------------------------------------------------------
+    // Financial Payment C2B Callback
+    // -------------------------------------------------------------------------
+
+    FINANCIAL_PAYMENT_C2B_CALLBACK_TOKENS.REPOSITORY,
   ],
 })
 export class FinancialPaymentProvidersModule {}

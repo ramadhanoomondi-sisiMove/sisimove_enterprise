@@ -27,6 +27,10 @@ const CLAIM_LEASE_DURATION_MS = 120_000;
 
 @Injectable()
 export class FinancialPaymentCreatedSubscriber implements OnModuleInit {
+  // ===========================================================================
+  // Constructor
+  // ===========================================================================
+
   public constructor(
     private readonly eventBus: EventBus,
 
@@ -59,7 +63,18 @@ export class FinancialPaymentCreatedSubscriber implements OnModuleInit {
     const eventId = event.metadata.eventId;
 
     // -------------------------------------------------------------------------
-    // 1. Atomically acquire processing claim
+    // 1. Acquire an exclusive processing claim
+    // -------------------------------------------------------------------------
+    //
+    // The claim prevents multiple workers from processing the same event
+    // concurrently for this consumer.
+    //
+    // A null token means:
+    //
+    // - The event has already been processed; or
+    // - Another worker currently owns an unexpired claim.
+    //
+    // In either case, this worker must not continue.
     // -------------------------------------------------------------------------
 
     const claimToken = await this.idempotencyStore.acquireClaim(
@@ -68,7 +83,6 @@ export class FinancialPaymentCreatedSubscriber implements OnModuleInit {
       CLAIM_LEASE_DURATION_MS,
     );
 
-    // Event is already processed or another worker owns the claim.
     if (claimToken === null) {
       return;
     }
@@ -79,7 +93,11 @@ export class FinancialPaymentCreatedSubscriber implements OnModuleInit {
 
     if (event.channel.isStkPush()) {
       // STK Push is initiated by SisiMove.
+      //
       // Preserve the existing payment-processing workflow.
+      //
+      // The handler is responsible for executing the appropriate
+      // payment-processing operation.
 
       await this.processPaymentHandler.execute(
         new ProcessFinancialPaymentCommand(
@@ -90,8 +108,12 @@ export class FinancialPaymentCreatedSubscriber implements OnModuleInit {
       );
     } else if (event.channel.isC2B()) {
       // C2B is an incoming customer-initiated payment.
-      // Do not initiate STK Push or execute the outbound payment handler.
-      // The Daraja C2B callback will drive payment processing.
+      //
+      // Do not initiate STK Push.
+      // Do not execute the outbound payment-processing workflow.
+      //
+      // The Daraja C2B callback is responsible for reporting the
+      // external payment event that drives subsequent processing.
     } else {
       throw new Error(
         `Unsupported Financial Payment Channel: ${event.channel.toString()}`,
@@ -99,12 +121,17 @@ export class FinancialPaymentCreatedSubscriber implements OnModuleInit {
     }
 
     // -------------------------------------------------------------------------
-    // 3. Mark event processed and release claim
+    // 3. Mark event processed
     // -------------------------------------------------------------------------
-
-    // Completion is accepted only when this worker still owns the claim.
-    // If processing throws, this statement is not reached.
-    // The claim remains until its lease expires.
+    //
+    // Mark only after the relevant channel responsibility has completed.
+    //
+    // The claim token proves ownership. The idempotency store must reject
+    // completion if the claim has expired or has been replaced.
+    //
+    // If processing throws, this operation is not reached. The claim
+    // remains until its lease expires, allowing a later retry.
+    // -------------------------------------------------------------------------
 
     await this.idempotencyStore.markProcessed(
       CONSUMER_NAME,
@@ -113,3 +140,9 @@ export class FinancialPaymentCreatedSubscriber implements OnModuleInit {
     );
   }
 }
+
+// =============================================================================
+// Default Export
+// =============================================================================
+
+export default FinancialPaymentCreatedSubscriber;

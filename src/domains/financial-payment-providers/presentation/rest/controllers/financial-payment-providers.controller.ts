@@ -76,6 +76,7 @@ import type { FinancialPaymentProviderResponse } from '../mappers/financial-paym
 
 import { FinancialPaymentProviderResponseMapper } from '../mappers/financial-payment-provider.response.mapper';
 
+import { FinancialPaymentProviderConfigurationService } from '../../../application/services/financial-payment-provider-configuration.service';
 // =============================================================================
 // M-PESA Configuration Types
 // =============================================================================
@@ -167,6 +168,7 @@ export class FinancialPaymentProvidersController {
       GetAvailableFinancialPaymentProvidersQuery,
       FinancialPaymentProviderAggregate[]
     >,
+    private readonly configurationService: FinancialPaymentProviderConfigurationService,
   ) {}
 
   // ===========================================================================
@@ -361,7 +363,7 @@ export class FinancialPaymentProvidersController {
   @ApiOperation({
     summary: 'Configure M-PESA Daraja credentials',
     description: `
-      Configures SisiMove's M-PESA integration for two purposes only:
+      Configures SisiMove's M-PESA integration for two purposes:
 
       1. TOP-UP:
          - STK Push: customer pays SisiMove through a phone prompt.
@@ -373,7 +375,7 @@ export class FinancialPaymentProvidersController {
       Credentials are encrypted before persistence and are never returned.
 
       FinancialModule remains responsible for authorizing withdrawals,
-      updating available balances, posting ledger entries and reconciliation.
+      financial posting, balances and reconciliation.
       M-PESA callbacks report external provider events only.
     `,
   })
@@ -391,7 +393,26 @@ export class FinancialPaymentProvidersController {
     @Body() dto: ConfigureMpesaRequestDto,
   ): Promise<{ configurationReference: string; message: string }> {
     // -------------------------------------------------------------------------
-    // 1. Validate optional C2B configuration
+    // 1. Validate required STK/shared Daraja configuration
+    // -------------------------------------------------------------------------
+
+    const requiredFields = {
+      consumerKey: dto.consumerKey,
+      consumerSecret: dto.consumerSecret,
+      shortcode: dto.shortcode,
+      passkey: dto.passkey,
+    };
+
+    for (const [field, value] of Object.entries(requiredFields)) {
+      if (typeof value !== 'string' || value.trim().length === 0) {
+        throw new BadRequestException(
+          `${field} is required and cannot be empty.`,
+        );
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. Validate optional C2B configuration
     // -------------------------------------------------------------------------
 
     const hasC2BShortcode = dto.c2bShortcode !== undefined;
@@ -411,6 +432,10 @@ export class FinancialPaymentProvidersController {
       | undefined;
 
     if (hasC2BShortcode && hasC2BBusinessType) {
+      if (!dto.c2bShortcode?.trim()) {
+        throw new BadRequestException('C2B shortcode cannot be empty.');
+      }
+
       const businessType = dto.c2bBusinessType;
 
       if (businessType !== 'PAYBILL' && businessType !== 'BUY_GOODS') {
@@ -420,13 +445,13 @@ export class FinancialPaymentProvidersController {
       }
 
       c2b = {
-        shortcode: dto.c2bShortcode!,
+        shortcode: dto.c2bShortcode.trim(),
         businessType,
       };
     }
 
     // -------------------------------------------------------------------------
-    // 2. Validate optional B2C withdrawal configuration
+    // 3. Validate optional B2C withdrawal configuration
     // -------------------------------------------------------------------------
 
     const b2cFields = [
@@ -447,59 +472,78 @@ export class FinancialPaymentProvidersController {
       );
     }
 
-    const b2c = hasB2CConfiguration
-      ? {
-          shortcode: dto.b2cShortcode!,
-          initiatorName: dto.initiatorName!,
-          securityCredential: dto.securityCredential!,
+    let b2c:
+      | {
+          shortcode: string;
+          initiatorName: string;
+          securityCredential: string;
         }
-      : undefined;
+      | undefined;
 
-    // -------------------------------------------------------------------------
-    // 3. Validate required STK/shared configuration
-    // -------------------------------------------------------------------------
+    if (hasB2CConfiguration) {
+      if (
+        !dto.b2cShortcode?.trim() ||
+        !dto.initiatorName?.trim() ||
+        !dto.securityCredential?.trim()
+      ) {
+        throw new BadRequestException(
+          'B2C shortcode, initiator name and security credential cannot be empty.',
+        );
+      }
 
-    if (
-      !dto.consumerKey?.trim() ||
-      !dto.consumerSecret?.trim() ||
-      !dto.shortcode?.trim() ||
-      !dto.passkey?.trim()
-    ) {
-      throw new BadRequestException(
-        'Consumer Key, Consumer Secret, STK Shortcode and STK Passkey are required.',
-      );
+      if (dto.initiatorName.trim().length > 100) {
+        throw new BadRequestException(
+          'B2C initiator name cannot exceed 100 characters.',
+        );
+      }
+
+      b2c = {
+        shortcode: dto.b2cShortcode.trim(),
+        initiatorName: dto.initiatorName.trim(),
+        securityCredential: dto.securityCredential.trim(),
+      };
     }
 
     // -------------------------------------------------------------------------
-    // 4. Create configuration command
+    // 4. Create Configure M-PESA Command
+    // -------------------------------------------------------------------------
+    //
+    // Constructor order must remain aligned with ConfigureMpesaCommand:
+    //
+    // 1. providerPublicId
+    // 2. environment
+    // 3. consumerKey
+    // 4. consumerSecret
+    // 5. shortcode
+    // 6. passkey
+    // 7. createdAt
+    // 8. correlationId
+    // 9. causationId
+    // 10. c2b
+    // 11. b2c
+    //
     // -------------------------------------------------------------------------
 
     const command = new ConfigureMpesaCommand(
       new FinancialPaymentProviderPublicId(providerPublicId),
       FinancialPaymentProviderEnvironment.create(dto.environment),
 
-      // Shared Daraja authentication.
-      dto.consumerKey,
-      dto.consumerSecret,
+      dto.consumerKey.trim(),
+      dto.consumerSecret.trim(),
 
-      // STK Push top-up configuration.
-      dto.shortcode,
-      dto.passkey,
+      dto.shortcode.trim(),
+      dto.passkey.trim(),
 
-      // Audit metadata.
       new Date(),
       randomUUID(),
       undefined,
 
-      // Optional C2B top-up configuration.
       c2b,
-
-      // Optional B2C available-funds withdrawal configuration.
       b2c,
     );
 
     // -------------------------------------------------------------------------
-    // 5. Execute configuration
+    // 5. Execute Configuration
     // -------------------------------------------------------------------------
 
     const reference = await this.configureMpesaHandler.execute(command);
@@ -508,6 +552,96 @@ export class FinancialPaymentProvidersController {
       configurationReference: reference,
       message:
         'M-PESA credentials saved securely. Connection validation is still pending.',
+    };
+  }
+
+  // ===========================================================================
+  // M-PESA Configuration Status
+  // ===========================================================================
+
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get M-PESA configuration status',
+    description: `
+      Returns non-sensitive configuration status for M-PESA.
+
+      Reports whether shared Daraja authentication, STK Push,
+      C2B and B2C credentials have been configured.
+
+      Credentials and encrypted secrets are never returned.
+      Status is reported separately for Sandbox and Production.
+    `,
+  })
+  @ApiParam({
+    name: 'providerPublicId',
+    type: String,
+    required: true,
+    description: 'Public ID of the M-PESA provider.',
+  })
+  @Get(':providerPublicId/configuration-status')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('admin:read')
+  public async getMpesaConfigurationStatus(
+    @Param('providerPublicId') providerPublicId: string,
+    @Query('environment') environment: string,
+  ): Promise<{
+    environment: string;
+    sharedAuthenticationConfigured: boolean;
+    stkPushConfigured: boolean;
+    c2bConfigured: boolean;
+    b2cConfigured: boolean;
+  }> {
+    if (environment !== 'SANDBOX' && environment !== 'PRODUCTION') {
+      throw new BadRequestException(
+        'Environment must be SANDBOX or PRODUCTION.',
+      );
+    }
+
+    const provider = await this.getHandler.execute(
+      new GetFinancialPaymentProviderQuery(
+        new FinancialPaymentProviderPublicId(providerPublicId),
+      ),
+    );
+
+    if (provider.code.value !== 'MPESA') {
+      throw new BadRequestException(
+        'Configuration status is only available for M-PESA.',
+      );
+    }
+
+    const configuration = await this.configurationService.getConfiguration(
+      provider.id.toString(),
+      FinancialPaymentProviderEnvironment.create(environment),
+    );
+
+    const hasValue = (key: string): boolean =>
+      typeof configuration?.[key] === 'string' &&
+      configuration[key].trim().length > 0;
+
+    const sharedAuthenticationConfigured =
+      hasValue('consumerKey') && hasValue('consumerSecret');
+
+    const stkPushConfigured =
+      sharedAuthenticationConfigured &&
+      hasValue('shortcode') &&
+      hasValue('passkey');
+
+    const c2bConfigured =
+      hasValue('c2bShortcode') &&
+      (configuration?.c2bBusinessType === 'PAYBILL' ||
+        configuration?.c2bBusinessType === 'BUY_GOODS');
+
+    const b2cConfigured =
+      hasValue('b2cShortcode') &&
+      hasValue('initiatorName') &&
+      hasValue('securityCredential');
+
+    return {
+      environment,
+      sharedAuthenticationConfigured,
+      stkPushConfigured,
+      c2bConfigured,
+      b2cConfigured,
     };
   }
 

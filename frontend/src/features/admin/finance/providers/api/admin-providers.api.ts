@@ -13,6 +13,8 @@ import type {
   AdminConfigureMpesaInput,
   AdminConfigureMpesaResponse,
   AdminCreateProviderInput,
+  AdminGetMpesaConfigurationStatusParams,
+  AdminMpesaConfigurationStatusResponse,
   AdminProviderCapabilityOperationParams,
   AdminProviderOperationParams,
   AdminTestMpesaConnectionResponse,
@@ -37,6 +39,7 @@ import { ADMIN_PROVIDERS_ENDPOINTS } from './admin-providers.endpoints';
  * - Configure STK Push customer top-ups.
  * - Configure C2B PayBill / Buy Goods customer top-ups.
  * - Configure B2C withdrawals of customer available funds.
+ * - Retrieve non-sensitive configuration status.
  * - Test Daraja OAuth connectivity.
  *
  * Non-responsibilities:
@@ -197,6 +200,31 @@ export class AdminProvidersApi {
     return authenticatedApiClient.post<AdminConfigureMpesaResponse>(
       ADMIN_PROVIDERS_ENDPOINTS.configureMpesa(params.providerPublicId),
       input,
+      options,
+    );
+  }
+
+  /**
+   * Retrieve non-sensitive M-PESA configuration status.
+   *
+   * Reports whether the following credentials are configured:
+   * - Shared Daraja authentication.
+   * - STK Push.
+   * - C2B.
+   * - B2C.
+   *
+   * Status is specific to the selected environment.
+   * No credential values are returned.
+   */
+  public async getMpesaConfigurationStatus(
+    params: AdminGetMpesaConfigurationStatusParams,
+    options: RequestOptions = {},
+  ): Promise<AdminMpesaConfigurationStatusResponse> {
+    return authenticatedApiClient.get<AdminMpesaConfigurationStatusResponse>(
+      ADMIN_PROVIDERS_ENDPOINTS.mpesaConfigurationStatus(
+        params.providerPublicId,
+        params.environment,
+      ),
       options,
     );
   }

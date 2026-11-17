@@ -8,9 +8,9 @@
 // Responsibilities:
 //
 // 1. Subscribe to FinancialDisbursementAttemptSucceededEvent.
-// 2. Check event idempotency.
+// 2. Acquire an idempotent processing claim.
 // 3. Execute CompleteFinancialDisbursementCommand.
-// 4. Mark the event as processed after successful handler completion.
+// 4. Mark the event as processed using the claim token.
 //
 // The subscriber does NOT:
 //
@@ -81,6 +81,8 @@ import { FinancialDisbursementPublicId } from '../../domain/value-objects';
 
 const CONSUMER_NAME = 'FinancialDisbursementAttemptSucceededSubscriber';
 
+const CLAIM_LEASE_DURATION_MS = 120_000;
+
 // -----------------------------------------------------------------------------
 // Subscriber
 // -----------------------------------------------------------------------------
@@ -125,10 +127,23 @@ export class FinancialDisbursementAttemptSucceededSubscriber implements OnModule
     const eventId = event.metadata.eventId;
 
     // -------------------------------------------------------------------------
-    // 1. Check whether this event has already been processed
+    // 1. Acquire an exclusive processing claim
+    // -------------------------------------------------------------------------
+    //
+    // The claim prevents multiple workers from processing the same event
+    // concurrently for this consumer.
+    //
+    // A null token means the event has already been processed or another
+    // worker currently owns an unexpired claim.
     // -------------------------------------------------------------------------
 
-    if (await this.idempotencyStore.exists(CONSUMER_NAME, eventId)) {
+    const claimToken = await this.idempotencyStore.acquireClaim(
+      CONSUMER_NAME,
+      eventId,
+      CLAIM_LEASE_DURATION_MS,
+    );
+
+    if (claimToken === null) {
       return;
     }
 
@@ -150,6 +165,9 @@ export class FinancialDisbursementAttemptSucceededSubscriber implements OnModule
     //
     // Genuine posting or completion errors must propagate to the event
     // dispatcher.
+    //
+    // If execution fails, the event is not marked as processed. The claim
+    // remains until its lease expires, allowing a later retry.
     // -------------------------------------------------------------------------
 
     await this.completeDisbursementHandler.execute(
@@ -164,15 +182,19 @@ export class FinancialDisbursementAttemptSucceededSubscriber implements OnModule
     // 3. Mark event processed
     // -------------------------------------------------------------------------
     //
-    // Only mark after successful handler completion.
+    // The claim token proves ownership.
+    //
+    // The idempotency store must reject completion if the claim has expired
+    // or has been replaced by another worker.
     //
     // Never put this operation in a finally block.
-    //
-    // If financial posting or completion fails, the event must remain
-    // eligible for retry.
     // -------------------------------------------------------------------------
 
-    await this.idempotencyStore.markProcessed(CONSUMER_NAME, eventId);
+    await this.idempotencyStore.markProcessed(
+      CONSUMER_NAME,
+      eventId,
+      claimToken,
+    );
   }
 }
 

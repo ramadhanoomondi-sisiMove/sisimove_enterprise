@@ -8,10 +8,10 @@
 // Workflow:
 //
 // 1. Subscribe to FinancialAccountWithdrawalRequestedEvent.
-// 2. Check whether the event has already been processed.
+// 2. Acquire an idempotent processing claim.
 // 3. Dispatch ProcessFinancialAccountWithdrawalCommand.
 // 4. Preserve correlation and causation metadata.
-// 5. Mark the event as processed only after successful command execution.
+// 5. Mark the event as processed using the claim token.
 //
 // Responsibilities:
 //
@@ -59,12 +59,18 @@ const CONSUMER_NAME = 'FinancialAccountWithdrawalRequestedSubscriber';
 
 const EVENT_NAME = 'FinancialAccountWithdrawalRequested';
 
+const CLAIM_LEASE_DURATION_MS = 120_000;
+
 // =============================================================================
 // Subscriber
 // =============================================================================
 
 @Injectable()
 export class FinancialAccountWithdrawalRequestedSubscriber implements OnModuleInit {
+  // ===========================================================================
+  // Constructor
+  // ===========================================================================
+
   public constructor(
     private readonly eventBus: EventBus,
 
@@ -115,22 +121,27 @@ export class FinancialAccountWithdrawalRequestedSubscriber implements OnModuleIn
     }
 
     // -------------------------------------------------------------------------
-    // 2. Check Event Idempotency
+    // 2. Acquire an Exclusive Processing Claim
     // -------------------------------------------------------------------------
     //
-    // An already processed event must not dispatch the processing command
-    // again.
+    // The claim prevents multiple workers from processing the same event
+    // concurrently for this consumer.
     //
-    // The withdrawal itself also has its own business-level idempotency.
-    // Event idempotency and withdrawal idempotency serve different purposes.
+    // A null token means:
+    //
+    // - The event has already been processed; or
+    // - Another worker currently owns an unexpired claim.
+    //
+    // In either case, this worker must not dispatch the command.
     // -------------------------------------------------------------------------
 
-    const alreadyProcessed = await this.idempotencyStore.exists(
+    const claimToken = await this.idempotencyStore.acquireClaim(
       CONSUMER_NAME,
       eventId,
+      CLAIM_LEASE_DURATION_MS,
     );
 
-    if (alreadyProcessed) {
+    if (claimToken === null) {
       return;
     }
 
@@ -155,6 +166,12 @@ export class FinancialAccountWithdrawalRequestedSubscriber implements OnModuleIn
     // - Published the withdrawal-requested event.
     //
     // Do not repeat those operations here.
+    //
+    // ProcessFinancialAccountWithdrawalHandler owns the next application
+    // workflow.
+    //
+    // If command execution fails, the error propagates. The claim remains
+    // until its lease expires, allowing a later retry.
     // -------------------------------------------------------------------------
 
     await this.processWithdrawalHandler.execute(
@@ -169,15 +186,19 @@ export class FinancialAccountWithdrawalRequestedSubscriber implements OnModuleIn
     // 5. Mark Event as Processed
     // -------------------------------------------------------------------------
     //
-    // Mark only after successful command execution.
+    // The claim token proves ownership.
     //
-    // If command execution fails, the error propagates to the event dispatcher.
-    // The event remains eligible for retry.
+    // The idempotency store must reject completion if the claim has expired
+    // or has been replaced by another worker.
     //
-    // Do not move this into a finally block.
+    // Never put this operation in a finally block.
     // -------------------------------------------------------------------------
 
-    await this.idempotencyStore.markProcessed(CONSUMER_NAME, eventId);
+    await this.idempotencyStore.markProcessed(
+      CONSUMER_NAME,
+      eventId,
+      claimToken,
+    );
   }
 }
 

@@ -1,5 +1,8 @@
 
 import type { AdminProviderFilters } from '../models/admin-provider-filters.model';
+import type {
+  AdminMpesaEnvironment,
+} from '../models/admin-provider-operation.model';
 
 // -----------------------------------------------------------------------------
 // Financial Payment Provider Endpoints
@@ -78,6 +81,24 @@ export const ADMIN_PROVIDERS_ENDPOINTS = {
    */
   configureMpesa: (providerPublicId: string): string =>
     `${BASE_PATH}/${encodeURIComponent(providerPublicId)}/configuration`,
+
+  /**
+   * Retrieve non-sensitive M-PESA configuration status.
+   *
+   * Reports whether shared authentication, STK Push, C2B and B2C
+   * credentials are configured for the selected environment.
+   *
+   * Never returns credential values.
+   */
+  mpesaConfigurationStatus: (
+    providerPublicId: string,
+    environment: AdminMpesaEnvironment,
+  ): string => {
+    const query = new URLSearchParams();
+    query.set('environment', environment);
+
+    return `${BASE_PATH}/${encodeURIComponent(providerPublicId)}/configuration-status?${query.toString()}`;
+  },
 
   /**
    * Test Daraja OAuth connectivity.

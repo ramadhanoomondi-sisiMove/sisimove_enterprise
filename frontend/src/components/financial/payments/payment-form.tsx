@@ -50,7 +50,7 @@ import {
   PaymentMethodSelector,
   type DefaultPaymentMethodOption,
   type TopUpOption,
-} from './PaymentMethodSelector';
+} from './payment-method-selector';
 
 // =============================================================================
 // Types

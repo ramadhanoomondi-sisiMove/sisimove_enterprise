@@ -1,13 +1,15 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { cn } from '@/foundation/utils/cn';
 
-import type {
-  AdminConfigureMpesaInput,
-  AdminProvider,
+import {
+  adminProvidersApi,
+  type AdminConfigureMpesaInput,
+  type AdminMpesaConfigurationStatusResponse,
+  type AdminProvider,
 } from '@/features/admin/finance/providers';
 
 import { ProviderOperationConfirmation } from './ProviderOperationConfirmation';
@@ -25,13 +27,20 @@ import { ProviderOperationConfirmation } from './ProviderOperationConfirmation';
 // WITHDRAWAL:
 // - B2C withdrawal of customer available funds
 //
+// Configuration status:
+// - Loaded separately for Sandbox and Production.
+// - Only boolean configuration indicators are retrieved.
+// - Credentials are never returned to the frontend.
+//
 // -----------------------------------------------------------------------------
 
 export interface ProviderMpesaConfigurationFormProps {
   provider: AdminProvider;
   isOpen: boolean;
   isLoading?: boolean;
-  onConfirm: (input: AdminConfigureMpesaInput) => void;
+  onConfirm: (
+    input: AdminConfigureMpesaInput,
+  ) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -68,7 +77,9 @@ export function ProviderMpesaConfigurationForm({
 interface ProviderMpesaConfigurationFormContentProps {
   provider: AdminProvider;
   isLoading: boolean;
-  onConfirm: (input: AdminConfigureMpesaInput) => void;
+  onConfirm: (
+    input: AdminConfigureMpesaInput,
+  ) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -84,6 +95,24 @@ function ProviderMpesaConfigurationFormContent({
 
   const [environment, setEnvironment] =
     useState<'SANDBOX' | 'PRODUCTION'>('SANDBOX');
+
+  // ===========================================================================
+  // Configuration Status
+  // ===========================================================================
+
+  const [configurationStatus, setConfigurationStatus] =
+    useState<AdminMpesaConfigurationStatusResponse | null>(null);
+
+  const [isStatusLoading, setIsStatusLoading] = useState(true);
+  const [statusError, setStatusError] = useState<string | null>(null);
+
+  // ===========================================================================
+  // Submission Error
+  // ===========================================================================
+
+  const [submissionError, setSubmissionError] = useState<string | null>(
+    null,
+  );
 
   // ===========================================================================
   // Shared Daraja Authentication
@@ -116,52 +145,132 @@ function ProviderMpesaConfigurationFormContent({
   const [securityCredential, setSecurityCredential] = useState('');
 
   // ===========================================================================
+  // Load Configuration Status
+  // ===========================================================================
+
+  useEffect(() => {
+    let active = true;
+
+    const loadStatus = async () => {
+      setIsStatusLoading(true);
+      setStatusError(null);
+      setConfigurationStatus(null);
+
+      try {
+        const result =
+          await adminProvidersApi.getMpesaConfigurationStatus({
+            providerPublicId: provider.publicId,
+            environment,
+          });
+
+        if (active) {
+          setConfigurationStatus(result);
+        }
+      } catch {
+        if (active) {
+          setStatusError(
+            'Unable to retrieve M-PESA configuration status. You can still enter credentials and try again.',
+          );
+        }
+      } finally {
+        if (active) {
+          setIsStatusLoading(false);
+        }
+      }
+    };
+
+    void loadStatus();
+
+    return () => {
+      active = false;
+    };
+  }, [provider.publicId, environment]);
+
+  // ===========================================================================
+  // Refresh Configuration Status
+  // ===========================================================================
+
+  const refreshConfigurationStatus = async (): Promise<void> => {
+    setIsStatusLoading(true);
+    setStatusError(null);
+
+    try {
+      const result =
+        await adminProvidersApi.getMpesaConfigurationStatus({
+          providerPublicId: provider.publicId,
+          environment,
+        });
+
+      setConfigurationStatus(result);
+    } catch {
+      setStatusError(
+        'Configuration was saved, but the latest status could not be retrieved. Please refresh the status.',
+      );
+    } finally {
+      setIsStatusLoading(false);
+    }
+  };
+
+  // ===========================================================================
   // C2B Validation
   // ===========================================================================
 
-  const hasAnyC2BField =
-    c2bShortcode.trim().length > 0;
+  const normalizedC2BShortcode = c2bShortcode.trim();
+
+  const hasAnyC2BField = normalizedC2BShortcode.length > 0;
 
   const isC2BValid =
     !hasAnyC2BField ||
     (
-      c2bShortcode.trim().length > 0 &&
-      c2bShortcode.trim().length <= 20
+      normalizedC2BShortcode.length <= 20 &&
+      (
+        c2bBusinessType === 'PAYBILL' ||
+        c2bBusinessType === 'BUY_GOODS'
+      )
     );
 
   // ===========================================================================
   // B2C Validation
   // ===========================================================================
 
+  const normalizedB2CShortcode = b2cShortcode.trim();
+  const normalizedInitiatorName = initiatorName.trim();
+  const normalizedSecurityCredential = securityCredential.trim();
+
   const hasAnyB2CField =
-    b2cShortcode.trim().length > 0 ||
-    initiatorName.trim().length > 0 ||
-    securityCredential.trim().length > 0;
+    normalizedB2CShortcode.length > 0 ||
+    normalizedInitiatorName.length > 0 ||
+    normalizedSecurityCredential.length > 0;
 
   const isB2CValid =
     !hasAnyB2CField ||
     (
-      b2cShortcode.trim().length > 0 &&
-      b2cShortcode.trim().length <= 20 &&
-      initiatorName.trim().length > 0 &&
-      initiatorName.trim().length <= 100 &&
-      securityCredential.trim().length > 0 &&
-      securityCredential.trim().length <= 4096
+      normalizedB2CShortcode.length > 0 &&
+      normalizedB2CShortcode.length <= 20 &&
+      normalizedInitiatorName.length > 0 &&
+      normalizedInitiatorName.length <= 100 &&
+      normalizedSecurityCredential.length > 0 &&
+      normalizedSecurityCredential.length <= 4096
     );
 
   // ===========================================================================
-  // Required STK / Shared Configuration Validation
+  // Required Shared Authentication and STK Validation
   // ===========================================================================
 
+  const normalizedConsumerKey = consumerKey.trim();
+  const normalizedConsumerSecret = consumerSecret.trim();
+  const normalizedShortcode = shortcode.trim();
+  const normalizedPasskey = passkey.trim();
+
   const isRequiredConfigurationValid =
-    consumerKey.trim().length > 0 &&
-    consumerKey.trim().length <= 255 &&
-    consumerSecret.trim().length > 0 &&
-    consumerSecret.trim().length <= 255 &&
-    shortcode.trim().length > 0 &&
-    shortcode.trim().length <= 20 &&
-    passkey.trim().length > 0 &&
-    passkey.trim().length <= 255;
+    normalizedConsumerKey.length > 0 &&
+    normalizedConsumerKey.length <= 255 &&
+    normalizedConsumerSecret.length > 0 &&
+    normalizedConsumerSecret.length <= 255 &&
+    normalizedShortcode.length > 0 &&
+    normalizedShortcode.length <= 20 &&
+    normalizedPasskey.length > 0 &&
+    normalizedPasskey.length <= 255;
 
   const isValid =
     isRequiredConfigurationValid &&
@@ -172,26 +281,28 @@ function ProviderMpesaConfigurationFormContent({
   // Submission
   // ===========================================================================
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!isValid || isLoading) {
       return;
     }
 
-    onConfirm({
+    setSubmissionError(null);
+
+    const input: AdminConfigureMpesaInput = {
       environment,
 
       // Shared Daraja authentication.
-      consumerKey: consumerKey.trim(),
-      consumerSecret: consumerSecret.trim(),
+      consumerKey: normalizedConsumerKey,
+      consumerSecret: normalizedConsumerSecret,
 
       // STK Push top-up.
-      shortcode: shortcode.trim(),
-      passkey: passkey.trim(),
+      shortcode: normalizedShortcode,
+      passkey: normalizedPasskey,
 
       // Optional C2B top-up.
       ...(hasAnyC2BField
         ? {
-            c2bShortcode: c2bShortcode.trim(),
+            c2bShortcode: normalizedC2BShortcode,
             c2bBusinessType,
           }
         : {}),
@@ -199,13 +310,60 @@ function ProviderMpesaConfigurationFormContent({
       // Optional B2C available-funds withdrawal.
       ...(hasAnyB2CField
         ? {
-            b2cShortcode: b2cShortcode.trim(),
-            initiatorName: initiatorName.trim(),
-            securityCredential: securityCredential.trim(),
+            b2cShortcode: normalizedB2CShortcode,
+            initiatorName: normalizedInitiatorName,
+            securityCredential: normalizedSecurityCredential,
           }
         : {}),
-    });
+    };
+
+    try {
+      await onConfirm(input);
+
+      // Refresh status only after the configuration operation succeeds.
+      await refreshConfigurationStatus();
+    } catch {
+      setSubmissionError(
+        'M-PESA configuration could not be saved. Please check the supplied details and try again.',
+      );
+    }
   };
+
+  // ===========================================================================
+  // Validation Message
+  // ===========================================================================
+
+  const validationMessage = !isRequiredConfigurationValid
+    ? 'Complete all required shared Daraja and STK Push fields. Check their maximum lengths.'
+    : !isC2BValid
+      ? 'Check the C2B shortcode. It must contain between 1 and 20 characters.'
+      : !isB2CValid
+        ? 'Complete all three B2C fields, or leave all three blank.'
+        : null;
+
+  // ===========================================================================
+  // Configuration Status Display
+  // ===========================================================================
+
+  const statusItems = [
+    {
+      label: 'Shared Daraja Authentication',
+      configured:
+        configurationStatus?.sharedAuthenticationConfigured ?? false,
+    },
+    {
+      label: 'STK Push — Customer Top-up',
+      configured: configurationStatus?.stkPushConfigured ?? false,
+    },
+    {
+      label: 'C2B — Customer Top-up',
+      configured: configurationStatus?.c2bConfigured ?? false,
+    },
+    {
+      label: 'B2C — Available-Funds Withdrawal',
+      configured: configurationStatus?.b2cConfigured ?? false,
+    },
+  ];
 
   // ===========================================================================
   // Render
@@ -239,18 +397,103 @@ function ProviderMpesaConfigurationFormContent({
           <select
             id="mpesa-environment"
             value={environment}
-            onChange={(event) =>
+            onChange={(event) => {
               setEnvironment(
                 event.target.value as 'SANDBOX' | 'PRODUCTION',
-              )
-            }
+              );
+              setSubmissionError(null);
+            }}
             disabled={isLoading}
             className={inputClass}
           >
             <option value="SANDBOX">Sandbox</option>
             <option value="PRODUCTION">Production</option>
           </select>
+
+          <p className="text-xs text-muted-foreground">
+            Configuration is stored separately for each environment.
+          </p>
         </div>
+
+        {/* ================================================================= */}
+        {/* Existing Configuration Status */}
+        {/* ================================================================= */}
+
+        <section
+          className="space-y-3 rounded-lg border p-4"
+          aria-live="polite"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">
+                Saved Configuration Status
+              </h3>
+
+              <p className="text-xs text-muted-foreground">
+                {environment === 'SANDBOX' ? 'Sandbox' : 'Production'}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void refreshConfigurationStatus()}
+              disabled={isStatusLoading || isLoading}
+              className="text-xs font-medium text-primary underline-offset-4 hover:underline disabled:opacity-50"
+            >
+              Refresh
+            </button>
+          </div>
+
+          {isStatusLoading ? (
+            <p className="text-sm text-muted-foreground">
+              Loading configuration status...
+            </p>
+          ) : statusError ? (
+            <div className="space-y-2">
+              <p role="alert" className="text-sm text-destructive">
+                {statusError}
+              </p>
+
+              <button
+                type="button"
+                onClick={() => void refreshConfigurationStatus()}
+                className="text-xs font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Try again
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {statusItems.map((item) => (
+                <div
+                  key={item.label}
+                  className="flex items-center justify-between gap-3"
+                >
+                  <span className="text-sm text-foreground">
+                    {item.label}
+                  </span>
+
+                  <span
+                    className={cn(
+                      'shrink-0 rounded-full px-2.5 py-1 text-xs font-medium',
+                      item.configured
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-muted text-muted-foreground',
+                    )}
+                  >
+                    {item.configured ? 'Configured' : 'Not configured'}
+                  </span>
+                </div>
+              ))}
+
+              <p className="border-t pt-3 text-xs leading-5 text-muted-foreground">
+                These indicators confirm that configuration values are
+                saved. They do not confirm successful authentication
+                with Safaricom.
+              </p>
+            </div>
+          )}
+        </section>
 
         {/* ================================================================= */}
         {/* Shared Daraja Authentication */}
@@ -263,11 +506,10 @@ function ProviderMpesaConfigurationFormContent({
             </h3>
 
             <p className="text-xs text-muted-foreground">
-              Credentials shared by STK Push, C2B and B2C.
+              Enter credentials to configure or update authentication.
+              Previously saved secrets are never displayed.
             </p>
           </div>
-
-          {/* Consumer Key */}
 
           <div className="space-y-2">
             <label
@@ -290,8 +532,6 @@ function ProviderMpesaConfigurationFormContent({
               placeholder="Enter Daraja consumer key"
             />
           </div>
-
-          {/* Consumer Secret */}
 
           <div className="space-y-2">
             <label
@@ -331,8 +571,6 @@ function ProviderMpesaConfigurationFormContent({
             </p>
           </div>
 
-          {/* STK Shortcode */}
-
           <div className="space-y-2">
             <label
               htmlFor="mpesa-shortcode"
@@ -354,8 +592,6 @@ function ProviderMpesaConfigurationFormContent({
               placeholder="Enter STK Push shortcode"
             />
           </div>
-
-          {/* STK Passkey */}
 
           <div className="space-y-2">
             <label
@@ -380,6 +616,7 @@ function ProviderMpesaConfigurationFormContent({
 
             <p className="text-xs text-muted-foreground">
               Use the passkey supplied for your STK Push shortcode.
+              This is not the B2C security credential.
             </p>
           </div>
         </section>
@@ -396,12 +633,10 @@ function ProviderMpesaConfigurationFormContent({
 
             <p className="text-xs leading-5 text-muted-foreground">
               Configure PayBill or Buy Goods payments. This section is
-              optional. Leave the shortcode blank if C2B is not being
-              configured yet.
+              optional. Leave the shortcode blank if you are not adding
+              or updating C2B settings.
             </p>
           </div>
-
-          {/* C2B Business Type */}
 
           <div className="space-y-2">
             <label
@@ -426,8 +661,6 @@ function ProviderMpesaConfigurationFormContent({
               <option value="BUY_GOODS">Buy Goods / Till</option>
             </select>
           </div>
-
-          {/* C2B Shortcode */}
 
           <div className="space-y-2">
             <label
@@ -471,13 +704,10 @@ function ProviderMpesaConfigurationFormContent({
             </p>
 
             <p className="text-xs leading-5 text-muted-foreground">
-              This section is optional. Leave all three fields blank if
-              you are not configuring withdrawals yet. If you enter any
-              B2C field, all three must be completed.
+              This section is optional. If you enter any B2C field,
+              all three fields must be completed.
             </p>
           </div>
-
-          {/* B2C Party A Shortcode */}
 
           <div className="space-y-2">
             <label
@@ -506,8 +736,6 @@ function ProviderMpesaConfigurationFormContent({
             </p>
           </div>
 
-          {/* B2C Initiator Name */}
-
           <div className="space-y-2">
             <label
               htmlFor="mpesa-initiator-name"
@@ -529,8 +757,6 @@ function ProviderMpesaConfigurationFormContent({
               placeholder="Enter B2C initiator username"
             />
           </div>
-
-          {/* B2C Security Credential */}
 
           <div className="space-y-2">
             <label
@@ -567,20 +793,44 @@ function ProviderMpesaConfigurationFormContent({
         {/* Validation */}
         {/* ================================================================= */}
 
-        {!isValid && (
+        {validationMessage && (
           <div
             role="alert"
             className="rounded-md border border-amber-200 bg-amber-50 p-3"
           >
             <p className="text-xs leading-5 text-amber-800">
-              {!isRequiredConfigurationValid
-                ? 'Complete all required shared Daraja and STK Push fields. Check their maximum lengths.'
-                : !isC2BValid
-                  ? 'Check the C2B shortcode. It must contain between 1 and 20 characters.'
-                  : 'Complete all three B2C fields or leave all three blank.'}
+              {validationMessage}
             </p>
           </div>
         )}
+
+        {/* ================================================================= */}
+        {/* Submission Error */}
+        {/* ================================================================= */}
+
+        {submissionError && (
+          <div
+            role="alert"
+            className="rounded-md border border-destructive/30 bg-destructive/5 p-3"
+          >
+            <p className="text-sm text-destructive">
+              {submissionError}
+            </p>
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* Configuration Retention Notice */}
+        {/* ================================================================= */}
+
+        <div className="rounded-md border border-blue-200 bg-blue-50 p-3">
+          <p className="text-sm leading-5 text-blue-800">
+            Existing optional C2B and B2C settings are retained when
+            their fields are left blank. Removing previously saved
+            credentials requires a separate configuration-removal
+            operation.
+          </p>
+        </div>
 
         {/* ================================================================= */}
         {/* Security Notice */}

@@ -111,30 +111,34 @@ export default function ProviderDetailsPage() {
   // Operation Execution
   // ---------------------------------------------------------------------------
 
-  const runOperation = async (
-    operation: () => Promise<unknown>,
-    successMessage: string,
-  ) => {
-    setFeedback(null);
+const runOperation = async (
+  operation: () => Promise<unknown>,
+  successMessage: string,
+): Promise<boolean> => {
+  setFeedback(null);
 
-    try {
-      await operation();
+  try {
+    await operation();
 
-      setActiveDialog(null);
-      setSelectedCapability(null);
+    setActiveDialog(null);
+    setSelectedCapability(null);
 
-      setFeedback({
-        type: 'success',
-        message: successMessage,
-      });
-    } catch (operationError) {
-      setFeedback({
-        type: 'error',
-        message: 'The provider operation could not be completed.',
-        error: operationError,
-      });
-    }
-  };
+    setFeedback({
+      type: 'success',
+      message: successMessage,
+    });
+
+    return true;
+  } catch (operationError) {
+    setFeedback({
+      type: 'error',
+      message: 'The provider operation could not be completed.',
+      error: operationError,
+    });
+
+    return false;
+  }
+};
 
   // ---------------------------------------------------------------------------
   // Provider Validation
@@ -298,13 +302,15 @@ export default function ProviderDetailsPage() {
 
       {/* M-PESA Configuration */}
 
+{/* M-PESA Configuration */}
+
       {provider.code === 'MPESA' && (
         <ProviderMpesaConfigurationForm
           provider={provider}
           isOpen={activeDialog === 'mpesa'}
           isLoading={operations.isConfiguringMpesa}
-          onConfirm={(input: AdminConfigureMpesaInput) => {
-            void runOperation(
+          onConfirm={async (input: AdminConfigureMpesaInput) => {
+            const succeeded = await runOperation(
               () =>
                 operations.configureMpesa.mutateAsync({
                   params: {
@@ -314,6 +320,10 @@ export default function ProviderDetailsPage() {
                 }),
               'M-PESA credentials were saved securely. Connection validation is still pending.',
             );
+
+            if (!succeeded) {
+              throw new Error('M-PESA configuration could not be saved.');
+            }
           }}
           onCancel={closeDialog}
         />

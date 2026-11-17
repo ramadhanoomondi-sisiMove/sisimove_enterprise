@@ -8,10 +8,10 @@
 // Workflow:
 //
 // 1. Subscribe to FinancialDisbursementCreated.
-// 2. Check event idempotency.
+// 2. Acquire an idempotent processing claim.
 // 3. Extract the Financial Disbursement public ID.
 // 4. Dispatch ProcessFinancialDisbursementCommand.
-// 5. Mark the event as processed.
+// 5. Mark the event as processed using the claim token.
 //
 // This subscriber does NOT:
 //
@@ -86,6 +86,8 @@ import { FinancialDisbursementPublicId } from '../../domain/value-objects';
 
 const CONSUMER_NAME = 'FinancialDisbursementCreatedSubscriber';
 
+const CLAIM_LEASE_DURATION_MS = 120_000;
+
 // =============================================================================
 // Subscriber
 // =============================================================================
@@ -138,12 +140,25 @@ export class FinancialDisbursementCreatedSubscriber implements OnModuleInit {
     const eventId = event.metadata.eventId;
 
     // -------------------------------------------------------------------------
-    // 1. Check Event Idempotency
+    // 1. Acquire an exclusive processing claim
+    // -------------------------------------------------------------------------
+    //
+    // The claim prevents multiple workers from processing the same event
+    // concurrently for this consumer.
+    //
+    // A null token means the event has already been processed or another
+    // worker currently owns an unexpired claim.
     // -------------------------------------------------------------------------
 
-    if (await this.idempotencyStore.exists(CONSUMER_NAME, eventId)) {
+    const claimToken = await this.idempotencyStore.acquireClaim(
+      CONSUMER_NAME,
+      eventId,
+      CLAIM_LEASE_DURATION_MS,
+    );
+
+    if (claimToken === null) {
       this.logger.debug(
-        `Financial Disbursement Created event already processed: ${eventId}`,
+        `Financial Disbursement Created event is already processed or claimed: ${eventId}`,
       );
 
       return;
@@ -175,6 +190,9 @@ export class FinancialDisbursementCreatedSubscriber implements OnModuleInit {
     //
     // The command handler owns lifecycle validation, persistence and
     // publication of FinancialDisbursementProcessingEvent.
+    //
+    // If command execution fails, the error propagates. The claim remains
+    // until its lease expires, allowing a later retry.
     // -------------------------------------------------------------------------
 
     await this.processDisbursementHandler.execute(
@@ -189,13 +207,21 @@ export class FinancialDisbursementCreatedSubscriber implements OnModuleInit {
     // 4. Mark Event as Processed
     // -------------------------------------------------------------------------
     //
-    // Mark only after the processing command succeeds.
+    // Only the worker holding the current claim token can complete processing.
     //
-    // If command execution fails, propagate the error so event delivery
-    // can retry.
+    // If the claim has expired or been replaced, the idempotency store
+    // rejects this completion.
     // -------------------------------------------------------------------------
 
-    await this.idempotencyStore.markProcessed(CONSUMER_NAME, eventId);
+    await this.idempotencyStore.markProcessed(
+      CONSUMER_NAME,
+      eventId,
+      claimToken,
+    );
+
+    // -------------------------------------------------------------------------
+    // 5. Log Successful Processing
+    // -------------------------------------------------------------------------
 
     this.logger.log(
       `Financial Disbursement processing initiated: ${disbursementPublicId.value}`,
