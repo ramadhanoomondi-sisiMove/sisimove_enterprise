@@ -287,3 +287,5 @@ export * from './complete-financial-disbursement.handler';
 export * from './fail-financial-disbursement.handler';
 
 export * from './cancel-financial-disbursement.handler';
+
+export * from './process-c2b-payment-callback.handler';

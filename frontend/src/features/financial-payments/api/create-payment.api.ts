@@ -14,6 +14,7 @@
 //       accountId: string;
 //       amount: string;
 //       currency: string;
+//       channel: 'STK_PUSH' | 'C2B';
 //       correlationId: string;
 //       methodId?: string;
 //       referenceType?: string;
@@ -70,7 +71,10 @@
 
 import { authenticatedApiClient } from '@/features/authentication';
 
-import type { CreatePaymentRequest, FinancialPayment } from '../models';
+import type {
+  CreatePaymentRequest,
+  FinancialPayment,
+} from '../models';
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -122,9 +126,13 @@ export async function createPayment(
       //
       // Monetary amounts remain strings at the HTTP boundary.
       //
-      // Example:
+      // Examples:
       //
-      //     "125000" = KES 1,250.00
+      //     "100"  = KES 100
+      //     "1250" = KES 1,250
+      //
+      // The backend performs the major-to-minor unit conversion.
+      // Do not multiply the amount by 100 here.
       //
       amount: request.amount,
 
@@ -133,6 +141,18 @@ export async function createPayment(
       // -----------------------------------------------------------------------
 
       currency: request.currency,
+
+      // -----------------------------------------------------------------------
+      // Payment Channel
+      // -----------------------------------------------------------------------
+      //
+      // STK_PUSH:
+      // Requires an existing saved payment method.
+      //
+      // C2B:
+      // Customer-initiated PayBill or Buy Goods payment.
+      //
+      channel: request.channel,
 
       // -----------------------------------------------------------------------
       // Correlation

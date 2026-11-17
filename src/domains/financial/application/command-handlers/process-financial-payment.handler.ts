@@ -129,6 +129,10 @@ export class ProcessFinancialPaymentHandler implements CommandHandler<
     // -------------------------------------------------------------------------
 
     const prepared = await this.unitOfWork.execute(async () => {
+      // Serialize all first-attempt creation for this payment.
+      // This must be the first database operation in this transaction.
+      await this.paymentRepository.lockByPublicId(command.paymentPublicId);
+
       const aggregate = await this.paymentRepository.findByPublicId(
         command.paymentPublicId,
       );
@@ -139,25 +143,26 @@ export class ProcessFinancialPaymentHandler implements CommandHandler<
         );
       }
 
-      // -----------------------------------------------------------------------
-      // Channel validation
-      // -----------------------------------------------------------------------
-
-      // This handler is exclusively for the STK Push channel.
-      // C2B payments are confirmed independently through the C2B callback.
-
+      // This handler is exclusively for STK Push.
       if (!aggregate.channel.isStkPush()) {
         throw new Error(
           'This Financial Payment is not configured for the STK Push channel.',
         );
       }
 
-      // -----------------------------------------------------------------------
-      // Attempt and idempotency validation
-      // -----------------------------------------------------------------------
+      // An existing attempt means a provider submission may already have
+      // occurred. A replay must never create or submit another prompt.
+      if (aggregate.attempts.length > 0) {
+        this.logger.warn(
+          `Financial Payment already has an execution attempt. ` +
+            `Skipping duplicate STK Push submission. Payment: ${aggregate.publicId.value}.`,
+        );
 
-      // Never create another provider attempt while an earlier attempt
-      // remains active or the payment has already reached a terminal state.
+        return {
+          kind: 'ALREADY_ATTEMPTED' as const,
+          paymentPublicId: aggregate.publicId,
+        };
+      }
 
       if (!aggregate.canCreateAttempt()) {
         throw new Error(
@@ -223,9 +228,7 @@ export class ProcessFinancialPaymentHandler implements CommandHandler<
         throw new Error('M-PESA payment amount must be greater than zero.');
       }
 
-      // Financial Money is stored in minor units.
-      // Daraja STK Push accepts whole KES amounts.
-
+      // Financial Money is stored in minor units; Daraja expects whole KES.
       const amountInMinorUnits = aggregate.amount.amount;
 
       if (
@@ -259,7 +262,7 @@ export class ProcessFinancialPaymentHandler implements CommandHandler<
       );
 
       // -----------------------------------------------------------------------
-      // Create and start payment attempt
+      // Create and persist the first payment attempt
       // -----------------------------------------------------------------------
 
       const now = new Date();
@@ -283,6 +286,7 @@ export class ProcessFinancialPaymentHandler implements CommandHandler<
       await this.paymentRepository.save(aggregate);
 
       return {
+        kind: 'READY' as const,
         paymentPublicId: aggregate.publicId,
         attemptPublicId: attempt.publicId,
         providerPublicId: provider.publicId.value,
@@ -292,9 +296,20 @@ export class ProcessFinancialPaymentHandler implements CommandHandler<
       };
     });
 
+    // Do not call loadPayment() from inside PrismaUnitOfWork. That would
+    // attempt to start a nested transaction. Reload only after it commits.
+    if (prepared.kind === 'ALREADY_ATTEMPTED') {
+      return this.loadPayment(prepared.paymentPublicId);
+    }
+
     // -------------------------------------------------------------------------
     // 2. Initiate STK Push outside the database transaction
     // -------------------------------------------------------------------------
+
+    // The only remaining branch is READY; its attempt is already committed.
+    if (prepared.kind !== 'READY') {
+      throw new Error('Unexpected Financial Payment preparation state.');
+    }
 
     let result: Awaited<ReturnType<StkPushService['initiate']>>;
 
@@ -332,6 +347,8 @@ export class ProcessFinancialPaymentHandler implements CommandHandler<
 
     try {
       persisted = await this.unitOfWork.execute(async () => {
+        await this.paymentRepository.lockByPublicId(prepared.paymentPublicId);
+
         const aggregate = await this.paymentRepository.findByPublicId(
           prepared.paymentPublicId,
         );

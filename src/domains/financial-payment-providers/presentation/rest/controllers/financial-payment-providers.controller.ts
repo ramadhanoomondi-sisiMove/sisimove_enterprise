@@ -1,12 +1,4 @@
-// -----------------------------------------------------------------------------
-// Financial Payment Providers — HTTP Controller
-// -----------------------------------------------------------------------------
-
 import { randomUUID } from 'node:crypto';
-
-// -----------------------------------------------------------------------------
-// NestJS
-// -----------------------------------------------------------------------------
 
 import {
   BadRequestException,
@@ -21,10 +13,6 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
-// -----------------------------------------------------------------------------
-// Swagger
-// -----------------------------------------------------------------------------
-
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -32,32 +20,17 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 
-// -----------------------------------------------------------------------------
-// Foundation — Security
-// -----------------------------------------------------------------------------
-
 import {
   JwtAuthGuard,
   PermissionsGuard,
   RequirePermissions,
 } from '../../../../../foundation/security/auth';
 
-// -----------------------------------------------------------------------------
-// Foundation — Application
-// -----------------------------------------------------------------------------
-
 import type { CommandHandler } from '../../../../../foundation/kernel/application/command-handler';
 import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
 
-// -----------------------------------------------------------------------------
-// Application — Tokens
-// -----------------------------------------------------------------------------
-
 import { FINANCIAL_PAYMENT_PROVIDER_TOKENS } from '../../../application/financial-payment-providers.tokens';
 
-// -----------------------------------------------------------------------------
-// Application — Commands
-// -----------------------------------------------------------------------------
 import {
   ChangeFinancialPaymentProviderStatusCommand,
   ConfigureMpesaCommand,
@@ -69,25 +42,14 @@ import {
   UpdateFinancialPaymentProviderCommand,
 } from '../../../application/commands';
 
-// -----------------------------------------------------------------------------
-// Application — Queries
-// -----------------------------------------------------------------------------
-
 import {
   GetAvailableFinancialPaymentProvidersQuery,
   GetFinancialPaymentProviderByCodeQuery,
   GetFinancialPaymentProviderQuery,
   GetFinancialPaymentProvidersQuery,
 } from '../../../application/queries';
-// -----------------------------------------------------------------------------
-// Domain — Aggregate
-// -----------------------------------------------------------------------------
 
 import type { FinancialPaymentProviderAggregate } from '../../../domain/aggregates/financial-payment-provider.aggregate';
-
-// -----------------------------------------------------------------------------
-// Domain — Value Objects
-// -----------------------------------------------------------------------------
 
 import {
   FinancialPaymentProviderCapabilityType,
@@ -101,10 +63,6 @@ import {
   FinancialPaymentProviderType,
 } from '../../../domain/value-objects';
 
-// -----------------------------------------------------------------------------
-// Presentation — Request DTOs
-// -----------------------------------------------------------------------------
-
 import {
   ChangeFinancialPaymentProviderStatusRequestDto,
   ConfigureMpesaRequestDto,
@@ -112,38 +70,27 @@ import {
   UpdateFinancialPaymentProviderRequestDto,
 } from '../dto/request';
 
-// -----------------------------------------------------------------------------
-// Presentation — Query DTOs
-// -----------------------------------------------------------------------------
-
 import { GetFinancialPaymentProvidersQueryDto } from '../dto/queries';
-
-// -----------------------------------------------------------------------------
-// Presentation — Response Models
-// -----------------------------------------------------------------------------
 
 import type { FinancialPaymentProviderResponse } from '../mappers/financial-payment-provider.response.mapper';
 
-// -----------------------------------------------------------------------------
-// Presentation — Response Mapper
-// -----------------------------------------------------------------------------
-
 import { FinancialPaymentProviderResponseMapper } from '../mappers/financial-payment-provider.response.mapper';
+
+// =============================================================================
+// M-PESA Configuration Types
+// =============================================================================
+
+type MpesaC2BBusinessType = 'PAYBILL' | 'BUY_GOODS';
+
+// =============================================================================
 // Controller
 // =============================================================================
 
 @ApiTags('Financial Payment Providers')
 @Controller('financial-payment-providers')
 export class FinancialPaymentProvidersController {
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
   public constructor(
-    // -------------------------------------------------------------------------
-    // Command Handlers
-    // -------------------------------------------------------------------------
-
+    // Command handlers
     @Inject(FINANCIAL_PAYMENT_PROVIDER_TOKENS.COMMAND_HANDLERS.CREATE)
     private readonly createHandler: CommandHandler<
       CreateFinancialPaymentProviderCommand,
@@ -189,15 +136,14 @@ export class FinancialPaymentProvidersController {
       DisableFinancialPaymentProviderCapabilityCommand,
       FinancialPaymentProviderAggregate
     >,
+
     @Inject(FINANCIAL_PAYMENT_PROVIDER_TOKENS.COMMAND_HANDLERS.CONFIGURE_MPESA)
     private readonly configureMpesaHandler: CommandHandler<
       ConfigureMpesaCommand,
       string
     >,
-    // -------------------------------------------------------------------------
-    // Query Handlers
-    // -------------------------------------------------------------------------
 
+    // Query handlers
     @Inject(FINANCIAL_PAYMENT_PROVIDER_TOKENS.QUERY_HANDLERS.GET)
     private readonly getHandler: QueryHandler<
       GetFinancialPaymentProviderQuery,
@@ -215,6 +161,7 @@ export class FinancialPaymentProvidersController {
       GetFinancialPaymentProviderByCodeQuery,
       FinancialPaymentProviderAggregate
     >,
+
     @Inject(FINANCIAL_PAYMENT_PROVIDER_TOKENS.QUERY_HANDLERS.GET_AVAILABLE)
     private readonly getAvailableHandler: QueryHandler<
       GetAvailableFinancialPaymentProvidersQuery,
@@ -225,10 +172,6 @@ export class FinancialPaymentProvidersController {
   // ===========================================================================
   // Queries
   // ===========================================================================
-
-  // ---------------------------------------------------------------------------
-  // Get All Providers
-  // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -283,10 +226,6 @@ export class FinancialPaymentProvidersController {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Get Provider By Code
-  // ---------------------------------------------------------------------------
-
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Get a financial payment provider by code',
@@ -313,9 +252,6 @@ export class FinancialPaymentProvidersController {
 
     return FinancialPaymentProviderResponseMapper.toResponse(aggregate);
   }
-  // ---------------------------------------------------------------------------
-  // Get Available Providers
-  // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -344,9 +280,6 @@ export class FinancialPaymentProvidersController {
       type: aggregate.type.value,
     }));
   }
-  // ---------------------------------------------------------------------------
-  // Get Provider By Public ID
-  // ---------------------------------------------------------------------------
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -379,10 +312,6 @@ export class FinancialPaymentProvidersController {
   // Commands
   // ===========================================================================
 
-  // ---------------------------------------------------------------------------
-  // Create Provider
-  // ---------------------------------------------------------------------------
-
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Create a financial payment provider',
@@ -401,18 +330,10 @@ export class FinancialPaymentProvidersController {
           )
         : undefined;
 
-    // -------------------------------------------------------------------------
-    // Map requested capabilities into domain value objects
-    // -------------------------------------------------------------------------
-
     const capabilities = (dto.capabilities ?? []).map((capability) => ({
       type: FinancialPaymentProviderCapabilityType.create(capability.type),
       isSupported: capability.isSupported,
     }));
-
-    // -------------------------------------------------------------------------
-    // Create command
-    // -------------------------------------------------------------------------
 
     const command = new CreateFinancialPaymentProviderCommand(
       FinancialPaymentProviderCode.create(dto.code),
@@ -423,7 +344,7 @@ export class FinancialPaymentProvidersController {
       randomUUID(),
       dto.description,
       configurationReference,
-      undefined, // causationId
+      undefined,
       capabilities,
     );
 
@@ -432,15 +353,29 @@ export class FinancialPaymentProvidersController {
     return FinancialPaymentProviderResponseMapper.toResponse(aggregate);
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Configure M-PESA
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Configure M-PESA credentials',
-    description:
-      'Securely stores M-PESA Daraja credentials for the selected environment. Credentials are encrypted and never returned.',
+    summary: 'Configure M-PESA Daraja credentials',
+    description: `
+      Configures SisiMove's M-PESA integration for two purposes only:
+
+      1. TOP-UP:
+         - STK Push: customer pays SisiMove through a phone prompt.
+         - C2B: customer pays SisiMove through PayBill or Buy Goods.
+
+      2. WITHDRAWAL:
+         - B2C: SisiMove sends a customer's available funds to the customer.
+
+      Credentials are encrypted before persistence and are never returned.
+
+      FinancialModule remains responsible for authorizing withdrawals,
+      updating available balances, posting ledger entries and reconciliation.
+      M-PESA callbacks report external provider events only.
+    `,
   })
   @ApiParam({
     name: 'providerPublicId',
@@ -468,22 +403,49 @@ export class FinancialPaymentProvidersController {
       );
     }
 
-    const c2b =
-      hasC2BShortcode && hasC2BBusinessType
-        ? {
-            shortcode: dto.c2bShortcode!,
-            businessType: dto.c2bBusinessType! as 'PAYBILL' | 'BUY_GOODS',
-          }
-        : undefined;
+    let c2b:
+      | {
+          shortcode: string;
+          businessType: MpesaC2BBusinessType;
+        }
+      | undefined;
+
+    if (hasC2BShortcode && hasC2BBusinessType) {
+      const businessType = dto.c2bBusinessType;
+
+      if (businessType !== 'PAYBILL' && businessType !== 'BUY_GOODS') {
+        throw new BadRequestException(
+          'C2B business type must be PAYBILL or BUY_GOODS.',
+        );
+      }
+
+      c2b = {
+        shortcode: dto.c2bShortcode!,
+        businessType,
+      };
+    }
 
     // -------------------------------------------------------------------------
-    // 2. Map optional B2C configuration
+    // 2. Validate optional B2C withdrawal configuration
     // -------------------------------------------------------------------------
 
-    const hasB2CConfiguration =
-      dto.b2cShortcode !== undefined ||
-      dto.initiatorName !== undefined ||
-      dto.securityCredential !== undefined;
+    const b2cFields = [
+      dto.b2cShortcode,
+      dto.initiatorName,
+      dto.securityCredential,
+    ];
+
+    const suppliedB2CFields = b2cFields.filter(
+      (value) => value !== undefined,
+    ).length;
+
+    const hasB2CConfiguration = suppliedB2CFields > 0;
+
+    if (hasB2CConfiguration && suppliedB2CFields !== 3) {
+      throw new BadRequestException(
+        'B2C withdrawal configuration requires b2cShortcode, initiatorName and securityCredential.',
+      );
+    }
 
     const b2c = hasB2CConfiguration
       ? {
@@ -494,7 +456,22 @@ export class FinancialPaymentProvidersController {
       : undefined;
 
     // -------------------------------------------------------------------------
-    // 3. Create configuration command
+    // 3. Validate required STK/shared configuration
+    // -------------------------------------------------------------------------
+
+    if (
+      !dto.consumerKey?.trim() ||
+      !dto.consumerSecret?.trim() ||
+      !dto.shortcode?.trim() ||
+      !dto.passkey?.trim()
+    ) {
+      throw new BadRequestException(
+        'Consumer Key, Consumer Secret, STK Shortcode and STK Passkey are required.',
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // 4. Create configuration command
     // -------------------------------------------------------------------------
 
     const command = new ConfigureMpesaCommand(
@@ -505,7 +482,7 @@ export class FinancialPaymentProvidersController {
       dto.consumerKey,
       dto.consumerSecret,
 
-      // STK Push configuration.
+      // STK Push top-up configuration.
       dto.shortcode,
       dto.passkey,
 
@@ -514,15 +491,15 @@ export class FinancialPaymentProvidersController {
       randomUUID(),
       undefined,
 
-      // Optional C2B configuration.
+      // Optional C2B top-up configuration.
       c2b,
 
-      // Optional B2C configuration.
+      // Optional B2C available-funds withdrawal configuration.
       b2c,
     );
 
     // -------------------------------------------------------------------------
-    // 4. Execute configuration
+    // 5. Execute configuration
     // -------------------------------------------------------------------------
 
     const reference = await this.configureMpesaHandler.execute(command);
@@ -533,9 +510,10 @@ export class FinancialPaymentProvidersController {
         'M-PESA credentials saved securely. Connection validation is still pending.',
     };
   }
-  // ---------------------------------------------------------------------------
+
+  // ===========================================================================
   // Update Provider Details
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -568,9 +546,9 @@ export class FinancialPaymentProvidersController {
     return FinancialPaymentProviderResponseMapper.toResponse(aggregate);
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Enable Provider
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -600,9 +578,9 @@ export class FinancialPaymentProvidersController {
     return FinancialPaymentProviderResponseMapper.toResponse(aggregate);
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Disable Provider
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -632,9 +610,9 @@ export class FinancialPaymentProvidersController {
     return FinancialPaymentProviderResponseMapper.toResponse(aggregate);
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Change Provider Status
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -679,9 +657,9 @@ export class FinancialPaymentProvidersController {
     return FinancialPaymentProviderResponseMapper.toResponse(aggregate);
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Enable Provider Capability
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -720,9 +698,9 @@ export class FinancialPaymentProvidersController {
     return FinancialPaymentProviderResponseMapper.toResponse(aggregate);
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Disable Provider Capability
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   @ApiBearerAuth('access-token')
   @ApiOperation({
@@ -761,9 +739,5 @@ export class FinancialPaymentProvidersController {
     return FinancialPaymentProviderResponseMapper.toResponse(aggregate);
   }
 }
-
-// -----------------------------------------------------------------------------
-// Default Export
-// -----------------------------------------------------------------------------
 
 export default FinancialPaymentProvidersController;

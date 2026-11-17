@@ -1,8 +1,4 @@
 
-// -----------------------------------------------------------------------------
-// Admin Providers API
-// -----------------------------------------------------------------------------
-
 import {
   authenticatedApiClient,
 } from '@/features/authentication/http/authenticated-api-client';
@@ -33,15 +29,22 @@ import { ADMIN_PROVIDERS_ENDPOINTS } from './admin-providers.endpoints';
  * HTTP adapter for Financial Payment Provider administration.
  *
  * Responsibilities:
- * - Call the financial payment provider endpoints.
+ * - Call financial payment provider endpoints.
  * - Use the shared authenticated API client.
- * - Type API responses using the admin provider models.
+ * - Type API requests and responses using admin provider models.
+ *
+ * M-PESA responsibilities:
+ * - Configure STK Push customer top-ups.
+ * - Configure C2B PayBill / Buy Goods customer top-ups.
+ * - Configure B2C withdrawals of customer available funds.
+ * - Test Daraja OAuth connectivity.
  *
  * Non-responsibilities:
  * - Authentication session management.
  * - Direct HTTP implementation.
  * - Provider business rules.
- * - Capability-state calculations.
+ * - Financial authorization and ledger operations.
+ * - Customer balance calculations.
  * - Local persistence.
  */
 export class AdminProvidersApi {
@@ -50,7 +53,7 @@ export class AdminProvidersApi {
   // ===========================================================================
 
   /**
-   * Retrieve providers, optionally filtered by the supported backend filters.
+   * Retrieve providers, optionally filtered by supported backend filters.
    */
   public async list(
     filters?: AdminProviderFilters,
@@ -164,8 +167,27 @@ export class AdminProvidersApi {
     );
   }
 
+  // ===========================================================================
+  // M-PESA Configuration
+  // ===========================================================================
+
   /**
-   * Securely configure M-PESA credentials.
+   * Securely configure M-PESA Daraja credentials.
+   *
+   * Supported configuration:
+   *
+   * TOP-UP:
+   * - STK Push: shortcode and passkey.
+   * - C2B: optional shortcode and business type.
+   *
+   * WITHDRAWAL:
+   * - B2C: optional Party A shortcode, initiator name
+   *   and encrypted security credential.
+   *
+   * The backend validates optional C2B and B2C fields as complete groups.
+   * Credentials must never be logged or exposed in API responses.
+   *
+   * FinancialModule remains responsible for financial consequences.
    */
   public async configureMpesa(
     params: AdminProviderOperationParams,

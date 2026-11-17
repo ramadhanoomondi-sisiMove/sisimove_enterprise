@@ -7,6 +7,17 @@
 // The event carries the payment channel so downstream subscribers can
 // distinguish STK Push from customer-initiated C2B payments.
 //
+// Channel requirements:
+//
+// STK_PUSH:
+// - Requires a selected Financial Payment Method.
+//
+// C2B:
+// - Must not contain a saved Financial Payment Method.
+//
+// Backward compatibility:
+// - Historical events without a channel default to STK_PUSH.
+//
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
@@ -56,6 +67,10 @@ import {
 // -----------------------------------------------------------------------------
 
 export class FinancialPaymentCreatedEvent extends FinancialDomainEvent {
+  // ===========================================================================
+  // Constructor
+  // ===========================================================================
+
   public constructor(
     aggregateId: string,
     publicId: PublicEntityId,
@@ -93,13 +108,24 @@ export class FinancialPaymentCreatedEvent extends FinancialDomainEvent {
     this.referencePublicId = referencePublicId;
   }
 
+  // ===========================================================================
+  // Properties
+  // ===========================================================================
+
   public readonly publicId: PublicEntityId;
+
   public readonly accountId: PublicEntityId;
+
   public readonly amount: Money;
+
   public readonly channel: FinancialPaymentChannel;
+
   public readonly status: FinancialPaymentStatus;
+
   public readonly methodId: FinancialPaymentMethodPublicId | undefined;
+
   public readonly referenceType: FinancialReferenceType | undefined;
+
   public readonly referencePublicId: FinancialReferencePublicId | undefined;
 
   // ===========================================================================
@@ -122,53 +148,132 @@ export class FinancialPaymentCreatedEvent extends FinancialDomainEvent {
       referencePublicId,
     } = payload;
 
+    // -------------------------------------------------------------------------
+    // 1. Validate required payload fields
+    // -------------------------------------------------------------------------
+
     if (
       typeof publicId !== 'string' ||
       typeof accountId !== 'string' ||
       typeof amount !== 'number' ||
+      !Number.isSafeInteger(amount) ||
       typeof currency !== 'string' ||
-      (channel !== undefined && typeof channel !== 'string') ||
-      typeof status !== 'string' ||
-      (methodId !== undefined && typeof methodId !== 'string') ||
-      (referenceType !== undefined && typeof referenceType !== 'string') ||
-      (referencePublicId !== undefined && typeof referencePublicId !== 'string')
+      typeof status !== 'string'
     ) {
       throw new Error('Invalid payload for FinancialPaymentCreated event');
     }
 
-    if ((referenceType === undefined) !== (referencePublicId === undefined)) {
+    // -------------------------------------------------------------------------
+    // 2. Validate optional payload fields
+    // -------------------------------------------------------------------------
+
+    if (
+      (channel !== undefined &&
+        channel !== null &&
+        typeof channel !== 'string') ||
+      (methodId !== undefined &&
+        methodId !== null &&
+        typeof methodId !== 'string') ||
+      (referenceType !== undefined &&
+        referenceType !== null &&
+        typeof referenceType !== 'string') ||
+      (referencePublicId !== undefined &&
+        referencePublicId !== null &&
+        typeof referencePublicId !== 'string')
+    ) {
+      throw new Error(
+        'Invalid optional fields in FinancialPaymentCreated event',
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // 3. Normalize optional fields
+    // -------------------------------------------------------------------------
+
+    const normalizedMethodId = methodId == null ? undefined : methodId;
+
+    const normalizedReferenceType =
+      referenceType == null ? undefined : referenceType;
+
+    const normalizedReferencePublicId =
+      referencePublicId == null ? undefined : referencePublicId;
+
+    // -------------------------------------------------------------------------
+    // 4. Validate business-reference completeness
+    // -------------------------------------------------------------------------
+
+    if (
+      (normalizedReferenceType === undefined) !==
+      (normalizedReferencePublicId === undefined)
+    ) {
       throw new Error(
         'FinancialPaymentCreated reference type and public ID must both be present or absent',
       );
     }
 
-    // Older persisted events were created before payment channels existed.
-    // Those payments used the original STK Push workflow.
+    // -------------------------------------------------------------------------
+    // 5. Restore payment channel
+    // -------------------------------------------------------------------------
+
+    // Historical events created before channel support used STK Push.
     const paymentChannel =
-      typeof channel === 'string'
-        ? FinancialPaymentChannelValue.create(channel)
-        : FinancialPaymentChannelValue.create('STK_PUSH');
+      channel == null
+        ? FinancialPaymentChannelValue.create('STK_PUSH')
+        : FinancialPaymentChannelValue.create(channel);
+
+    // -------------------------------------------------------------------------
+    // 6. Validate channel-specific payment method requirements
+    // -------------------------------------------------------------------------
+
+    if (paymentChannel.isStkPush() && normalizedMethodId === undefined) {
+      throw new Error(
+        'STK Push FinancialPaymentCreated event requires a payment method',
+      );
+    }
+
+    if (paymentChannel.isC2B() && normalizedMethodId !== undefined) {
+      throw new Error(
+        'C2B FinancialPaymentCreated event must not contain a payment method',
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // 7. Reconstruct event
+    // -------------------------------------------------------------------------
 
     return new FinancialPaymentCreatedEvent(
       metadata.aggregateId,
+
       new PublicEntityIdValue(publicId),
+
       new PublicEntityIdValue(accountId),
+
       MoneyValue.fromCode(amount, currency),
+
       paymentChannel,
+
       FinancialPaymentStatusValue.create(status),
-      typeof methodId === 'string'
-        ? new FinancialPaymentMethodPublicIdValue(methodId)
+
+      normalizedMethodId !== undefined
+        ? new FinancialPaymentMethodPublicIdValue(normalizedMethodId)
         : undefined,
-      typeof referenceType === 'string'
-        ? FinancialReferenceTypeValue.create(referenceType)
+
+      normalizedReferenceType !== undefined
+        ? FinancialReferenceTypeValue.create(normalizedReferenceType)
         : undefined,
-      typeof referencePublicId === 'string'
-        ? FinancialReferencePublicIdValue.create(referencePublicId)
+
+      normalizedReferencePublicId !== undefined
+        ? FinancialReferencePublicIdValue.create(normalizedReferencePublicId)
         : undefined,
+
       metadata.correlationId ?? '',
+
       metadata.causationId,
+
       metadata.eventVersion,
+
       metadata.eventSchemaVersion,
+
       metadata,
     );
   }
@@ -180,14 +285,23 @@ export class FinancialPaymentCreatedEvent extends FinancialDomainEvent {
   protected override getPayload(): Record<string, unknown> {
     return {
       ...this.getBasePayload(),
+
       publicId: this.publicId.toString(),
+
       accountId: this.accountId.toString(),
+
       amount: this.amount.amount,
+
       currency: this.amount.currency.toString(),
+
       channel: this.channel.toString(),
+
       status: this.status.toString(),
+
       methodId: this.methodId?.toString(),
+
       referenceType: this.referenceType?.toString(),
+
       referencePublicId: this.referencePublicId?.toString(),
     };
   }

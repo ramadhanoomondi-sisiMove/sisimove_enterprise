@@ -4508,6 +4508,7 @@ model StoredEvent {
   eventTimestamp     DateTime
   producerPlatform   String
   eventSchemaVersion String
+  processingClaims EventProcessingClaim[]
 
   // Complete serialized event: metadata + event-specific payload.
   payload Json
@@ -4682,6 +4683,28 @@ model FinancialPaymentC2BCallback {
   @@index([status, receivedAt])
   @@index([msisdn])
   @@map("financial_payment_c2b_callbacks")
+}
+
+
+model EventProcessingClaim {
+  id            String      @id @default(uuid())
+  storedEventId String
+  storedEvent   StoredEvent @relation(fields: [storedEventId],references: [id],onDelete: Restrict)
+
+  consumerName String
+  claimToken   String   @unique
+
+  claimedAt  DateTime  @default(now())
+  lockedUntil DateTime
+  attempts   Int       @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([consumerName, storedEventId])
+  @@index([lockedUntil])
+  @@index([consumerName, lockedUntil])
+  @@map("event_processing_claims")
 }
 
 enum AccountingPeriodFrequency {

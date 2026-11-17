@@ -19,6 +19,8 @@ import type { FinancialPaymentAggregate } from '../../domain/aggregates/financia
 
 const CONSUMER_NAME = 'FinancialPaymentCreatedSubscriber';
 
+const CLAIM_LEASE_DURATION_MS = 120_000;
+
 // =============================================================================
 // Subscriber
 // =============================================================================
@@ -57,10 +59,17 @@ export class FinancialPaymentCreatedSubscriber implements OnModuleInit {
     const eventId = event.metadata.eventId;
 
     // -------------------------------------------------------------------------
-    // 1. Check whether this event has already been processed
+    // 1. Atomically acquire processing claim
     // -------------------------------------------------------------------------
 
-    if (await this.idempotencyStore.exists(CONSUMER_NAME, eventId)) {
+    const claimToken = await this.idempotencyStore.acquireClaim(
+      CONSUMER_NAME,
+      eventId,
+      CLAIM_LEASE_DURATION_MS,
+    );
+
+    // Event is already processed or another worker owns the claim.
+    if (claimToken === null) {
       return;
     }
 
@@ -90,12 +99,17 @@ export class FinancialPaymentCreatedSubscriber implements OnModuleInit {
     }
 
     // -------------------------------------------------------------------------
-    // 3. Mark event processed
+    // 3. Mark event processed and release claim
     // -------------------------------------------------------------------------
 
-    // Mark only after the relevant channel handling completes.
-    // If STK processing throws, allow the outbox retry behaviour to continue.
+    // Completion is accepted only when this worker still owns the claim.
+    // If processing throws, this statement is not reached.
+    // The claim remains until its lease expires.
 
-    await this.idempotencyStore.markProcessed(CONSUMER_NAME, eventId);
+    await this.idempotencyStore.markProcessed(
+      CONSUMER_NAME,
+      eventId,
+      claimToken,
+    );
   }
 }

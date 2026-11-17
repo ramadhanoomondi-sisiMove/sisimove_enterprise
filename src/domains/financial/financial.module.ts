@@ -58,6 +58,8 @@ import { MpesaModule } from '../../mpesa/mpesa.module';
 
 import { QueryMpesaPaymentStatusService } from './application/services/query-mpesa-payment-status.service';
 
+import { ProcessC2BPaymentCallbackHandler } from './application/command-handlers/process-c2b-payment-callback.handler';
+
 // -----------------------------------------------------------------------------
 // Presentation — Financial Controllers
 // -----------------------------------------------------------------------------
@@ -381,6 +383,7 @@ import { FinancialDisbursementAttemptSucceededSubscriber } from './application/s
     // -------------------------------------------------------------------------
 
     QueryMpesaPaymentStatusService,
+    ProcessC2BPaymentCallbackHandler,
 
     // =========================================================================
     // Financial Account

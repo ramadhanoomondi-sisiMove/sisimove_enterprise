@@ -1,27 +1,8 @@
-// -----------------------------------------------------------------------------
-// Financial Payment Provider — Secure Configuration Service
-// -----------------------------------------------------------------------------
-//
-// Application service responsible for:
-// - encrypting configuration before persistence;
-// - retrieving and decrypting stored configuration;
-// - preserving existing configuration fields when updating;
-// - keeping plaintext credentials out of persistence and API responses.
-//
-// Configuration updates merge with the existing configuration for the same
-// provider and environment. This prevents an STK-only update from accidentally
-// deleting previously stored B2C credentials.
-//
-// -----------------------------------------------------------------------------
-
 import { Inject, Injectable } from '@nestjs/common';
 
 import { FINANCIAL_PAYMENT_PROVIDER_TOKENS } from '../financial-payment-providers.tokens';
-
 import type { FinancialPaymentProviderConfigurationPort } from '../ports/financial-payment-provider-configuration.port';
-
 import type { EncryptionService } from '../../../../foundation/security/encryption.interface';
-
 import { FinancialPaymentProviderEnvironment } from '../../domain/value-objects/financial-payment-provider-environment.vo';
 
 // =============================================================================
@@ -34,7 +15,17 @@ export type FinancialPaymentProviderConfigurationPayload = Record<
 >;
 
 // =============================================================================
-// Service
+// Secure Configuration Service
+// =============================================================================
+//
+// Encrypts provider credentials before persistence and decrypts them only when
+// the integration needs them. Updates merge with the existing configuration
+// for the same provider/environment so that configuring one Daraja capability
+// does not accidentally erase another.
+//
+// This service does not execute Daraja requests and does not apply financial
+// consequences to customer accounts.
+//
 // =============================================================================
 
 @Injectable()
@@ -42,14 +33,9 @@ export class FinancialPaymentProviderConfigurationService {
   public constructor(
     @Inject(FINANCIAL_PAYMENT_PROVIDER_TOKENS.CONFIGURATION_PORT)
     private readonly configurationPort: FinancialPaymentProviderConfigurationPort,
-
     @Inject(FINANCIAL_PAYMENT_PROVIDER_TOKENS.ENCRYPTION_SERVICE)
     private readonly encryptionService: EncryptionService,
   ) {}
-
-  // ===========================================================================
-  // Save Configuration
-  // ===========================================================================
 
   public async saveConfiguration(
     providerId: string,
@@ -64,14 +50,11 @@ export class FinancialPaymentProviderConfigurationService {
 
     const normalizedProviderId = providerId.trim();
 
-    // Retrieve existing configuration for this provider and environment.
     const existingConfiguration = await this.getConfiguration(
       normalizedProviderId,
       environment,
     );
 
-    // Merge new values with existing values.
-    // Supplied values take precedence over previously stored values.
     const mergedConfiguration: FinancialPaymentProviderConfigurationPayload = {
       ...(existingConfiguration ?? {}),
       ...configuration,
@@ -79,9 +62,9 @@ export class FinancialPaymentProviderConfigurationService {
 
     this.validateConfiguration(mergedConfiguration);
 
-    const plaintext = JSON.stringify(mergedConfiguration);
-
-    const encryptedPayload = this.encryptionService.encrypt(plaintext);
+    const encryptedPayload = this.encryptionService.encrypt(
+      JSON.stringify(mergedConfiguration),
+    );
 
     return this.configurationPort.save({
       providerId: normalizedProviderId,
@@ -89,10 +72,6 @@ export class FinancialPaymentProviderConfigurationService {
       encryptedPayload,
     });
   }
-
-  // ===========================================================================
-  // Retrieve Configuration
-  // ===========================================================================
 
   public async getConfiguration(
     providerId: string,
@@ -108,8 +87,13 @@ export class FinancialPaymentProviderConfigurationService {
     }
 
     const plaintext = this.encryptionService.decrypt(stored.encryptedPayload);
+    let parsed: unknown;
 
-    const parsed: unknown = JSON.parse(plaintext);
+    try {
+      parsed = JSON.parse(plaintext);
+    } catch {
+      throw new Error('Stored provider configuration is not valid JSON.');
+    }
 
     if (
       parsed === null ||
@@ -119,18 +103,13 @@ export class FinancialPaymentProviderConfigurationService {
       throw new Error('Stored provider configuration has an invalid format.');
     }
 
-    this.validateConfiguration(parsed as Record<string, string>);
+    const configuration = parsed as Record<string, unknown>;
+    this.validateConfiguration(configuration);
 
-    return parsed as FinancialPaymentProviderConfigurationPayload;
+    return configuration as FinancialPaymentProviderConfigurationPayload;
   }
 
-  // ===========================================================================
-  // Validation
-  // ===========================================================================
-
-  private validateConfiguration(
-    configuration: FinancialPaymentProviderConfigurationPayload,
-  ): void {
+  private validateConfiguration(configuration: Record<string, unknown>): void {
     if (
       configuration === null ||
       typeof configuration !== 'object' ||
@@ -148,7 +127,7 @@ export class FinancialPaymentProviderConfigurationService {
     for (const [key, value] of entries) {
       if (!key.trim() || typeof value !== 'string' || !value.trim()) {
         throw new Error(
-          'Provider configuration keys and values must not be empty.',
+          'Provider configuration keys and values must not be empty strings.',
         );
       }
     }

@@ -140,12 +140,48 @@ export type FinancialPaymentWithRelations = PrismaFinancialPayment & {
 // Persistence Types
 // =============================================================================
 
-export interface FinancialPaymentPersistence {
-  payment: ReturnType<typeof FinancialPaymentPrismaMapper.toPersistence>;
+export interface FinancialPaymentRecordPersistence {
+  id: string;
+  publicId: string;
+  accountId: string;
+  amount: number;
+  currency: string;
+  status: PrismaFinancialPaymentStatus;
+  channel: PrismaFinancialPaymentChannel;
+  methodId: string | null;
+  transactionPublicId: string | null;
+  referenceType: string | null;
+  referencePublicId: string | null;
+  initiatedAt: Date;
+  completedAt: Date | null;
+  failedAt: Date | null;
+  cancelledAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
-  attempts: ReturnType<
-    typeof FinancialPaymentPrismaMapper.attemptToPersistence
-  >[];
+export interface FinancialPaymentAttemptPersistence {
+  id: string;
+  publicId: string;
+  paymentId: string;
+  status: PrismaFinancialPaymentAttemptStatus;
+  provider: string;
+  providerReference: string | null;
+  merchantRequestId: string | null;
+  amount: number;
+  currency: string;
+  failureCode: string | null;
+  failureMessage: string | null;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  failedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface FinancialPaymentPersistence {
+  payment: FinancialPaymentRecordPersistence;
+  attempts: FinancialPaymentAttemptPersistence[];
 }
 
 // =============================================================================
@@ -321,25 +357,7 @@ export class FinancialPaymentPrismaMapper {
     entity: FinancialPaymentEntity,
     accountId: string,
     methodId?: string,
-  ): {
-    id: string;
-    publicId: string;
-    accountId: string;
-    amount: number;
-    currency: string;
-    status: PrismaFinancialPaymentStatus;
-    channel: PrismaFinancialPaymentChannel;
-    methodId: string | null;
-    transactionPublicId: string | null;
-    referenceType: string | null;
-    referencePublicId: string | null;
-    initiatedAt: Date;
-    completedAt: Date | null;
-    failedAt: Date | null;
-    cancelledAt: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-  } {
+  ): FinancialPaymentRecordPersistence {
     return {
       id: entity.id.toString(),
 
@@ -381,24 +399,9 @@ export class FinancialPaymentPrismaMapper {
   // Payment Attempt → Prisma
   // ===========================================================================
 
-  public static attemptToPersistence(entity: FinancialPaymentAttemptEntity): {
-    id: string;
-    publicId: string;
-    paymentId: string;
-    status: PrismaFinancialPaymentAttemptStatus;
-    provider: string;
-    providerReference: string | null;
-    merchantRequestId: string | null;
-    amount: number;
-    currency: string;
-    failureCode: string | null;
-    failureMessage: string | null;
-    startedAt: Date | null;
-    completedAt: Date | null;
-    failedAt: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-  } {
+  public static attemptToPersistence(
+    entity: FinancialPaymentAttemptEntity,
+  ): FinancialPaymentAttemptPersistence {
     return {
       id: entity.id.toString(),
 

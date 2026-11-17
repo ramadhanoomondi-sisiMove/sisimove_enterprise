@@ -244,3 +244,4 @@ export { FailFinancialDisbursementCommand } from './fail-financial-disbursement.
 export { CancelFinancialDisbursementCommand } from './cancel-financial-disbursement.command';
 
 export { PostSuccessfulFinancialPaymentCommand } from './post-successful-financial-payment.command';
+export { ProcessC2BPaymentCallbackCommand } from './process-c2b-payment-callback.command';

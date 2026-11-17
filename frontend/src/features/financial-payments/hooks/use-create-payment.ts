@@ -1,3 +1,4 @@
+
 // =============================================================================
 // sisiMove — Create Financial Payment Hook
 // =============================================================================
@@ -26,13 +27,14 @@
 import { useMutation } from '@tanstack/react-query';
 
 import { createPayment } from '../api';
+
 import type {
   CreatePaymentRequest,
   FinancialPayment,
 } from '../models';
 
 // -----------------------------------------------------------------------------
-// Mutation Context
+// Mutation Variables
 // -----------------------------------------------------------------------------
 
 export interface CreatePaymentVariables {
@@ -46,12 +48,20 @@ export interface CreatePaymentVariables {
 
   /**
    * Member-facing payment creation request.
+   *
+   * The request includes:
+   *
+   * - channel: STK_PUSH or C2B;
+   * - amount: whole KES string;
+   * - currency;
+   * - correlationId;
+   * - methodPublicId when using STK_PUSH.
    */
   request: CreatePaymentRequest;
 }
 
 // -----------------------------------------------------------------------------
-// Query Key
+// Mutation Key
 // -----------------------------------------------------------------------------
 
 export const CREATE_FINANCIAL_PAYMENT_MUTATION_KEY = [
@@ -71,7 +81,7 @@ export function useCreatePayment() {
   >({
     mutationKey: CREATE_FINANCIAL_PAYMENT_MUTATION_KEY,
 
-    mutationFn: async ({
+    mutationFn: ({
       accountPublicId,
       request,
     }): Promise<FinancialPayment> => {
@@ -79,4 +89,3 @@ export function useCreatePayment() {
     },
   });
 }
-

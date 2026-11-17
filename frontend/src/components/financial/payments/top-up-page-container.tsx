@@ -3,17 +3,11 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 
 import { AUTHENTICATED_ROUTES } from '@/foundation/routing/authenticated-routes';
 
-import {
-  useMyFinancialAccount,
-} from '@/features/financial-account';
-
-import {
-  useDefaultPaymentMethod,
-} from '@/features/financial-payment-methods';
+import { useMyFinancialAccount } from '@/features/financial-account';
+import { useDefaultPaymentMethod } from '@/features/financial-payment-methods';
 
 import {
   createPaymentSchema,
@@ -21,11 +15,12 @@ import {
   useFinancialPayment,
 } from '@/features/financial-payments';
 
+import { useC2BPaymentInstructions } from '@/features/mpesa';
+
 import {
   PaymentForm,
   PaymentProcessing,
   PaymentResult,
-  type PaymentMethodOption,
   type PaymentResultStatus,
 } from '@/components/financial/payments';
 
@@ -36,7 +31,6 @@ import { Button } from '@/components/ui';
 // =============================================================================
 
 const DEFAULT_CURRENCY = 'KES';
-
 const PAYMENT_STATUS_POLL_INTERVAL_MS = 3_000;
 
 // =============================================================================
@@ -51,6 +45,8 @@ type FinancialPaymentStatus =
   | 'CANCELLED'
   | 'EXPIRED';
 
+type TopUpOption = 'DEFAULT_NUMBER' | 'PAYBILL_TILL';
+
 interface PaymentResultCopy {
   readonly title: string;
   readonly message: string;
@@ -63,40 +59,29 @@ interface PaymentResultCopy {
 function isPaymentInProgress(
   status: FinancialPaymentStatus,
 ): boolean {
-  return (
-    status === 'PENDING' ||
-    status === 'PROCESSING'
-  );
+  return status === 'PENDING' || status === 'PROCESSING';
 }
 
 function mapPaymentResultStatus(
   status: FinancialPaymentStatus,
 ): PaymentResultStatus {
-  return status === 'SUCCEEDED'
-    ? 'success'
-    : 'failed';
+  return status === 'SUCCEEDED' ? 'success' : 'failed';
 }
 
 function getPaymentResultCopy(
-  status:
-    | 'SUCCEEDED'
-    | 'FAILED'
-    | 'CANCELLED'
-    | 'EXPIRED',
+  status: 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'EXPIRED',
 ): PaymentResultCopy {
   switch (status) {
     case 'SUCCEEDED':
       return {
         title: 'Top-up successful',
-        message:
-          'Your payment was completed successfully.',
+        message: 'Your payment was completed successfully.',
       };
 
     case 'CANCELLED':
       return {
         title: 'Top-up cancelled',
-        message:
-          'This payment was cancelled before it completed.',
+        message: 'This payment was cancelled before it completed.',
       };
 
     case 'EXPIRED':
@@ -110,39 +95,9 @@ function getPaymentResultCopy(
     default:
       return {
         title: 'Top-up failed',
-        message:
-          'The payment could not be completed. Please try again.',
+        message: 'The payment could not be completed. Please try again.',
       };
   }
-}
-
-function createPaymentMethodOption(
-  paymentMethod: NonNullable<
-    ReturnType<typeof useDefaultPaymentMethod>['data']
-  >,
-): PaymentMethodOption {
-  const displayName =
-    paymentMethod.displayName?.trim() ?? '';
-
-  const label =
-    displayName.length > 0
-      ? displayName
-      : paymentMethod.provider;
-
-  const lastFour =
-    paymentMethod.lastFour?.trim() ?? '';
-
-  const description =
-    lastFour.length > 0
-      ? `•••• ${lastFour}`
-      : paymentMethod.provider;
-
-  return {
-    id: paymentMethod.publicId,
-    label,
-    description,
-    isDefault: paymentMethod.isDefault,
-  };
 }
 
 // =============================================================================
@@ -150,8 +105,6 @@ function createPaymentMethodOption(
 // =============================================================================
 
 export function TopUpPageContainer() {
-  const router = useRouter();
-
   // ===========================================================================
   // Financial Account
   // ===========================================================================
@@ -170,14 +123,24 @@ export function TopUpPageContainer() {
 
   const {
     data: defaultPaymentMethod,
-    isLoading: isDefaultPaymentMethodLoading,
     isError: isDefaultPaymentMethodError,
-    error: defaultPaymentMethodError,
     refetch: refetchDefaultPaymentMethod,
   } = useDefaultPaymentMethod();
 
   // ===========================================================================
-  // Create Payment
+  // C2B Payment Instructions
+  // ===========================================================================
+
+  const {
+    data: c2bPaymentInstructions,
+    isLoading: isC2BInstructionsLoading,
+    isError: isC2BInstructionsError,
+    error: c2bPaymentInstructionsError,
+    refetch: refetchC2BPaymentInstructions,
+  } = useC2BPaymentInstructions();
+
+  // ===========================================================================
+  // Create Financial Payment
   // ===========================================================================
 
   const createPaymentMutation = useCreatePayment();
@@ -186,52 +149,28 @@ export function TopUpPageContainer() {
   // Form State
   // ===========================================================================
 
-  /**
-   * Amount is maintained as a string in whole KES.
-   *
-   * The exact input is preserved.
-   *
-   * Examples:
-   *
-   *     "100"  = KES 100
-   *     "500"  = KES 500
-   *     "1250" = KES 1,250
-   *
-   * No minor-unit conversion occurs in this container.
-   */
-  const [
-    amount,
-    setAmount,
-  ] = useState<string>('');
+  // Amount remains a string in whole KES.
+  // The backend performs the conversion to minor units.
+  const [amount, setAmount] = useState<string>('');
 
-  const [
-    selectedPaymentMethodId,
-    setSelectedPaymentMethodId,
-  ] = useState<string>('');
+  const [topUpOption, setTopUpOption] =
+    useState<TopUpOption>('DEFAULT_NUMBER');
 
-  const [
-    amountError,
-    setAmountError,
-  ] = useState<string | undefined>();
+  const [amountError, setAmountError] =
+    useState<string | undefined>();
 
-  const [
-    paymentMethodError,
-    setPaymentMethodError,
-  ] = useState<string | undefined>();
+  const [paymentMethodError, setPaymentMethodError] =
+    useState<string | undefined>();
 
-  const [
-    formError,
-    setFormError,
-  ] = useState<string | undefined>();
+  const [formError, setFormError] =
+    useState<string | undefined>();
 
   // ===========================================================================
   // Payment Observation State
   // ===========================================================================
 
-  const [
-    paymentPublicId,
-    setPaymentPublicId,
-  ] = useState<string | undefined>();
+  const [paymentPublicId, setPaymentPublicId] =
+    useState<string | undefined>();
 
   // ===========================================================================
   // Financial Payment Lifecycle
@@ -246,26 +185,41 @@ export function TopUpPageContainer() {
   } = useFinancialPayment(paymentPublicId);
 
   // ===========================================================================
-  // Effective Payment Method
+  // Default Payment Method Presentation
   // ===========================================================================
 
-  const effectivePaymentMethodId =
-    selectedPaymentMethodId.trim().length > 0
-      ? selectedPaymentMethodId
-      : defaultPaymentMethod?.publicId ?? '';
+  const defaultPaymentMethodOption = defaultPaymentMethod
+    ? {
+        id: defaultPaymentMethod.publicId,
+        label:
+          defaultPaymentMethod.displayName?.trim() ||
+          defaultPaymentMethod.provider,
+        phoneNumber: defaultPaymentMethod.phoneNumber,
+        description: defaultPaymentMethod.provider,
+        isActive: defaultPaymentMethod.isActive,
+      }
+    : null;
+
 
   // ===========================================================================
-  // Payment Method Presentation
+  // C2B Payment Details Presentation
   // ===========================================================================
 
-  const paymentMethods: PaymentMethodOption[] =
-    defaultPaymentMethod
-      ? [
-          createPaymentMethodOption(
-            defaultPaymentMethod,
-          ),
-        ]
-      : [];
+  const c2bPaymentDetails = c2bPaymentInstructions
+    ? {
+        provider: c2bPaymentInstructions.provider,
+        paymentMethod: 'C2B' as const,
+        businessType: c2bPaymentInstructions.businessType,
+        shortcode: c2bPaymentInstructions.shortcode,
+        accountReference:
+          c2bPaymentInstructions.accountReference ?? undefined,
+        currency: c2bPaymentInstructions.currency,
+
+        // PaymentForm expects an array, while the API model
+        // currently supplies a single instruction string.
+        instructions: [c2bPaymentInstructions.instructions],
+      }
+    : null;
 
   // ===========================================================================
   // Payment Status Polling
@@ -287,20 +241,22 @@ export function TopUpPageContainer() {
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [
-    paymentPublicId,
-    payment,
-    refetchPayment,
-  ]);
+  }, [paymentPublicId, payment, refetchPayment]);
 
   // ===========================================================================
-  // Submit
+  // STK Push Submission
   // ===========================================================================
 
   const handleSubmit = () => {
     setAmountError(undefined);
     setPaymentMethodError(undefined);
     setFormError(undefined);
+
+    // C2B instructions are displayed separately.
+    // This submission handler is only for STK Push.
+    if (topUpOption !== 'DEFAULT_NUMBER') {
+      return;
+    }
 
     // -------------------------------------------------------------------------
     // Financial Account
@@ -310,21 +266,20 @@ export function TopUpPageContainer() {
       setFormError(
         'Your wallet account could not be loaded. Please try again.',
       );
-
       return;
     }
 
     // -------------------------------------------------------------------------
-    // Payment Method
+    // Saved Default Payment Method
     // -------------------------------------------------------------------------
 
     if (
-      effectivePaymentMethodId.trim().length === 0
+      !defaultPaymentMethod?.publicId ||
+      !defaultPaymentMethod.isActive
     ) {
       setPaymentMethodError(
-        'Select a payment method.',
+        'An active default M-PESA payment method is required for STK Push.',
       );
-
       return;
     }
 
@@ -337,10 +292,7 @@ export function TopUpPageContainer() {
       !Number.isSafeInteger(Number(amount)) ||
       Number(amount) <= 0
     ) {
-      setAmountError(
-        'Enter a valid top-up amount.',
-      );
-
+      setAmountError('Enter a valid top-up amount.');
       return;
     }
 
@@ -355,32 +307,26 @@ export function TopUpPageContainer() {
     // -------------------------------------------------------------------------
 
     const parsed = createPaymentSchema.safeParse({
-      // Send the exact string entered by the member.
+      channel: 'STK_PUSH',
+
+      // Send whole KES. Do not multiply by 100 here.
       amount,
 
       currency: DEFAULT_CURRENCY,
-
       correlationId,
-
-      methodPublicId: effectivePaymentMethodId,
+      methodPublicId: defaultPaymentMethod.publicId,
     });
 
     if (!parsed.success) {
-      const fieldErrors =
-        parsed.error.flatten().fieldErrors;
+      const fieldErrors = parsed.error.flatten().fieldErrors;
 
-      setAmountError(
-        fieldErrors.amount?.[0],
-      );
-
-      setPaymentMethodError(
-        fieldErrors.methodPublicId?.[0],
-      );
+      setAmountError(fieldErrors.amount?.[0]);
+      setPaymentMethodError(fieldErrors.methodPublicId?.[0]);
 
       setFormError(
-        fieldErrors.currency?.[0] ??
-          fieldErrors.correlationId?.[0] ??
-          fieldErrors.referenceType?.[0],
+        fieldErrors.channel?.[0] ??
+          fieldErrors.currency?.[0] ??
+          fieldErrors.correlationId?.[0],
       );
 
       return;
@@ -397,9 +343,7 @@ export function TopUpPageContainer() {
       },
       {
         onSuccess: (createdPayment) => {
-          setPaymentPublicId(
-            createdPayment.publicId,
-          );
+          setPaymentPublicId(createdPayment.publicId);
         },
 
         onError: (error) => {
@@ -419,7 +363,7 @@ export function TopUpPageContainer() {
   const handleReset = () => {
     setPaymentPublicId(undefined);
     setAmount('');
-    setSelectedPaymentMethodId('');
+    setTopUpOption('DEFAULT_NUMBER');
     setAmountError(undefined);
     setPaymentMethodError(undefined);
     setFormError(undefined);
@@ -428,13 +372,10 @@ export function TopUpPageContainer() {
   };
 
   // ===========================================================================
-  // Initial Loading
+  // Initial Financial Account Loading
   // ===========================================================================
 
-  if (
-    isAccountLoading ||
-    isDefaultPaymentMethodLoading
-  ) {
+  if (isAccountLoading) {
     return (
       <main className="min-h-screen bg-[var(--background-brand)]">
         <div className="page-container">
@@ -447,11 +388,8 @@ export function TopUpPageContainer() {
                   aria-label="Loading wallet top-up"
                 >
                   <div className="h-6 w-40 animate-pulse rounded bg-[var(--background-muted)]" />
-
                   <div className="h-4 w-72 animate-pulse rounded bg-[var(--background-muted)]" />
-
                   <div className="h-12 w-full animate-pulse rounded bg-[var(--background-muted)]" />
-
                   <div className="h-12 w-full animate-pulse rounded bg-[var(--background-muted)]" />
                 </div>
               </div>
@@ -463,18 +401,10 @@ export function TopUpPageContainer() {
   }
 
   // ===========================================================================
-  // Initial Data Error
+  // Financial Account Error
   // ===========================================================================
 
-  if (
-    isAccountError ||
-    isDefaultPaymentMethodError
-  ) {
-    const message =
-      accountError?.message ??
-      defaultPaymentMethodError?.message ??
-      'Unable to load your wallet top-up information.';
-
+  if (isAccountError || !financialAccount?.publicId) {
     return (
       <main className="min-h-screen bg-[var(--background-brand)]">
         <div className="page-container">
@@ -484,11 +414,12 @@ export function TopUpPageContainer() {
                 <div className="space-y-4">
                   <div>
                     <p className="text-sm font-semibold text-[var(--danger)]">
-                      Unable to load top-up
+                      Unable to load wallet
                     </p>
 
                     <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
-                      {message}
+                      {accountError?.message ??
+                        'Your financial account could not be loaded.'}
                     </p>
                   </div>
 
@@ -498,7 +429,6 @@ export function TopUpPageContainer() {
                     size="sm"
                     onClick={() => {
                       void refetchAccount();
-                      void refetchDefaultPaymentMethod();
                     }}
                   >
                     Try again
@@ -513,7 +443,7 @@ export function TopUpPageContainer() {
   }
 
   // ===========================================================================
-  // Payment Lifecycle Surface
+  // Payment Lifecycle Surface — STK Push Only
   // ===========================================================================
 
   if (paymentPublicId !== undefined) {
@@ -574,10 +504,7 @@ export function TopUpPageContainer() {
     // Payment Status Loading
     // -------------------------------------------------------------------------
 
-    if (
-      isPaymentLoading ||
-      payment === undefined
-    ) {
+    if (isPaymentLoading || payment === undefined) {
       return (
         <main className="min-h-screen bg-[var(--background-brand)]">
           <div className="page-container">
@@ -641,9 +568,7 @@ export function TopUpPageContainer() {
     // Terminal Payment
     // -------------------------------------------------------------------------
 
-    const resultCopy = getPaymentResultCopy(
-      payment.status,
-    );
+    const resultCopy = getPaymentResultCopy(payment.status);
 
     return (
       <main className="min-h-screen bg-[var(--background-brand)]">
@@ -651,9 +576,7 @@ export function TopUpPageContainer() {
           <section className="section">
             <div className="mx-auto max-w-2xl">
               <PaymentResult
-                status={mapPaymentResultStatus(
-                  payment.status,
-                )}
+                status={mapPaymentResultStatus(payment.status)}
                 title={resultCopy.title}
                 message={resultCopy.message}
                 paymentReference={payment.publicId}
@@ -676,52 +599,6 @@ export function TopUpPageContainer() {
   }
 
   // ===========================================================================
-  // No Default Payment Method
-  // ===========================================================================
-
-  if (
-    defaultPaymentMethod === null ||
-    defaultPaymentMethod === undefined
-  ) {
-    return (
-      <main className="min-h-screen bg-[var(--background-brand)]">
-        <div className="page-container">
-          <section className="section">
-            <div className="mx-auto max-w-2xl">
-              <div className="surface p-6">
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-sm font-semibold text-[var(--foreground)]">
-                      No payment method available
-                    </p>
-
-                    <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
-                      Add a payment method before starting a wallet top-up.
-                    </p>
-                  </div>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      router.push(
-                        AUTHENTICATED_ROUTES.WALLET_PAYMENT_METHODS,
-                      );
-                    }}
-                  >
-                    Add payment method
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
-      </main>
-    );
-  }
-
-  // ===========================================================================
   // Top-Up Form
   // ===========================================================================
 
@@ -730,7 +607,6 @@ export function TopUpPageContainer() {
       <div className="page-container">
         <section className="section">
           <div className="mx-auto max-w-2xl space-y-5">
-
             {/* Page Heading */}
 
             <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -760,8 +636,9 @@ export function TopUpPageContainer() {
 
             <PaymentForm
               amount={amount}
-              paymentMethodPublicId={effectivePaymentMethodId}
-              paymentMethods={paymentMethods}
+              topUpOption={topUpOption}
+              defaultPaymentMethod={defaultPaymentMethodOption}
+              c2bPaymentDetails={c2bPaymentDetails}
               currency={DEFAULT_CURRENCY}
               amountError={amountError}
               paymentMethodError={paymentMethodError}
@@ -772,17 +649,78 @@ export function TopUpPageContainer() {
                 setAmountError(undefined);
                 setFormError(undefined);
               }}
-              onPaymentMethodChange={(paymentMethodPublicId) => {
-                setSelectedPaymentMethodId(
-                  paymentMethodPublicId,
-                );
-
+              onTopUpOptionChange={(nextOption) => {
+                setTopUpOption(nextOption);
                 setPaymentMethodError(undefined);
                 setFormError(undefined);
               }}
               onSubmit={handleSubmit}
               onCancel={handleReset}
             />
+
+            {/* C2B Instructions Loading */}
+
+            {topUpOption === 'PAYBILL_TILL' &&
+            isC2BInstructionsLoading ? (
+              <p
+                className="text-sm text-[var(--foreground-muted)]"
+                aria-live="polite"
+              >
+                Loading M-PESA payment instructions…
+              </p>
+            ) : null}
+
+            {/* C2B Instructions Error */}
+
+            {topUpOption === 'PAYBILL_TILL' &&
+            isC2BInstructionsError ? (
+              <div
+                role="alert"
+                className="rounded-[var(--radius-md)] border border-[var(--danger)] bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]"
+              >
+                {c2bPaymentInstructionsError?.message ??
+                  'Unable to load M-PESA payment instructions.'}
+
+                <div className="mt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      void refetchC2BPaymentInstructions();
+                    }}
+                  >
+                    Retry instructions
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Default Payment Method Error */}
+
+            {isDefaultPaymentMethodError ? (
+              <div
+                role="alert"
+                className="rounded-[var(--radius-md)] border border-[var(--border)] px-4 py-3 text-sm text-[var(--foreground-secondary)]"
+              >
+                Your saved default M-PESA number could not be loaded.
+                You can still use PayBill / Buy Goods, or retry loading
+                your payment method.
+
+                <div className="mt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      void refetchDefaultPaymentMethod();
+                    }}
+                  >
+                    Retry payment method
+                  </Button>
+                </div>
+              </div>
+            ) : null}
 
             {/* Application Error */}
 
@@ -797,8 +735,7 @@ export function TopUpPageContainer() {
 
             {/* Mutation Error */}
 
-            {createPaymentMutation.isError &&
-            !formError ? (
+            {createPaymentMutation.isError && !formError ? (
               <div
                 role="alert"
                 className="rounded-[var(--radius-md)] border border-[var(--danger)] bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]"
@@ -807,7 +744,6 @@ export function TopUpPageContainer() {
                   'Unable to start the top-up. Please try again.'}
               </div>
             ) : null}
-
           </div>
         </section>
       </div>

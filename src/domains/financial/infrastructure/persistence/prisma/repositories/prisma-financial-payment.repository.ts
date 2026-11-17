@@ -21,7 +21,7 @@
 // - Preserve public domain identities.
 // - Preserve Payment Attempt execution history.
 // - Enforce persistence-level relational consistency.
-// - Participate in an ambient application transaction.
+// - Participate in an ambient application transaction.\n// - Acquire parent Payment row locks before creating Payment Attempts.
 //
 // Transaction boundary:
 //
@@ -119,6 +119,7 @@ import type { FinancialPaymentAggregate } from '../../../../domain/aggregates/fi
 
 import {
   FinancialPaymentPrismaMapper,
+  type FinancialPaymentPersistence,
   type FinancialPaymentWithRelations,
 } from '../mappers/financial-payment-prisma.mapper';
 
@@ -223,11 +224,12 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
     // Map Aggregate
     // -------------------------------------------------------------------------
 
-    const persistence = FinancialPaymentPrismaMapper.aggregateToPersistence(
-      aggregate,
-      accountId,
-      methodId,
-    );
+    const persistence: FinancialPaymentPersistence =
+      FinancialPaymentPrismaMapper.aggregateToPersistence(
+        aggregate,
+        accountId,
+        methodId,
+      );
 
     // -------------------------------------------------------------------------
     // Validate Persistence References
@@ -402,11 +404,12 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
     // Map Aggregate
     // -------------------------------------------------------------------------
 
-    const persistence = FinancialPaymentPrismaMapper.aggregateToPersistence(
-      aggregate,
-      accountId,
-      methodId,
-    );
+    const persistence: FinancialPaymentPersistence =
+      FinancialPaymentPrismaMapper.aggregateToPersistence(
+        aggregate,
+        accountId,
+        methodId,
+      );
 
     // -------------------------------------------------------------------------
     // Validate Persistence References
@@ -519,6 +522,51 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
 
     return FinancialPaymentPrismaMapper.toDomain(record);
   }
+
+  // ===========================================================================
+  // Lock By Public ID
+  // ===========================================================================
+
+  /**
+   * Acquires a PostgreSQL row-level lock for the owning Financial Payment.
+   *
+   * IMPORTANT:
+   * - Call this method inside PrismaUnitOfWork.
+   * - Reload the aggregate after acquiring the lock.
+   * - Persist the new attempt before the UnitOfWork commits.
+   * - Never keep this transaction open while calling Safaricom.
+   *
+   * Every code path that creates a Payment Attempt must follow this same
+   * parent-row locking convention.
+   */
+  public async lockByPublicId(
+    publicId: FinancialPaymentPublicId,
+  ): Promise<void> {
+    const normalized = publicId.value.trim();
+
+    if (!normalized) {
+      throw new FinancialPaymentException(
+        'Financial Payment public ID must not be empty.',
+      );
+    }
+
+    // PrismaClientLike is intentionally narrowed locally so this repository
+    // does not need to widen the shared transaction-client abstraction.
+    // Values are still passed as SQL parameters, not interpolated into SQL.
+    const client = this.prisma;
+
+    const rows = await client.$queryRawUnsafe<Array<{ id: string }>>(
+      'SELECT "id" FROM "financial_payments" WHERE "publicId" = $1 FOR UPDATE',
+      normalized,
+    );
+
+    if (rows.length === 0) {
+      throw new FinancialPaymentException(
+        `Financial Payment "${normalized}" does not exist and cannot be locked.`,
+      );
+    }
+  }
+
   // ===========================================================================
   // Find By Provider Reference
   // ===========================================================================
@@ -559,7 +607,9 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
       include: {
         account: true,
         method: true,
-        attempts: true,
+        attempts: {
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        },
       },
     });
 
@@ -670,7 +720,9 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
       include: {
         account: true,
         method: true,
-        attempts: true,
+        attempts: {
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        },
       },
 
       orderBy: {
@@ -727,7 +779,9 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
       include: {
         account: true,
         method: true,
-        attempts: true,
+        attempts: {
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        },
       },
 
       orderBy: {
@@ -760,7 +814,9 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
       include: {
         account: true,
         method: true,
-        attempts: true,
+        attempts: {
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        },
       },
 
       orderBy: {
@@ -791,7 +847,9 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
       include: {
         account: true,
         method: true,
-        attempts: true,
+        attempts: {
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        },
       },
 
       orderBy: {
@@ -822,7 +880,9 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
       include: {
         account: true,
         method: true,
-        attempts: true,
+        attempts: {
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        },
       },
 
       orderBy: {
@@ -1022,7 +1082,9 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
       include: {
         account: true,
         method: true,
-        attempts: true,
+        attempts: {
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        },
       },
       orderBy: {
         createdAt: 'desc',
@@ -1076,7 +1138,9 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
       include: {
         account: true,
         method: true,
-        attempts: true,
+        attempts: {
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        },
       },
     });
 
@@ -1108,7 +1172,9 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
       include: {
         account: true,
         method: true,
-        attempts: true,
+        attempts: {
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        },
       },
     });
 
@@ -1143,7 +1209,9 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
       include: {
         account: true,
         method: true,
-        attempts: true,
+        attempts: {
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        },
       },
     });
 

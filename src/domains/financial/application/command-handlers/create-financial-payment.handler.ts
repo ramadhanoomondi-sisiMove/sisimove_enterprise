@@ -5,23 +5,29 @@
 // Application command handler responsible for creating a Financial Payment
 // aggregate.
 //
-// Aggregate:
-//
-// FinancialPaymentAggregate
-// ├── FinancialPaymentEntity
-// └── FinancialPaymentAttemptEntity[]
-//
 // Responsibilities:
 //
-// 1. Validate application-level uniqueness where required.
-// 2. Create the FinancialPaymentEntity through its domain factory.
-// 3. Create the FinancialPaymentAggregate.
-// 4. Record the FinancialPaymentCreatedEvent.
-// 5. Persist the complete aggregate.
-// 6. Persist domain events into the transactional outbox.
-// 7. Return the created aggregate.
+// 1. Validate payment-channel requirements.
+// 2. Validate application-level business-reference uniqueness.
+// 3. Create the FinancialPaymentEntity.
+// 4. Create the FinancialPaymentAggregate.
+// 5. Record the FinancialPaymentCreatedEvent.
+// 6. Persist the complete aggregate.
+// 7. Persist domain events into the transactional outbox.
+// 8. Return the created aggregate.
 //
-// The handler does NOT:
+// Channel requirements:
+//
+// STK_PUSH:
+// - Requires a selected Financial Payment Method.
+// - Provider execution happens through ProcessFinancialPaymentHandler.
+//
+// C2B:
+// - Does not require a saved Financial Payment Method.
+// - Does not execute STK Push.
+// - Proceeds through the separate C2B payment workflow.
+//
+// This handler does NOT:
 //
 // - create FinancialPaymentAttemptEntity;
 // - execute payment providers;
@@ -30,13 +36,6 @@
 // - modify Financial Account balances;
 // - perform settlement;
 // - perform accounting.
-//
-// Payment attempts belong to subsequent payment execution workflows.
-//
-// Domain construction belongs to the domain entity/aggregate.
-// Persistence belongs to the repository.
-// Event persistence belongs to the EventPublisher port.
-// Transaction coordination belongs to the UnitOfWork port.
 //
 // -----------------------------------------------------------------------------
 
@@ -131,13 +130,45 @@ export class CreateFinancialPaymentHandler implements CommandHandler<
   ): Promise<FinancialPaymentAggregate> {
     return this.unitOfWork.execute(async () => {
       // -----------------------------------------------------------------------
-      // 1. Optional business-reference uniqueness check
+      // 1. Validate payment-channel requirements
       // -----------------------------------------------------------------------
 
-      if (
-        command.referenceType !== undefined &&
-        command.referencePublicId !== undefined
-      ) {
+      if (command.channel.isStkPush()) {
+        if (command.methodId === undefined) {
+          throw new Error(
+            'STK Push Financial Payments require a selected payment method.',
+          );
+        }
+      } else if (command.channel.isC2B()) {
+        if (command.methodId !== undefined) {
+          throw new Error(
+            'C2B Financial Payments must not use a saved payment method.',
+          );
+        }
+      } else {
+        throw new Error(
+          `Unsupported Financial Payment channel: ${command.channel.value}`,
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // 2. Validate business-reference completeness
+      // -----------------------------------------------------------------------
+
+      const hasReferenceType = command.referenceType !== undefined;
+      const hasReferencePublicId = command.referencePublicId !== undefined;
+
+      if (hasReferenceType !== hasReferencePublicId) {
+        throw new Error(
+          'Financial Payment referenceType and referencePublicId must be supplied together.',
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // 3. Optional business-reference uniqueness check
+      // -----------------------------------------------------------------------
+
+      if (hasReferenceType && hasReferencePublicId) {
         const alreadyExists = await this.repository.existsByReference(
           command.referenceType,
           command.referencePublicId,
@@ -152,7 +183,7 @@ export class CreateFinancialPaymentHandler implements CommandHandler<
       }
 
       // -----------------------------------------------------------------------
-      // 2. Create Financial Payment Entity
+      // 4. Create Financial Payment Entity
       // -----------------------------------------------------------------------
 
       const payment = FinancialPaymentEntity.create(
@@ -165,35 +196,25 @@ export class CreateFinancialPaymentHandler implements CommandHandler<
       );
 
       // -----------------------------------------------------------------------
-      // 3. Create aggregate
+      // 5. Create aggregate
       // -----------------------------------------------------------------------
 
       const aggregate = FinancialPaymentAggregate.create(payment);
 
       // -----------------------------------------------------------------------
-      // 4. Record creation event
+      // 6. Record creation event
       // -----------------------------------------------------------------------
 
       aggregate.emitCreatedEvent(command.correlationId, command.causationId);
 
       // -----------------------------------------------------------------------
-      // 5. Persist aggregate
+      // 7. Persist aggregate
       // -----------------------------------------------------------------------
 
       await this.repository.create(aggregate);
 
       // -----------------------------------------------------------------------
-      // 6. Persist domain events into the transactional outbox
-      // -----------------------------------------------------------------------
-      //
-      // pullDomainEvents() returns the pending events and clears the
-      // aggregate's internal event collection.
-      //
-      // EventPublisher persists the events and their outbox records using
-      // the same transaction context established by UnitOfWork.
-      //
-      // No event is dispatched to subscribers directly from this handler.
-      // The OutboxWorker handles dispatch after the transaction commits.
+      // 8. Persist domain events into the transactional outbox
       // -----------------------------------------------------------------------
 
       const domainEvents = aggregate.pullDomainEvents();
@@ -203,7 +224,7 @@ export class CreateFinancialPaymentHandler implements CommandHandler<
       }
 
       // -----------------------------------------------------------------------
-      // 7. Return aggregate
+      // 9. Return aggregate
       // -----------------------------------------------------------------------
 
       return aggregate;

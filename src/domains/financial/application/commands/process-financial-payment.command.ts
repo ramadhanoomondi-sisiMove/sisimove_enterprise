@@ -2,34 +2,57 @@
 // Financial Payment — Process Command
 // -----------------------------------------------------------------------------
 //
-// Application command for transitioning a Financial Payment aggregate into
-// PROCESSING.
+// Application command requesting the processing of a Financial Payment.
 //
-// The command represents the application intent to begin payment processing.
+// This is the common payment-processing command for supported payment
+// channels, including:
 //
-// Processing itself does NOT execute an external provider operation. The
-// application/integration workflow reacts to the resulting lifecycle event and
-// performs provider execution separately.
+// 1. STK_PUSH — Customer-initiated payment request through M-PESA STK Push.
+// 2. C2B      — Customer-initiated payment through M-PESA PayBill or Till.
+//
+// The command represents the application intent to begin or continue
+// processing a Financial Payment.
+//
+// Channel-specific application and integration workflows determine how
+// processing is performed.
+//
+// STK_PUSH:
+// - Initiates the provider-processing workflow.
+// - Provider execution is handled by the appropriate integration workflow.
+//
+// C2B:
+// - Processing is driven by the incoming provider confirmation callback.
+// - Callback validation, account resolution, payment matching and confirmation
+//   are handled by the dedicated C2B application workflow.
+// - No STK Push request is initiated.
 //
 // Responsibilities:
 //
 // - Identify the Financial Payment to process.
 // - Carry correlation and causation metadata.
-// - Request the aggregate to transition into PROCESSING.
+// - Request the Financial Payment aggregate to transition into PROCESSING
+//   when required by its channel-specific workflow.
 //
 // This command does NOT:
 //
 // - Execute provider APIs.
 // - Communicate directly with payment providers.
-// - Create a Financial Payment Attempt.
+// - Validate provider callback payloads.
+// - Resolve Financial Accounts.
+// - Perform C2B payment matching or reconciliation.
+// - Create Financial Payment Attempts.
+// - Confirm externally completed payments.
 // - Move funds.
-// - Create a Financial Transaction.
+// - Create Financial Transactions.
 // - Modify Financial Account balances.
 // - Perform settlement.
 // - Perform accounting.
 //
 // Those responsibilities belong to the appropriate application,
 // integration, transaction, settlement, and accounting boundaries.
+//
+// Both payment channels ultimately use the same Financial Payment aggregate,
+// FinancialPaymentSucceededEvent and successful-payment posting workflow.
 //
 // -----------------------------------------------------------------------------
 
@@ -50,24 +73,22 @@ import type { PublicEntityId } from '../../../../foundation/kernel/domain/public
 // -----------------------------------------------------------------------------
 
 /**
- * Command for processing a Financial Payment.
+ * Common command for requesting Financial Payment processing.
  *
- * The command identifies the Financial Payment aggregate that should transition
- * into PROCESSING.
+ * The command identifies the Financial Payment aggregate that should be
+ * processed.
  *
  * The actual lifecycle transition is enforced by the
  * FinancialPaymentAggregate.
  *
- * Provider execution is intentionally outside the aggregate and is performed
- * by the appropriate application/integration workflow after processing has
- * begun.
+ * Channel-specific workflows determine the processing behaviour.
  *
- * Required domain inputs:
+ * Required inputs:
  *
  * - paymentPublicId
  * - correlationId
  *
- * Optional application-level input:
+ * Optional input:
  *
  * - causationId
  */
@@ -96,3 +117,9 @@ export class ProcessFinancialPaymentCommand implements Command {
     public readonly causationId?: string,
   ) {}
 }
+
+// -----------------------------------------------------------------------------
+// Default Export
+// -----------------------------------------------------------------------------
+
+export default ProcessFinancialPaymentCommand;

@@ -22,23 +22,27 @@ const trimString = ({ value }: TransformFnParams): unknown =>
 // Configure M-PESA Request DTO
 // =============================================================================
 //
-// Supports Safaricom Daraja 3.0:
+// SisiMove supports exactly TWO M-PESA purposes:
 //
-// - STK Push
-// - C2B Customer Payments
-// - B2C Disbursement
+// 1. TOP-UP — Customer pays SisiMove.
+//    - STK Push
+//    - C2B PayBill / Buy Goods
+//
+// 2. WITHDRAWAL — SisiMove pays a customer's available funds.
+//    - B2C
 //
 // Shared Daraja OAuth authentication is used across integrations.
 //
-// STK Push, C2B and B2C have independently configurable shortcodes.
+// Configuration:
+// - STK Push shortcode and passkey are required.
+// - C2B configuration is optional and requires both C2B fields.
+// - B2C configuration is optional and requires all three B2C fields.
 //
-// C2B business type must be explicitly selected:
-// - PAYBILL
-// - BUY_GOODS
-//
-// C2B configuration is optional.
-// B2C configuration is optional. When supplied, all B2C fields
-// must be provided together.
+// Security:
+// - B2C Security Credential is not the STK Passkey.
+// - Credentials must be encrypted before persistence.
+// - FinancialModule owns withdrawal authorization and financial effects.
+// - M-PESA callbacks report external provider events only.
 //
 // =============================================================================
 
@@ -50,7 +54,7 @@ export class ConfigureMpesaRequestDto {
   @ApiProperty({
     example: 'SANDBOX',
     enum: ['SANDBOX', 'PRODUCTION'],
-    description: 'M-PESA integration environment.',
+    description: 'M-PESA Daraja integration environment.',
   })
   @Transform(trimString)
   @IsIn(['SANDBOX', 'PRODUCTION'])
@@ -81,12 +85,13 @@ export class ConfigureMpesaRequestDto {
   consumerSecret!: string;
 
   // ===========================================================================
-  // STK Push Configuration
+  // STK Push — Customer Top-up
   // ===========================================================================
 
   @ApiProperty({
     example: '174379',
-    description: 'M-PESA business shortcode used for STK Push.',
+    description:
+      'Daraja business shortcode used to initiate STK Push customer top-ups.',
   })
   @Transform(trimString)
   @IsString()
@@ -96,7 +101,8 @@ export class ConfigureMpesaRequestDto {
 
   @ApiProperty({
     example: 'your-stk-passkey',
-    description: 'Safaricom Daraja STK Push passkey.',
+    description:
+      'Safaricom Daraja STK Push passkey. This is not the B2C security credential.',
   })
   @Transform(trimString)
   @IsString()
@@ -105,12 +111,13 @@ export class ConfigureMpesaRequestDto {
   passkey!: string;
 
   // ===========================================================================
-  // C2B Customer Payment Configuration — Optional
+  // C2B — Customer Top-up Through PayBill or Buy Goods
   // ===========================================================================
 
   @ApiPropertyOptional({
     example: '600000',
-    description: 'M-PESA shortcode used for C2B customer payments.',
+    description:
+      'M-PESA shortcode registered for C2B customer top-up payments.',
   })
   @Transform(trimString)
   @IsOptional()
@@ -123,7 +130,7 @@ export class ConfigureMpesaRequestDto {
     example: 'PAYBILL',
     enum: ['PAYBILL', 'BUY_GOODS'],
     description:
-      'C2B business type. Use PAYBILL for PayBill payments or BUY_GOODS for Buy Goods/Till payments.',
+      'C2B payment type: PAYBILL for PayBill or BUY_GOODS for Buy Goods/Till.',
   })
   @Transform(trimString)
   @IsOptional()
@@ -131,13 +138,13 @@ export class ConfigureMpesaRequestDto {
   c2bBusinessType?: string;
 
   // ===========================================================================
-  // B2C Disbursement Configuration — Optional
+  // B2C — Withdrawal of Customer Available Funds
   // ===========================================================================
 
   @ApiPropertyOptional({
     example: '600992',
     description:
-      'B2C Party A shortcode provided in the Daraja B2C credentials.',
+      'B2C Party A shortcode authorized for customer available-funds withdrawals.',
   })
   @Transform(trimString)
   @ValidateIf(
@@ -169,7 +176,8 @@ export class ConfigureMpesaRequestDto {
 
   @ApiPropertyOptional({
     example: 'your-encrypted-security-credential',
-    description: 'Safaricom-generated RSA-encrypted B2C security credential.',
+    description:
+      'Safaricom RSA-encrypted B2C security credential. Never use the STK Passkey here.',
   })
   @Transform(trimString)
   @ValidateIf(

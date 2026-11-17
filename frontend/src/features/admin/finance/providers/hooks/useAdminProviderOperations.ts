@@ -1,7 +1,7 @@
 
 /**
  * -----------------------------------------------------------------------------
- * sisiMove Admin — Financial Payment Provider Operations Hook
+ * SisiMove Admin — Financial Payment Provider Operations Hook
  * -----------------------------------------------------------------------------
  *
  * Responsibilities:
@@ -9,15 +9,26 @@
  * - Update provider details.
  * - Enable and disable providers.
  * - Change provider integration status.
- * - Configure M-PESA credentials securely.
+ * - Configure M-PESA Daraja credentials.
  * - Test M-PESA Daraja OAuth authentication.
  * - Enable and disable provider capabilities.
  * - Invalidate provider queries after successful state-changing operations.
  *
+ * M-PESA scope:
+ *
+ * TOP-UP:
+ * - STK Push.
+ * - C2B PayBill / Buy Goods.
+ *
+ * WITHDRAWAL:
+ * - B2C withdrawal of customer available funds.
+ *
  * Architecture:
  * - API access remains in the API layer.
  * - TanStack Query manages mutations and cache invalidation.
- * - Business rules remain in the backend.
+ * - Backend owns business rules and financial consequences.
+ * - This hook never handles credentials directly beyond forwarding
+ *   the configuration request to the API layer.
  * -----------------------------------------------------------------------------
  */
 
@@ -31,6 +42,7 @@ import { adminProvidersApi } from '../api';
 import type {
   AdminChangeProviderStatusInput,
   AdminConfigureMpesaInput,
+  AdminConfigureMpesaResponse,
   AdminCreateProviderInput,
   AdminProviderCapabilityOperationParams,
   AdminProviderOperationParams,
@@ -70,7 +82,7 @@ export function useAdminProviderOperations() {
   // Cache Invalidation
   // ---------------------------------------------------------------------------
 
-  const invalidateProviderQueries = async () => {
+  const invalidateProviderQueries = async (): Promise<void> => {
     await queryClient.invalidateQueries({
       queryKey: adminProviderKeys.all,
     });
@@ -80,10 +92,12 @@ export function useAdminProviderOperations() {
   // Create Provider
   // ---------------------------------------------------------------------------
 
-  const createProvider = useMutation({
-    mutationFn: (input: AdminCreateProviderInput) =>
-      adminProvidersApi.create(input),
-
+  const createProvider = useMutation<
+    Awaited<ReturnType<typeof adminProvidersApi.create>>,
+    Error,
+    AdminCreateProviderInput
+  >({
+    mutationFn: (input) => adminProvidersApi.create(input),
     onSuccess: invalidateProviderQueries,
   });
 
@@ -91,11 +105,12 @@ export function useAdminProviderOperations() {
   // Update Provider
   // ---------------------------------------------------------------------------
 
-  const updateProvider = useMutation({
-    mutationFn: ({
-      params,
-      input,
-    }: AdminUpdateProviderVariables) =>
+  const updateProvider = useMutation<
+    Awaited<ReturnType<typeof adminProvidersApi.update>>,
+    Error,
+    AdminUpdateProviderVariables
+  >({
+    mutationFn: ({ params, input }) =>
       adminProvidersApi.update(params, input),
 
     onSuccess: invalidateProviderQueries,
@@ -105,8 +120,12 @@ export function useAdminProviderOperations() {
   // Enable Provider
   // ---------------------------------------------------------------------------
 
-  const enableProvider = useMutation({
-    mutationFn: (params: AdminProviderOperationParams) =>
+  const enableProvider = useMutation<
+    Awaited<ReturnType<typeof adminProvidersApi.enable>>,
+    Error,
+    AdminProviderOperationParams
+  >({
+    mutationFn: (params) =>
       adminProvidersApi.enable(params),
 
     onSuccess: invalidateProviderQueries,
@@ -116,8 +135,12 @@ export function useAdminProviderOperations() {
   // Disable Provider
   // ---------------------------------------------------------------------------
 
-  const disableProvider = useMutation({
-    mutationFn: (params: AdminProviderOperationParams) =>
+  const disableProvider = useMutation<
+    Awaited<ReturnType<typeof adminProvidersApi.disable>>,
+    Error,
+    AdminProviderOperationParams
+  >({
+    mutationFn: (params) =>
       adminProvidersApi.disable(params),
 
     onSuccess: invalidateProviderQueries,
@@ -127,25 +150,45 @@ export function useAdminProviderOperations() {
   // Change Provider Status
   // ---------------------------------------------------------------------------
 
-  const changeProviderStatus = useMutation({
-    mutationFn: ({
-      params,
-      input,
-    }: AdminChangeProviderStatusVariables) =>
+  const changeProviderStatus = useMutation<
+    Awaited<ReturnType<typeof adminProvidersApi.changeStatus>>,
+    Error,
+    AdminChangeProviderStatusVariables
+  >({
+    mutationFn: ({ params, input }) =>
       adminProvidersApi.changeStatus(params, input),
 
     onSuccess: invalidateProviderQueries,
   });
 
+  // ===========================================================================
+  // M-PESA Operations
+  // ===========================================================================
+
   // ---------------------------------------------------------------------------
   // Configure M-PESA
   // ---------------------------------------------------------------------------
 
-  const configureMpesa = useMutation({
-    mutationFn: ({
-      params,
-      input,
-    }: AdminConfigureMpesaVariables) =>
+  /**
+   * Configure Daraja credentials.
+   *
+   * Supports:
+   *
+   * TOP-UP:
+   * - STK Push.
+   * - C2B PayBill / Buy Goods.
+   *
+   * WITHDRAWAL:
+   * - B2C available-funds withdrawal.
+   *
+   * The backend validates configuration completeness and encrypts credentials.
+   */
+  const configureMpesa = useMutation<
+    AdminConfigureMpesaResponse,
+    Error,
+    AdminConfigureMpesaVariables
+  >({
+    mutationFn: ({ params, input }) =>
       adminProvidersApi.configureMpesa(params, input),
 
     onSuccess: invalidateProviderQueries,
@@ -155,6 +198,12 @@ export function useAdminProviderOperations() {
   // Test M-PESA Connection
   // ---------------------------------------------------------------------------
 
+  /**
+   * Test Daraja OAuth authentication.
+   *
+   * This is a connectivity test, not a financial transaction.
+   * It does not authorize top-ups or withdrawals.
+   */
   const testMpesaConnection = useMutation<
     AdminTestMpesaConnectionResponse,
     Error,
@@ -164,14 +213,21 @@ export function useAdminProviderOperations() {
       adminProvidersApi.testMpesaConnection(params),
   });
 
+  // ===========================================================================
+  // Provider Capability Operations
+  // ===========================================================================
+
   // ---------------------------------------------------------------------------
   // Enable Capability
   // ---------------------------------------------------------------------------
 
-  const enableCapability = useMutation({
-    mutationFn: (
-      params: AdminProviderCapabilityOperationParams,
-    ) => adminProvidersApi.enableCapability(params),
+  const enableCapability = useMutation<
+    Awaited<ReturnType<typeof adminProvidersApi.enableCapability>>,
+    Error,
+    AdminProviderCapabilityOperationParams
+  >({
+    mutationFn: (params) =>
+      adminProvidersApi.enableCapability(params),
 
     onSuccess: invalidateProviderQueries,
   });
@@ -180,40 +236,61 @@ export function useAdminProviderOperations() {
   // Disable Capability
   // ---------------------------------------------------------------------------
 
-  const disableCapability = useMutation({
-    mutationFn: (
-      params: AdminProviderCapabilityOperationParams,
-    ) => adminProvidersApi.disableCapability(params),
+  const disableCapability = useMutation<
+    Awaited<ReturnType<typeof adminProvidersApi.disableCapability>>,
+    Error,
+    AdminProviderCapabilityOperationParams
+  >({
+    mutationFn: (params) =>
+      adminProvidersApi.disableCapability(params),
 
     onSuccess: invalidateProviderQueries,
   });
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Return
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   return {
+    // Provider operations
     createProvider,
     updateProvider,
     enableProvider,
     disableProvider,
     changeProviderStatus,
+
+    // M-PESA operations
     configureMpesa,
     testMpesaConnection,
+
+    // Capability operations
     enableCapability,
     disableCapability,
 
+    // Individual loading states
     isCreating: createProvider.isPending,
     isUpdating: updateProvider.isPending,
     isEnabling: enableProvider.isPending,
     isDisabling: disableProvider.isPending,
     isChangingStatus: changeProviderStatus.isPending,
+
     isConfiguringMpesa: configureMpesa.isPending,
     isTestingMpesaConnection: testMpesaConnection.isPending,
 
     isEnablingCapability: enableCapability.isPending,
     isDisablingCapability: disableCapability.isPending,
 
+    // Mutation errors
+    createProviderError: createProvider.error,
+    updateProviderError: updateProvider.error,
+    configureMpesaError: configureMpesa.error,
+    testMpesaConnectionError: testMpesaConnection.error,
+
+    // Mutation results
+    configureMpesaResult: configureMpesa.data,
+    mpesaConnectionResult: testMpesaConnection.data,
+
+    // Aggregate loading state
     isLoading:
       createProvider.isPending ||
       updateProvider.isPending ||

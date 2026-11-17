@@ -18,6 +18,10 @@
 
 import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 
+// -----------------------------------------------------------------------------
+// M-PESA Infrastructure
+// -----------------------------------------------------------------------------
+
 import { MpesaOAuthService } from '../auth/mpesa-oauth.service';
 import { MpesaHttpService } from '../common/mpesa-http.service';
 
@@ -92,9 +96,18 @@ export class C2BService {
   ) {}
 
   // ===========================================================================
-  // Register C2B URLs
+  // Register C2B Validation and Confirmation URLs
   // ===========================================================================
 
+  /**
+   * Registers the configured C2B callback URLs with Safaricom.
+   *
+   * The URLs and shortcode are resolved from the M-PESA provider
+   * configuration. The request DTO supplies the provider public ID and
+   * Daraja response type.
+   *
+   * This method does not process incoming callbacks.
+   */
   public async registerUrls(
     dto: C2BRegisterUrlDto,
   ): Promise<MpesaC2BRegisterUrlResponse> {
@@ -146,6 +159,12 @@ export class C2BService {
   // Simulate C2B Payment — Sandbox Only
   // ===========================================================================
 
+  /**
+   * Initiates a Daraja C2B simulation.
+   *
+   * Simulation is strictly restricted to the sandbox environment.
+   * The command ID must match the configured C2B business type.
+   */
   public async simulatePayment(
     dto: C2BSimulateRequestDto,
   ): Promise<MpesaApiResponse> {
@@ -203,6 +222,9 @@ export class C2BService {
    * C2B shortcode, business type and environment.
    *
    * Customers do not supply provider identifiers.
+   *
+   * Account references are resolved by the FinancialModule controller.
+   * This service does not resolve customer financial accounts.
    */
   public async getPaymentInstructions(): Promise<{
     shortcode: string;
@@ -255,6 +277,12 @@ export class C2BService {
   // Resolve Provider Configuration
   // ===========================================================================
 
+  /**
+   * Resolves the M-PESA provider configuration for the requested environment.
+   *
+   * C2B uses its own shortcode and business type.
+   * STK Push and B2C configuration values are not used here.
+   */
   private async getC2BConfiguration(
     providerPublicId: string,
   ): Promise<ResolvedC2BConfiguration> {
@@ -311,7 +339,7 @@ export class C2BService {
       );
     }
 
-    // The C2B business type must be explicitly configured.
+    // C2B business type must be explicitly configured.
     const businessType = configuration.c2bBusinessType;
 
     if (businessType !== 'PAYBILL' && businessType !== 'BUY_GOODS') {
@@ -334,6 +362,11 @@ export class C2BService {
   // Callback URL Validation
   // ===========================================================================
 
+  /**
+   * Validates callback URL syntax and protocol.
+   *
+   * Production callback URLs must use HTTPS.
+   */
   private validateCallbackUrl(
     callbackUrl: string,
     environment: MpesaEnvironment,

@@ -120,7 +120,13 @@ export interface FinancialPaymentRepository {
    * The aggregate identity determines which persisted aggregate is updated.
    */
   save(aggregate: FinancialPaymentAggregate): Promise<void>;
-
+  /**
+   * Acquires a row-level lock for a Financial Payment.
+   *
+   * Must be called inside PrismaUnitOfWork before reloading
+   * the aggregate and creating a Payment Attempt.
+   */
+  lockByPublicId(publicId: FinancialPaymentPublicId): Promise<void>;
   // ===========================================================================
   // Aggregate Retrieval
   // ===========================================================================

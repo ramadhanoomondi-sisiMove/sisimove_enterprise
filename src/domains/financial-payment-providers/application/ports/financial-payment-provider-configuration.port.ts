@@ -1,25 +1,23 @@
-// -----------------------------------------------------------------------------
-// Financial Payment Provider Configuration Port
-// -----------------------------------------------------------------------------
-//
-// Application contract for securely persisting and retrieving provider
-// configuration.
-//
-// Responsibilities:
-// - Save encrypted provider configuration.
-// - Retrieve encrypted configuration by provider and environment.
-// - Return configuration references without exposing plaintext credentials.
-//
-// This port does NOT:
-// - Depend on Prisma or ORM models.
-// - Encrypt or decrypt credentials.
-// - Execute external provider APIs.
-// -----------------------------------------------------------------------------
-
 import type { FinancialPaymentProviderEnvironment } from '../../domain/value-objects/financial-payment-provider-environment.vo';
 
 // =============================================================================
-// Configuration Data
+// Financial Payment Provider Configuration Port
+// =============================================================================
+//
+// Application-layer contract for persisting encrypted provider configuration.
+//
+// Responsibilities:
+// - Save encrypted configuration for a provider/environment.
+// - Retrieve encrypted configuration by provider/environment.
+// - Return a stable configuration reference.
+//
+// This port does not:
+// - Depend on Prisma or ORM models.
+// - Encrypt or decrypt credentials.
+// - Execute Safaricom/Daraja API calls.
+// - Authorize customer withdrawals.
+// - Credit/debit customer balances or post ledger entries.
+//
 // =============================================================================
 
 export interface FinancialPaymentProviderConfigurationData {
@@ -28,20 +26,12 @@ export interface FinancialPaymentProviderConfigurationData {
   encryptedPayload: string;
 }
 
-// =============================================================================
-// Stored Configuration
-// =============================================================================
-
 export interface StoredFinancialPaymentProviderConfiguration {
   reference: string;
   providerId: string;
   environment: FinancialPaymentProviderEnvironment;
   encryptedPayload: string;
 }
-
-// =============================================================================
-// Repository Port
-// =============================================================================
 
 export interface FinancialPaymentProviderConfigurationPort {
   /**
@@ -56,7 +46,6 @@ export interface FinancialPaymentProviderConfigurationPort {
 
   /**
    * Retrieves encrypted configuration for a provider and environment.
-   *
    * Returns null when no configuration exists.
    */
   findByProviderAndEnvironment(

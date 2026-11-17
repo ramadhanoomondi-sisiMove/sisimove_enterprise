@@ -7,10 +7,10 @@
  * - Return authenticated customer C2B payment instructions.
  * - Expose protected C2B URL registration.
  * - Expose protected sandbox payment simulation.
- * - Receive Daraja C2B callbacks and delegate payload validation and
- *   normalization to C2BCallbackHandler.
+ * - Receive Daraja C2B callbacks.
+ * - Delegate callback normalization to C2BCallbackHandler.
+ * - Delegate financial callback processing to FinancialModule.
  *
- * This controller does not perform financial state transitions.
  * FinancialModule exclusively owns payment processing and financial effects.
  * -----------------------------------------------------------------------------
  */
@@ -60,6 +60,12 @@ import { FinancialAccountOwnerPublicId } from '../../domains/financial/domain/va
 import type { FinancialAccountAggregate } from '../../domains/financial/domain/aggregates/financial-account.aggregate';
 
 // -----------------------------------------------------------------------------
+// Financial C2B Callback Processing
+// -----------------------------------------------------------------------------
+
+import { ProcessC2BPaymentCallbackHandler } from '../../domains/financial/application/command-handlers/process-c2b-payment-callback.handler';
+
+// -----------------------------------------------------------------------------
 // DTOs
 // -----------------------------------------------------------------------------
 
@@ -79,6 +85,8 @@ export class C2BController {
     private readonly c2bService: C2BService,
 
     private readonly callbackHandler: C2BCallbackHandler,
+
+    private readonly processC2BPaymentCallbackHandler: ProcessC2BPaymentCallbackHandler,
 
     @Inject(FINANCIAL_ACCOUNT_TOKENS.QUERY_HANDLERS.GET_ME)
     private readonly getMyFinancialAccountHandler: QueryHandler<
@@ -161,8 +169,9 @@ export class C2BController {
   /**
    * Registers the configured C2B callback URLs with Daraja.
    *
-   * Requires authentication. Restrict this endpoint to authorized
-   * administrators through the application's existing authorization guard.
+   * This endpoint currently has JWT authentication. It must also be restricted
+   * to authorized administrators through the application's authorization
+   * mechanism before production use.
    */
   @Post('register-urls')
   @UseGuards(JwtAuthGuard)
@@ -179,7 +188,7 @@ export class C2BController {
    * Initiates a sandbox C2B simulation.
    *
    * C2BService enforces the sandbox-only restriction.
-   * Restrict this endpoint to authorized operators.
+   * This endpoint must also be restricted to authorized operators.
    */
   @Post('simulate')
   @UseGuards(JwtAuthGuard)
@@ -195,30 +204,49 @@ export class C2BController {
   /**
    * Receives C2B confirmation notifications from Daraja.
    *
-   * The callback handler validates and normalizes the provider payload.
-   * It does not persist or process financial records.
+   * Processing sequence:
+   * 1. Validate and normalize the raw provider payload.
+   * 2. Delegate the normalized event to FinancialModule.
+   * 3. FinancialModule persists the callback and handles idempotency,
+   *    payment creation, and subsequent financial processing.
+   * 4. Acknowledge Daraja only after the handler completes successfully.
    *
-   * The normalized event must be handed to the existing FinancialModule
-   * callback workflow before this endpoint can safely acknowledge receipt.
+   * This controller does not perform financial state transitions.
    */
   @Post('confirmation')
   @HttpCode(HttpStatus.OK)
-  public confirmation(@Body() body: unknown) {
+  public async confirmation(@Body() body: unknown) {
     const event = this.callbackHandler.processCallback(body);
 
     this.logger.log(
       `Received M-PESA C2B confirmation: ${event.transactionId}.`,
     );
 
-    // Integration point:
-    // Forward the normalized event to the existing FinancialModule
-    // callback workflow before acknowledging the provider.
-    //
-    // Do not perform financial processing in this controller.
+    const result = await this.processC2BPaymentCallbackHandler.execute(event);
 
+    if (result.requiresReconciliation) {
+      this.logger.warn(
+        `C2B transaction ${event.transactionId} requires reconciliation.`,
+      );
+    } else if (result.duplicate) {
+      this.logger.log(
+        `C2B transaction ${event.transactionId} was already received.`,
+      );
+    } else {
+      this.logger.log(
+        `C2B transaction ${event.transactionId} was processed successfully.`,
+      );
+    }
+
+    // A successful handler response means the callback has been durably
+    // handled, including callbacks retained for reconciliation.
     return {
       ResultCode: 0,
-      ResultDesc: 'Accepted',
+      ResultDesc: result.requiresReconciliation
+        ? 'Accepted for reconciliation.'
+        : result.duplicate
+          ? 'Duplicate callback acknowledged.'
+          : 'Accepted',
     };
   }
 
@@ -230,7 +258,10 @@ export class C2BController {
    * Daraja validation endpoint.
    *
    * FinancialModule must make the payment acceptance decision.
-   * This controller must not automatically approve payment validation.
+   *
+   * The validation workflow has not yet been connected. Until its dedicated
+   * FinancialModule handler is implemented, this endpoint rejects validation
+   * rather than automatically approving payments.
    */
   @Post('validation')
   @HttpCode(HttpStatus.OK)

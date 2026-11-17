@@ -8,9 +8,9 @@ import type { AdminProviderFilters } from '../models/admin-provider-filters.mode
 const BASE_PATH = '/financial-payment-providers';
 
 export const ADMIN_PROVIDERS_ENDPOINTS = {
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Provider Queries
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   list: (filters?: AdminProviderFilters): string => {
     if (filters === undefined) {
@@ -48,9 +48,9 @@ export const ADMIN_PROVIDERS_ENDPOINTS = {
   byCode: (code: string): string =>
     `${BASE_PATH}/by-code/${encodeURIComponent(code)}`,
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Provider Commands
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   create: (): string => BASE_PATH,
 
@@ -66,15 +66,28 @@ export const ADMIN_PROVIDERS_ENDPOINTS = {
   changeStatus: (providerPublicId: string): string =>
     `${BASE_PATH}/${encodeURIComponent(providerPublicId)}/status`,
 
+  // ===========================================================================
+  // M-PESA Operations
+  // ===========================================================================
+
+  /**
+   * Configure Daraja credentials for:
+   * - STK Push customer top-ups.
+   * - C2B customer top-ups.
+   * - B2C withdrawals of available customer funds.
+   */
   configureMpesa: (providerPublicId: string): string =>
     `${BASE_PATH}/${encodeURIComponent(providerPublicId)}/configuration`,
 
+  /**
+   * Test Daraja OAuth connectivity.
+   */
   testMpesaConnection: (providerPublicId: string): string =>
     `${BASE_PATH}/${encodeURIComponent(providerPublicId)}/test-connection`,
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Capability Commands
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   enableCapability: (
     providerPublicId: string,

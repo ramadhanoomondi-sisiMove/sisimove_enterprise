@@ -64,28 +64,64 @@ export interface AdminProviderCapabilityOperationParams
 // -----------------------------------------------------------------------------
 // M-PESA Configuration
 // -----------------------------------------------------------------------------
+//
+// SisiMove M-PESA purposes:
+//
+// 1. TOP-UP
+//    - STK Push
+//    - C2B PayBill / Buy Goods
+//
+// 2. WITHDRAWAL
+//    - B2C withdrawal of customer available funds
+//
+// -----------------------------------------------------------------------------
 
+export type AdminMpesaEnvironment = 'SANDBOX' | 'PRODUCTION';
+
+export type AdminMpesaC2BBusinessType =
+  | 'PAYBILL'
+  | 'BUY_GOODS';
 
 export interface AdminConfigureMpesaInput {
+  // ---------------------------------------------------------------------------
   // Environment
-  environment: 'SANDBOX' | 'PRODUCTION';
+  // ---------------------------------------------------------------------------
 
+  environment: AdminMpesaEnvironment;
+
+  // ---------------------------------------------------------------------------
   // Shared Daraja Authentication
+  // ---------------------------------------------------------------------------
+
   consumerKey: string;
   consumerSecret: string;
 
-  // STK Push / C2B
-  shortcode: string;
+  // ---------------------------------------------------------------------------
+  // STK Push — Customer Top-up
+  // ---------------------------------------------------------------------------
 
-  // STK Push
+  shortcode: string;
   passkey: string;
 
-  // Optional B2C Disbursement
+  // ---------------------------------------------------------------------------
+  // C2B — Customer Top-up Through PayBill / Buy Goods
+  // ---------------------------------------------------------------------------
+
+  c2bShortcode?: string;
+  c2bBusinessType?: AdminMpesaC2BBusinessType;
+
+  // ---------------------------------------------------------------------------
+  // B2C — Withdrawal of Customer Available Funds
+  // ---------------------------------------------------------------------------
+
   b2cShortcode?: string;
   initiatorName?: string;
   securityCredential?: string;
 }
 
+// -----------------------------------------------------------------------------
+// M-PESA Configuration Response
+// -----------------------------------------------------------------------------
 
 export interface AdminConfigureMpesaResponse {
   configurationReference: string;

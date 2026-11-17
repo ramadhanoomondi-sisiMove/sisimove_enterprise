@@ -30,9 +30,9 @@
 import type {
   FinancialPayment,
   FinancialPaymentAttempt,
+  FinancialPaymentAttemptStatus,
+  FinancialPaymentStatus,
 } from '../models';
-import type { FinancialPaymentAttemptStatus } from '../models';
-import type { FinancialPaymentStatus } from '../models';
 
 // -----------------------------------------------------------------------------
 // API Response Types
@@ -83,26 +83,34 @@ function mapFinancialPaymentAttempt(
     publicId: response.publicId,
     status: response.status,
     provider: response.provider,
-    ...(response.providerReference != null
-      ? { providerReference: response.providerReference }
-      : {}),
+
+    ...(response.providerReference != null && {
+      providerReference: response.providerReference,
+    }),
+
     amount: response.amount,
     currency: response.currency,
-    ...(response.failureCode != null
-      ? { failureCode: response.failureCode }
-      : {}),
-    ...(response.failureMessage != null
-      ? { failureMessage: response.failureMessage }
-      : {}),
-    ...(response.startedAt != null
-      ? { startedAt: response.startedAt }
-      : {}),
-    ...(response.completedAt != null
-      ? { completedAt: response.completedAt }
-      : {}),
-    ...(response.failedAt != null
-      ? { failedAt: response.failedAt }
-      : {}),
+
+    ...(response.failureCode != null && {
+      failureCode: response.failureCode,
+    }),
+
+    ...(response.failureMessage != null && {
+      failureMessage: response.failureMessage,
+    }),
+
+    ...(response.startedAt != null && {
+      startedAt: response.startedAt,
+    }),
+
+    ...(response.completedAt != null && {
+      completedAt: response.completedAt,
+    }),
+
+    ...(response.failedAt != null && {
+      failedAt: response.failedAt,
+    }),
+
     createdAt: response.createdAt,
     updatedAt: response.updatedAt,
   };
@@ -120,31 +128,42 @@ export function mapFinancialPayment(
     amount: response.amount,
     currency: response.currency,
     status: response.status,
-    ...(response.methodPublicId != null
-      ? { methodPublicId: response.methodPublicId }
-      : {}),
-    attempts: (response.attempts ?? []).map(mapFinancialPaymentAttempt),
-    ...(response.transactionPublicId != null
-      ? { transactionPublicId: response.transactionPublicId }
-      : {}),
-    ...(response.referenceType != null
-      ? { referenceType: response.referenceType }
-      : {}),
-    ...(response.referencePublicId != null
-      ? { referencePublicId: response.referencePublicId }
-      : {}),
+
+    ...(response.methodPublicId != null && {
+      methodPublicId: response.methodPublicId,
+    }),
+
+    attempts: (response.attempts ?? []).map(
+      mapFinancialPaymentAttempt,
+    ),
+
+    ...(response.transactionPublicId != null && {
+      transactionPublicId: response.transactionPublicId,
+    }),
+
+    ...(response.referenceType != null && {
+      referenceType: response.referenceType,
+    }),
+
+    ...(response.referencePublicId != null && {
+      referencePublicId: response.referencePublicId,
+    }),
+
     initiatedAt: response.initiatedAt,
-    ...(response.completedAt != null
-      ? { completedAt: response.completedAt }
-      : {}),
-    ...(response.failedAt != null
-      ? { failedAt: response.failedAt }
-      : {}),
-    ...(response.cancelledAt != null
-      ? { cancelledAt: response.cancelledAt }
-      : {}),
+
+    ...(response.completedAt != null && {
+      completedAt: response.completedAt,
+    }),
+
+    ...(response.failedAt != null && {
+      failedAt: response.failedAt,
+    }),
+
+    ...(response.cancelledAt != null && {
+      cancelledAt: response.cancelledAt,
+    }),
+
     createdAt: response.createdAt,
     updatedAt: response.updatedAt,
   };
 }
-

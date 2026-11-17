@@ -1,11 +1,9 @@
 import type { Command } from '../../../../foundation/kernel/application/command';
-
 import type { FinancialPaymentProviderEnvironment } from '../../domain/value-objects/financial-payment-provider-environment.vo';
-
 import type { FinancialPaymentProviderPublicId } from '../../domain/value-objects/financial-payment-provider-public-id.vo';
 
 // =============================================================================
-// M-PESA C2B Configuration
+// M-PESA Top-up Configuration
 // =============================================================================
 
 export type MpesaC2BBusinessType = 'PAYBILL' | 'BUY_GOODS';
@@ -16,12 +14,14 @@ export interface MpesaC2BConfiguration {
 }
 
 // =============================================================================
-// M-PESA B2C Configuration
+// M-PESA Available-Funds Withdrawal Configuration
 // =============================================================================
 
 export interface MpesaB2CConfiguration {
+  /** Safaricom Party A shortcode used to initiate customer withdrawals. */
   readonly shortcode: string;
   readonly initiatorName: string;
+  /** Encrypted Safaricom B2C security credential, not the STK passkey. */
   readonly securityCredential: string;
 }
 
@@ -29,83 +29,65 @@ export interface MpesaB2CConfiguration {
 // Configure M-PESA Command
 // =============================================================================
 //
-// Configures the shared Safaricom Daraja integration.
+// SisiMove supports exactly two M-PESA purposes:
 //
-// Supported capabilities:
+// 1. TOP-UP — customer pays SisiMove through STK Push or C2B.
+// 2. WITHDRAWAL — SisiMove pays a customer's available funds through B2C.
 //
-// - STK Push: customer payments into SisiMove.
-// - C2B: customer payments into SisiMove through PayBill or Buy Goods.
-// - B2C Disbursement: payments from SisiMove to beneficiaries.
+// The M-PESA integration reports provider events. FinancialModule owns payment
+// authorization, wallet/ledger changes, withdrawal authorization, completion,
+// failure handling and reconciliation.
 //
 // Shared Daraja authentication:
 // - Consumer Key
 // - Consumer Secret
 //
-// STK Push configuration:
+// STK Push top-up:
 // - Business Shortcode
-// - Passkey
+// - STK Passkey
 //
-// C2B configuration (optional):
+// C2B top-up (optional):
 // - C2B Business Shortcode
 // - Business Type: PAYBILL or BUY_GOODS
-// - Confirmation and Validation URLs (where applicable)
 //
-// B2C configuration (optional):
-// - B2C Party A Shortcode
+// B2C available-funds withdrawal (optional):
+// - Party A Shortcode
 // - Initiator Name
-// - Security Credential
+// - B2C Security Credential
 //
-// Important:
-// - C2B and B2C configurations are optional.
-// - STK Push must work independently of C2B and B2C.
-// - Existing STK shortcode and passkey remain unchanged.
-// - C2B shortcode is independently configurable.
-// - B2C shortcode is deliberately separate from the STK shortcode.
-// - C2B business type must be explicitly configured.
-// - B2C credentials are validated only when B2C is configured.
+// Security and configuration rules:
+// - STK Push remains independently configurable and must not depend on B2C.
+// - C2B and B2C settings are optional during staged configuration.
+// - C2B and B2C shortcodes may differ from the STK shortcode.
+// - The STK Passkey must never be used as the B2C Security Credential.
 // - Plaintext credentials must be encrypted before persistence.
-// - Callback URLs are derived from application configuration.
+// - Callback URLs are managed through application configuration.
+// - No provider callback in this module directly credits or debits a wallet.
 //
 // =============================================================================
 
 export class ConfigureMpesaCommand implements Command {
   public constructor(
     public readonly providerPublicId: FinancialPaymentProviderPublicId,
-
     public readonly environment: FinancialPaymentProviderEnvironment,
 
-    // -------------------------------------------------------------------------
-    // Shared Daraja Authentication
-    // -------------------------------------------------------------------------
-
+    // Shared Daraja authentication.
     public readonly consumerKey: string,
     public readonly consumerSecret: string,
 
-    // -------------------------------------------------------------------------
-    // STK Push Configuration
-    // -------------------------------------------------------------------------
-
+    // STK Push top-up configuration.
     public readonly shortcode: string,
     public readonly passkey: string,
 
-    // -------------------------------------------------------------------------
-    // Audit Metadata
-    // -------------------------------------------------------------------------
-
+    // Audit metadata.
     public readonly createdAt: Date,
     public readonly correlationId: string,
     public readonly causationId?: string,
 
-    // -------------------------------------------------------------------------
-    // Optional C2B Customer Payment Configuration
-    // -------------------------------------------------------------------------
-
+    // Optional C2B top-up configuration.
     public readonly c2b?: MpesaC2BConfiguration,
 
-    // -------------------------------------------------------------------------
-    // Optional B2C Disbursement Configuration
-    // -------------------------------------------------------------------------
-
+    // Optional B2C available-funds withdrawal configuration.
     public readonly b2c?: MpesaB2CConfiguration,
   ) {}
 }

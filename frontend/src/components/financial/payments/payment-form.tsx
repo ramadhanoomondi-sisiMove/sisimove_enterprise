@@ -1,25 +1,42 @@
 
 // =============================================================================
-// sisiMove — Financial Payment Form
+// sisiMove — Wallet Top-Up Form
 // =============================================================================
 //
-// Presentation component for initiating a wallet top-up.
+// Customer-facing payment choices:
+//
+// 1. DEFAULT_NUMBER — STK Push to the saved default M-PESA number.
+// 2. PAYBILL_TILL   — Customer-initiated C2B payment.
+//
+// Backend mapping:
+//
+// DEFAULT_NUMBER -> STK_PUSH using the saved methodId.
+// PAYBILL_TILL   -> Display instructions from the C2B instructions endpoint.
+//
+// Responsibilities:
+//
+// - Collect the top-up amount.
+// - Display the supported payment choices.
+// - Display the saved default M-PESA number.
+// - Display backend-provided C2B payment instructions.
+// - Notify the parent when an STK Push form is submitted.
+//
+// This component does NOT:
+//
+// - call payment APIs;
+// - convert KES into minor units;
+// - initiate STK Push or C2B requests;
+// - confirm payments;
+// - credit wallet balances.
+//
+// The parent/container owns API calls, validation, payment lifecycle,
+// navigation, and financial state.
 //
 // Amount boundary:
-// - The member enters whole KES amounts only (major currency units).
-// - The entered amount is maintained as a string.
-// - The exact entered value is emitted to the parent.
-// - No multiplication or conversion to minor units occurs.
-// - Decimal input is not accepted.
 //
-// Examples:
-//
-//     User enters 100  → emits "100"
-//     User enters 500  → emits "500"
-//     User enters 1250 → emits "1250"
-//
-// The parent/container owns API calls, validation, payment-method loading,
-// navigation, and payment lifecycle handling.
+// - Whole KES amounts only.
+// - Amount remains a string.
+// - No multiplication or minor-unit conversion occurs.
 //
 // =============================================================================
 
@@ -27,64 +44,80 @@
 
 import type { FormEvent } from 'react';
 
-import { Button, Input } from '@/components/ui';
+import { Badge, Button, Input } from '@/components/ui';
+
+import {
+  PaymentMethodSelector,
+  type DefaultPaymentMethodOption,
+  type TopUpOption,
+} from './PaymentMethodSelector';
 
 // =============================================================================
 // Types
 // =============================================================================
 
-export interface PaymentMethodOption {
-  /** Stable public identifier for the selected payment method. */
-  id: string;
+export type TopUpPaymentMethod = TopUpOption;
 
-  /** Human-readable payment method label, e.g. M-PESA or Bank. */
-  label: string;
+export type C2BBusinessType = 'PAYBILL' | 'BUY_GOODS';
 
-  /** Optional masked account detail. */
-  description?: string;
-
-  /** Presentation metadata supplied by the parent. */
-  isDefault?: boolean;
+/**
+ * Matches the actual backend C2B payment-instructions response.
+ *
+ * paymentMethod identifies the payment channel as C2B.
+ * businessType identifies whether the configured payment destination
+ * is PayBill or Buy Goods.
+ */
+export interface C2BPaymentDetails {
+  provider: 'MPESA';
+  paymentMethod: 'C2B';
+  businessType: C2BBusinessType;
+  shortcode: string;
+  accountReference?: string;
+  currency: string;
+  instructions: readonly string[];
 }
 
+// =============================================================================
+// Props
+// =============================================================================
+
 export interface PaymentFormProps {
-  /**
-   * Current amount in whole KES.
-   *
-   * The value is maintained as a string to preserve the exact user input.
-   *
-   * Example: "100" represents KES 100.
-   */
+  /** Amount in whole KES, preserved as a string. */
   amount: string;
 
-  /** Current payment-method selection. */
-  paymentMethodPublicId: string;
+  /** Selected top-up option. */
+  topUpOption: TopUpOption;
 
-  /** Available payment methods supplied by the parent/container. */
-  paymentMethods: PaymentMethodOption[];
+  /**
+   * Saved default M-PESA method.
+   *
+   * Its public ID is used by the parent when creating an STK_PUSH payment.
+   */
+  defaultPaymentMethod?: DefaultPaymentMethodOption | null;
 
-  /** Currency displayed beside the amount field. */
+  /** C2B payment instructions supplied by the parent. */
+  c2bPaymentDetails?: C2BPaymentDetails | null;
+
+  /** Currency displayed beside the amount. */
   currency?: string;
 
-  /** Optional field-level validation message. */
+  /** Validation messages. */
   amountError?: string;
-
-  /** Optional payment-method validation message. */
   paymentMethodError?: string;
 
-  /** Whether the payment operation is currently being submitted. */
+  /** Submission state. */
   isSubmitting?: boolean;
-
-  /** Whether the parent currently disables submission. */
   isSubmitDisabled?: boolean;
 
-  /** Emits the exact whole-KES amount entered by the member. */
+  /** Controlled field callbacks. */
   onAmountChange: (amount: string) => void;
+  onTopUpOptionChange: (option: TopUpOption) => void;
 
-  /** Payment-method selection callback. */
-  onPaymentMethodChange: (paymentMethodPublicId: string) => void;
-
-  /** Form submission callback. */
+  /**
+   * Parent-owned STK Push submission callback.
+   *
+   * C2B instructions are displayed directly and do not invoke this callback.
+   */
   onSubmit: () => void;
 
   /** Optional cancellation action. */
@@ -97,26 +130,26 @@ export interface PaymentFormProps {
 
 export function PaymentForm({
   amount,
-  paymentMethodPublicId,
-  paymentMethods,
+  topUpOption,
+  defaultPaymentMethod,
+  c2bPaymentDetails,
   currency = 'KES',
   amountError,
   paymentMethodError,
   isSubmitting = false,
   isSubmitDisabled = false,
   onAmountChange,
-  onPaymentMethodChange,
+  onTopUpOptionChange,
   onSubmit,
   onCancel,
 }: PaymentFormProps) {
-
   // ---------------------------------------------------------------------------
   // Amount Change
   // ---------------------------------------------------------------------------
 
-  function handleAmountChange(value: string) {
-    // Accept only digits while allowing the field to be temporarily empty.
-    // Preserve the exact string entered without numeric conversion.
+  function handleAmountChange(value: string): void {
+    // Accept digits only and allow the field to be temporarily empty.
+    // Do not convert the amount to a number or minor currency units.
 
     if (!/^\d*$/.test(value)) {
       return;
@@ -126,11 +159,67 @@ export function PaymentForm({
   }
 
   // ---------------------------------------------------------------------------
-  // Submit
+  // C2B Configuration
   // ---------------------------------------------------------------------------
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  const isPayBill =
+    c2bPaymentDetails?.businessType === 'PAYBILL';
+
+  const isBuyGoods =
+    c2bPaymentDetails?.businessType === 'BUY_GOODS';
+
+  const hasShortcode =
+    Boolean(c2bPaymentDetails?.shortcode.trim());
+
+  const hasPayBillReference =
+    Boolean(c2bPaymentDetails?.accountReference?.trim());
+
+  const hasInstructions =
+    Boolean(c2bPaymentDetails?.instructions.length);
+
+  // PayBill requires the customer-specific account reference.
+  // Buy Goods does not return an account reference.
+  const isC2BReady =
+    Boolean(c2bPaymentDetails) &&
+    c2bPaymentDetails?.provider === 'MPESA' &&
+    c2bPaymentDetails?.paymentMethod === 'C2B' &&
+    hasShortcode &&
+    hasInstructions &&
+    (
+      (isPayBill && hasPayBillReference) ||
+      isBuyGoods
+    );
+
+  const hasUsableDefaultMethod =
+    Boolean(defaultPaymentMethod?.id) &&
+    defaultPaymentMethod?.isActive === true;
+
+  // ---------------------------------------------------------------------------
+  // Submission Guards
+  // ---------------------------------------------------------------------------
+
+  const isStkPushSelected =
+    topUpOption === 'DEFAULT_NUMBER';
+
+  const isSelectedOptionReady =
+    isStkPushSelected
+      ? hasUsableDefaultMethod
+      : isC2BReady;
+
+  const submitDisabled =
+    isSubmitting ||
+    isSubmitDisabled ||
+    !isSelectedOptionReady;
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
+
+    // C2B is an external customer-initiated payment.
+    // It must not invoke the FinancialPayment creation callback here.
+    if (!isStkPushSelected || submitDisabled) {
+      return;
+    }
+
     onSubmit();
   }
 
@@ -139,16 +228,21 @@ export function PaymentForm({
   // ---------------------------------------------------------------------------
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-6">
-
-      {/* Amount */}
+    <form
+      onSubmit={handleSubmit}
+      noValidate
+      className="space-y-6"
+    >
+      {/* ------------------------------------------------------------------- */}
+      {/* Amount                                                              */}
+      {/* ------------------------------------------------------------------- */}
 
       <div className="space-y-2">
         <label
           htmlFor="wallet-top-up-amount"
           className="block text-sm font-semibold text-[var(--foreground)]"
         >
-          Amount
+          Amount to add
         </label>
 
         <div className="relative">
@@ -174,14 +268,17 @@ export function PaymentForm({
             aria-describedby={
               amountError
                 ? 'wallet-top-up-amount-error'
-                : undefined
+                : 'wallet-top-up-amount-help'
             }
             disabled={isSubmitting}
             className="pl-16 text-base sm:text-lg"
           />
         </div>
 
-        <p className="text-xs text-[var(--foreground-muted)]">
+        <p
+          id="wallet-top-up-amount-help"
+          className="text-xs text-[var(--foreground-muted)]"
+        >
           Enter a whole amount in KES. Decimals are not accepted.
         </p>
 
@@ -196,75 +293,183 @@ export function PaymentForm({
         ) : null}
       </div>
 
-      {/* Payment Method */}
+      {/* ------------------------------------------------------------------- */}
+      {/* Payment Method Selector                                             */}
+      {/* ------------------------------------------------------------------- */}
 
-      <fieldset className="space-y-3">
-        <legend className="text-sm font-semibold text-[var(--foreground)]">
-          Payment method
-        </legend>
+      <PaymentMethodSelector
+        selectedOption={topUpOption}
+        onChange={onTopUpOptionChange}
+        defaultPaymentMethod={defaultPaymentMethod}
+        error={paymentMethodError}
+        disabled={isSubmitting}
+      />
 
-        <div className="space-y-2">
-          {paymentMethods.map((method) => {
-            const selected = paymentMethodPublicId === method.id;
+      {/* ------------------------------------------------------------------- */}
+      {/* Default Number — STK Push                                           */}
+      {/* ------------------------------------------------------------------- */}
 
-            return (
-              <label
-                key={method.id}
-                className={[
-                  'flex cursor-pointer items-center gap-3 rounded-[var(--radius-md)]',
-                  'border bg-[var(--surface)] p-4 transition-colors',
-                  selected
-                    ? 'border-[var(--brand)] bg-[var(--brand-soft)]'
-                    : 'border-[var(--border)]',
-                  isSubmitting
-                    ? 'cursor-not-allowed opacity-60'
-                    : 'hover:border-[var(--border-strong)]',
-                ].join(' ')}
-              >
-                <input
-                  type="radio"
-                  name="payment-method"
-                  value={method.id}
-                  checked={selected}
-                  onChange={() =>
-                    onPaymentMethodChange(method.id)
-                  }
-                  disabled={isSubmitting}
-                  className="size-4 accent-[var(--brand)]"
-                />
+      {topUpOption === 'DEFAULT_NUMBER' &&
+      hasUsableDefaultMethod ? (
+        <section
+          aria-labelledby="wallet-top-up-default-number"
+          className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background-subtle)] p-4"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <h3
+              id="wallet-top-up-default-number"
+              className="text-sm font-semibold text-[var(--foreground)]"
+            >
+              Payment request destination
+            </h3>
 
-                <span className="min-w-0 flex-1">
-                  <span className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold text-[var(--foreground)]">
-                      {method.label}
-                    </span>
+            <Badge variant="brand">
+              Default
+            </Badge>
+          </div>
 
-                    {method.isDefault ? (
-                      <span className="text-xs font-medium text-[var(--brand)]">
-                        Default
-                      </span>
-                    ) : null}
-                  </span>
-
-                  {method.description ? (
-                    <span className="mt-1 block text-sm text-[var(--foreground-muted)]">
-                      {method.description}
-                    </span>
-                  ) : null}
-                </span>
-              </label>
-            );
-          })}
-        </div>
-
-        {paymentMethodError ? (
-          <p role="alert" className="text-sm text-[var(--danger)]">
-            {paymentMethodError}
+          <p className="mt-2 text-lg font-semibold text-[var(--foreground)]">
+            {defaultPaymentMethod?.phoneNumber}
           </p>
-        ) : null}
-      </fieldset>
 
-      {/* Actions */}
+          <p className="mt-1 text-xs leading-5 text-[var(--foreground-muted)]">
+            sisiMove will send the M-PESA payment request to your saved
+            default number. Enter your M-PESA PIN on your phone to approve it.
+          </p>
+        </section>
+      ) : null}
+
+      {/* ------------------------------------------------------------------- */}
+      {/* PayBill / Buy Goods — C2B Instructions                               */}
+      {/* ------------------------------------------------------------------- */}
+
+      {topUpOption === 'PAYBILL_TILL' ? (
+        <section
+          aria-labelledby="wallet-top-up-payment-instructions"
+          className="space-y-4 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background-subtle)] p-4"
+        >
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3
+                id="wallet-top-up-payment-instructions"
+                className="text-sm font-semibold text-[var(--foreground)]"
+              >
+                M-PESA payment instructions
+              </h3>
+
+              <Badge variant="default">
+                {isPayBill
+                  ? 'PayBill'
+                  : isBuyGoods
+                    ? 'Buy Goods'
+                    : 'C2B'}
+              </Badge>
+            </div>
+
+            <p className="mt-1 text-sm leading-5 text-[var(--foreground-muted)]">
+              Follow the payment instructions below to add money to your
+              sisiMove wallet.
+            </p>
+          </div>
+
+          {isC2BReady && c2bPaymentDetails ? (
+            <>
+              {/* Business Number ------------------------------------------- */}
+
+              <div>
+                <p className="text-xs text-[var(--foreground-muted)]">
+                  {isPayBill ? 'PayBill number' : 'Till number'}
+                </p>
+
+                <p className="mt-1 text-xl font-bold tracking-wide text-[var(--foreground)]">
+                  {c2bPaymentDetails.shortcode}
+                </p>
+              </div>
+
+              {/* PayBill Account Reference ------------------------------- */}
+
+              {isPayBill ? (
+                <div>
+                  <p className="text-xs text-[var(--foreground-muted)]">
+                    Account number
+                  </p>
+
+                  <p className="mt-1 text-base font-semibold text-[var(--foreground)]">
+                    {c2bPaymentDetails.accountReference}
+                  </p>
+                </div>
+              ) : null}
+
+              {/* Amount --------------------------------------------------- */}
+
+              <div>
+                <p className="text-xs text-[var(--foreground-muted)]">
+                  Amount to pay
+                </p>
+
+                <p className="mt-1 text-base font-semibold text-[var(--foreground)]">
+                  {c2bPaymentDetails.currency} {amount || '0'}
+                </p>
+              </div>
+
+              {/* Backend-provided instructions --------------------------- */}
+
+              <div>
+                <p className="mb-2 text-sm font-semibold text-[var(--foreground)]">
+                  Steps
+                </p>
+
+                <ol className="list-decimal space-y-2 pl-5 text-sm leading-5 text-[var(--foreground-secondary)]">
+                  {c2bPaymentDetails.instructions.map(
+                    (instruction, index) => (
+                      <li key={`${index}-${instruction}`}>
+                        {instruction}
+                      </li>
+                    ),
+                  )}
+                </ol>
+              </div>
+
+              {/* Buy Goods reconciliation note -------------------------- */}
+
+              {isBuyGoods ? (
+                <div
+                  role="note"
+                  className="rounded-[var(--radius-md)] border border-[var(--border)] p-3"
+                >
+                  <p className="text-sm font-semibold text-[var(--foreground)]">
+                    Important
+                  </p>
+
+                  <p className="mt-1 text-sm leading-5 text-[var(--foreground-muted)]">
+                    Till payments may require additional reconciliation
+                    before they can be matched to your wallet. Your wallet
+                    balance updates only after sisiMove confirms and processes
+                    the payment.
+                  </p>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <p
+              role="alert"
+              className="text-sm text-[var(--foreground-muted)]"
+            >
+              C2B payment instructions are unavailable or incomplete.
+              Please try again later or choose the default M-PESA number.
+            </p>
+          )}
+
+          <p className="text-xs leading-5 text-[var(--foreground-muted)]">
+            Complete the payment in M-PESA. Your wallet balance updates
+            only after sisiMove receives, confirms, and processes the payment.
+          </p>
+        </section>
+      ) : null}
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Actions                                                             */}
+      {/* ------------------------------------------------------------------- */}
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         {onCancel ? (
@@ -279,15 +484,18 @@ export function PaymentForm({
           </Button>
         ) : null}
 
-        <Button
-          type="submit"
-          disabled={isSubmitting || isSubmitDisabled}
-          className="min-h-11 w-full sm:w-auto"
-        >
-          {isSubmitting ? 'Processing…' : 'Continue'}
-        </Button>
+        {isStkPushSelected ? (
+          <Button
+            type="submit"
+            disabled={submitDisabled}
+            className="min-h-11 w-full sm:w-auto"
+          >
+            {isSubmitting
+              ? 'Processing…'
+              : 'Request payment'}
+          </Button>
+        ) : null}
       </div>
-
     </form>
   );
 }

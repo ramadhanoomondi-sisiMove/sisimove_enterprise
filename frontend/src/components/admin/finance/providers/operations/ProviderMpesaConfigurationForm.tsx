@@ -13,7 +13,18 @@ import type {
 import { ProviderOperationConfirmation } from './ProviderOperationConfirmation';
 
 // -----------------------------------------------------------------------------
-// sisiMove Admin — M-PESA Configuration Form
+// SisiMove Admin — M-PESA Configuration Form
+// -----------------------------------------------------------------------------
+//
+// M-PESA purposes:
+//
+// TOP-UP:
+// - STK Push
+// - C2B PayBill / Buy Goods
+//
+// WITHDRAWAL:
+// - B2C withdrawal of customer available funds
+//
 // -----------------------------------------------------------------------------
 
 export interface ProviderMpesaConfigurationFormProps {
@@ -67,38 +78,60 @@ function ProviderMpesaConfigurationFormContent({
   onConfirm,
   onCancel,
 }: ProviderMpesaConfigurationFormContentProps) {
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Environment
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   const [environment, setEnvironment] =
     useState<'SANDBOX' | 'PRODUCTION'>('SANDBOX');
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Shared Daraja Authentication
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   const [consumerKey, setConsumerKey] = useState('');
   const [consumerSecret, setConsumerSecret] = useState('');
+
+  // ===========================================================================
+  // STK Push — Customer Top-up
+  // ===========================================================================
+
   const [shortcode, setShortcode] = useState('');
-
-  // ---------------------------------------------------------------------------
-  // STK Push Configuration
-  // ---------------------------------------------------------------------------
-
   const [passkey, setPasskey] = useState('');
 
-  // ---------------------------------------------------------------------------
-  // B2C Withdrawal Configuration — Optional
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // C2B — Customer Top-up
+  // ===========================================================================
+
+  const [c2bShortcode, setC2bShortcode] = useState('');
+  const [c2bBusinessType, setC2bBusinessType] =
+    useState<'PAYBILL' | 'BUY_GOODS'>('PAYBILL');
+
+  // ===========================================================================
+  // B2C — Available-Funds Withdrawal
+  // ===========================================================================
 
   const [b2cShortcode, setB2cShortcode] = useState('');
   const [initiatorName, setInitiatorName] = useState('');
   const [securityCredential, setSecurityCredential] = useState('');
 
-  // ---------------------------------------------------------------------------
-  // Validation
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // C2B Validation
+  // ===========================================================================
+
+  const hasAnyC2BField =
+    c2bShortcode.trim().length > 0;
+
+  const isC2BValid =
+    !hasAnyC2BField ||
+    (
+      c2bShortcode.trim().length > 0 &&
+      c2bShortcode.trim().length <= 20
+    );
+
+  // ===========================================================================
+  // B2C Validation
+  // ===========================================================================
 
   const hasAnyB2CField =
     b2cShortcode.trim().length > 0 ||
@@ -116,7 +149,11 @@ function ProviderMpesaConfigurationFormContent({
       securityCredential.trim().length <= 4096
     );
 
-  const isValid =
+  // ===========================================================================
+  // Required STK / Shared Configuration Validation
+  // ===========================================================================
+
+  const isRequiredConfigurationValid =
     consumerKey.trim().length > 0 &&
     consumerKey.trim().length <= 255 &&
     consumerSecret.trim().length > 0 &&
@@ -124,12 +161,16 @@ function ProviderMpesaConfigurationFormContent({
     shortcode.trim().length > 0 &&
     shortcode.trim().length <= 20 &&
     passkey.trim().length > 0 &&
-    passkey.trim().length <= 255 &&
+    passkey.trim().length <= 255;
+
+  const isValid =
+    isRequiredConfigurationValid &&
+    isC2BValid &&
     isB2CValid;
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // Submission
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   const handleConfirm = () => {
     if (!isValid || isLoading) {
@@ -138,12 +179,24 @@ function ProviderMpesaConfigurationFormContent({
 
     onConfirm({
       environment,
+
+      // Shared Daraja authentication.
       consumerKey: consumerKey.trim(),
       consumerSecret: consumerSecret.trim(),
+
+      // STK Push top-up.
       shortcode: shortcode.trim(),
       passkey: passkey.trim(),
 
-      // Include B2C credentials only when all three fields are completed.
+      // Optional C2B top-up.
+      ...(hasAnyC2BField
+        ? {
+            c2bShortcode: c2bShortcode.trim(),
+            c2bBusinessType,
+          }
+        : {}),
+
+      // Optional B2C available-funds withdrawal.
       ...(hasAnyB2CField
         ? {
             b2cShortcode: b2cShortcode.trim(),
@@ -162,15 +215,18 @@ function ProviderMpesaConfigurationFormContent({
     <ProviderOperationConfirmation
       isOpen
       title="Configure M-PESA"
-      description={`Enter the Safaricom Daraja credentials for ${provider.name}.`}
+      description={`Configure Safaricom Daraja for ${provider.name}.`}
       confirmLabel="Save Configuration"
       cancelLabel="Cancel"
       isLoading={isLoading}
       onConfirm={handleConfirm}
       onCancel={onCancel}
     >
-      <div className="space-y-5">
+      <div className="space-y-6">
+
+        {/* ================================================================= */}
         {/* Environment */}
+        {/* ================================================================= */}
 
         <div className="space-y-2">
           <label
@@ -196,12 +252,20 @@ function ProviderMpesaConfigurationFormContent({
           </select>
         </div>
 
+        {/* ================================================================= */}
         {/* Shared Daraja Authentication */}
+        {/* ================================================================= */}
 
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-foreground">
-            Shared Daraja Authentication
-          </h3>
+        <section className="space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">
+              Shared Daraja Authentication
+            </h3>
+
+            <p className="text-xs text-muted-foreground">
+              Credentials shared by STK Push, C2B and B2C.
+            </p>
+          </div>
 
           {/* Consumer Key */}
 
@@ -250,37 +314,48 @@ function ProviderMpesaConfigurationFormContent({
               placeholder="Enter Daraja consumer secret"
             />
           </div>
+        </section>
 
-          {/* STK Push / C2B Shortcode */}
+        {/* ================================================================= */}
+        {/* STK Push — Top-up */}
+        {/* ================================================================= */}
+
+        <section className="space-y-3 border-t pt-4">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">
+              STK Push — Customer Top-up
+            </h3>
+
+            <p className="text-xs text-muted-foreground">
+              Customer receives an M-PESA payment prompt on their phone.
+            </p>
+          </div>
+
+          {/* STK Shortcode */}
 
           <div className="space-y-2">
             <label
               htmlFor="mpesa-shortcode"
               className="text-sm font-medium text-foreground"
             >
-              Business Shortcode (STK Push / C2B) *
+              STK Push Business Shortcode *
             </label>
 
             <input
               id="mpesa-shortcode"
               type="text"
+              inputMode="numeric"
               value={shortcode}
               onChange={(event) => setShortcode(event.target.value)}
               disabled={isLoading}
               required
               maxLength={20}
               className={inputClass}
-              placeholder="Enter STK Push / C2B shortcode"
+              placeholder="Enter STK Push shortcode"
             />
           </div>
-        </div>
 
-        {/* STK Push Configuration */}
-
-        <div className="space-y-3 border-t pt-4">
-          <h3 className="text-sm font-semibold text-foreground">
-            STK Push Configuration
-          </h3>
+          {/* STK Passkey */}
 
           <div className="space-y-2">
             <label
@@ -302,26 +377,103 @@ function ProviderMpesaConfigurationFormContent({
               className={inputClass}
               placeholder="Enter STK Push passkey"
             />
+
+            <p className="text-xs text-muted-foreground">
+              Use the passkey supplied for your STK Push shortcode.
+            </p>
           </div>
-        </div>
+        </section>
 
-        {/* B2C Withdrawal Configuration */}
+        {/* ================================================================= */}
+        {/* C2B — Top-up */}
+        {/* ================================================================= */}
 
-        <div className="space-y-4 border-t pt-4">
-          <div className="space-y-1">
+        <section className="space-y-3 border-t pt-4">
+          <div>
             <h3 className="text-sm font-semibold text-foreground">
-              B2C Withdrawal Configuration
+              C2B — Customer Top-up
             </h3>
 
             <p className="text-xs leading-5 text-muted-foreground">
-              B2C configuration is optional. Leave all three fields blank
-              if you only want to configure STK Push. If you enter any
-              B2C field, all three must be completed.
+              Configure PayBill or Buy Goods payments. This section is
+              optional. Leave the shortcode blank if C2B is not being
+              configured yet.
+            </p>
+          </div>
+
+          {/* C2B Business Type */}
+
+          <div className="space-y-2">
+            <label
+              htmlFor="mpesa-c2b-business-type"
+              className="text-sm font-medium text-foreground"
+            >
+              C2B Business Type
+            </label>
+
+            <select
+              id="mpesa-c2b-business-type"
+              value={c2bBusinessType}
+              onChange={(event) =>
+                setC2bBusinessType(
+                  event.target.value as 'PAYBILL' | 'BUY_GOODS',
+                )
+              }
+              disabled={isLoading}
+              className={inputClass}
+            >
+              <option value="PAYBILL">PayBill</option>
+              <option value="BUY_GOODS">Buy Goods / Till</option>
+            </select>
+          </div>
+
+          {/* C2B Shortcode */}
+
+          <div className="space-y-2">
+            <label
+              htmlFor="mpesa-c2b-shortcode"
+              className="text-sm font-medium text-foreground"
+            >
+              C2B Business Shortcode (Optional)
+            </label>
+
+            <input
+              id="mpesa-c2b-shortcode"
+              type="text"
+              inputMode="numeric"
+              value={c2bShortcode}
+              onChange={(event) => setC2bShortcode(event.target.value)}
+              disabled={isLoading}
+              maxLength={20}
+              className={inputClass}
+              placeholder="Enter C2B PayBill / Till shortcode"
+            />
+
+            <p className="text-xs text-muted-foreground">
+              This may be different from your STK Push shortcode.
+            </p>
+          </div>
+        </section>
+
+        {/* ================================================================= */}
+        {/* B2C — Available-Funds Withdrawal */}
+        {/* ================================================================= */}
+
+        <section className="space-y-4 border-t pt-4">
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-foreground">
+              B2C — Available-Funds Withdrawal
+            </h3>
+
+            <p className="text-xs leading-5 text-muted-foreground">
+              Configure Safaricom B2C credentials for sending a customer&apos;s
+              available funds to their M-PESA account.
             </p>
 
             <p className="text-xs leading-5 text-muted-foreground">
-              Configure Safaricom credentials for sending business
-              payments from SisiMove to beneficiary M-PESA accounts.
+              This section is optional. Leave all three fields blank if
+              you are not configuring withdrawals yet. If you enter any
+              B2C field, all three must be completed.
             </p>
           </div>
 
@@ -332,12 +484,13 @@ function ProviderMpesaConfigurationFormContent({
               htmlFor="mpesa-b2c-shortcode"
               className="text-sm font-medium text-foreground"
             >
-              B2C Party A Shortcode (Optional)
+              B2C Party A Shortcode
             </label>
 
             <input
               id="mpesa-b2c-shortcode"
               type="text"
+              inputMode="numeric"
               value={b2cShortcode}
               onChange={(event) => setB2cShortcode(event.target.value)}
               disabled={isLoading}
@@ -348,20 +501,19 @@ function ProviderMpesaConfigurationFormContent({
             />
 
             <p className="text-xs leading-5 text-muted-foreground">
-              Use the Party A value supplied in your Daraja B2C
-              credentials. This is configured separately from the
-              STK Push / C2B business shortcode.
+              Use the Party A shortcode supplied in your Daraja B2C
+              configuration.
             </p>
           </div>
 
-          {/* Initiator Name */}
+          {/* B2C Initiator Name */}
 
           <div className="space-y-2">
             <label
               htmlFor="mpesa-initiator-name"
               className="text-sm font-medium text-foreground"
             >
-              B2C Initiator Name (Optional)
+              B2C Initiator Name
             </label>
 
             <input
@@ -378,14 +530,14 @@ function ProviderMpesaConfigurationFormContent({
             />
           </div>
 
-          {/* Security Credential */}
+          {/* B2C Security Credential */}
 
           <div className="space-y-2">
             <label
               htmlFor="mpesa-security-credential"
               className="text-sm font-medium text-foreground"
             >
-              B2C Security Credential (Optional)
+              B2C Security Credential
             </label>
 
             <input
@@ -400,36 +552,49 @@ function ProviderMpesaConfigurationFormContent({
               required={hasAnyB2CField}
               maxLength={4096}
               className={inputClass}
-              placeholder="Paste RSA-encrypted security credential"
+              placeholder="Paste encrypted B2C security credential"
             />
 
             <p className="text-xs leading-5 text-muted-foreground">
-              Use the RSA-encrypted initiator password generated
+              Enter the RSA-encrypted initiator credential generated
               with the correct Safaricom environment certificate.
-              Do not enter your ordinary initiator password here.
+              Do not enter the ordinary initiator password or STK Passkey.
             </p>
           </div>
-        </div>
+        </section>
 
+        {/* ================================================================= */}
         {/* Validation */}
+        {/* ================================================================= */}
 
         {!isValid && (
-          <p className="text-xs text-amber-700">
-            {hasAnyB2CField && !isB2CValid
-              ? 'Complete all three B2C fields or leave all three blank.'
-              : 'Complete all required STK Push fields and check their maximum lengths.'}
-          </p>
+          <div
+            role="alert"
+            className="rounded-md border border-amber-200 bg-amber-50 p-3"
+          >
+            <p className="text-xs leading-5 text-amber-800">
+              {!isRequiredConfigurationValid
+                ? 'Complete all required shared Daraja and STK Push fields. Check their maximum lengths.'
+                : !isC2BValid
+                  ? 'Check the C2B shortcode. It must contain between 1 and 20 characters.'
+                  : 'Complete all three B2C fields or leave all three blank.'}
+            </p>
+          </div>
         )}
 
+        {/* ================================================================= */}
         {/* Security Notice */}
+        {/* ================================================================= */}
 
         <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
           <p className="text-sm leading-5 text-amber-800">
-            Credentials will be sent to the backend for encrypted
-            storage. Saving them does not yet verify the Safaricom
-            connection or authorize B2C withdrawals.
+            Credentials are sent to the backend for encrypted storage.
+            Saving them does not verify the Safaricom connection or
+            authorize withdrawals. FinancialModule remains responsible
+            for withdrawal authorization and customer balance updates.
           </p>
         </div>
+
       </div>
     </ProviderOperationConfirmation>
   );

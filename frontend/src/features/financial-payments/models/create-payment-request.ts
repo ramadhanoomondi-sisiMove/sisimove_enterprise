@@ -5,35 +5,36 @@
 //
 // Frontend request model for initiating a FinancialPayment.
 //
-// This model represents the HTTP/application input required to create a
-// payment. It is intentionally kept separate from the FinancialPayment
-// response model.
+// Supported payment channels:
+//
+//     STK_PUSH — Uses a registered Financial Payment Method.
+//     C2B      — Customer pays using PayBill or Buy Goods/Till.
 //
 // Monetary amounts are transported as strings at the API boundary.
-//
-// This is deliberate:
 //
 //     "100"  = KES 100
 //     "1250" = KES 1,250
 //
-// The amount represents whole major currency units (KES), exactly as entered
-// by the member. No multiplication or conversion to minor units occurs here.
+// The amount represents whole major currency units (KES).
+// No conversion to minor units occurs in this model.
 //
-// Using a string prevents JavaScript floating-point behavior from becoming
-// part of the payment request contract.
+// The backend converts the amount into minor units at its API boundary.
 //
 // Ownership:
 //
 // The authenticated member's FinancialAccount is resolved by the backend.
-// The frontend therefore does not expose an owner identity and should not
-// obtain or submit an arbitrary database account ID.
-//
-// The backend controller currently accepts `accountId`, so the API adapter may
-// resolve the authenticated member's public account identifier before sending
-// the request, depending on the exact backend DTO contract. This model keeps
-// the feature-level request focused on member intent rather than persistence.
+// The account public identifier is supplied separately to the API adapter
+// where required by the existing backend endpoint.
 //
 // =============================================================================
+
+// -----------------------------------------------------------------------------
+// Payment Channel
+// -----------------------------------------------------------------------------
+
+export type FinancialPaymentChannel =
+  | 'STK_PUSH'
+  | 'C2B';
 
 // -----------------------------------------------------------------------------
 // CreatePaymentRequest
@@ -41,11 +42,20 @@
 
 export interface CreatePaymentRequest {
   /**
+   * Payment execution channel.
+   *
+   * STK_PUSH:
+   * Requires methodPublicId identifying the saved payment method.
+   *
+   * C2B:
+   * Does not use a registered payment method.
+   */
+  channel: FinancialPaymentChannel;
+
+  /**
    * Amount to fund the Financial Account.
    *
-   * String representation of whole KES in major currency units.
-   *
-   * The value is transmitted exactly as entered by the member.
+   * Whole KES in major currency units.
    *
    * Examples:
    *
@@ -56,46 +66,39 @@ export interface CreatePaymentRequest {
   amount: string;
 
   /**
-   * ISO currency code for the payment.
+   * ISO currency code.
    *
    * sisiMove currently uses KES for member wallet funding.
    */
   currency: string;
 
   /**
-   * Correlation identifier supplied by the initiating application workflow.
-   *
-   * This allows related operations to be traced without exposing database
-   * identifiers or embedding workflow logic in the frontend model.
+   * Correlation identifier supplied by the initiating workflow.
    */
   correlationId: string;
 
   /**
-   * Public identifier of the selected payment method, when a specific
-   * previously configured payment method is being used.
+   * Public identifier of the registered payment method.
+   *
+   * Required for STK_PUSH.
+   * Must be omitted for C2B.
+   *
+   * The API adapter maps this to the backend's methodId field.
    */
   methodPublicId?: string;
 
   /**
-   * Optional reference describing the business object associated with the
-   * payment.
-   *
-   * Example:
-   *
-   *     referenceType: "WALLET_TOP_UP"
+   * Optional type of the business object associated with the payment.
    */
   referenceType?: string;
 
   /**
-   * Public identifier of the business object associated with the payment.
+   * Public identifier of the associated business object.
    */
   referencePublicId?: string;
 
   /**
-   * Optional causation identifier linking this payment to the operation that
-   * caused it.
-   *
-   * This remains an opaque identifier at the frontend boundary.
+   * Optional identifier linking this payment to the operation that caused it.
    */
   causationId?: string;
 }

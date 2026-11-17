@@ -1,0 +1,1 @@
+export * from './get-c2b-payment-instructions.api';
