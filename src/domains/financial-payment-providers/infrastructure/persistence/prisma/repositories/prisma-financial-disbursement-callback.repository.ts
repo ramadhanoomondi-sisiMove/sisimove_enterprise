@@ -8,8 +8,9 @@
 //
 // - Persist callbacks idempotently.
 // - Retrieve callbacks by provider, OriginatorConversationID and callback type.
-// - Mark callbacks as processed.
-// - Mark callbacks as failed.
+// - Retrieve pending callbacks for processing and recovery.
+// - Mark callbacks as processed using conditional state transitions.
+// - Mark callbacks as failed using conditional state transitions.
 // - Preserve the original callback payload.
 //
 // Transaction ownership remains with PrismaUnitOfWork.
@@ -131,6 +132,35 @@ export class PrismaFinancialDisbursementCallbackRepository implements FinancialD
   }
 
   // ===========================================================================
+  // Find Pending
+  // ===========================================================================
+
+  public async findPending(
+    limit: number,
+  ): Promise<FinancialDisbursementCallbackRecord[]> {
+    if (!Number.isInteger(limit) || limit <= 0) {
+      throw new Error(
+        'Pending callback retrieval limit must be a positive integer.',
+      );
+    }
+
+    const records = await this.prisma.financialDisbursementCallback.findMany({
+      where: {
+        status: 'PENDING',
+      },
+
+      // Process older callbacks before newer callbacks.
+      orderBy: {
+        receivedAt: 'asc',
+      },
+
+      take: limit,
+    });
+
+    return records.map((record) => this.toRecord(record));
+  }
+
+  // ===========================================================================
   // Mark Processed
   // ===========================================================================
 
@@ -138,7 +168,7 @@ export class PrismaFinancialDisbursementCallbackRepository implements FinancialD
     callbackId: string,
     attemptId: string,
     processedAt: Date,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const normalizedCallbackId = callbackId.trim();
     const normalizedAttemptId = attemptId.trim();
 
@@ -146,9 +176,14 @@ export class PrismaFinancialDisbursementCallbackRepository implements FinancialD
       throw new Error('Callback ID and Disbursement Attempt ID are required.');
     }
 
-    await this.prisma.financialDisbursementCallback.update({
+    if (!(processedAt instanceof Date) || Number.isNaN(processedAt.getTime())) {
+      throw new Error('A valid callback processing date is required.');
+    }
+
+    const result = await this.prisma.financialDisbursementCallback.updateMany({
       where: {
         id: normalizedCallbackId,
+        status: 'PENDING',
       },
 
       data: {
@@ -157,28 +192,36 @@ export class PrismaFinancialDisbursementCallbackRepository implements FinancialD
         processedAt,
       },
     });
+
+    // Only one pending callback can make this transition.
+    // Already processed or failed callbacks remain unchanged.
+    return result.count === 1;
   }
 
   // ===========================================================================
   // Mark Failed
   // ===========================================================================
 
-  public async markFailed(callbackId: string): Promise<void> {
+  public async markFailed(callbackId: string): Promise<boolean> {
     const normalizedCallbackId = callbackId.trim();
 
     if (!normalizedCallbackId) {
       throw new Error('Callback ID is required.');
     }
 
-    await this.prisma.financialDisbursementCallback.update({
+    const result = await this.prisma.financialDisbursementCallback.updateMany({
       where: {
         id: normalizedCallbackId,
+        status: 'PENDING',
       },
 
       data: {
         status: 'FAILED',
       },
     });
+
+    // Prevent an already processed callback from becoming failed.
+    return result.count === 1;
   }
 
   // ===========================================================================

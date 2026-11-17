@@ -60,7 +60,7 @@ export class RequestFinancialAccountWithdrawalHandler implements CommandHandler<
     try {
       return await this.unitOfWork.execute(async () => {
         // ---------------------------------------------------------------------
-        // 1. Check for an existing withdrawal request.
+        // 1. Check for an existing request using its account and idempotency key.
         // ---------------------------------------------------------------------
 
         const existing =
@@ -89,11 +89,11 @@ export class RequestFinancialAccountWithdrawalHandler implements CommandHandler<
         account.ensureOperational();
         account.ensureCurrency(command.amount.currency);
 
-        const requestedAt = new Date();
+        // ---------------------------------------------------------------------
+        // 3. Create the withdrawal entity and aggregate.
+        // ---------------------------------------------------------------------
 
-        // ---------------------------------------------------------------------
-        // 3. Create the withdrawal aggregate.
-        // ---------------------------------------------------------------------
+        const requestedAt = new Date();
 
         const entity = FinancialAccountWithdrawalEntity.create(
           account.id,
@@ -114,15 +114,30 @@ export class RequestFinancialAccountWithdrawalHandler implements CommandHandler<
         // 4. Persist the withdrawal request.
         // ---------------------------------------------------------------------
         //
-        // No funds are reserved at this stage.
-        // No HOLD transaction or Financial Account Hold is created.
-        // Account balances remain unchanged.
+        // This stage only records the request.
+        //
+        // It does NOT:
+        // - deduct availableAmount;
+        // - modify pendingAmount or heldAmount;
+        // - create a Financial Account Hold;
+        // - create a Financial Transaction;
+        // - create a Financial Disbursement;
+        // - submit an external payment.
+        //
+        // The customer's Financial Account balance remains unchanged.
         // ---------------------------------------------------------------------
 
         await this.withdrawalRepository.save(withdrawal);
 
         // ---------------------------------------------------------------------
-        // 5. Publish domain events inside the ambient transaction.
+        // 5. Publish domain events through the transactional event publisher.
+        // ---------------------------------------------------------------------
+        //
+        // EVENT_PUBLISHER uses the transactional outbox within the ambient
+        // UNIT_OF_WORK transaction.
+        //
+        // The withdrawal and its requested event therefore commit or roll
+        // back together.
         // ---------------------------------------------------------------------
 
         const events = withdrawal.pullDomainEvents();
@@ -135,7 +150,11 @@ export class RequestFinancialAccountWithdrawalHandler implements CommandHandler<
       });
     } catch (error: unknown) {
       // -----------------------------------------------------------------------
-      // 6. Recover concurrent idempotent requests and account version conflicts.
+      // 6. Recover concurrent idempotent request creation.
+      // -----------------------------------------------------------------------
+      //
+      // A concurrent request may win the unique idempotency constraint.
+      // Reload the committed request and return it only if its payload matches.
       // -----------------------------------------------------------------------
 
       if (!this.isRecoverableConcurrencyError(error)) {

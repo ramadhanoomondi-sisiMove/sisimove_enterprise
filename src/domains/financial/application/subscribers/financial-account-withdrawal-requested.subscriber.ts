@@ -1,40 +1,3 @@
-// -----------------------------------------------------------------------------
-// Financial Account Withdrawal — Requested Event Subscriber
-// -----------------------------------------------------------------------------
-//
-// Application subscriber responsible for handling a requested Financial
-// Account Withdrawal.
-//
-// Workflow:
-//
-// 1. Subscribe to FinancialAccountWithdrawalRequestedEvent.
-// 2. Acquire an idempotent processing claim.
-// 3. Dispatch ProcessFinancialAccountWithdrawalCommand.
-// 4. Preserve correlation and causation metadata.
-// 5. Mark the event as processed using the claim token.
-//
-// Responsibilities:
-//
-// - React to a newly requested withdrawal.
-// - Delegate processing to ProcessFinancialAccountWithdrawalHandler.
-// - Prevent duplicate event processing.
-// - Preserve event delivery retry behaviour.
-//
-// This subscriber does NOT:
-//
-// - Request a withdrawal.
-// - Debit or credit Financial Account balances.
-// - Create Financial Transactions.
-// - Execute external payment providers directly.
-// - Create or process disbursements directly.
-// - Perform settlement or accounting.
-//
-// RequestFinancialAccountWithdrawalHandler owns the initial financial
-// operation. ProcessFinancialAccountWithdrawalHandler owns the next
-// application workflow.
-//
-// -----------------------------------------------------------------------------
-
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 
 import { EventBus } from '../../../../infrastructure/events/event-bus';
@@ -67,10 +30,6 @@ const CLAIM_LEASE_DURATION_MS = 120_000;
 
 @Injectable()
 export class FinancialAccountWithdrawalRequestedSubscriber implements OnModuleInit {
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
   public constructor(
     private readonly eventBus: EventBus,
 
@@ -108,9 +67,9 @@ export class FinancialAccountWithdrawalRequestedSubscriber implements OnModuleIn
     // 1. Validate Event Identity
     // -------------------------------------------------------------------------
 
-    if (!eventId) {
+    if (!eventId || eventId.trim().length === 0) {
       throw new Error(
-        'FinancialAccountWithdrawalRequestedEvent has no event ID.',
+        'FinancialAccountWithdrawalRequestedEvent has no valid event ID.',
       );
     }
 
@@ -121,18 +80,7 @@ export class FinancialAccountWithdrawalRequestedSubscriber implements OnModuleIn
     }
 
     // -------------------------------------------------------------------------
-    // 2. Acquire an Exclusive Processing Claim
-    // -------------------------------------------------------------------------
-    //
-    // The claim prevents multiple workers from processing the same event
-    // concurrently for this consumer.
-    //
-    // A null token means:
-    //
-    // - The event has already been processed; or
-    // - Another worker currently owns an unexpired claim.
-    //
-    // In either case, this worker must not dispatch the command.
+    // 2. Acquire Exclusive Processing Claim
     // -------------------------------------------------------------------------
 
     const claimToken = await this.idempotencyStore.acquireClaim(
@@ -142,11 +90,33 @@ export class FinancialAccountWithdrawalRequestedSubscriber implements OnModuleIn
     );
 
     if (claimToken === null) {
-      return;
+      // -----------------------------------------------------------------------
+      // Determine whether the event has already been completed.
+      // -----------------------------------------------------------------------
+
+      const alreadyProcessed = await this.idempotencyStore.exists(
+        CONSUMER_NAME,
+        eventId,
+      );
+
+      if (alreadyProcessed) {
+        return;
+      }
+
+      // -----------------------------------------------------------------------
+      // Another worker owns the active claim.
+      //
+      // Do not silently acknowledge this delivery. Propagate the error so
+      // the event delivery infrastructure can retry it.
+      // -----------------------------------------------------------------------
+
+      throw new Error(
+        `Withdrawal request event "${eventId}" is currently being processed by another worker.`,
+      );
     }
 
     // -------------------------------------------------------------------------
-    // 3. Preserve Event Correlation and Causation
+    // 3. Preserve Correlation and Causation
     // -------------------------------------------------------------------------
 
     const correlationId = event.metadata.correlationId ?? eventId;
@@ -157,21 +127,27 @@ export class FinancialAccountWithdrawalRequestedSubscriber implements OnModuleIn
     // 4. Dispatch Withdrawal Processing Command
     // -------------------------------------------------------------------------
     //
+    // This subscriber only delegates withdrawal lifecycle processing.
+    //
     // The request handler has already:
+    // - Created the withdrawal request.
+    // - Persisted the withdrawal.
+    // - Published the requested event.
     //
-    // - Created and persisted the withdrawal.
-    // - Debited the user's AVAILABLE balance.
-    // - Credited SYSTEM-MPESA-CLEARING AVAILABLE balance.
-    // - Created and persisted the DISBURSEMENT Financial Transaction.
-    // - Published the withdrawal-requested event.
+    // Neither the request handler nor this subscriber:
+    // - Deducts availableAmount.
+    // - Modifies pendingAmount or heldAmount.
+    // - Creates a Financial Account Hold.
+    // - Creates a Financial Transaction.
+    // - Creates a Financial Disbursement.
+    // - Submits an external payment.
     //
-    // Do not repeat those operations here.
+    // ProcessFinancialAccountWithdrawalHandler owns the transition:
     //
-    // ProcessFinancialAccountWithdrawalHandler owns the next application
-    // workflow.
+    // PENDING -> PROCESSING
     //
-    // If command execution fails, the error propagates. The claim remains
-    // until its lease expires, allowing a later retry.
+    // Its processing event is handled by
+    // FinancialAccountWithdrawalProcessingSubscriber.
     // -------------------------------------------------------------------------
 
     await this.processWithdrawalHandler.execute(
@@ -186,12 +162,12 @@ export class FinancialAccountWithdrawalRequestedSubscriber implements OnModuleIn
     // 5. Mark Event as Processed
     // -------------------------------------------------------------------------
     //
-    // The claim token proves ownership.
+    // Only the worker holding the current claim token can complete processing.
     //
-    // The idempotency store must reject completion if the claim has expired
-    // or has been replaced by another worker.
+    // If command execution or completion fails, the error propagates.
+    // The event must remain eligible for delivery retry.
     //
-    // Never put this operation in a finally block.
+    // Never mark an event processed in a finally block.
     // -------------------------------------------------------------------------
 
     await this.idempotencyStore.markProcessed(
@@ -202,8 +178,8 @@ export class FinancialAccountWithdrawalRequestedSubscriber implements OnModuleIn
   }
 }
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Default Export
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 export default FinancialAccountWithdrawalRequestedSubscriber;

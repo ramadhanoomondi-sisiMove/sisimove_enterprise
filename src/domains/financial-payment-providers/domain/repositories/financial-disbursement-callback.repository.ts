@@ -10,8 +10,10 @@
 // - Prevent duplicate callback records.
 // - Preserve original callback payloads.
 // - Retrieve callbacks using provider correlation references.
+// - Retrieve pending callbacks for processing and recovery.
 // - Track callback processing state.
 // - Link processed callbacks to their disbursement attempts.
+// - Prevent terminal callback states from being overwritten.
 //
 // Repository implementations must participate in the ambient UnitOfWork.
 //
@@ -99,16 +101,35 @@ export interface FinancialDisbursementCallbackRepository {
   ): Promise<FinancialDisbursementCallbackRecord | null>;
 
   /**
-   * Mark a callback as successfully processed and link it to its attempt.
+   * Retrieve pending callbacks for processing or recovery.
+   *
+   * Results should be ordered by receivedAt ascending so older callbacks
+   * are considered first.
+   */
+  findPending(limit: number): Promise<FinancialDisbursementCallbackRecord[]>;
+
+  /**
+   * Mark a pending callback as successfully processed and link it to
+   * its disbursement attempt.
+   *
+   * Must only transition PENDING → PROCESSED.
+   *
+   * Returns true if the transition succeeded, or false if the callback
+   * was no longer pending.
    */
   markProcessed(
     callbackId: string,
     attemptId: string,
     processedAt: Date,
-  ): Promise<void>;
+  ): Promise<boolean>;
 
   /**
-   * Mark a callback as failed during reconciliation.
+   * Mark a pending callback as permanently failed during reconciliation.
+   *
+   * Must only transition PENDING → FAILED.
+   *
+   * Returns true if the transition succeeded, or false if the callback
+   * was no longer pending.
    */
-  markFailed(callbackId: string): Promise<void>;
+  markFailed(callbackId: string): Promise<boolean>;
 }

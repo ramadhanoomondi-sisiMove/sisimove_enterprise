@@ -4,13 +4,66 @@ import { Prisma } from '@prisma/client';
 
 import type { IdempotencyStore } from '../../foundation/events/idempotency.interface';
 
-import { PrismaTransactionContext } from '../database/prisma/prisma-transaction.context';
+import {
+  PrismaTransactionContext,
+  type PrismaClientLike,
+} from '../database/prisma/prisma-transaction.context';
+
+import { PrismaService } from '../database/prisma/prisma.service';
 
 @Injectable()
 export class PrismaIdempotencyStore implements IdempotencyStore {
   public constructor(
     private readonly transactionContext: PrismaTransactionContext,
   ) {}
+
+  /**
+   * Executes work in a transaction.
+   *
+   * Reuses the ambient transaction when one already exists.
+   * Otherwise, creates a transaction using the root PrismaService.
+   */
+  private async inTransaction<T>(
+    work: (prisma: PrismaClientLike) => Promise<T>,
+  ): Promise<T> {
+    const prisma = this.transactionContext.getClient();
+
+    if (prisma instanceof PrismaService) {
+      return prisma.$transaction(async (tx) => {
+        return this.transactionContext.run(tx, () => work(tx));
+      });
+    }
+
+    return work(prisma);
+  }
+
+  /**
+   * Locks the stored event row.
+   *
+   * Claim acquisition and successful processing use this same
+   * lock to serialize operations for a given event.
+   */
+  private async lockStoredEvent(
+    prisma: PrismaClientLike,
+    eventId: string,
+  ): Promise<string> {
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>(
+      Prisma.sql`
+        SELECT id
+        FROM stored_events
+        WHERE "eventId" = ${eventId}
+        FOR UPDATE
+      `,
+    );
+
+    const storedEvent = rows.at(0);
+
+    if (storedEvent === undefined) {
+      throw new Error(`Stored event "${eventId}" was not found.`);
+    }
+
+    return storedEvent.id;
+  }
 
   /**
    * Returns true if this consumer has already processed the event.
@@ -36,8 +89,8 @@ export class PrismaIdempotencyStore implements IdempotencyStore {
   /**
    * Atomically acquires a processing claim.
    *
-   * PostgreSQL guarantees that only one worker can acquire an
-   * unexpired claim for the same consumer and event.
+   * The stored event row is locked before checking processed events
+   * or creating/reclaiming a processing claim.
    */
   public async acquireClaim(
     consumerName: string,
@@ -48,145 +101,152 @@ export class PrismaIdempotencyStore implements IdempotencyStore {
       throw new Error('Claim lease duration must be a positive safe integer.');
     }
 
-    const prisma = this.transactionContext.getClient();
+    return this.inTransaction(async (prisma) => {
+      const storedEventId = await this.lockStoredEvent(prisma, eventId);
 
-    const storedEvent = await prisma.storedEvent.findUnique({
-      where: {
-        eventId,
-      },
-      select: {
-        id: true,
-      },
+      const processedEvent = await prisma.processedEvent.findFirst({
+        where: {
+          consumerName,
+          storedEventId,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (processedEvent !== null) {
+        return null;
+      }
+
+      const claimToken = randomUUID();
+
+      const claims = await prisma.$queryRaw<
+        Array<{ claimToken: string }>
+      >(Prisma.sql`
+        INSERT INTO event_processing_claims (
+          id,
+          "storedEventId",
+          "consumerName",
+          "claimToken",
+          "claimedAt",
+          "lockedUntil",
+          attempts,
+          "createdAt",
+          "updatedAt"
+        )
+        VALUES (
+          ${randomUUID()},
+          ${storedEventId},
+          ${consumerName},
+          ${claimToken},
+          clock_timestamp(),
+          clock_timestamp() + (
+            ${leaseDurationMs} * INTERVAL '1 millisecond'
+          ),
+          1,
+          clock_timestamp(),
+          clock_timestamp()
+        )
+        ON CONFLICT ("consumerName", "storedEventId")
+        DO UPDATE SET
+          "claimToken" = EXCLUDED."claimToken",
+          "claimedAt" = clock_timestamp(),
+          "lockedUntil" = EXCLUDED."lockedUntil",
+          attempts = event_processing_claims.attempts + 1,
+          "updatedAt" = clock_timestamp()
+        WHERE event_processing_claims."lockedUntil"
+          <= clock_timestamp()
+        RETURNING "claimToken"
+      `);
+
+      return claims.at(0)?.claimToken ?? null;
     });
-
-    if (storedEvent === null) {
-      throw new Error(
-        `Cannot acquire processing claim: stored event "${eventId}" was not found.`,
-      );
-    }
-
-    const claimToken = randomUUID();
-    const now = new Date();
-    const lockedUntil = new Date(now.getTime() + leaseDurationMs);
-
-    const claims = await prisma.$queryRaw<
-      Array<{ claimToken: string }>
-    >(Prisma.sql`
-      INSERT INTO event_processing_claims (
-        id,
-        "storedEventId",
-        "consumerName",
-        "claimToken",
-        "claimedAt",
-        "lockedUntil",
-        attempts,
-        "createdAt",
-        "updatedAt"
-      )
-      SELECT
-        ${randomUUID()},
-        ${storedEvent.id},
-        ${consumerName},
-        ${claimToken},
-        NOW(),
-        ${lockedUntil},
-        1,
-        NOW(),
-        NOW()
-      WHERE NOT EXISTS (
-        SELECT 1
-        FROM processed_events pe
-        WHERE pe."storedEventId" = ${storedEvent.id}
-          AND pe."consumerName" = ${consumerName}
-      )
-      ON CONFLICT ("consumerName", "storedEventId")
-      DO UPDATE SET
-        "claimToken" = EXCLUDED."claimToken",
-        "claimedAt" = NOW(),
-        "lockedUntil" = EXCLUDED."lockedUntil",
-        attempts = event_processing_claims.attempts + 1,
-        "updatedAt" = NOW()
-      WHERE event_processing_claims."lockedUntil" <= NOW()
-      RETURNING "claimToken"
-    `);
-
-    const claim = claims.at(0);
-
-    if (claim === undefined) {
-      return null;
-    }
-
-    return claim.claimToken;
   }
 
   /**
    * Atomically records successful processing and releases the claim.
    *
-   * Only the worker holding the current claim token can complete
-   * processing. A stale worker cannot complete a newer worker's claim.
-   */
-  /**
-   * Atomically records successful processing and releases the claim.
-   *
    * Only the worker holding the current, unexpired claim token can
-   * complete processing. A stale worker cannot complete a newer
-   * worker's claim.
+   * complete processing.
+   *
+   * The stored event row is locked first, using the same lock
+   * strategy as acquireClaim().
    */
   public async markProcessed(
     consumerName: string,
     eventId: string,
     claimToken: string,
   ): Promise<void> {
-    const prisma = this.transactionContext.getClient();
+    await this.inTransaction(async (prisma) => {
+      const storedEventId = await this.lockStoredEvent(prisma, eventId);
 
-    const completedClaims = await prisma.$queryRaw<
-      Array<{ storedEventId: string }>
-    >(Prisma.sql`
-      WITH owned_claim AS (
+      const claims = await prisma.$queryRaw<
+        Array<{
+          id: string;
+          storedEventId: string;
+        }>
+      >(Prisma.sql`
         SELECT
-          claim.id,
-          claim."storedEventId"
-        FROM event_processing_claims AS claim
-        INNER JOIN stored_events AS stored_event
-          ON stored_event.id = claim."storedEventId"
-        WHERE stored_event."eventId" = ${eventId}
-          AND claim."consumerName" = ${consumerName}
-          AND claim."claimToken" = ${claimToken}
-          AND claim."lockedUntil" > NOW()
-        FOR UPDATE OF claim
-      ),
-      inserted_event AS (
+          id,
+          "storedEventId"
+        FROM event_processing_claims
+        WHERE "storedEventId" = ${storedEventId}
+          AND "consumerName" = ${consumerName}
+          AND "claimToken" = ${claimToken}
+          AND "lockedUntil" > clock_timestamp()
+        FOR UPDATE
+      `);
+
+      const ownedClaim = claims.at(0);
+
+      if (ownedClaim === undefined) {
+        throw new Error(
+          `Cannot mark event "${eventId}" as processed: claim ownership is missing, stale, or expired.`,
+        );
+      }
+
+      const insertedEvents = await prisma.$queryRaw<
+        Array<{ id: string }>
+      >(Prisma.sql`
         INSERT INTO processed_events (
           id,
           "storedEventId",
           "consumerName",
           "processedAt"
         )
-        SELECT
+        VALUES (
           ${randomUUID()},
-          owned_claim."storedEventId",
+          ${storedEventId},
           ${consumerName},
-          NOW()
-        FROM owned_claim
+          clock_timestamp()
+        )
         ON CONFLICT ("consumerName", "storedEventId")
         DO NOTHING
         RETURNING id
-      ),
-      deleted_claim AS (
-        DELETE FROM event_processing_claims AS claim
-        USING owned_claim, inserted_event
-        WHERE claim.id = owned_claim.id
-          AND claim."claimToken" = ${claimToken}
-        RETURNING claim."storedEventId"
-      )
-      SELECT "storedEventId"
-      FROM deleted_claim
-    `);
+      `);
 
-    if (completedClaims.length === 0) {
-      throw new Error(
-        `Cannot mark event "${eventId}" as processed: claim ownership is missing, stale, expired, or the event has already been processed.`,
+      if (insertedEvents.length === 0) {
+        throw new Error(
+          `Cannot mark event "${eventId}" as processed: a processed-event record already exists.`,
+        );
+      }
+
+      const deletedClaims = await prisma.$executeRaw(
+        Prisma.sql`
+          DELETE FROM event_processing_claims
+          WHERE id = ${ownedClaim.id}
+            AND "storedEventId" = ${storedEventId}
+            AND "consumerName" = ${consumerName}
+            AND "claimToken" = ${claimToken}
+            AND "lockedUntil" > clock_timestamp()
+        `,
       );
-    }
+
+      if (deletedClaims !== 1) {
+        throw new Error(
+          `Cannot complete processing for event "${eventId}": the processing claim expired or ownership changed.`,
+        );
+      }
+    });
   }
 }

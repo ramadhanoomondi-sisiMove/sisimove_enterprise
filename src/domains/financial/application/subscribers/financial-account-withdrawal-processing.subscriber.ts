@@ -1,91 +1,28 @@
 // -----------------------------------------------------------------------------
 // Financial Account Withdrawal — Processing Event Subscriber
 // -----------------------------------------------------------------------------
-//
-// Application subscriber responsible for creating a Financial Disbursement
-// after a Financial Account Withdrawal enters PROCESSING.
-//
-// Workflow:
-//
-// 1. Subscribe to FinancialAccountWithdrawalProcessing.
-// 2. Acquire an idempotent processing claim.
-// 3. Load the persisted withdrawal.
-// 4. Verify the withdrawal belongs to the account in the event.
-// 5. Recover an existing disbursement, if one was already created.
-// 6. Otherwise dispatch CreateFinancialDisbursementCommand.
-// 7. Atomically link the disbursement to the withdrawal.
-// 8. Mark the event as processed using the claim token.
-//
-// This subscriber does NOT:
-//
-// - Execute external payment providers.
-// - Modify Financial Account balances.
-// - Create Financial Transactions.
-// - Perform settlement or accounting.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// NestJS
-// -----------------------------------------------------------------------------
 
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 
-// -----------------------------------------------------------------------------
-// Infrastructure — Event Bus
-// -----------------------------------------------------------------------------
-
 import { EventBus } from '../../../../infrastructure/events/event-bus';
-
-// -----------------------------------------------------------------------------
-// Foundation — Idempotency
-// -----------------------------------------------------------------------------
 
 import type { IdempotencyStore } from '../../../../foundation/events/idempotency.interface';
 
-// -----------------------------------------------------------------------------
-// Foundation — Command Handler
-// -----------------------------------------------------------------------------
-
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
-
-// -----------------------------------------------------------------------------
-// Application — Tokens
-// -----------------------------------------------------------------------------
 
 import { FINANCIAL_ACCOUNT_WITHDRAWAL_TOKENS } from '../financial-account-withdrawal.tokens';
 
 import { FINANCIAL_DISBURSEMENT_TOKENS } from '../../application/financial-disbursement.tokens';
 
-// -----------------------------------------------------------------------------
-// Application — Command
-// -----------------------------------------------------------------------------
-
 import { CreateFinancialDisbursementCommand } from '../commands/create-financial-disbursement.command';
-
-// -----------------------------------------------------------------------------
-// Domain — Event
-// -----------------------------------------------------------------------------
 
 import { FinancialAccountWithdrawalProcessingEvent } from '../../domain/events/financial-account-withdrawal-processing.event';
 
-// -----------------------------------------------------------------------------
-// Domain — Aggregates
-// -----------------------------------------------------------------------------
-
 import type { FinancialDisbursementAggregate } from '../../domain/aggregates/financial-disbursement.aggregate';
-
-// -----------------------------------------------------------------------------
-// Domain — Repositories
-// -----------------------------------------------------------------------------
 
 import type { FinancialAccountWithdrawalRepository } from '../../domain/repositories/financial-account-withdrawal.repository';
 
 import type { FinancialDisbursementRepository } from '../../domain/repositories/financial-disbursement.repository';
-
-// -----------------------------------------------------------------------------
-// Exceptions
-// -----------------------------------------------------------------------------
 
 import { FinancialAccountWithdrawalNotFoundException } from '../../domain/exceptions';
 
@@ -105,10 +42,6 @@ const CLAIM_LEASE_DURATION_MS = 120_000;
 
 @Injectable()
 export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleInit {
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
   public constructor(
     private readonly eventBus: EventBus,
 
@@ -173,12 +106,6 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
     // -------------------------------------------------------------------------
     // 2. Acquire an Exclusive Processing Claim
     // -------------------------------------------------------------------------
-    //
-    // A null token means the event has already been processed or another
-    // worker currently owns an unexpired claim.
-    //
-    // In either case, this worker must not continue.
-    // -------------------------------------------------------------------------
 
     const claimToken = await this.idempotencyStore.acquireClaim(
       CONSUMER_NAME,
@@ -187,7 +114,26 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
     );
 
     if (claimToken === null) {
-      return;
+      // A null claim can mean either:
+      // - this event was already processed; or
+      // - another worker currently owns the active claim.
+      //
+      // Distinguish these cases instead of silently acknowledging both.
+
+      const alreadyProcessed = await this.idempotencyStore.exists(
+        CONSUMER_NAME,
+        eventId,
+      );
+
+      if (alreadyProcessed) {
+        return;
+      }
+
+      // Another worker owns the active claim. Propagate an error so the
+      // event delivery mechanism can retry instead of dropping this event.
+      throw new Error(
+        `FinancialAccountWithdrawalProcessingEvent ${eventId} is currently being processed by another worker.`,
+      );
     }
 
     // -------------------------------------------------------------------------
@@ -218,11 +164,11 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
     // 5. Recover an Existing Disbursement
     // -------------------------------------------------------------------------
     //
-    // The originating withdrawal public ID must be persisted on the
-    // Financial Disbursement as a unique link.
+    // Recovery must happen before checking withdrawal.isProcessing.
     //
-    // This handles retries where disbursement creation succeeded but linking
-    // the disbursement to the withdrawal did not.
+    // A disbursement may have been created successfully before the withdrawal
+    // moved to another state or before the previous worker completed linking.
+    // We must recover that disbursement rather than create another one.
     // -------------------------------------------------------------------------
 
     const existingDisbursement =
@@ -233,7 +179,6 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
     if (existingDisbursement !== null) {
       const existingPublicId = existingDisbursement.publicId.value;
 
-      // Verify that an existing withdrawal link is consistent.
       if (
         withdrawal.hasDisbursement &&
         withdrawal.disbursementPublicId !== existingPublicId
@@ -243,13 +188,11 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
         );
       }
 
-      // Atomically establish or verify the link.
       await this.ensureDisbursementLinked(
         event.withdrawalPublicId,
         existingPublicId,
       );
 
-      // Complete event processing using the current claim.
       await this.idempotencyStore.markProcessed(
         CONSUMER_NAME,
         eventId,
@@ -270,10 +213,29 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
     }
 
     // -------------------------------------------------------------------------
-    // 7. Create Financial Disbursement
+    // 7. Verify Withdrawal Is Still PROCESSING
     // -------------------------------------------------------------------------
     //
-    // IMPORTANT:
+    // Never create a new disbursement for a withdrawal that has already
+    // moved out of PROCESSING.
+    //
+    // If the withdrawal has moved to another state before a disbursement
+    // exists, this processing event is no longer actionable.
+    // -------------------------------------------------------------------------
+
+    if (!withdrawal.isProcessing) {
+      await this.idempotencyStore.markProcessed(
+        CONSUMER_NAME,
+        eventId,
+        claimToken,
+      );
+
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // 8. Create Financial Disbursement
+    // -------------------------------------------------------------------------
     //
     // CreateFinancialDisbursementCommand constructor order:
     //
@@ -285,7 +247,6 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
     // 6. correlationId
     // 7. causationId
     // 8. withdrawalPublicId
-    //
     // -------------------------------------------------------------------------
 
     const disbursement = await this.createDisbursementHandler.execute(
@@ -302,7 +263,7 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
     );
 
     // -------------------------------------------------------------------------
-    // 8. Atomically Link Disbursement to Withdrawal
+    // 9. Atomically Link Disbursement to Withdrawal
     // -------------------------------------------------------------------------
 
     await this.ensureDisbursementLinked(
@@ -311,17 +272,7 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
     );
 
     // -------------------------------------------------------------------------
-    // 9. Mark Event as Processed
-    // -------------------------------------------------------------------------
-    //
-    // Only mark after disbursement creation and withdrawal linking succeed.
-    //
-    // The claim token proves ownership. If the claim has expired or been
-    // replaced, the idempotency store must reject completion.
-    //
-    // If either operation fails, the error propagates so event delivery
-    // can retry. A subsequent delivery can recover the disbursement using
-    // its unique withdrawalPublicId.
+    // 10. Mark Event as Processed
     // -------------------------------------------------------------------------
 
     await this.idempotencyStore.markProcessed(
@@ -335,15 +286,6 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
   // Ensure Disbursement Link
   // ===========================================================================
 
-  /**
-   * Atomically links a disbursement to a withdrawal that is still PROCESSING.
-   *
-   * If the conditional update fails, reloads the withdrawal to determine
-   * whether the same link was already persisted by another execution.
-   *
-   * A different link or a missing link after a failed conditional update
-   * is treated as a consistency error.
-   */
   private async ensureDisbursementLinked(
     withdrawalPublicId: Parameters<
       FinancialAccountWithdrawalRepository['linkDisbursementIfProcessing']
@@ -359,11 +301,6 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
       return;
     }
 
-    // -------------------------------------------------------------------------
-    // Conditional update did not succeed.
-    // Reload the latest persisted withdrawal before deciding what happened.
-    // -------------------------------------------------------------------------
-
     const latestWithdrawal =
       await this.withdrawalRepository.findByPublicId(withdrawalPublicId);
 
@@ -372,10 +309,6 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
         withdrawalPublicId.value,
       );
     }
-
-    // -------------------------------------------------------------------------
-    // A different disbursement must never replace the existing link.
-    // -------------------------------------------------------------------------
 
     if (
       latestWithdrawal.hasDisbursement &&
@@ -386,12 +319,8 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
       );
     }
 
-    // -------------------------------------------------------------------------
     // The same link may already have been persisted by another execution.
-    //
-    // This is safe even if the withdrawal has since moved out of PROCESSING.
-    // -------------------------------------------------------------------------
-
+    // This remains safe even if the withdrawal has since left PROCESSING.
     if (
       latestWithdrawal.hasDisbursement &&
       latestWithdrawal.disbursementPublicId === disbursementPublicId
@@ -399,18 +328,10 @@ export class FinancialAccountWithdrawalProcessingSubscriber implements OnModuleI
       return;
     }
 
-    // -------------------------------------------------------------------------
-    // No matching link exists. Do not silently mark the event as processed.
-    // -------------------------------------------------------------------------
-
     throw new Error(
       `Unable to link disbursement ${disbursementPublicId} to withdrawal ${withdrawalPublicId.value}. The withdrawal is no longer eligible for linking or its state changed concurrently.`,
     );
   }
 }
-
-// -----------------------------------------------------------------------------
-// Default Export
-// -----------------------------------------------------------------------------
 
 export default FinancialAccountWithdrawalProcessingSubscriber;

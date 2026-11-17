@@ -1,65 +1,32 @@
-// -----------------------------------------------------------------------------
-// NestJS
-// -----------------------------------------------------------------------------
-
 import { Inject, Injectable, Logger } from '@nestjs/common';
 
-// -----------------------------------------------------------------------------
 // Foundation — Unit of Work
-// -----------------------------------------------------------------------------
-
 import { UNIT_OF_WORK } from '../../../../foundation/persistence/unit-of-work.token';
-
 import type { UnitOfWork } from '../../../../foundation/persistence/unit-of-work.interface';
 
-// -----------------------------------------------------------------------------
 // Foundation — Event Publisher
-// -----------------------------------------------------------------------------
-
 import { EVENT_PUBLISHER } from '../../../../foundation/events/event-publisher.token';
-
 import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
 
-// -----------------------------------------------------------------------------
 // Foundation — Command Handler
-// -----------------------------------------------------------------------------
-
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 
-// -----------------------------------------------------------------------------
 // Application — Tokens
-// -----------------------------------------------------------------------------
-
 import { FINANCIAL_ACCOUNT_TOKENS } from '../financial-account.tokens';
-
 import { FINANCIAL_DISBURSEMENT_TOKENS } from '../financial-disbursement.tokens';
 
-// -----------------------------------------------------------------------------
 // Command
-// -----------------------------------------------------------------------------
-
 import type { CreateFinancialDisbursementCommand } from '../commands/create-financial-disbursement.command';
 
-// -----------------------------------------------------------------------------
 // Aggregate and Entity
-// -----------------------------------------------------------------------------
-
 import { FinancialDisbursementAggregate } from '../../domain/aggregates/financial-disbursement.aggregate';
-
 import { FinancialDisbursementEntity } from '../../domain/entities/financial-disbursement.entity';
 
-// -----------------------------------------------------------------------------
 // Repositories
-// -----------------------------------------------------------------------------
-
 import type { FinancialAccountRepository } from '../../domain/repositories/financial-account.repository';
-
 import type { FinancialDisbursementRepository } from '../../domain/repositories/financial-disbursement.repository';
 
-// -----------------------------------------------------------------------------
 // Exceptions
-// -----------------------------------------------------------------------------
-
 import { FinancialAccountNotFoundException } from '../../domain/exceptions';
 
 // =============================================================================
@@ -67,13 +34,13 @@ import { FinancialAccountNotFoundException } from '../../domain/exceptions';
 // =============================================================================
 
 /**
- * Determines whether a Prisma P2002 error specifically represents a
- * uniqueness violation involving withdrawalPublicId.
+ * Determines whether an error represents a Prisma P2002 uniqueness
+ * violation specifically involving withdrawalPublicId.
  *
  * Supports Prisma metadata where the target is represented as either
  * an array of field names or a constraint-name string.
  *
- * Unrelated unique-constraint violations must not be treated as successful
+ * Unrelated uniqueness violations must never be treated as successful
  * duplicate withdrawal-disbursement recovery.
  */
 function isWithdrawalPublicIdUniqueConstraintViolation(
@@ -91,18 +58,13 @@ function isWithdrawalPublicIdUniqueConstraintViolation(
   if (
     !('meta' in error) ||
     typeof error.meta !== 'object' ||
-    error.meta === null
+    error.meta === null ||
+    !('target' in error.meta)
   ) {
     return false;
   }
 
-  const metadata = error.meta;
-
-  if (!('target' in metadata)) {
-    return false;
-  }
-
-  const target = metadata.target;
+  const target = error.meta.target;
 
   const matchesWithdrawalPublicId = (value: unknown): boolean => {
     if (typeof value !== 'string') {
@@ -164,10 +126,6 @@ export class CreateFinancialDisbursementHandler implements CommandHandler<
   public async execute(
     command: CreateFinancialDisbursementCommand,
   ): Promise<FinancialDisbursementAggregate> {
-    // -------------------------------------------------------------------------
-    // Execute Creation Transaction
-    // -------------------------------------------------------------------------
-
     let result: {
       aggregate: FinancialDisbursementAggregate;
       created: boolean;
@@ -179,10 +137,8 @@ export class CreateFinancialDisbursementHandler implements CommandHandler<
         // 1. Recover Existing Disbursement for Originating Withdrawal
         // ---------------------------------------------------------------------
         //
-        // A withdrawal must not create multiple disbursements.
-        //
-        // This lookup handles ordinary retries. The database unique constraint
-        // and recovery outside this transaction handle concurrent deliveries.
+        // Ordinary retries should return the existing disbursement.
+        // The database unique constraint protects against concurrent creation.
         // ---------------------------------------------------------------------
 
         if (command.withdrawalPublicId !== undefined) {
@@ -229,12 +185,14 @@ export class CreateFinancialDisbursementHandler implements CommandHandler<
         // 5. Create Financial Disbursement Entity
         // ---------------------------------------------------------------------
         //
-        // The destination is an immutable snapshot carried by the command.
+        // The destination is an immutable snapshot supplied by the command.
+        // The originating withdrawal is retained as an opaque public ID.
         //
-        // withdrawalPublicId links this disbursement to its originating
-        // Financial Account Withdrawal when one exists.
-        //
-        // No configured destination lookup or ownership check is performed.
+        // This handler does not:
+        // - Submit a provider payout.
+        // - Reserve or deduct funds.
+        // - Post accounting transactions.
+        // - Process provider callbacks.
         // ---------------------------------------------------------------------
 
         const disbursementEntity = FinancialDisbursementEntity.create(
@@ -248,14 +206,14 @@ export class CreateFinancialDisbursementHandler implements CommandHandler<
         );
 
         // ---------------------------------------------------------------------
-        // 6. Create Financial Disbursement Aggregate
+        // 6. Create Aggregate
         // ---------------------------------------------------------------------
 
         const disbursementAggregate =
           FinancialDisbursementAggregate.create(disbursementEntity);
 
         // ---------------------------------------------------------------------
-        // 7. Record Financial Disbursement Created Event
+        // 7. Record Created Event
         // ---------------------------------------------------------------------
 
         disbursementAggregate.recordCreated(
@@ -264,24 +222,19 @@ export class CreateFinancialDisbursementHandler implements CommandHandler<
         );
 
         // ---------------------------------------------------------------------
-        // 8. Persist Newly Created Financial Disbursement
-        // ---------------------------------------------------------------------
-        //
-        // withdrawalPublicId must be protected by a database unique
-        // constraint when supplied.
+        // 8. Persist Disbursement
         // ---------------------------------------------------------------------
 
         await this.disbursementRepository.create(disbursementAggregate);
 
         // ---------------------------------------------------------------------
-        // 9. Persist Domain Events into Transactional Outbox
+        // 9. Persist Domain Events
         // ---------------------------------------------------------------------
         //
-        // EventPublisher delegates event persistence to the EventStore.
+        // EventPublisher/EventStore must participate in the same ambient
+        // transaction as the repository operation.
         //
-        // The EventStore must participate in the same ambient transaction.
-        //
-        // If event persistence fails, the disbursement creation is rolled back.
+        // If event persistence fails, the disbursement creation must roll back.
         // ---------------------------------------------------------------------
 
         const domainEvents = disbursementAggregate.pullDomainEvents();
@@ -297,16 +250,13 @@ export class CreateFinancialDisbursementHandler implements CommandHandler<
       });
     } catch (error: unknown) {
       // -----------------------------------------------------------------------
-      // 10. Recover Concurrent Duplicate Withdrawal Disbursement Creation
+      // 10. Recover Concurrent Duplicate Withdrawal Creation
       // -----------------------------------------------------------------------
       //
-      // Only recover a P2002 violation involving withdrawalPublicId.
+      // The failed transaction must have rolled back before this lookup.
+      // Only a P2002 violation involving withdrawalPublicId is recoverable.
       //
-      // The failed transaction has now rolled back. Query again outside that
-      // transaction to recover the winning disbursement.
-      //
-      // If no matching withdrawal disbursement exists, preserve and rethrow
-      // the original error.
+      // If no winning disbursement exists, preserve the original error.
       // -----------------------------------------------------------------------
 
       if (
@@ -347,15 +297,11 @@ export class CreateFinancialDisbursementHandler implements CommandHandler<
     }
 
     // -------------------------------------------------------------------------
-    // 12. Return Disbursement Aggregate
+    // 12. Return Aggregate
     // -------------------------------------------------------------------------
 
     return result.aggregate;
   }
 }
-
-// -----------------------------------------------------------------------------
-// Default Export
-// -----------------------------------------------------------------------------
 
 export default CreateFinancialDisbursementHandler;

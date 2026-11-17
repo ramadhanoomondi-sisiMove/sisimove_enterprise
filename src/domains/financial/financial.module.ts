@@ -83,7 +83,7 @@ import { StkPushController } from '../../mpesa/stk-push/stk-push.controller';
 import { C2BController } from '../../mpesa/c2b/c2b.controller';
 import { B2CController } from '../../mpesa/b2c/b2c.controller';
 import { MpesaConnectionController } from '../../mpesa/mpesa-connection.controller';
-
+import { ReceiveFinancialDisbursementCallbackService } from './application/services/receive-financial-disbursement-callback.service';
 // -----------------------------------------------------------------------------
 // Infrastructure — Dependency Injection
 // -----------------------------------------------------------------------------
@@ -384,6 +384,11 @@ import { FinancialDisbursementAttemptSucceededSubscriber } from './application/s
 
     QueryMpesaPaymentStatusService,
     ProcessC2BPaymentCallbackHandler,
+    // -------------------------------------------------------------------------
+    // Financial Disbursement — Callback Intake
+    // -------------------------------------------------------------------------
+
+    ReceiveFinancialDisbursementCallbackService,
 
     // =========================================================================
     // Financial Account

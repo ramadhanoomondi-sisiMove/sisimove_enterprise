@@ -87,9 +87,13 @@ export class ProcessFinancialAccountWithdrawalHandler implements CommandHandler<
   public async execute(
     command: ProcessFinancialAccountWithdrawalCommand,
   ): Promise<FinancialAccountWithdrawalAggregate> {
+    // -------------------------------------------------------------------------
+    // 1. Execute Withdrawal Transition Within UnitOfWork
+    // -------------------------------------------------------------------------
+
     const result = await this.unitOfWork.execute(async () => {
       // -----------------------------------------------------------------------
-      // 1. Resolve Financial Account Withdrawal
+      // 1.1 Resolve Withdrawal
       // -----------------------------------------------------------------------
 
       const aggregate = await this.withdrawalRepository.findByPublicId(
@@ -103,7 +107,15 @@ export class ProcessFinancialAccountWithdrawalHandler implements CommandHandler<
       }
 
       // -----------------------------------------------------------------------
-      // 2. Idempotency — Check Current Lifecycle State
+      // 1.2 Idempotency — Already Transitioned
+      // -----------------------------------------------------------------------
+      //
+      // Only PENDING withdrawals may enter PROCESSING.
+      //
+      // A withdrawal already in PROCESSING or a terminal state must not
+      // produce another FinancialAccountWithdrawalProcessingEvent.
+      //
+      // The caller receives the persisted aggregate without any mutation.
       // -----------------------------------------------------------------------
 
       if (!aggregate.isPending) {
@@ -114,29 +126,68 @@ export class ProcessFinancialAccountWithdrawalHandler implements CommandHandler<
       }
 
       // -----------------------------------------------------------------------
-      // 3. Process Withdrawal
+      // 1.3 Validate Processing Eligibility
+      // -----------------------------------------------------------------------
+      //
+      // The entity owns the authoritative lifecycle validation.
+      //
+      // This preliminary check makes the handler's intent explicit.
+      // The aggregate.process() method validates again before mutation.
+      //
+      // In particular, a PENDING withdrawal that already has a
+      // disbursement must not enter PROCESSING.
+      // -----------------------------------------------------------------------
+
+      if (!aggregate.canProcess()) {
+        throw new Error(
+          `Financial Account Withdrawal "${aggregate.publicId.value}" is PENDING but is not eligible for processing.`,
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // 1.4 Perform Domain Transition
+      // -----------------------------------------------------------------------
+      //
+      // Aggregate:
+      //   PENDING -> PROCESSING
+      //
+      // The aggregate:
+      // - delegates lifecycle validation to its entity;
+      // - changes withdrawal lifecycle state;
+      // - records FinancialAccountWithdrawalProcessingEvent.
+      //
+      // It does not:
+      // - reserve or release funds;
+      // - change Financial Account balances;
+      // - create Financial Transactions;
+      // - create Financial Disbursements;
+      // - initiate M-PESA B2C.
       // -----------------------------------------------------------------------
 
       aggregate.process(command.correlationId, command.causationId);
 
       // -----------------------------------------------------------------------
-      // 4. Conditionally Persist PENDING → PROCESSING
+      // 1.5 Atomically Persist PENDING -> PROCESSING
       // -----------------------------------------------------------------------
       //
-      // Only one concurrent request can successfully update a withdrawal
-      // whose persisted status is still PENDING.
+      // saveIfPending() performs an atomic conditional update:
       //
-      // A false result means another operation changed its lifecycle state
-      // before this request could persist its transition.
+      // WHERE:
+      //   withdrawal ID matches
+      //   public ID matches
+      //   account ID matches
+      //   persisted status = PENDING
+      //
+      // This prevents concurrent commands from both winning the transition.
       // -----------------------------------------------------------------------
 
       const saved = await this.withdrawalRepository.saveIfPending(aggregate);
 
-      if (!saved) {
-        // ---------------------------------------------------------------------
-        // 4.1 Reload the Latest Persisted Aggregate
-        // ---------------------------------------------------------------------
+      // -----------------------------------------------------------------------
+      // 1.6 Handle Concurrent Transition
+      // -----------------------------------------------------------------------
 
+      if (!saved) {
         const latestAggregate = await this.withdrawalRepository.findByPublicId(
           command.withdrawalId,
         );
@@ -148,7 +199,31 @@ export class ProcessFinancialAccountWithdrawalHandler implements CommandHandler<
         }
 
         // ---------------------------------------------------------------------
-        // 4.2 Return Without Publishing Losing Domain Events
+        // Failed Conditional Save Without a Visible State Change
+        // ---------------------------------------------------------------------
+        //
+        // A failed conditional save must not be acknowledged as a successful
+        // transition when the persisted withdrawal is still PENDING.
+        //
+        // Throwing allows the surrounding event-processing infrastructure
+        // to retry, provided it supports retrying failed deliveries.
+        //
+        // The domain event generated by the losing aggregate is discarded.
+        // ---------------------------------------------------------------------
+
+        if (latestAggregate.isPending) {
+          throw new Error(
+            `Financial Account Withdrawal "${command.withdrawalId.value}" remains PENDING after a failed conditional save.`,
+          );
+        }
+
+        // ---------------------------------------------------------------------
+        // Another Transaction Already Changed the Withdrawal
+        // ---------------------------------------------------------------------
+        //
+        // Return the latest persisted aggregate.
+        //
+        // Do not publish events from the losing aggregate.
         // ---------------------------------------------------------------------
 
         return {
@@ -158,7 +233,17 @@ export class ProcessFinancialAccountWithdrawalHandler implements CommandHandler<
       }
 
       // -----------------------------------------------------------------------
-      // 5. Persist Domain Events into Transactional Outbox
+      // 1.7 Publish Domain Events Within UnitOfWork
+      // -----------------------------------------------------------------------
+      //
+      // The event publisher must persist events using the same ambient
+      // transaction as the withdrawal repository.
+      //
+      // This ensures that the lifecycle transition and its processing event
+      // commit or roll back together.
+      //
+      // The publisher must not deliver the event to external consumers
+      // before the database transaction commits.
       // -----------------------------------------------------------------------
 
       const domainEvents = aggregate.pullDomainEvents();
@@ -167,15 +252,25 @@ export class ProcessFinancialAccountWithdrawalHandler implements CommandHandler<
         await this.eventPublisher.publishAll(domainEvents);
       }
 
+      // -----------------------------------------------------------------------
+      // 1.8 Return Successfully Transitioned Aggregate
+      // -----------------------------------------------------------------------
+
       return {
         aggregate,
         transitioned: true,
       };
     });
 
-    // -------------------------------------------------------------------------
-    // 6. Log After Successful Transaction Completion
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // 2. Post-Transaction Logging
+    // =========================================================================
+    //
+    // Log only after the UnitOfWork completes successfully.
+    //
+    // Duplicate commands and concurrent losers do not generate a second
+    // transition log.
+    // =========================================================================
 
     if (result.transitioned) {
       this.logger.log(
@@ -183,9 +278,9 @@ export class ProcessFinancialAccountWithdrawalHandler implements CommandHandler<
       );
     }
 
-    // -------------------------------------------------------------------------
-    // 7. Return Updated Aggregate
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // 3. Return Persisted Withdrawal State
+    // =========================================================================
 
     return result.aggregate;
   }

@@ -9,9 +9,11 @@
 //
 // 1. Subscribe to FinancialDisbursementCreated.
 // 2. Acquire an idempotent processing claim.
-// 3. Extract the Financial Disbursement public ID.
-// 4. Dispatch ProcessFinancialDisbursementCommand.
-// 5. Mark the event as processed using the claim token.
+// 3. If no claim is acquired, distinguish an already-processed event from
+//    an event currently claimed by another worker.
+// 4. Extract the Financial Disbursement public ID.
+// 5. Dispatch ProcessFinancialDisbursementCommand.
+// 6. Mark the event as processed using the claim token.
 //
 // This subscriber does NOT:
 //
@@ -143,11 +145,14 @@ export class FinancialDisbursementCreatedSubscriber implements OnModuleInit {
     // 1. Acquire an exclusive processing claim
     // -------------------------------------------------------------------------
     //
-    // The claim prevents multiple workers from processing the same event
-    // concurrently for this consumer.
+    // A claim prevents concurrent workers from processing the same event
+    // for this consumer.
     //
-    // A null token means the event has already been processed or another
-    // worker currently owns an unexpired claim.
+    // A null token can mean:
+    // - The event has already been processed.
+    // - Another worker currently owns an active claim.
+    //
+    // These cases must be distinguished before acknowledging the event.
     // -------------------------------------------------------------------------
 
     const claimToken = await this.idempotencyStore.acquireClaim(
@@ -157,11 +162,40 @@ export class FinancialDisbursementCreatedSubscriber implements OnModuleInit {
     );
 
     if (claimToken === null) {
-      this.logger.debug(
-        `Financial Disbursement Created event is already processed or claimed: ${eventId}`,
+      // -----------------------------------------------------------------------
+      // 1a. Check whether processing has already completed
+      // -----------------------------------------------------------------------
+
+      const alreadyProcessed = await this.idempotencyStore.exists(
+        CONSUMER_NAME,
+        eventId,
       );
 
-      return;
+      if (alreadyProcessed) {
+        this.logger.debug(
+          `Financial Disbursement Created event already processed: ${eventId}`,
+        );
+
+        return;
+      }
+
+      // -----------------------------------------------------------------------
+      // 1b. Another worker owns the active claim
+      // -----------------------------------------------------------------------
+      //
+      // Do not acknowledge this event as successfully handled.
+      //
+      // Throwing allows the event infrastructure to apply its configured
+      // retry behaviour instead of silently losing the event.
+      // -----------------------------------------------------------------------
+
+      this.logger.warn(
+        `Financial Disbursement Created event is currently claimed by another worker: ${eventId}`,
+      );
+
+      throw new Error(
+        `Unable to acquire processing claim for Financial Disbursement Created event: ${eventId}`,
+      );
     }
 
     // -------------------------------------------------------------------------
@@ -182,7 +216,7 @@ export class FinancialDisbursementCreatedSubscriber implements OnModuleInit {
     // 3. Dispatch Process Financial Disbursement Command
     // -------------------------------------------------------------------------
     //
-    // The Created event causes the processing command.
+    // The Created event triggers the processing command.
     //
     // Correlation ID is preserved from the originating event.
     //
@@ -209,8 +243,8 @@ export class FinancialDisbursementCreatedSubscriber implements OnModuleInit {
     //
     // Only the worker holding the current claim token can complete processing.
     //
-    // If the claim has expired or been replaced, the idempotency store
-    // rejects this completion.
+    // If the claim has expired or been replaced, the idempotency store rejects
+    // this completion. The error must propagate for reconciliation or retry.
     // -------------------------------------------------------------------------
 
     await this.idempotencyStore.markProcessed(
