@@ -99,6 +99,8 @@ import type { FinancialReferenceType } from '../value-objects/financial-referenc
 
 import type { PublicEntityId } from '../../../../foundation/kernel/domain/public-entity-id';
 
+import type { FinancialPaymentAttemptPublicId } from '../value-objects/financial-payment-attempt-public-id.vo';
+
 // -----------------------------------------------------------------------------
 // Props
 // -----------------------------------------------------------------------------
@@ -247,6 +249,14 @@ export class FinancialPaymentAggregate extends AggregateRoot<FinancialPaymentAgg
    */
   public get attempts(): readonly FinancialPaymentAttemptEntity[] {
     return this.payment.attempts;
+  }
+
+  public getAttempt(
+    attemptPublicId: FinancialPaymentAttemptPublicId,
+  ): FinancialPaymentAttemptEntity | undefined {
+    return this.payment.attempts.find(
+      (attempt) => attempt.publicId.value === attemptPublicId.value,
+    );
   }
 
   public getLatestAttempt(): FinancialPaymentAttemptEntity | undefined {
@@ -424,6 +434,47 @@ export class FinancialPaymentAggregate extends AggregateRoot<FinancialPaymentAgg
    * The resulting Financial Transaction may already have been established
    * before this event is emitted, but the aggregate does not create it.
    */
+  /**
+   * Marks one owned provider attempt as successful and completes its parent
+   * Financial Payment.
+   *
+   * The child entity owns attempt lifecycle validation. The parent entity owns
+   * payment lifecycle validation. The aggregate coordinates both transitions
+   * and emits the payment-level domain event.
+   */
+  public succeedAttempt(
+    attemptPublicId: FinancialPaymentAttemptPublicId,
+    at: Date,
+    correlationId: string,
+    causationId?: string,
+  ): void {
+    const attempt = this.getAttempt(attemptPublicId);
+
+    if (attempt === undefined) {
+      throw new FinancialPaymentException(
+        'Financial Payment Attempt does not belong to this Financial Payment',
+      );
+    }
+
+    attempt.succeed(at);
+    this.payment.succeed(at);
+
+    this.addDomainEvent(
+      new FinancialPaymentSucceededEvent(
+        this.id.value,
+        this.publicId,
+        this.amount,
+        this.status,
+        this.methodId,
+        attempt.publicId,
+        this.transactionPublicId,
+        this.completedAt ?? at,
+        correlationId,
+        causationId,
+      ),
+    );
+  }
+
   public succeed(
     at: Date = new Date(),
     correlationId: string,
@@ -482,6 +533,48 @@ export class FinancialPaymentAggregate extends AggregateRoot<FinancialPaymentAgg
    *
    * Failure information is read from the latest attempt when available.
    */
+  /**
+   * Marks one owned provider attempt as failed and fails its parent
+   * Financial Payment.
+   *
+   * The child entity owns attempt lifecycle validation and safe failure-data
+   * normalization. The parent entity owns payment lifecycle validation.
+   */
+  public failAttempt(
+    attemptPublicId: FinancialPaymentAttemptPublicId,
+    failureCode: string | undefined,
+    failureMessage: string | undefined,
+    at: Date,
+    correlationId: string,
+    causationId?: string,
+  ): void {
+    const attempt = this.getAttempt(attemptPublicId);
+
+    if (attempt === undefined) {
+      throw new FinancialPaymentException(
+        'Financial Payment Attempt does not belong to this Financial Payment',
+      );
+    }
+
+    attempt.fail(failureCode, failureMessage, at);
+    this.payment.fail(at);
+
+    this.addDomainEvent(
+      new FinancialPaymentFailedEvent(
+        this.id.value,
+        this.publicId,
+        this.amount,
+        this.status,
+        attempt.publicId,
+        attempt.failureCode,
+        attempt.failureMessage,
+        this.failedAt ?? at,
+        correlationId,
+        causationId,
+      ),
+    );
+  }
+
   public fail(
     at: Date = new Date(),
     correlationId: string,

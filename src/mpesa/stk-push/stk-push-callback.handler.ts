@@ -16,8 +16,12 @@ export interface StkPushCallbackMetadata {
 /**
  * Normalized STK Push callback event.
  *
- * This is the application-facing representation of a Daraja callback.
- * FinancialModule workflows consume this event to perform financial processing.
+ * This is the complete application-facing representation of a Daraja callback.
+ * FinancialModule persists this event in its callback inbox before attempting
+ * payment correlation or reconciliation.
+ *
+ * This type intentionally contains provider identifiers and callback metadata
+ * but no FinancialModule persistence or domain objects.
  */
 export interface StkPushCallbackEvent {
   readonly provider: 'MPESA';
@@ -47,14 +51,21 @@ interface DarajaStkCallback {
 @Injectable()
 export class StkPushCallbackHandler {
   /**
-   * Receives and normalizes an M-PESA Daraja STK Push callback.
+   * Validates and normalizes an M-PESA Daraja STK Push callback.
    *
    * Responsibilities:
-   * 1. Validate the incoming callback structure.
-   * 2. Validate required callback fields.
-   * 3. Validate optional transaction metadata.
+   * 1. Validate the incoming Daraja callback envelope.
+   * 2. Validate required request identifiers and result fields.
+   * 3. Validate and defensively copy optional transaction metadata.
    * 4. Normalize Daraja field names into SisiMove naming conventions.
-   * 5. Return a typed callback event for FinancialModule workflows.
+   * 5. Return a complete event for FinancialModule callback intake.
+   *
+   * FinancialModule is responsible for:
+   * - Persisting the normalized event in a durable callback inbox.
+   * - Deduplicating callback deliveries.
+   * - Correlating the callback with a Financial Payment Attempt.
+   * - Retaining unmatched callbacks for later recovery.
+   * - Applying payment/attempt state transitions and publishing events.
    *
    * This handler deliberately does not:
    * - Persist callback records.
@@ -76,7 +87,7 @@ export class StkPushCallbackHandler {
       resultDescription: callback.ResultDesc.trim(),
 
       ...(callback.CallbackMetadata !== undefined
-        ? { metadata: callback.CallbackMetadata }
+        ? { metadata: this.copyCallbackMetadata(callback.CallbackMetadata) }
         : {}),
     };
   }
@@ -165,7 +176,7 @@ export class StkPushCallbackHandler {
   }
 
   // ===========================================================================
-  // Callback Metadata Validation
+  // Callback Metadata Validation and Copying
   // ===========================================================================
 
   /**
@@ -213,6 +224,21 @@ export class StkPushCallbackHandler {
     });
   }
 
+  /**
+   * Creates a detached metadata object so the normalized event does not retain
+   * references to the original request body's metadata array or item objects.
+   */
+  private copyCallbackMetadata(
+    metadata: StkPushCallbackMetadata,
+  ): StkPushCallbackMetadata {
+    return {
+      Item: metadata.Item.map((item) => ({
+        Name: item.Name.trim(),
+        ...(item.Value !== undefined ? { Value: item.Value } : {}),
+      })),
+    };
+  }
+
   // ===========================================================================
   // Object Type Guard
   // ===========================================================================
@@ -224,3 +250,5 @@ export class StkPushCallbackHandler {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 }
+
+export default StkPushCallbackHandler;

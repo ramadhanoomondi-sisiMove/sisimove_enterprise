@@ -4,7 +4,7 @@
 
 import type { Provider } from '@nestjs/common';
 
-import { FINANCIAL_PAYMENT_CALLBACK_TOKENS } from '../../application/financial-payment-callback.tokens';
+import { FINANCIAL_PAYMENT_CALLBACK_TOKENS } from '../../../financial/application/financial-payment-callback.tokens';
 
 import { PrismaFinancialPaymentCallbackRepository } from '../persistence/prisma/repositories/prisma-financial-payment-callback.repository';
 

@@ -51,7 +51,6 @@ import { FinancialPaymentProvidersController } from './presentation/rest/control
 
 import {
   FINANCIAL_PAYMENT_PROVIDER_PROVIDERS,
-  FINANCIAL_PAYMENT_CALLBACK_PROVIDERS,
   FINANCIAL_PAYMENT_C2B_CALLBACK_PROVIDERS,
 } from './infrastructure/dependency-injection';
 
@@ -128,7 +127,6 @@ import {
     // =========================================================================
 
     ...FINANCIAL_PAYMENT_PROVIDER_PROVIDERS,
-    ...FINANCIAL_PAYMENT_CALLBACK_PROVIDERS,
     ...FINANCIAL_PAYMENT_C2B_CALLBACK_PROVIDERS,
 
     // =========================================================================

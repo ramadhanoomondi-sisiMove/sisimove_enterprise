@@ -1,4 +1,3 @@
-//src//mpesa/common/mpesa-http.service.ts
 /**
  * -----------------------------------------------------------------------------
  * SisiMove — M-PESA Daraja 3.0 HTTP Service
@@ -6,20 +5,15 @@
  *
  * Shared HTTP transport for Safaricom Daraja API requests.
  *
- * Responsibilities:
- * - Execute authenticated and unauthenticated HTTP requests.
- * - Resolve the correct Daraja environment.
- * - Apply standard HTTP timeouts and headers.
- * - Normalize transport failures.
- *
  * Security:
  * - Never log access tokens or credentials.
- * - Never expose request headers in error messages.
- * - Never expose raw provider response bodies to API consumers.
+ * - Never expose request headers.
+ * - Never expose raw provider response bodies.
+ * - Log only approved provider diagnostic fields.
  * -----------------------------------------------------------------------------
  */
 
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 
 import { HttpService } from '@nestjs/axios';
 
@@ -41,12 +35,20 @@ export interface MpesaHttpRequestOptions {
   readonly headers?: Readonly<Record<string, string>>;
 }
 
+interface MpesaRequestContext {
+  readonly method: 'GET' | 'POST';
+  readonly path: string;
+  readonly environment: MpesaEnvironment;
+}
+
 // =============================================================================
 // Service
 // =============================================================================
 
 @Injectable()
 export class MpesaHttpService {
+  private readonly logger = new Logger(MpesaHttpService.name);
+
   constructor(private readonly httpService: HttpService) {}
 
   // ===========================================================================
@@ -117,7 +119,11 @@ export class MpesaHttpService {
 
       return response.data;
     } catch (error: unknown) {
-      this.handleRequestError(error);
+      this.handleRequestError(error, {
+        method,
+        path,
+        environment,
+      });
     }
   }
 
@@ -145,16 +151,64 @@ export class MpesaHttpService {
   // Error Handling
   // ===========================================================================
 
-  private handleRequestError(error: unknown): never {
+  private handleRequestError(
+    error: unknown,
+    context: MpesaRequestContext,
+  ): never {
     if (isAxiosError(error)) {
       const status = error.response?.status;
 
       if (status !== undefined) {
+        const responseData: unknown = error.response?.data;
+
+        const providerError =
+          typeof responseData === 'object' && responseData !== null
+            ? (responseData as Record<string, unknown>)
+            : {};
+
+        const diagnostic = {
+          method: context.method,
+          path: context.path,
+          environment: context.environment,
+          httpStatus: status,
+          transportCode: error.code ?? null,
+          providerRequestId:
+            typeof providerError.requestId === 'string'
+              ? providerError.requestId.slice(0, 100)
+              : null,
+          providerErrorCode:
+            typeof providerError.errorCode === 'string' ||
+            typeof providerError.errorCode === 'number'
+              ? providerError.errorCode
+              : null,
+          providerErrorMessage:
+            typeof providerError.errorMessage === 'string'
+              ? providerError.errorMessage.replace(/[\r\n]/g, ' ').slice(0, 300)
+              : null,
+        };
+
+        this.logger.error(
+          `M-PESA provider HTTP failure: ${JSON.stringify(diagnostic)}`,
+        );
+
         throw new HttpException(
           'M-PESA provider request failed.',
           status >= 400 && status <= 599 ? status : HttpStatus.BAD_GATEWAY,
         );
       }
+
+      this.logger.error(
+        `M-PESA transport failure: ${JSON.stringify({
+          method: context.method,
+          path: context.path,
+          environment: context.environment,
+          transportCode: error.code ?? null,
+          message:
+            error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT'
+              ? 'Request timed out.'
+              : 'No HTTP response received from provider.',
+        })}`,
+      );
 
       if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
         throw new HttpException(
@@ -168,6 +222,10 @@ export class MpesaHttpService {
         HttpStatus.BAD_GATEWAY,
       );
     }
+
+    this.logger.error(
+      `Unexpected M-PESA transport error: ${context.method} ${context.path}`,
+    );
 
     throw new HttpException(
       'An unexpected M-PESA transport error occurred.',

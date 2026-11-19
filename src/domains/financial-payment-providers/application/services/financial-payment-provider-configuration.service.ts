@@ -1,3 +1,4 @@
+//src/domains/financial-payment-providers/application/services/financial-payment-provider-configuration.services.ts
 import { Inject, Injectable } from '@nestjs/common';
 
 import { FINANCIAL_PAYMENT_PROVIDER_TOKENS } from '../financial-payment-providers.tokens';

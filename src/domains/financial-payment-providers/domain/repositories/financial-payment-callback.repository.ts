@@ -9,6 +9,7 @@
 // - Persist provider callbacks durably.
 // - Prevent duplicate callback records.
 // - Retrieve callbacks using provider request references.
+// - Retrieve pending callbacks for bounded recovery batches.
 // - Track callback processing state.
 // - Link processed callbacks to their payment attempts.
 //
@@ -86,7 +87,17 @@ export interface FinancialPaymentCallbackRepository {
   ): Promise<FinancialPaymentCallbackRecord | null>;
 
   /**
-   * Mark a callback as successfully processed.
+   * Retrieve the oldest pending callbacks for bounded recovery.
+   *
+   * Unmatched callbacks remain PENDING and are eligible for later retries.
+   */
+  findPending(limit: number): Promise<FinancialPaymentCallbackRecord[]>;
+
+  /**
+   * Mark a callback as successfully processed and link its payment attempt.
+   *
+   * Implementations must not change an already terminal callback to a
+   * different terminal state.
    */
   markProcessed(
     callbackId: string,
@@ -95,7 +106,10 @@ export interface FinancialPaymentCallbackRepository {
   ): Promise<void>;
 
   /**
-   * Mark a callback as failed during reconciliation.
+   * Mark a callback as irrecoverably failed during reconciliation.
+   *
+   * Implementations must not change an already terminal callback to a
+   * different terminal state.
    */
   markFailed(callbackId: string): Promise<void>;
 }

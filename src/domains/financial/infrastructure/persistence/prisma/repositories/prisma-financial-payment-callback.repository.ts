@@ -8,6 +8,7 @@
 //
 // - Persist callbacks idempotently.
 // - Retrieve callbacks by provider and CheckoutRequestID.
+// - Retrieve pending callbacks in bounded, oldest-first batches.
 // - Mark callbacks as processed.
 // - Mark callbacks as failed.
 // - Preserve the original callback payload.
@@ -29,7 +30,7 @@ import type {
   FinancialPaymentCallbackRepository,
   FinancialPaymentCallbackRecord,
   CreateFinancialPaymentCallbackInput,
-} from '../../../../domain/repositories/financial-payment-callback.repository';
+} from '../../../../../financial-payment-providers/domain/repositories/financial-payment-callback.repository';
 
 // =============================================================================
 // Repository
@@ -78,7 +79,7 @@ export class PrismaFinancialPaymentCallbackRepository implements FinancialPaymen
         },
       },
 
-      // An existing callback must never have its original payload overwritten.
+      // Preserve the first received callback, including its original payload.
       update: {},
 
       create: {
@@ -119,11 +120,33 @@ export class PrismaFinancialPaymentCallbackRepository implements FinancialPaymen
       },
     });
 
-    if (record === null) {
-      return null;
+    return record === null ? null : this.toRecord(record);
+  }
+
+  // ===========================================================================
+  // Find Pending — Oldest First
+  // ===========================================================================
+
+  public async findPending(
+    limit: number,
+  ): Promise<FinancialPaymentCallbackRecord[]> {
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw new Error('Pending callback limit must be a positive integer.');
     }
 
-    return this.toRecord(record);
+    // Keep recovery batches bounded even if a caller supplies an excessive
+    // value. The application service can request smaller batches as needed.
+    const boundedLimit = Math.min(limit, 500);
+
+    const records = await this.prisma.financialPaymentCallback.findMany({
+      where: {
+        status: 'PENDING',
+      },
+      orderBy: [{ receivedAt: 'asc' }, { id: 'asc' }],
+      take: boundedLimit,
+    });
+
+    return records.map((record) => this.toRecord(record));
   }
 
   // ===========================================================================
@@ -142,17 +165,42 @@ export class PrismaFinancialPaymentCallbackRepository implements FinancialPaymen
       throw new Error('Callback ID and Payment Attempt ID are required.');
     }
 
-    await this.prisma.financialPaymentCallback.update({
+    const result = await this.prisma.financialPaymentCallback.updateMany({
       where: {
         id: normalizedCallbackId,
+        status: 'PENDING',
       },
-
       data: {
         attemptId: normalizedAttemptId,
         status: 'PROCESSED',
         processedAt,
       },
     });
+
+    if (result.count > 0) {
+      return;
+    }
+
+    // Treat an identical retry as idempotent, but do not silently accept a
+    // conflicting terminal state or a different attempt association.
+    const existing = await this.prisma.financialPaymentCallback.findUnique({
+      where: { id: normalizedCallbackId },
+      select: {
+        attemptId: true,
+        status: true,
+      },
+    });
+
+    if (
+      existing?.status === 'PROCESSED' &&
+      existing.attemptId === normalizedAttemptId
+    ) {
+      return;
+    }
+
+    throw new Error(
+      `Callback ${normalizedCallbackId} could not be marked processed because it is missing or already terminal.`,
+    );
   }
 
   // ===========================================================================
@@ -166,11 +214,13 @@ export class PrismaFinancialPaymentCallbackRepository implements FinancialPaymen
       throw new Error('Callback ID is required.');
     }
 
-    await this.prisma.financialPaymentCallback.update({
+    // Only a pending callback may transition to FAILED. Repeated failure
+    // marking is harmless, and a processed callback is never downgraded.
+    await this.prisma.financialPaymentCallback.updateMany({
       where: {
         id: normalizedCallbackId,
+        status: 'PENDING',
       },
-
       data: {
         status: 'FAILED',
       },

@@ -10,11 +10,12 @@
  * Responsibilities:
  * - Handle HTTP requests and responses.
  * - Delegate STK Push initiation to StkPushService.
- * - Delegate callback validation and normalization to
- *   StkPushCallbackHandler.
- * - Return the acknowledgement expected by Daraja.
+ * - Delegate callback validation and normalization to StkPushCallbackHandler.
+ * - Forward normalized callbacks to FinancialModule's durable callback intake.
+ * - Acknowledge Daraja only after the callback has been persisted.
  *
- * Financial processing belongs to FinancialModule workflows.
+ * Financial correlation, payment lifecycle transitions and financial
+ * consequences remain in FinancialModule.
  * -----------------------------------------------------------------------------
  */
 
@@ -30,6 +31,8 @@ import {
 import { StkPushService } from './stk-push.service';
 
 import { StkPushCallbackHandler } from './stk-push-callback.handler';
+
+import { ReceiveFinancialPaymentCallbackService } from '../../domains/financial/application/services/receive-financial-payment-callback.service';
 
 import type { StkPushRequestDto } from './dto/stk-push-request.dto';
 
@@ -55,6 +58,7 @@ export class StkPushController {
   public constructor(
     private readonly stkPushService: StkPushService,
     private readonly callbackHandler: StkPushCallbackHandler,
+    private readonly callbackIntake: ReceiveFinancialPaymentCallbackService,
   ) {}
 
   // ===========================================================================
@@ -64,8 +68,8 @@ export class StkPushController {
   /**
    * Initiates an M-PESA STK Push request.
    *
-   * The financial payment workflow is responsible for creating the payment
-   * and attempt before invoking the provider integration.
+   * The Financial Payment workflow creates and persists the payment attempt
+   * before invoking this provider integration service.
    */
   @Post()
   @HttpCode(HttpStatus.OK)
@@ -82,18 +86,39 @@ export class StkPushController {
   /**
    * Receives a callback from Safaricom Daraja.
    *
-   * The callback handler validates and normalizes the provider payload.
-   * The normalized event is intended for the FinancialModule callback
-   * workflow, which owns correlation and financial processing.
+   * Processing sequence:
+   * 1. Validate and normalize the Daraja callback.
+   * 2. Persist the normalized callback and original payload in FinancialModule.
+   * 3. Acknowledge Daraja only after durable persistence succeeds.
    *
-   * Do not perform financial updates in this controller.
+   * Payment correlation and lifecycle processing are deliberately not performed
+   * in this HTTP controller. Pending callbacks are reconciled by the Financial
+   * application recovery processor.
    */
   @Post('callback')
   @HttpCode(HttpStatus.OK)
-  public handleCallback(@Body() body: unknown): DarajaCallbackAcknowledgement {
+  public async handleCallback(
+    @Body() body: unknown,
+  ): Promise<DarajaCallbackAcknowledgement> {
     const event = this.callbackHandler.processCallback(body);
 
     this.logger.log(`Received M-PESA STK callback: ${event.checkoutRequestId}`);
+
+    const callbackRecord = await this.callbackIntake.receiveStkPushCallback(
+      {
+        provider: event.provider,
+        merchantRequestId: event.merchantRequestId,
+        checkoutRequestId: event.checkoutRequestId,
+        resultCode: event.resultCode,
+        resultDescription: event.resultDescription,
+      },
+      body,
+    );
+
+    this.logger.log(
+      `M-PESA STK callback durably recorded: ${event.checkoutRequestId}; ` +
+        `status: ${callbackRecord.status}.`,
+    );
 
     return {
       ResultCode: 0,

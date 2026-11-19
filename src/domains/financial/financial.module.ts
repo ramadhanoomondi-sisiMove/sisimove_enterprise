@@ -84,6 +84,8 @@ import { C2BController } from '../../mpesa/c2b/c2b.controller';
 import { B2CController } from '../../mpesa/b2c/b2c.controller';
 import { MpesaConnectionController } from '../../mpesa/mpesa-connection.controller';
 import { ReceiveFinancialDisbursementCallbackService } from './application/services/receive-financial-disbursement-callback.service';
+import { ReceiveFinancialPaymentCallbackService } from './application/services/receive-financial-payment-callback.service';
+import { StkPaymentCallbackWorker } from './application/workers/stk-payment-callback.worker';
 // -----------------------------------------------------------------------------
 // Infrastructure — Dependency Injection
 // -----------------------------------------------------------------------------
@@ -98,6 +100,7 @@ import {
   FINANCIAL_SETTLEMENT_PROVIDERS,
   FINANCIAL_DISBURSEMENT_PROVIDERS,
   FINANCIAL_DISBURSEMENT_CALLBACK_PROVIDERS,
+  FINANCIAL_PAYMENT_CALLBACK_PROVIDERS,
 } from './infrastructure/dependency-injection';
 
 // -----------------------------------------------------------------------------
@@ -350,6 +353,7 @@ import { FinancialDisbursementAttemptSucceededSubscriber } from './application/s
     ...FINANCIAL_SETTLEMENT_PROVIDERS,
     ...FINANCIAL_DISBURSEMENT_PROVIDERS,
     ...FINANCIAL_DISBURSEMENT_CALLBACK_PROVIDERS,
+    ...FINANCIAL_PAYMENT_CALLBACK_PROVIDERS,
 
     // =========================================================================
     // Application — System Financial Account Provisioning
@@ -389,6 +393,8 @@ import { FinancialDisbursementAttemptSucceededSubscriber } from './application/s
     // -------------------------------------------------------------------------
 
     ReceiveFinancialDisbursementCallbackService,
+    ReceiveFinancialPaymentCallbackService,
+    StkPaymentCallbackWorker,
 
     // =========================================================================
     // Financial Account

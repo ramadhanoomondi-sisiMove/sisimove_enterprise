@@ -35,3 +35,5 @@ export { FINANCIAL_SETTLEMENT_TOKENS } from './financial-settlement.tokens';
 export { FINANCIAL_DISBURSEMENT_TOKENS } from './financial-disbursement.tokens';
 
 export * from './financial-disbursement-callback.tokens';
+
+export * from './financial-payment-callback.tokens';

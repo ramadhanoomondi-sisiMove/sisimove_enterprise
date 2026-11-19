@@ -1,3 +1,4 @@
+
 /**
  * -----------------------------------------------------------------------------
  * SisiMove — M-PESA Daraja 3.0 STK Push Service
@@ -8,7 +9,9 @@
  * Responsibilities:
  * - Retrieve and validate the configured M-PESA provider.
  * - Retrieve the provider's encrypted STK Push configuration.
+ * - Retrieve the STK callback URL from runtime environment configuration.
  * - Obtain a Daraja OAuth access token.
+ * - Normalize and validate Kenyan phone numbers for Daraja.
  * - Generate the Daraja timestamp and STK Push password.
  * - Submit the STK Push request.
  * - Return normalized Safaricom request identifiers.
@@ -19,12 +22,20 @@
  * - FinancialModule exclusively owns financial state transitions.
  * - Request acceptance does not mean payment completion.
  * - Payment completion is handled through the callback workflow.
+ *
  * -----------------------------------------------------------------------------
  */
 
 import { Buffer } from 'node:buffer';
 
-import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
+
+import { ConfigService } from '@nestjs/config';
 
 import { MpesaOAuthService } from '../auth/mpesa-oauth.service';
 
@@ -68,6 +79,8 @@ export class StkPushService {
     private readonly oauthService: MpesaOAuthService,
 
     private readonly httpService: MpesaHttpService,
+
+    private readonly configService: ConfigService,
 
     @Inject(FINANCIAL_PAYMENT_PROVIDER_TOKENS.REPOSITORY)
     private readonly providerRepository: FinancialPaymentProviderRepository,
@@ -152,32 +165,48 @@ export class StkPushService {
       });
     }
 
+    // Shortcode and passkey remain provider-specific encrypted credentials.
     const shortcode = configuration.shortcode?.trim();
-    const passkey = configuration.passkey;
-    const callbackUrl = configuration.callbackUrl?.trim();
+    const passkey = configuration.passkey?.trim();
 
-    if (!shortcode || !passkey?.trim() || !callbackUrl) {
+    // Callback URL is supplied through runtime environment configuration.
+    const callbackUrl = this.configService
+      .get<string>('MPESA_CALLBACK_URL')
+      ?.trim();
+
+    // -------------------------------------------------------------------------
+    // 5. Validate required STK Push configuration
+    // -------------------------------------------------------------------------
+
+    if (!shortcode || !passkey || !callbackUrl) {
       throw new MpesaException({
         code: MpesaErrorCode.CONFIGURATION_ERROR,
-        message: 'STK Push requires a shortcode, passkey and callback URL.',
+        message:
+          'STK Push requires a provider shortcode, passkey and MPESA_CALLBACK_URL.',
         statusCode: HttpStatus.BAD_REQUEST,
       });
     }
 
     // -------------------------------------------------------------------------
-    // 5. Validate callback URL
+    // 6. Validate callback URL
     // -------------------------------------------------------------------------
 
     this.validateCallbackUrl(callbackUrl, environment);
 
     // -------------------------------------------------------------------------
-    // 6. Generate Daraja timestamp
+    // 7. Normalize and validate customer phone number
+    // -------------------------------------------------------------------------
+
+    const phoneNumber = this.normalizeDarajaPhoneNumber(dto.phoneNumber);
+
+    // -------------------------------------------------------------------------
+    // 8. Generate Daraja timestamp
     // -------------------------------------------------------------------------
 
     const timestamp = this.generateTimestamp();
 
     // -------------------------------------------------------------------------
-    // 7. Generate STK Push password
+    // 9. Generate STK Push password
     // -------------------------------------------------------------------------
 
     const password = Buffer.from(
@@ -186,14 +215,14 @@ export class StkPushService {
     ).toString('base64');
 
     // -------------------------------------------------------------------------
-    // 8. Obtain OAuth access token
+    // 10. Obtain OAuth access token
     // -------------------------------------------------------------------------
 
     const accessToken =
       await this.oauthService.getAccessToken(providerPublicId);
 
     // -------------------------------------------------------------------------
-    // 9. Build Daraja STK Push request
+    // 11. Build Daraja STK Push request
     // -------------------------------------------------------------------------
 
     const request: MpesaStkPushRequest = {
@@ -202,16 +231,16 @@ export class StkPushService {
       Timestamp: timestamp,
       TransactionType: MPESA_STK_TRANSACTION_TYPES.CUSTOMER_PAYBILL_ONLINE,
       Amount: dto.amount,
-      PartyA: dto.phoneNumber,
+      PartyA: phoneNumber,
       PartyB: shortcode,
-      PhoneNumber: dto.phoneNumber,
+      PhoneNumber: phoneNumber,
       CallBackURL: callbackUrl,
       AccountReference: dto.accountReference,
       TransactionDesc: dto.transactionDescription,
     };
 
     // -------------------------------------------------------------------------
-    // 10. Submit STK Push request
+    // 12. Submit STK Push request
     // -------------------------------------------------------------------------
 
     const response = await this.httpService.post<MpesaStkPushResponse>(
@@ -224,7 +253,7 @@ export class StkPushService {
     );
 
     // -------------------------------------------------------------------------
-    // 11. Validate Daraja response
+    // 13. Validate Daraja response
     // -------------------------------------------------------------------------
 
     const checkoutRequestId = response.CheckoutRequestID?.trim();
@@ -248,7 +277,7 @@ export class StkPushService {
     }
 
     // -------------------------------------------------------------------------
-    // 12. Normalize response
+    // 14. Normalize response
     // -------------------------------------------------------------------------
 
     const customerMessage = response.CustomerMessage?.trim();
@@ -266,6 +295,55 @@ export class StkPushService {
 
       ...(paymentReference ? { paymentReference } : {}),
     };
+  }
+
+  // ===========================================================================
+  // Daraja Phone Number Normalization
+  // ===========================================================================
+
+  /**
+   * Converts supported Kenyan mobile number formats into the format
+   * required by Safaricom Daraja.
+   *
+   * FinancialModule stores phone numbers in canonical +254 format.
+   * Daraja requires 254 format without the leading plus sign.
+   *
+   * Accepted:
+   * - 0712345678
+   * - 0112345678
+   * - 254712345678
+   * - 254112345678
+   * - +254712345678
+   * - +254112345678
+   *
+   * Returns:
+   * - 254712345678
+   * - 254112345678
+   */
+  private normalizeDarajaPhoneNumber(value: string): string {
+    if (typeof value !== 'string' || !value.trim()) {
+      throw new MpesaException({
+        code: MpesaErrorCode.VALIDATION_FAILED,
+        message: 'Customer M-PESA phone number is required.',
+        statusCode: HttpStatus.BAD_REQUEST,
+      });
+    }
+
+    const normalized = value.trim().replace(/[\s()-]/g, '');
+
+    const internationalPhoneNumber = normalized.startsWith('+')
+      ? normalized.slice(1)
+      : normalized;
+
+    if (!/^254[17]\d{8}$/.test(internationalPhoneNumber)) {
+      throw new MpesaException({
+        code: MpesaErrorCode.VALIDATION_FAILED,
+        message: 'Invalid Kenyan M-PESA phone number.',
+        statusCode: HttpStatus.BAD_REQUEST,
+      });
+    }
+
+    return internationalPhoneNumber;
   }
 
   // ===========================================================================
@@ -366,5 +444,9 @@ export class StkPushService {
     ].join('');
   }
 }
+
+// =============================================================================
+// Default Export
+// =============================================================================
 
 export default StkPushService;

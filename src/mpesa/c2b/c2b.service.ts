@@ -11,12 +11,16 @@
  * C2B uses its independently configured shortcode and business type.
  * STK Push and B2C configurations remain separate.
  *
+ * Callback URLs are loaded from runtime environment configuration.
+ *
  * This service communicates with Safaricom only. FinancialModule owns
  * payment matching, reconciliation, payment state and financial effects.
  * -----------------------------------------------------------------------------
  */
 
 import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
+
+import { ConfigService } from '@nestjs/config';
 
 // -----------------------------------------------------------------------------
 // M-PESA Infrastructure
@@ -89,6 +93,8 @@ export class C2BService {
 
     private readonly httpService: MpesaHttpService,
 
+    private readonly configService: ConfigService,
+
     @Inject(FINANCIAL_PAYMENT_PROVIDER_TOKENS.REPOSITORY)
     private readonly providerRepository: FinancialPaymentProviderRepository,
 
@@ -102,9 +108,12 @@ export class C2BService {
   /**
    * Registers the configured C2B callback URLs with Safaricom.
    *
-   * The URLs and shortcode are resolved from the M-PESA provider
-   * configuration. The request DTO supplies the provider public ID and
-   * Daraja response type.
+   * C2B shortcode and business type are resolved from encrypted provider
+   * configuration.
+   *
+   * Callback URLs are resolved from runtime environment configuration.
+   *
+   * The request DTO supplies the provider public ID and Daraja response type.
    *
    * This method does not process incoming callbacks.
    */
@@ -118,7 +127,7 @@ export class C2BService {
 
     if (!validationUrl || !confirmationUrl) {
       throw new HttpException(
-        'C2B validation and confirmation URLs must be configured.',
+        'C2B validation and confirmation URLs must be configured using MPESA_C2B_VALIDATION_URL and MPESA_C2B_CONFIRMATION_URL.',
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -282,6 +291,8 @@ export class C2BService {
    *
    * C2B uses its own shortcode and business type.
    * STK Push and B2C configuration values are not used here.
+   *
+   * Callback URLs are loaded independently from runtime configuration.
    */
   private async getC2BConfiguration(
     providerPublicId: string,
@@ -330,7 +341,7 @@ export class C2BService {
     }
 
     // C2B must use its own shortcode, never the STK Push shortcode.
-    const shortcode = configuration.c2bShortcode;
+    const shortcode = configuration.c2bShortcode?.trim();
 
     if (!shortcode) {
       throw new HttpException(
@@ -349,12 +360,21 @@ export class C2BService {
       );
     }
 
+    // C2B callback URLs are runtime environment configuration.
+    const validationUrl = this.configService
+      .get<string>('MPESA_C2B_VALIDATION_URL')
+      ?.trim();
+
+    const confirmationUrl = this.configService
+      .get<string>('MPESA_C2B_CONFIRMATION_URL')
+      ?.trim();
+
     return {
       environment,
       shortcode,
       businessType,
-      validationUrl: configuration.validationUrl,
-      confirmationUrl: configuration.confirmationUrl,
+      validationUrl,
+      confirmationUrl,
     };
   }
 
@@ -392,6 +412,13 @@ export class C2BService {
     if (environment === 'production' && parsedUrl.protocol !== 'https:') {
       throw new HttpException(
         'Production C2B callback URLs must use HTTPS.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    if (parsedUrl.username || parsedUrl.password) {
+      throw new HttpException(
+        'C2B callback URLs must not contain credentials.',
         HttpStatus.BAD_REQUEST,
       );
     }
