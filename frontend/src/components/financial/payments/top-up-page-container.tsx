@@ -24,6 +24,11 @@ import {
   type PaymentResultStatus,
 } from '@/components/financial/payments';
 
+import {
+  PayBillPayment,
+  type PayBillPaymentStatus,
+} from '@/components/financial/payments/paybill-payment';
+
 import { Button } from '@/components/ui';
 
 // =============================================================================
@@ -45,7 +50,13 @@ type FinancialPaymentStatus =
   | 'CANCELLED'
   | 'EXPIRED';
 
-type TopUpOption = 'DEFAULT_NUMBER' | 'PAYBILL_TILL';
+type TerminalPaymentStatus =
+  | 'SUCCEEDED'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'EXPIRED';
+
+type TopUpOption = 'DEFAULT_NUMBER' | 'PAYBILL';
 
 interface PaymentResultCopy {
   readonly title: string;
@@ -62,14 +73,67 @@ function isPaymentInProgress(
   return status === 'PENDING' || status === 'PROCESSING';
 }
 
-function mapPaymentResultStatus(
+/**
+ * Narrow the FinancialPayment status to terminal statuses.
+ *
+ * This prevents PENDING and PROCESSING payments from being
+ * passed into terminal-result presentation logic.
+ */
+function isTerminalPaymentStatus(
   status: FinancialPaymentStatus,
+): status is TerminalPaymentStatus {
+  return (
+    status === 'SUCCEEDED' ||
+    status === 'FAILED' ||
+    status === 'CANCELLED' ||
+    status === 'EXPIRED'
+  );
+}
+
+function mapPaymentResultStatus(
+  status: TerminalPaymentStatus,
 ): PaymentResultStatus {
   return status === 'SUCCEEDED' ? 'success' : 'failed';
 }
 
+/**
+ * Translate the FinancialPayment API status into the presentation
+ * vocabulary used by PayBillPayment.
+ *
+ * SUCCEEDED is presented as COMPLETED.
+ * This does not change the underlying domain status.
+ */
+function mapPayBillPaymentStatus(
+  status: FinancialPaymentStatus,
+): PayBillPaymentStatus {
+  switch (status) {
+    case 'SUCCEEDED':
+      return 'COMPLETED';
+
+    case 'PENDING':
+      return 'PENDING';
+
+    case 'PROCESSING':
+      return 'PROCESSING';
+
+    case 'FAILED':
+      return 'FAILED';
+
+    case 'CANCELLED':
+      return 'CANCELLED';
+
+    case 'EXPIRED':
+      return 'EXPIRED';
+
+    default: {
+      const exhaustiveCheck: never = status;
+      return exhaustiveCheck;
+    }
+  }
+}
+
 function getPaymentResultCopy(
-  status: 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'EXPIRED',
+  status: TerminalPaymentStatus,
 ): PaymentResultCopy {
   switch (status) {
     case 'SUCCEEDED':
@@ -92,11 +156,15 @@ function getPaymentResultCopy(
       };
 
     case 'FAILED':
-    default:
       return {
         title: 'Top-up failed',
         message: 'The payment could not be completed. Please try again.',
       };
+
+    default: {
+      const exhaustiveCheck: never = status;
+      return exhaustiveCheck;
+    }
   }
 }
 
@@ -150,7 +218,7 @@ export function TopUpPageContainer() {
   // ===========================================================================
 
   // Amount remains a string in whole KES.
-  // The backend performs the conversion to minor units.
+  // The backend converts it into minor units.
   const [amount, setAmount] = useState<string>('');
 
   const [topUpOption, setTopUpOption] =
@@ -179,10 +247,15 @@ export function TopUpPageContainer() {
   const {
     data: payment,
     isLoading: isPaymentLoading,
+    isFetching: isPaymentFetching,
     isError: isPaymentError,
     error: paymentError,
     refetch: refetchPayment,
   } = useFinancialPayment(paymentPublicId);
+
+  // Derive the primitive status for the polling effect.
+  // This avoids depending on the complete payment object.
+  const paymentStatus = payment?.status;
 
   // ===========================================================================
   // Default Payment Method Presentation
@@ -200,26 +273,21 @@ export function TopUpPageContainer() {
       }
     : null;
 
-
   // ===========================================================================
   // C2B Payment Details Presentation
   // ===========================================================================
 
-  const c2bPaymentDetails = c2bPaymentInstructions
-    ? {
-        provider: c2bPaymentInstructions.provider,
-        paymentMethod: 'C2B' as const,
-        businessType: c2bPaymentInstructions.businessType,
-        shortcode: c2bPaymentInstructions.shortcode,
-        accountReference:
-          c2bPaymentInstructions.accountReference ?? undefined,
-        currency: c2bPaymentInstructions.currency,
-
-        // PaymentForm expects an array, while the API model
-        // currently supplies a single instruction string.
-        instructions: [c2bPaymentInstructions.instructions],
-      }
-    : null;
+  const c2bPaymentDetails =
+    c2bPaymentInstructions?.businessType === 'PAYBILL'
+      ? {
+          provider: c2bPaymentInstructions.provider,
+          paymentMethod: 'C2B' as const,
+          businessType: 'PAYBILL' as const,
+          shortcode: c2bPaymentInstructions.shortcode,
+          currency: c2bPaymentInstructions.currency,
+          instructions: [c2bPaymentInstructions.instructions],
+        }
+      : null;
 
   // ===========================================================================
   // Payment Status Polling
@@ -228,8 +296,8 @@ export function TopUpPageContainer() {
   useEffect(() => {
     if (
       paymentPublicId === undefined ||
-      payment === undefined ||
-      !isPaymentInProgress(payment.status)
+      paymentStatus === undefined ||
+      !isPaymentInProgress(paymentStatus)
     ) {
       return;
     }
@@ -241,22 +309,20 @@ export function TopUpPageContainer() {
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [paymentPublicId, payment, refetchPayment]);
+  }, [
+    paymentPublicId,
+    paymentStatus,
+    refetchPayment,
+  ]);
 
   // ===========================================================================
-  // STK Push Submission
+  // Financial Payment Submission
   // ===========================================================================
 
   const handleSubmit = () => {
     setAmountError(undefined);
     setPaymentMethodError(undefined);
     setFormError(undefined);
-
-    // C2B instructions are displayed separately.
-    // This submission handler is only for STK Push.
-    if (topUpOption !== 'DEFAULT_NUMBER') {
-      return;
-    }
 
     // -------------------------------------------------------------------------
     // Financial Account
@@ -270,15 +336,33 @@ export function TopUpPageContainer() {
     }
 
     // -------------------------------------------------------------------------
-    // Saved Default Payment Method
+    // Saved Default Payment Method (STK Push only)
     // -------------------------------------------------------------------------
 
     if (
-      !defaultPaymentMethod?.publicId ||
-      !defaultPaymentMethod.isActive
+      topUpOption === 'DEFAULT_NUMBER' &&
+      (!defaultPaymentMethod?.publicId ||
+        !defaultPaymentMethod.isActive)
     ) {
       setPaymentMethodError(
         'An active default M-PESA payment method is required for STK Push.',
+      );
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // PayBill Configuration
+    // -------------------------------------------------------------------------
+
+    if (
+      topUpOption === 'PAYBILL' &&
+      (
+        c2bPaymentInstructions?.businessType !== 'PAYBILL' ||
+        !c2bPaymentInstructions.shortcode
+      )
+    ) {
+      setFormError(
+        'SisiMove PayBill instructions are unavailable. Please retry loading them.',
       );
       return;
     }
@@ -289,7 +373,7 @@ export function TopUpPageContainer() {
 
     if (
       !/^\d+$/.test(amount) ||
-      !Number.isSafeInteger(Number(amount)) ||
+      !Number.isSafeInteger(Number(amount) * 100) ||
       Number(amount) <= 0
     ) {
       setAmountError('Enter a valid top-up amount.');
@@ -307,14 +391,18 @@ export function TopUpPageContainer() {
     // -------------------------------------------------------------------------
 
     const parsed = createPaymentSchema.safeParse({
-      channel: 'STK_PUSH',
+      channel: topUpOption === 'DEFAULT_NUMBER' ? 'STK_PUSH' : 'C2B',
 
       // Send whole KES. Do not multiply by 100 here.
       amount,
 
       currency: DEFAULT_CURRENCY,
       correlationId,
-      methodPublicId: defaultPaymentMethod.publicId,
+
+      ...(topUpOption === 'DEFAULT_NUMBER' &&
+      defaultPaymentMethod?.publicId
+        ? { methodPublicId: defaultPaymentMethod.publicId }
+        : {}),
     });
 
     if (!parsed.success) {
@@ -333,7 +421,7 @@ export function TopUpPageContainer() {
     }
 
     // -------------------------------------------------------------------------
-    // Create FinancialPayment
+    // Create FinancialPayment (STK Push or C2B PayBill)
     // -------------------------------------------------------------------------
 
     createPaymentMutation.mutate(
@@ -343,6 +431,8 @@ export function TopUpPageContainer() {
       },
       {
         onSuccess: (createdPayment) => {
+          // The backend creates the payment and generates the C2B reference.
+          // Retrieve the persisted payment using its public identifier.
           setPaymentPublicId(createdPayment.publicId);
         },
 
@@ -443,7 +533,7 @@ export function TopUpPageContainer() {
   }
 
   // ===========================================================================
-  // Payment Lifecycle Surface — STK Push Only
+  // Payment Lifecycle Surface — STK Push and C2B PayBill
   // ===========================================================================
 
   if (paymentPublicId !== undefined) {
@@ -511,8 +601,16 @@ export function TopUpPageContainer() {
             <section className="section">
               <div className="mx-auto max-w-2xl">
                 <PaymentProcessing
-                  title="Checking payment status"
-                  message="We're retrieving the latest status of your top-up."
+                  title={
+                    topUpOption === 'PAYBILL'
+                      ? 'Preparing your PayBill payment'
+                      : 'Checking payment status'
+                  }
+                  message={
+                    topUpOption === 'PAYBILL'
+                      ? 'Your payment has been created. We are retrieving its unique account reference.'
+                      : "We're retrieving the latest status of your top-up."
+                  }
                 />
               </div>
             </section>
@@ -522,12 +620,158 @@ export function TopUpPageContainer() {
     }
 
     // -------------------------------------------------------------------------
-    // Active Payment
+    // Active PayBill Payment
     // -------------------------------------------------------------------------
 
     if (
-      payment.status === 'PENDING' ||
-      payment.status === 'PROCESSING'
+      topUpOption === 'PAYBILL' &&
+      isPaymentInProgress(payment.status)
+    ) {
+      // The payment-specific reference must come from the persisted
+      // FinancialPayment returned by the backend.
+      // Never generate or invent a reference in the frontend.
+
+      if (!payment.c2bReference) {
+        return (
+          <main className="min-h-screen bg-[var(--background-brand)]">
+            <div className="page-container">
+              <section className="section">
+                <div className="mx-auto max-w-2xl">
+                  <PaymentProcessing
+                    title="Preparing your PayBill reference"
+                    message="Your payment exists, but its unique account reference has not appeared yet. Refresh the payment before making the M-PESA payment."
+                  />
+
+                  <div className="mt-4 flex justify-center">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isPaymentFetching}
+                      onClick={() => {
+                        void refetchPayment();
+                      }}
+                    >
+                      {isPaymentFetching
+                        ? 'Checking status…'
+                        : 'Check payment status'}
+                    </Button>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </main>
+        );
+      }
+
+      // Do not display an incomplete or empty PayBill destination.
+      if (
+        !c2bPaymentDetails?.shortcode ||
+        !c2bPaymentDetails.instructions.length
+      ) {
+        return (
+          <main className="min-h-screen bg-[var(--background-brand)]">
+            <div className="page-container">
+              <section className="section">
+                <div className="mx-auto max-w-2xl">
+                  <div className="surface space-y-4 p-6">
+                    <div>
+                      <p className="text-sm font-semibold text-[var(--danger)]">
+                        PayBill instructions unavailable
+                      </p>
+
+                      <p className="mt-1 text-sm text-[var(--foreground-secondary)]">
+                        Your payment and unique reference have been created,
+                        but the PayBill destination could not be loaded.
+                        Please retrieve the instructions before making
+                        your payment.
+                      </p>
+                    </div>
+
+                    {isC2BInstructionsError ? (
+                      <p className="text-sm text-[var(--danger)]">
+                        {c2bPaymentInstructionsError?.message ??
+                          'Unable to load PayBill instructions.'}
+                      </p>
+                    ) : null}
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isC2BInstructionsLoading}
+                        onClick={() => {
+                          void refetchC2BPaymentInstructions();
+                        }}
+                      >
+                        {isC2BInstructionsLoading
+                          ? 'Loading instructions…'
+                          : 'Retry PayBill instructions'}
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={isPaymentFetching}
+                        onClick={() => {
+                          void refetchPayment();
+                        }}
+                      >
+                        Check payment status
+                      </Button>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleReset}
+                    >
+                      Back to top up
+                    </Button>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </main>
+        );
+      }
+
+      return (
+        <main className="min-h-screen bg-[var(--background-brand)]">
+          <div className="page-container">
+            <section className="section">
+              <div className="mx-auto max-w-2xl">
+                <PayBillPayment
+                  paymentPublicId={payment.publicId}
+                  paybillNumber={c2bPaymentDetails.shortcode}
+                  c2bReference={payment.c2bReference}
+                  amount={payment.amount}
+                  currency={payment.currency}
+                  status={mapPayBillPaymentStatus(payment.status)}
+                  instructions={c2bPaymentDetails.instructions}
+                  onCheckStatus={async () => {
+                    await refetchPayment();
+                  }}
+                  isCheckingStatus={isPaymentFetching}
+                  onBack={handleReset}
+                />
+              </div>
+            </section>
+          </div>
+        </main>
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Active STK Push Payment
+    // -------------------------------------------------------------------------
+
+    if (
+      topUpOption === 'DEFAULT_NUMBER' &&
+      isPaymentInProgress(payment.status)
     ) {
       return (
         <main className="min-h-screen bg-[var(--background-brand)]">
@@ -568,6 +812,24 @@ export function TopUpPageContainer() {
     // Terminal Payment
     // -------------------------------------------------------------------------
 
+    // Narrow the status before using terminal-result presentation.
+    if (!isTerminalPaymentStatus(payment.status)) {
+      return (
+        <main className="min-h-screen bg-[var(--background-brand)]">
+          <div className="page-container">
+            <section className="section">
+              <div className="mx-auto max-w-2xl">
+                <PaymentProcessing
+                  title="Checking payment status"
+                  message="We're retrieving the latest status of your top-up."
+                />
+              </div>
+            </section>
+          </div>
+        </main>
+      );
+    }
+
     const resultCopy = getPaymentResultCopy(payment.status);
 
     return (
@@ -579,7 +841,9 @@ export function TopUpPageContainer() {
                 status={mapPaymentResultStatus(payment.status)}
                 title={resultCopy.title}
                 message={resultCopy.message}
-                paymentReference={payment.publicId}
+                paymentReference={
+                  payment.c2bReference ?? payment.publicId
+                }
                 actions={
                   <Button
                     type="button"
@@ -660,26 +924,26 @@ export function TopUpPageContainer() {
 
             {/* C2B Instructions Loading */}
 
-            {topUpOption === 'PAYBILL_TILL' &&
+            {topUpOption === 'PAYBILL' &&
             isC2BInstructionsLoading ? (
               <p
                 className="text-sm text-[var(--foreground-muted)]"
                 aria-live="polite"
               >
-                Loading M-PESA payment instructions…
+                Loading SisiMove PayBill instructions…
               </p>
             ) : null}
 
             {/* C2B Instructions Error */}
 
-            {topUpOption === 'PAYBILL_TILL' &&
+            {topUpOption === 'PAYBILL' &&
             isC2BInstructionsError ? (
               <div
                 role="alert"
                 className="rounded-[var(--radius-md)] border border-[var(--danger)] bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]"
               >
                 {c2bPaymentInstructionsError?.message ??
-                  'Unable to load M-PESA payment instructions.'}
+                  'Unable to load SisiMove PayBill instructions.'}
 
                 <div className="mt-3">
                   <Button
@@ -704,7 +968,7 @@ export function TopUpPageContainer() {
                 className="rounded-[var(--radius-md)] border border-[var(--border)] px-4 py-3 text-sm text-[var(--foreground-secondary)]"
               >
                 Your saved default M-PESA number could not be loaded.
-                You can still use PayBill / Buy Goods, or retry loading
+                You can still use SisiMove PayBill, or retry loading
                 your payment method.
 
                 <div className="mt-3">

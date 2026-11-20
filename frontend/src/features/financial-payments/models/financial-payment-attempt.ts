@@ -1,3 +1,4 @@
+
 // =============================================================================
 // sisiMove — Financial Payment Attempt Model
 // =============================================================================
@@ -123,4 +124,3 @@ export interface FinancialPaymentAttempt {
    */
   updatedAt: string;
 }
-

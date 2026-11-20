@@ -13,7 +13,6 @@
 export {
   PaymentForm,
   type PaymentFormProps,
-  type PaymentMethodOption,
 } from './payment-form';
 
 export {
@@ -24,7 +23,6 @@ export {
 export {
   PaymentMethodSelector,
   type PaymentMethodSelectorProps,
-  type PaymentMethodSelectorOption,
 } from './payment-method-selector';
 
 export {

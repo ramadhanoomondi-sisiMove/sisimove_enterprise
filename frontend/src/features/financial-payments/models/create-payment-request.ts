@@ -88,6 +88,13 @@ export interface CreatePaymentRequest {
   methodPublicId?: string;
 
   /**
+   * Do not add c2bReference to this request.
+   *
+   * The backend generates a unique payment-specific PayBill reference
+   * during Financial Payment creation and returns it in the response.
+   */
+
+  /**
    * Optional type of the business object associated with the payment.
    */
   referenceType?: string;

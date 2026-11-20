@@ -15,9 +15,14 @@
 // - payment lifecycle transitions;
 // - provider execution;
 // - wallet balance mutation;
-// - ownership or authorization decisions.
+// - ownership or authorization decisions;
+// - C2B PayBill reference generation or modification.
 //
 // Authorization remains enforced by the backend.
+//
+// The returned FinancialPayment model may include `c2bReference` for C2B
+// payments. The backend owns that value; getPayment() maps it from the API
+// response. This hook simply exposes the mapped payment data to components.
 //
 // =============================================================================
 

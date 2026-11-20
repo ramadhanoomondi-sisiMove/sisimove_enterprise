@@ -1,5 +1,3 @@
-// src/domains/financial/domain/repositories/financial-payment.repository.ts
-
 // -----------------------------------------------------------------------------
 // Financial Payment Repository
 // -----------------------------------------------------------------------------
@@ -27,6 +25,7 @@
 // - Retrieve complete Financial Payment aggregates.
 // - Support payment-processing queries.
 // - Support originating-business-reference queries.
+// - Support C2B payment-reference queries.
 // - Support Financial Account-scoped payment queries.
 // - Support Financial Payment Method queries.
 // - Support Financial Transaction reference queries.
@@ -85,9 +84,13 @@ import type { FinancialReferencePublicId } from '../value-objects/financial-refe
 import type { FinancialAccountPublicId } from '../value-objects/financial-account-public-id.vo';
 
 import type { FinancialTransactionPublicId } from '../value-objects/financial-transaction-public-id.vo';
+
 import type { FinancialProvider } from '../value-objects/financial-provider.vo';
 
 import type { FinancialProviderReference } from '../value-objects/financial-provider-reference.vo';
+
+import type { FinancialC2BReference } from '../value-objects/financial-c2b-reference.vo';
+
 // =============================================================================
 // Repository
 // =============================================================================
@@ -120,6 +123,7 @@ export interface FinancialPaymentRepository {
    * The aggregate identity determines which persisted aggregate is updated.
    */
   save(aggregate: FinancialPaymentAggregate): Promise<void>;
+
   /**
    * Acquires a row-level lock for a Financial Payment.
    *
@@ -127,6 +131,7 @@ export interface FinancialPaymentRepository {
    * the aggregate and creating a Payment Attempt.
    */
   lockByPublicId(publicId: FinancialPaymentPublicId): Promise<void>;
+
   // ===========================================================================
   // Aggregate Retrieval
   // ===========================================================================
@@ -160,6 +165,33 @@ export interface FinancialPaymentRepository {
   findByPublicId(
     publicId: FinancialPaymentPublicId,
   ): Promise<FinancialPaymentAggregate | null>;
+
+  /**
+   * Finds a complete Financial Payment aggregate using its unique C2B
+   * payment reference.
+   *
+   * The reference is the human-readable value supplied to the customer for
+   * a PayBill payment and received through Safaricom's BillRefNumber callback
+   * field.
+   *
+   * The reference identifies an individual Financial Payment, not a
+   * Financial Account or customer.
+   *
+   * The returned aggregate must include all owned payment attempts.
+   *
+   * Infrastructure must not match this reference against:
+   *
+   * - Financial Account public IDs;
+   * - payer MSISDN;
+   * - Safaricom transaction IDs;
+   * - originating business references.
+   *
+   * Returns null when no matching payment exists.
+   */
+  findByC2BReference(
+    reference: FinancialC2BReference,
+  ): Promise<FinancialPaymentAggregate | null>;
+
   /**
    * Finds a complete Financial Payment aggregate using a provider-issued
    * reference belonging to one of its Financial Payment Attempts.
@@ -180,6 +212,7 @@ export interface FinancialPaymentRepository {
     provider: FinancialProvider,
     providerReference: FinancialProviderReference,
   ): Promise<FinancialPaymentAggregate | null>;
+
   /**
    * Finds a complete Financial Payment aggregate using a provider-issued
    * MerchantRequestID belonging to one of its Payment Attempts.
@@ -198,9 +231,11 @@ export interface FinancialPaymentRepository {
     provider: FinancialProvider,
     merchantRequestId: string,
   ): Promise<FinancialPaymentAggregate | null>;
+
   // ===========================================================================
   // Financial Account
   // ===========================================================================
+
   /**
    * Finds all Financial Payment aggregates.
    *
@@ -210,6 +245,7 @@ export interface FinancialPaymentRepository {
    * Results are ordered newest first.
    */
   findAll(): Promise<FinancialPaymentAggregate[]>;
+
   /**
    * Finds all Financial Payments associated with a Financial Account.
    *
@@ -291,12 +327,14 @@ export interface FinancialPaymentRepository {
   // ===========================================================================
   // Financial Transaction Reference
   // ===========================================================================
+
   /**
    * Counts all Financial Payment records.
    *
    * Used by read-only overview metrics.
    */
   count(): Promise<number>;
+
   /**
    * Finds the Financial Payment associated with a Financial Transaction.
    *
@@ -324,6 +362,16 @@ export interface FinancialPaymentRepository {
    * aggregate rehydration.
    */
   existsByPublicId(publicId: FinancialPaymentPublicId): Promise<boolean>;
+
+  /**
+   * Determines whether a Financial Payment already exists for a C2B reference.
+   *
+   * This supports reference uniqueness checks during payment creation.
+   *
+   * The database unique constraint remains the authoritative protection
+   * against concurrent reference collisions.
+   */
+  existsByC2BReference(reference: FinancialC2BReference): Promise<boolean>;
 
   /**
    * Determines whether a Financial Payment exists for an originating

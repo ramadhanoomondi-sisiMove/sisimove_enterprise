@@ -23,6 +23,7 @@
 // - provider information;
 // - provider references;
 // - transaction public ID;
+// - C2B PayBill correlation reference;
 // - createdAt;
 // - updatedAt;
 // - initiatedAt;
@@ -30,6 +31,10 @@
 // - failedAt;
 // - cancelledAt;
 // - domain events.
+//
+// The C2B PayBill correlation reference is generated internally by the
+// Financial Payment application workflow. A client must never choose or
+// supply this reference.
 //
 // Payment attempts are intentionally NOT created through this request.
 // A payment attempt represents an actual provider execution and belongs to
@@ -63,7 +68,8 @@ import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
  * - FinancialReferenceType
  * - FinancialReferencePublicId
  *
- * before constructing CreateFinancialPaymentCommand.
+ * The application workflow generates FinancialC2BReference internally when
+ * the selected channel is C2B. The client does not provide that value.
  */
 export class CreateFinancialPaymentDto {
   // ===========================================================================
@@ -133,7 +139,7 @@ export class CreateFinancialPaymentDto {
    *
    * - STK_PUSH: SisiMove initiates an M-PESA payment prompt.
    * - C2B: The customer independently pays through the registered
-   *        M-PESA PayBill or Till.
+   *        M-PESA PayBill using a generated payment-specific reference.
    *
    * This describes the payment execution channel, not the payment method.
    *

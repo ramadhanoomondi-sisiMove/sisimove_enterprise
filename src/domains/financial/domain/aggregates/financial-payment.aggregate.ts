@@ -93,6 +93,8 @@ import type { Money } from '../value-objects/money.vo';
 
 import type { FinancialPaymentChannel } from '../value-objects/financial-payment-channel.vo';
 
+import type { FinancialC2BReference } from '../value-objects/financial-c2b-reference.vo';
+
 import type { FinancialReferencePublicId } from '../value-objects/financial-reference-public-id.vo';
 
 import type { FinancialReferenceType } from '../value-objects/financial-reference-type.vo';
@@ -194,6 +196,20 @@ export class FinancialPaymentAggregate extends AggregateRoot<FinancialPaymentAgg
 
   public get channel(): FinancialPaymentChannel {
     return this.payment.channel;
+  }
+
+  /**
+   * Unique customer-facing reference for an individual C2B payment.
+   *
+   * Undefined for STK Push payments and legacy C2B payments created before
+   * per-payment C2B references were introduced.
+   */
+  public get c2bReference(): FinancialC2BReference | undefined {
+    return this.payment.c2bReference;
+  }
+
+  public hasC2BReference(): boolean {
+    return this.payment.hasC2BReference();
   }
 
   public get status(): FinancialPaymentStatus {

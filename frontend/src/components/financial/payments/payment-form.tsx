@@ -1,4 +1,3 @@
-
 // =============================================================================
 // sisiMove — Wallet Top-Up Form
 // =============================================================================
@@ -6,25 +5,26 @@
 // Customer-facing payment choices:
 //
 // 1. DEFAULT_NUMBER — STK Push to the saved default M-PESA number.
-// 2. PAYBILL_TILL   — Customer-initiated C2B payment.
+// 2. PAYBILL         — Customer-initiated C2B payment to SisiMove PayBill.
 //
 // Backend mapping:
 //
 // DEFAULT_NUMBER -> STK_PUSH using the saved methodId.
-// PAYBILL_TILL   -> Display instructions from the C2B instructions endpoint.
+// PAYBILL        -> Create a C2B FinancialPayment and open the PayBill screen.
 //
 // Responsibilities:
 //
 // - Collect the top-up amount.
 // - Display the supported payment choices.
 // - Display the saved default M-PESA number.
-// - Display backend-provided C2B payment instructions.
-// - Notify the parent when an STK Push form is submitted.
+// - Indicate that a unique PayBill reference will be generated.
+// - Notify the parent to create the selected FinancialPayment.
 //
 // This component does NOT:
 //
 // - call payment APIs;
 // - convert KES into minor units;
+// - generate payment references;
 // - initiate STK Push or C2B requests;
 // - confirm payments;
 // - credit wallet balances.
@@ -58,21 +58,19 @@ import {
 
 export type TopUpPaymentMethod = TopUpOption;
 
-export type C2BBusinessType = 'PAYBILL' | 'BUY_GOODS';
+export type C2BBusinessType = 'PAYBILL';
 
 /**
  * Matches the actual backend C2B payment-instructions response.
  *
  * paymentMethod identifies the payment channel as C2B.
- * businessType identifies whether the configured payment destination
- * is PayBill or Buy Goods.
+ * businessType identifies the configured payment destination.
  */
 export interface C2BPaymentDetails {
   provider: 'MPESA';
   paymentMethod: 'C2B';
   businessType: C2BBusinessType;
   shortcode: string;
-  accountReference?: string;
   currency: string;
   instructions: readonly string[];
 }
@@ -88,14 +86,10 @@ export interface PaymentFormProps {
   /** Selected top-up option. */
   topUpOption: TopUpOption;
 
-  /**
-   * Saved default M-PESA method.
-   *
-   * Its public ID is used by the parent when creating an STK_PUSH payment.
-   */
+  /** Saved default M-PESA method. */
   defaultPaymentMethod?: DefaultPaymentMethodOption | null;
 
-  /** C2B payment instructions supplied by the parent. */
+  /** C2B payment configuration supplied by the parent. */
   c2bPaymentDetails?: C2BPaymentDetails | null;
 
   /** Currency displayed beside the amount. */
@@ -114,9 +108,11 @@ export interface PaymentFormProps {
   onTopUpOptionChange: (option: TopUpOption) => void;
 
   /**
-   * Parent-owned STK Push submission callback.
+   * Parent-owned payment creation callback.
    *
-   * C2B instructions are displayed directly and do not invoke this callback.
+   * The parent creates an STK_PUSH or C2B FinancialPayment depending on
+   * the selected option. C2B reference generation remains a backend
+   * responsibility.
    */
   onSubmit: () => void;
 
@@ -159,36 +155,27 @@ export function PaymentForm({
   }
 
   // ---------------------------------------------------------------------------
-  // C2B Configuration
+  // Payment Configuration
   // ---------------------------------------------------------------------------
 
   const isPayBill =
     c2bPaymentDetails?.businessType === 'PAYBILL';
 
-  const isBuyGoods =
-    c2bPaymentDetails?.businessType === 'BUY_GOODS';
-
   const hasShortcode =
     Boolean(c2bPaymentDetails?.shortcode.trim());
-
-  const hasPayBillReference =
-    Boolean(c2bPaymentDetails?.accountReference?.trim());
 
   const hasInstructions =
     Boolean(c2bPaymentDetails?.instructions.length);
 
-  // PayBill requires the customer-specific account reference.
-  // Buy Goods does not return an account reference.
+  // The backend generates the payment-specific account reference
+  // after the parent creates the C2B FinancialPayment.
   const isC2BReady =
     Boolean(c2bPaymentDetails) &&
     c2bPaymentDetails?.provider === 'MPESA' &&
     c2bPaymentDetails?.paymentMethod === 'C2B' &&
+    isPayBill &&
     hasShortcode &&
-    hasInstructions &&
-    (
-      (isPayBill && hasPayBillReference) ||
-      isBuyGoods
-    );
+    hasInstructions;
 
   const hasUsableDefaultMethod =
     Boolean(defaultPaymentMethod?.id) &&
@@ -214,12 +201,12 @@ export function PaymentForm({
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
 
-    // C2B is an external customer-initiated payment.
-    // It must not invoke the FinancialPayment creation callback here.
-    if (!isStkPushSelected || submitDisabled) {
+    if (submitDisabled) {
       return;
     }
 
+    // The parent creates the appropriate FinancialPayment:
+    // STK_PUSH for the saved number, or C2B for SisiMove PayBill.
     onSubmit();
   }
 
@@ -340,130 +327,54 @@ export function PaymentForm({
       ) : null}
 
       {/* ------------------------------------------------------------------- */}
-      {/* PayBill / Buy Goods — C2B Instructions                               */}
+      {/* SisiMove PayBill — Preparation                                      */}
       {/* ------------------------------------------------------------------- */}
 
-      {topUpOption === 'PAYBILL_TILL' ? (
+      {topUpOption === 'PAYBILL' ? (
         <section
-          aria-labelledby="wallet-top-up-payment-instructions"
-          className="space-y-4 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background-subtle)] p-4"
+          aria-labelledby="wallet-top-up-paybill"
+          className="space-y-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background-subtle)] p-4"
         >
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h3
-                id="wallet-top-up-payment-instructions"
-                className="text-sm font-semibold text-[var(--foreground)]"
-              >
-                M-PESA payment instructions
-              </h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3
+              id="wallet-top-up-paybill"
+              className="text-sm font-semibold text-[var(--foreground)]"
+            >
+              SisiMove PayBill
+            </h3>
 
-              <Badge variant="default">
-                {isPayBill
-                  ? 'PayBill'
-                  : isBuyGoods
-                    ? 'Buy Goods'
-                    : 'C2B'}
-              </Badge>
-            </div>
-
-            <p className="mt-1 text-sm leading-5 text-[var(--foreground-muted)]">
-              Follow the payment instructions below to add money to your
-              sisiMove wallet.
-            </p>
+            <Badge variant="default">
+              Manual payment
+            </Badge>
           </div>
 
           {isC2BReady && c2bPaymentDetails ? (
             <>
-              {/* Business Number ------------------------------------------- */}
+              <p className="text-sm leading-6 text-[var(--foreground-secondary)]">
+                Continue to generate a unique account reference for this
+                top-up. You will then see the PayBill number, reference,
+                payment amount and instructions on the next screen.
+              </p>
 
-              <div>
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3">
                 <p className="text-xs text-[var(--foreground-muted)]">
-                  {isPayBill ? 'PayBill number' : 'Till number'}
+                  Configured PayBill number
                 </p>
 
-                <p className="mt-1 text-xl font-bold tracking-wide text-[var(--foreground)]">
+                <p className="mt-1 text-lg font-bold tracking-wide text-[var(--foreground)]">
                   {c2bPaymentDetails.shortcode}
                 </p>
               </div>
-
-              {/* PayBill Account Reference ------------------------------- */}
-
-              {isPayBill ? (
-                <div>
-                  <p className="text-xs text-[var(--foreground-muted)]">
-                    Account number
-                  </p>
-
-                  <p className="mt-1 text-base font-semibold text-[var(--foreground)]">
-                    {c2bPaymentDetails.accountReference}
-                  </p>
-                </div>
-              ) : null}
-
-              {/* Amount --------------------------------------------------- */}
-
-              <div>
-                <p className="text-xs text-[var(--foreground-muted)]">
-                  Amount to pay
-                </p>
-
-                <p className="mt-1 text-base font-semibold text-[var(--foreground)]">
-                  {c2bPaymentDetails.currency} {amount || '0'}
-                </p>
-              </div>
-
-              {/* Backend-provided instructions --------------------------- */}
-
-              <div>
-                <p className="mb-2 text-sm font-semibold text-[var(--foreground)]">
-                  Steps
-                </p>
-
-                <ol className="list-decimal space-y-2 pl-5 text-sm leading-5 text-[var(--foreground-secondary)]">
-                  {c2bPaymentDetails.instructions.map(
-                    (instruction, index) => (
-                      <li key={`${index}-${instruction}`}>
-                        {instruction}
-                      </li>
-                    ),
-                  )}
-                </ol>
-              </div>
-
-              {/* Buy Goods reconciliation note -------------------------- */}
-
-              {isBuyGoods ? (
-                <div
-                  role="note"
-                  className="rounded-[var(--radius-md)] border border-[var(--border)] p-3"
-                >
-                  <p className="text-sm font-semibold text-[var(--foreground)]">
-                    Important
-                  </p>
-
-                  <p className="mt-1 text-sm leading-5 text-[var(--foreground-muted)]">
-                    Till payments may require additional reconciliation
-                    before they can be matched to your wallet. Your wallet
-                    balance updates only after sisiMove confirms and processes
-                    the payment.
-                  </p>
-                </div>
-              ) : null}
             </>
           ) : (
             <p
               role="alert"
-              className="text-sm text-[var(--foreground-muted)]"
+              className="text-sm text-[var(--danger)]"
             >
-              C2B payment instructions are unavailable or incomplete.
-              Please try again later or choose the default M-PESA number.
+              SisiMove PayBill configuration is unavailable or incomplete.
+              Please retry loading the payment instructions.
             </p>
           )}
-
-          <p className="text-xs leading-5 text-[var(--foreground-muted)]">
-            Complete the payment in M-PESA. Your wallet balance updates
-            only after sisiMove receives, confirms, and processes the payment.
-          </p>
         </section>
       ) : null}
 
@@ -484,17 +395,17 @@ export function PaymentForm({
           </Button>
         ) : null}
 
-        {isStkPushSelected ? (
-          <Button
-            type="submit"
-            disabled={submitDisabled}
-            className="min-h-11 w-full sm:w-auto"
-          >
-            {isSubmitting
-              ? 'Processing…'
-              : 'Request payment'}
-          </Button>
-        ) : null}
+        <Button
+          type="submit"
+          disabled={submitDisabled}
+          className="min-h-11 w-full sm:w-auto"
+        >
+          {isSubmitting
+            ? 'Creating payment…'
+            : isStkPushSelected
+              ? 'Request payment'
+              : 'Continue to PayBill'}
+        </Button>
       </div>
     </form>
   );

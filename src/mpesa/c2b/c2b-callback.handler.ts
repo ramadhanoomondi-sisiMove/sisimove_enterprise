@@ -71,22 +71,6 @@ export class C2BCallbackHandler {
     const phoneNumber = this.readRequiredString(body, 'MSISDN');
 
     // -------------------------------------------------------------------------
-    // Validate transaction type.
-    // -------------------------------------------------------------------------
-
-    if (!transactionType) {
-      throw new BadRequestException('M-PESA C2B transaction type is invalid.');
-    }
-
-    // -------------------------------------------------------------------------
-    // Validate transaction ID.
-    // -------------------------------------------------------------------------
-
-    if (!transactionId) {
-      throw new BadRequestException('M-PESA C2B transaction ID is invalid.');
-    }
-
-    // -------------------------------------------------------------------------
     // Validate transaction time.
     // Daraja format: YYYYMMDDHHmmss.
     // -------------------------------------------------------------------------
@@ -114,7 +98,8 @@ export class C2BCallbackHandler {
 
     // -------------------------------------------------------------------------
     // Validate payer phone number.
-    // Expected Kenyan international format: 2547XXXXXXXX or 2541XXXXXXXX.
+    // Expected Kenyan international format:
+    // 2547XXXXXXXX or 2541XXXXXXXX.
     // -------------------------------------------------------------------------
 
     if (!/^254(?:7|1)\d{8}$/.test(phoneNumber)) {
@@ -164,7 +149,8 @@ export class C2BCallbackHandler {
    * Validates a positive decimal KES amount with a maximum of two decimal
    * places.
    *
-   * The original string is preserved. No floating-point conversion occurs.
+   * The original string is preserved.
+   * No floating-point conversion occurs.
    */
   private validateAmount(amount: string): void {
     if (!/^\d+(\.\d{1,2})?$/.test(amount)) {

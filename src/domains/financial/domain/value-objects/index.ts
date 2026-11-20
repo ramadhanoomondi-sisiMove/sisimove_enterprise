@@ -56,7 +56,7 @@ export * from './financial-payment-attempt-status.vo';
 export * from './financial-provider.vo';
 export * from './financial-provider-reference.vo';
 export * from './financial-payment-channel.vo';
-
+export * from './financial-c2b-reference.vo';
 // -----------------------------------------------------------------------------
 // Financial Account Hold
 // -----------------------------------------------------------------------------

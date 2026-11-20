@@ -32,6 +32,7 @@ import {
   FinancialPaymentAttemptStatus,
   FinancialProvider,
   FinancialProviderReference,
+  FinancialC2BReference,
   FinancialReferencePublicId,
   FinancialReferenceType,
   Money,
@@ -148,6 +149,7 @@ export interface FinancialPaymentRecordPersistence {
   currency: string;
   status: PrismaFinancialPaymentStatus;
   channel: PrismaFinancialPaymentChannel;
+  c2bReference: string | null;
   methodId: string | null;
   transactionPublicId: string | null;
   referenceType: string | null;
@@ -225,6 +227,11 @@ export class FinancialPaymentPrismaMapper {
 
     const channel = toDomainPaymentChannel(record.channel);
 
+    const c2bReference =
+      record.c2bReference !== null
+        ? FinancialC2BReference.create(record.c2bReference)
+        : undefined;
+
     const methodId =
       record.methodId !== null
         ? this.resolvePaymentMethodPublicId(
@@ -253,6 +260,8 @@ export class FinancialPaymentPrismaMapper {
         status,
 
         channel,
+
+        c2bReference,
 
         methodId,
 
@@ -372,6 +381,8 @@ export class FinancialPaymentPrismaMapper {
       status: entity.status.value,
 
       channel: entity.channel.value,
+
+      c2bReference: entity.c2bReference?.value ?? null,
 
       methodId: methodId ?? null,
 

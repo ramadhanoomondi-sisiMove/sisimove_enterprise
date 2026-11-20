@@ -1,4 +1,3 @@
-
 /**
  * -----------------------------------------------------------------------------
  * Financial Payment Response Mapper
@@ -19,6 +18,7 @@
  * - Translate the owned FinancialPaymentAttemptEntity[].
  * - Convert domain value objects into response-safe primitives.
  * - Expose the selected payment channel (STK_PUSH or C2B).
+ * - Expose the payment-specific C2B PayBill reference when present.
  * - Preserve payment lifecycle timestamps.
  * - Preserve payment-method and transaction references.
  * - Preserve originating business references.
@@ -51,6 +51,9 @@
  * - Persist anything.
  *
  * Cross-aggregate references remain opaque public identities.
+ *
+ * The C2B reference is a payment-specific PayBill correlation value. It is
+ * returned so the payer can enter it as the PayBill account/reference number.
  *
  * exactOptionalPropertyTypes:
  * Optional response properties are omitted when their domain value is
@@ -196,6 +199,15 @@ export interface FinancialPaymentResponse {
   channel: string;
 
   /**
+   * Payment-specific M-PESA PayBill correlation reference.
+   *
+   * Present for C2B payments. The payer enters this value as the PayBill
+   * account/reference number. It is not a customer/account identity or a
+   * Safaricom transaction ID.
+   */
+  c2bReference?: string;
+
+  /**
    * Selected Financial Payment Method public identity.
    */
   methodId?: string;
@@ -323,6 +335,14 @@ export class FinancialPaymentResponseMapper {
         this.toAttemptResponse(attempt),
       ),
     };
+
+    // -------------------------------------------------------------------------
+    // C2B PayBill Reference
+    // -------------------------------------------------------------------------
+
+    if (aggregate.c2bReference !== undefined) {
+      response.c2bReference = aggregate.c2bReference.value;
+    }
 
     // -------------------------------------------------------------------------
     // Payment Method

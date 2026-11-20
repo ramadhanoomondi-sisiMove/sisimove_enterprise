@@ -56,6 +56,8 @@ import { FinancialPaymentStatus } from '../value-objects/financial-payment-statu
 
 import type { FinancialPaymentChannel } from '../value-objects/financial-payment-channel.vo';
 
+import type { FinancialC2BReference } from '../value-objects/financial-c2b-reference.vo';
+
 import type { Money } from '../value-objects/money.vo';
 
 import type { FinancialPaymentMethodPublicId } from '../value-objects/financial-payment-method-public-id.vo';
@@ -100,6 +102,14 @@ export interface FinancialPaymentProps {
    * This is distinct from the payment provider and payment method type.
    */
   channel: FinancialPaymentChannel;
+
+  /**
+   * Unique, human-readable reference for an individual C2B PayBill payment.
+   *
+   * This is absent for STK Push payments. It may also be absent on legacy
+   * rehydrated C2B records created before per-payment references were added.
+   */
+  c2bReference: FinancialC2BReference | undefined;
 
   /**
    * Payment lifecycle.
@@ -171,6 +181,12 @@ export class FinancialPaymentEntity extends Entity<
     publicId?: FinancialPaymentPublicId,
   ) {
     super(props, id, publicId);
+
+    // A reference can only belong to a C2B payment. Do not require a reference
+    // here because legacy persisted C2B payments may be rehydrated without one.
+    if (props.c2bReference !== undefined && !props.channel.isC2B()) {
+      throw new Error('Only a C2B Financial Payment can have a C2B reference');
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -192,6 +208,7 @@ export class FinancialPaymentEntity extends Entity<
     methodId?: FinancialPaymentMethodPublicId,
     referenceType?: FinancialReferenceType,
     referencePublicId?: FinancialReferencePublicId,
+    c2bReference?: FinancialC2BReference,
   ): FinancialPaymentEntity {
     // -------------------------------------------------------------------------
     // Amount invariant
@@ -216,6 +233,22 @@ export class FinancialPaymentEntity extends Entity<
     }
 
     // -------------------------------------------------------------------------
+    // C2B reference invariant
+    // -------------------------------------------------------------------------
+
+    if (channel.isC2B() && c2bReference === undefined) {
+      throw new Error(
+        'A new C2B Financial Payment must have a unique C2B reference',
+      );
+    }
+
+    if (channel.isStkPush() && c2bReference !== undefined) {
+      throw new Error(
+        'A STK Push Financial Payment cannot have a C2B reference',
+      );
+    }
+
+    // -------------------------------------------------------------------------
     // Initial state
     // -------------------------------------------------------------------------
 
@@ -228,6 +261,8 @@ export class FinancialPaymentEntity extends Entity<
         amount,
 
         channel,
+
+        c2bReference: c2bReference ?? undefined,
 
         status: FinancialPaymentStatus.create('PENDING'),
 
@@ -293,6 +328,20 @@ export class FinancialPaymentEntity extends Entity<
    */
   public get channel(): FinancialPaymentChannel {
     return this.props.channel;
+  }
+
+  /**
+   * Unique reference used to correlate this payment with a PayBill callback.
+   */
+  public get c2bReference(): FinancialC2BReference | undefined {
+    return this.props.c2bReference;
+  }
+
+  /**
+   * Determines whether this payment has a C2B reference.
+   */
+  public hasC2BReference(): boolean {
+    return this.props.c2bReference !== undefined;
   }
 
   /**

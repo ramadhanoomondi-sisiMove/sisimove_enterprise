@@ -1,4 +1,3 @@
-
 // =============================================================================
 // sisiMove — Create Financial Payment Hook
 // =============================================================================
@@ -17,10 +16,17 @@
 // - payment lifecycle transitions;
 // - provider execution;
 // - wallet balance mutation;
-// - account ownership resolution.
+// - account ownership resolution;
+// - C2B PayBill reference generation.
 //
 // The authenticated FinancialAccount public ID is supplied by the caller after
 // it has been resolved through the authenticated Financial Account boundary.
+//
+// For C2B payments, the backend generates a payment-specific PayBill reference
+// and returns it as part of the FinancialPayment mutation result. Components
+// can read it from the mutation's `data.c2bReference` after success.
+//
+// The hook does not generate, accept, or modify the C2B reference.
 //
 // =============================================================================
 
@@ -56,6 +62,9 @@ export interface CreatePaymentVariables {
    * - currency;
    * - correlationId;
    * - methodPublicId when using STK_PUSH.
+   *
+   * It does not include c2bReference. The backend generates that value
+   * when the selected channel is C2B.
    */
   request: CreatePaymentRequest;
 }

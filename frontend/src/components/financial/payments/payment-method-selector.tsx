@@ -1,35 +1,13 @@
-
 // =============================================================================
 // sisiMove — Payment Method Selector
 // =============================================================================
 //
 // Presentation component for selecting how a member wants to top up a wallet.
 //
-// Supported top-up options:
+// Supported options:
 //
 // 1. DEFAULT_NUMBER — STK Push to the saved default M-PESA number.
-// 2. PAYBILL_TILL   — Customer-initiated C2B payment.
-//
-// Backend alignment:
-//
-// STK_PUSH requires an existing saved FinancialPaymentMethod.
-// The current backend does not accept a new phone number for STK Push.
-//
-// C2B uses the separate M-PESA payment-instructions endpoint.
-//
-// Responsibilities:
-// - Display the two supported top-up options.
-// - Show the saved default M-PESA number when available.
-// - Identify the default payment method.
-// - Allow the parent to control the selected option.
-// - Surface field-level validation or application errors.
-//
-// This component intentionally does NOT:
-// - fetch payment methods;
-// - collect or validate phone numbers;
-// - create financial payments;
-// - call M-PESA APIs;
-// - manage payment processing.
+// 2. PAYBILL         — Customer-initiated C2B payment to the SisiMove PayBill.
 //
 // The parent/container owns selection state and payment orchestration.
 //
@@ -40,79 +18,23 @@
 import { useId } from 'react';
 import { Badge } from '@/components/ui';
 
-// -----------------------------------------------------------------------------
-// Models
-// -----------------------------------------------------------------------------
-
-export type TopUpOption =
-  | 'DEFAULT_NUMBER'
-  | 'PAYBILL_TILL';
+export type TopUpOption = 'DEFAULT_NUMBER' | 'PAYBILL';
 
 export interface DefaultPaymentMethodOption {
-  /**
-   * Stable public identifier of the saved default payment method.
-   *
-   * Passed to the backend as methodId for STK Push.
-   */
   id: string;
-
-  /**
-   * Human-readable payment method name.
-   */
   label: string;
-
-  /**
-   * Registered M-PESA phone number.
-   */
   phoneNumber: string;
-
-  /**
-   * Optional supporting information.
-   */
   description?: string;
-
-  /**
-   * Whether the saved method is active and usable.
-   */
   isActive: boolean;
 }
 
-// -----------------------------------------------------------------------------
-// Props
-// -----------------------------------------------------------------------------
-
 export interface PaymentMethodSelectorProps {
-  /**
-   * Currently selected top-up option.
-   */
   selectedOption: TopUpOption;
-
-  /**
-   * Called when the member selects another top-up option.
-   */
   onChange: (option: TopUpOption) => void;
-
-  /**
-   * The member's saved default M-PESA payment method.
-   *
-   * If unavailable, the default-number option remains visible but disabled.
-   */
   defaultPaymentMethod?: DefaultPaymentMethodOption | null;
-
-  /**
-   * Optional field-level validation or application error.
-   */
   error?: string;
-
-  /**
-   * Prevents interaction while the payment flow is submitting.
-   */
   disabled?: boolean;
 }
-
-// -----------------------------------------------------------------------------
-// Component
-// -----------------------------------------------------------------------------
 
 export function PaymentMethodSelector({
   selectedOption,
@@ -143,10 +65,10 @@ export function PaymentMethodSelector({
       disabled: !hasUsableDefaultMethod,
     },
     {
-      id: 'PAYBILL_TILL',
-      label: 'Pay using PayBill / Buy Goods',
+      id: 'PAYBILL',
+      label: 'Pay using SisiMove PayBill',
       description:
-        'Pay manually using the business payment instructions.',
+        'Receive a unique account reference for this top-up.',
     },
   ];
 
@@ -155,10 +77,6 @@ export function PaymentMethodSelector({
       disabled={disabled}
       aria-describedby={error ? `${groupId}-error` : undefined}
     >
-      {/* ------------------------------------------------------------------- */}
-      {/* Heading                                                             */}
-      {/* ------------------------------------------------------------------- */}
-
       <legend className="text-sm font-semibold text-[var(--foreground)]">
         Payment method
       </legend>
@@ -167,17 +85,11 @@ export function PaymentMethodSelector({
         Choose how you want to add money to your sisiMove wallet.
       </p>
 
-      {/* ------------------------------------------------------------------- */}
-      {/* Top-up options                                                      */}
-      {/* ------------------------------------------------------------------- */}
-
       <div className="mt-4 space-y-2">
         {options.map((option) => {
           const inputId = `${groupId}-${option.id}`;
           const isSelected = selectedOption === option.id;
-
-          const optionDisabled =
-            disabled || option.disabled === true;
+          const optionDisabled = disabled || option.disabled === true;
 
           return (
             <label
@@ -194,8 +106,6 @@ export function PaymentMethodSelector({
                   : 'hover:border-[var(--border-strong)]',
               ].join(' ')}
             >
-              {/* Radio ------------------------------------------------------ */}
-
               <input
                 id={inputId}
                 name={groupId}
@@ -206,8 +116,6 @@ export function PaymentMethodSelector({
                 onChange={() => onChange(option.id)}
                 className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--brand)]"
               />
-
-              {/* Option information --------------------------------------- */}
 
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-2">
@@ -220,8 +128,9 @@ export function PaymentMethodSelector({
                     <Badge variant="brand">Default</Badge>
                   ) : null}
 
-                  {option.id === 'PAYBILL_TILL' ? (
-                    <Badge variant="default">Manual payment</Badge>                  ) : null}
+                  {option.id === 'PAYBILL' ? (
+                    <Badge variant="default">Manual payment</Badge>
+                  ) : null}
                 </span>
 
                 <span className="mt-1 block text-xs text-[var(--foreground-muted)]">
@@ -236,9 +145,10 @@ export function PaymentMethodSelector({
                   </span>
                 ) : null}
 
-                {option.id === 'PAYBILL_TILL' ? (
+                {option.id === 'PAYBILL' ? (
                   <span className="mt-1 block text-xs text-[var(--foreground-secondary)]">
-                    Payment instructions will be displayed before you pay.
+                    sisiMove will generate a unique account reference for
+                    your payment.
                   </span>
                 ) : null}
               </span>
@@ -246,10 +156,6 @@ export function PaymentMethodSelector({
           );
         })}
       </div>
-
-      {/* ------------------------------------------------------------------- */}
-      {/* Validation / application error                                      */}
-      {/* ------------------------------------------------------------------- */}
 
       {error ? (
         <p

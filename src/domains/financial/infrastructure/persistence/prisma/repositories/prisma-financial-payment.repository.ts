@@ -143,6 +143,8 @@ import type { FinancialReferencePublicId } from '../../../../domain/value-object
 import type { FinancialProvider } from '../../../../domain/value-objects/financial-provider.vo';
 
 import type { FinancialProviderReference } from '../../../../domain/value-objects/financial-provider-reference.vo';
+
+import type { FinancialC2BReference } from '../../../../domain/value-objects/financial-c2b-reference.vo';
 // -----------------------------------------------------------------------------
 // Exceptions
 // -----------------------------------------------------------------------------
@@ -241,7 +243,7 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
       );
     }
 
-    if (persistence.payment.methodId !== methodId) {
+    if ((persistence.payment.methodId ?? undefined) !== methodId) {
       throw new FinancialPaymentException(
         `Financial Payment "${aggregate.publicId.value}" contains an inconsistent Financial Payment Method reference.`,
       );
@@ -274,6 +276,8 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
         referencePublicId: persistence.payment.referencePublicId,
 
         channel: persistence.payment.channel,
+
+        c2bReference: persistence.payment.c2bReference,
 
         initiatedAt: persistence.payment.initiatedAt,
 
@@ -339,6 +343,7 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
         accountId: true,
         methodId: true,
         channel: true,
+        c2bReference: true,
       },
     });
 
@@ -369,6 +374,19 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
     }
 
     // -------------------------------------------------------------------------
+    // Preserve C2B Payment Reference
+    // -------------------------------------------------------------------------
+
+    const existingC2BReference = existingPayment.c2bReference ?? undefined;
+    const aggregateC2BReference = aggregate.c2bReference?.value;
+
+    if (existingC2BReference !== aggregateC2BReference) {
+      throw new FinancialPaymentException(
+        `Financial Payment "${aggregate.publicId.value}" cannot change its C2B reference.`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
     // Resolve Owning Financial Account
     // -------------------------------------------------------------------------
 
@@ -394,7 +412,7 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
     // Preserve Payment Method Association
     // -------------------------------------------------------------------------
 
-    if (existingPayment.methodId !== methodId) {
+    if ((existingPayment.methodId ?? undefined) !== methodId) {
       throw new FinancialPaymentException(
         `Financial Payment "${aggregate.publicId.value}" cannot be moved to another Financial Payment Method.`,
       );
@@ -421,7 +439,7 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
       );
     }
 
-    if (persistence.payment.methodId !== methodId) {
+    if ((persistence.payment.methodId ?? undefined) !== methodId) {
       throw new FinancialPaymentException(
         `Financial Payment "${aggregate.publicId.value}" contains an inconsistent Financial Payment Method reference.`,
       );
@@ -565,6 +583,49 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
         `Financial Payment "${normalized}" does not exist and cannot be locked.`,
       );
     }
+  }
+
+  // ===========================================================================
+  // Find By C2B Reference
+  // ===========================================================================
+
+  /**
+   * Finds the complete Financial Payment aggregate associated with a unique
+   * customer-facing PayBill BillRefNumber.
+   *
+   * The reference identifies one payment, not a Financial Account or payer.
+   * The unique database constraint is the final collision safeguard.
+   */
+  public async findByC2BReference(
+    reference: FinancialC2BReference,
+  ): Promise<FinancialPaymentAggregate | null> {
+    const normalized = reference.value.trim().toUpperCase();
+
+    if (!normalized) {
+      throw new FinancialPaymentException(
+        'Financial C2B Reference must not be empty.',
+      );
+    }
+
+    const record = await this.prisma.financialPayment.findUnique({
+      where: {
+        c2bReference: normalized,
+      },
+
+      include: {
+        account: true,
+        method: true,
+        attempts: {
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        },
+      },
+    });
+
+    if (record === null) {
+      return null;
+    }
+
+    return FinancialPaymentPrismaMapper.toDomain(record);
   }
 
   // ===========================================================================
@@ -988,6 +1049,37 @@ export class PrismaFinancialPaymentRepository implements FinancialPaymentReposit
     const record = await this.prisma.financialPayment.findUnique({
       where: {
         publicId: normalized,
+      },
+
+      select: {
+        id: true,
+      },
+    });
+
+    return record !== null;
+  }
+
+  // ===========================================================================
+  // Exists By C2B Reference
+  // ===========================================================================
+
+  /**
+   * Determines whether a Financial Payment already owns a PayBill reference.
+   */
+  public async existsByC2BReference(
+    reference: FinancialC2BReference,
+  ): Promise<boolean> {
+    const normalized = reference.value.trim().toUpperCase();
+
+    if (!normalized) {
+      throw new FinancialPaymentException(
+        'Financial C2B Reference must not be empty.',
+      );
+    }
+
+    const record = await this.prisma.financialPayment.findUnique({
+      where: {
+        c2bReference: normalized,
       },
 
       select: {

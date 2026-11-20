@@ -1,115 +1,38 @@
 // -----------------------------------------------------------------------------
 // Financial Payment — Create Command Handler
 // -----------------------------------------------------------------------------
-//
-// Application command handler responsible for creating a Financial Payment
-// aggregate.
-//
-// Responsibilities:
-//
-// 1. Validate payment-channel requirements.
-// 2. Validate application-level business-reference uniqueness.
-// 3. Create the FinancialPaymentEntity.
-// 4. Create the FinancialPaymentAggregate.
-// 5. Record the FinancialPaymentCreatedEvent.
-// 6. Persist the complete aggregate.
-// 7. Persist domain events into the transactional outbox.
-// 8. Return the created aggregate.
-//
-// Channel requirements:
-//
-// STK_PUSH:
-// - Requires a selected Financial Payment Method.
-// - Provider execution happens through ProcessFinancialPaymentHandler.
-//
-// C2B:
-// - Does not require a saved Financial Payment Method.
-// - Does not execute STK Push.
-// - Proceeds through the separate C2B payment workflow.
-//
-// This handler does NOT:
-//
-// - create FinancialPaymentAttemptEntity;
-// - execute payment providers;
-// - communicate with external providers;
-// - create Financial Transactions;
-// - modify Financial Account balances;
-// - perform settlement;
-// - perform accounting.
-//
-// -----------------------------------------------------------------------------
-
-// -----------------------------------------------------------------------------
-// NestJS
-// -----------------------------------------------------------------------------
 
 import { Inject, Injectable } from '@nestjs/common';
-
-// -----------------------------------------------------------------------------
-// Application — Tokens
-// -----------------------------------------------------------------------------
+import { randomInt } from 'node:crypto';
 
 import { FINANCIAL_PAYMENT_TOKENS } from '../financial-payment.tokens';
 
-// -----------------------------------------------------------------------------
-// Foundation — Unit of Work
-// -----------------------------------------------------------------------------
-
 import { UNIT_OF_WORK } from '../../../../foundation/persistence/unit-of-work.token';
-
 import type { UnitOfWork } from '../../../../foundation/persistence/unit-of-work.interface';
 
-// -----------------------------------------------------------------------------
-// Foundation — Event Publisher
-// -----------------------------------------------------------------------------
-
 import { EVENT_PUBLISHER } from '../../../../foundation/events/event-publisher.token';
-
 import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
-
-// -----------------------------------------------------------------------------
-// Foundation — Command Handler
-// -----------------------------------------------------------------------------
 
 import type { CommandHandler } from '../../../../foundation/kernel/application/command-handler';
 
-// -----------------------------------------------------------------------------
-// Command
-// -----------------------------------------------------------------------------
-
 import type { CreateFinancialPaymentCommand } from '../commands/create-financial-payment.command';
 
-// -----------------------------------------------------------------------------
-// Aggregate
-// -----------------------------------------------------------------------------
-
 import { FinancialPaymentAggregate } from '../../domain/aggregates/financial-payment.aggregate';
-
-// -----------------------------------------------------------------------------
-// Entity
-// -----------------------------------------------------------------------------
-
 import { FinancialPaymentEntity } from '../../domain/entities/financial-payment.entity';
-
-// -----------------------------------------------------------------------------
-// Repository
-// -----------------------------------------------------------------------------
+import { FinancialC2BReference } from '../../domain/value-objects/financial-c2b-reference.vo';
 
 import type { FinancialPaymentRepository } from '../../domain/repositories/financial-payment.repository';
 
-// -----------------------------------------------------------------------------
-// Handler
-// -----------------------------------------------------------------------------
+const C2B_REFERENCE_PREFIX = 'SM';
+const C2B_REFERENCE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const C2B_REFERENCE_SUFFIX_LENGTH = 8;
+const C2B_REFERENCE_GENERATION_ATTEMPTS = 5;
 
 @Injectable()
 export class CreateFinancialPaymentHandler implements CommandHandler<
   CreateFinancialPaymentCommand,
   FinancialPaymentAggregate
 > {
-  // ===========================================================================
-  // Constructor
-  // ===========================================================================
-
   public constructor(
     @Inject(FINANCIAL_PAYMENT_TOKENS.REPOSITORY)
     private readonly repository: FinancialPaymentRepository,
@@ -121,17 +44,12 @@ export class CreateFinancialPaymentHandler implements CommandHandler<
     private readonly eventPublisher: EventPublisher,
   ) {}
 
-  // ===========================================================================
-  // Execute
-  // ===========================================================================
-
   public async execute(
     command: CreateFinancialPaymentCommand,
   ): Promise<FinancialPaymentAggregate> {
     return this.unitOfWork.execute(async () => {
-      // -----------------------------------------------------------------------
-      // 1. Validate payment-channel requirements
-      // -----------------------------------------------------------------------
+      // 1. Validate payment-channel requirements and generate a C2B reference.
+      let c2bReference: FinancialC2BReference | undefined;
 
       if (command.channel.isStkPush()) {
         if (command.methodId === undefined) {
@@ -145,16 +63,15 @@ export class CreateFinancialPaymentHandler implements CommandHandler<
             'C2B Financial Payments must not use a saved payment method.',
           );
         }
+
+        c2bReference = await this.generateUniqueC2BReference();
       } else {
         throw new Error(
           `Unsupported Financial Payment channel: ${command.channel.value}`,
         );
       }
 
-      // -----------------------------------------------------------------------
-      // 2. Validate business-reference completeness
-      // -----------------------------------------------------------------------
-
+      // 2. Validate business-reference completeness.
       const hasReferenceType = command.referenceType !== undefined;
       const hasReferencePublicId = command.referencePublicId !== undefined;
 
@@ -164,10 +81,7 @@ export class CreateFinancialPaymentHandler implements CommandHandler<
         );
       }
 
-      // -----------------------------------------------------------------------
-      // 3. Optional business-reference uniqueness check
-      // -----------------------------------------------------------------------
-
+      // 3. Validate optional business-reference uniqueness.
       if (hasReferenceType && hasReferencePublicId) {
         const alreadyExists = await this.repository.existsByReference(
           command.referenceType,
@@ -176,16 +90,12 @@ export class CreateFinancialPaymentHandler implements CommandHandler<
 
         if (alreadyExists) {
           throw new Error(
-            `A Financial Payment already exists for reference ` +
-              `"${command.referencePublicId.value}"`,
+            `A Financial Payment already exists for reference "${command.referencePublicId.value}"`,
           );
         }
       }
 
-      // -----------------------------------------------------------------------
-      // 4. Create Financial Payment Entity
-      // -----------------------------------------------------------------------
-
+      // 4. Create the Financial Payment entity.
       const payment = FinancialPaymentEntity.create(
         command.accountId,
         command.amount,
@@ -193,47 +103,64 @@ export class CreateFinancialPaymentHandler implements CommandHandler<
         command.methodId,
         command.referenceType,
         command.referencePublicId,
+        c2bReference,
       );
 
-      // -----------------------------------------------------------------------
-      // 5. Create aggregate
-      // -----------------------------------------------------------------------
-
+      // 5. Create the aggregate and record its creation event.
       const aggregate = FinancialPaymentAggregate.create(payment);
-
-      // -----------------------------------------------------------------------
-      // 6. Record creation event
-      // -----------------------------------------------------------------------
-
       aggregate.emitCreatedEvent(command.correlationId, command.causationId);
 
-      // -----------------------------------------------------------------------
-      // 7. Persist aggregate
-      // -----------------------------------------------------------------------
-
+      // 6. Persist the aggregate.
       await this.repository.create(aggregate);
 
-      // -----------------------------------------------------------------------
-      // 8. Persist domain events into the transactional outbox
-      // -----------------------------------------------------------------------
-
+      // 7. Persist domain events through the transactional outbox.
       const domainEvents = aggregate.pullDomainEvents();
 
       if (domainEvents.length > 0) {
         await this.eventPublisher.publishAll(domainEvents);
       }
 
-      // -----------------------------------------------------------------------
-      // 9. Return aggregate
-      // -----------------------------------------------------------------------
-
       return aggregate;
     });
   }
-}
 
-// -----------------------------------------------------------------------------
-// Default Export
-// -----------------------------------------------------------------------------
+  /**
+   * Generates a payment-specific PayBill reference.
+   *
+   * The client never supplies this value. Cryptographically secure random
+   * selection is used instead of Math.random(). The repository lookup avoids
+   * known collisions; the database unique constraint remains the final
+   * concurrency-safe guarantee.
+   */
+  private async generateUniqueC2BReference(): Promise<FinancialC2BReference> {
+    for (
+      let attempt = 1;
+      attempt <= C2B_REFERENCE_GENERATION_ATTEMPTS;
+      attempt += 1
+    ) {
+      let suffix = '';
+
+      for (let index = 0; index < C2B_REFERENCE_SUFFIX_LENGTH; index += 1) {
+        suffix +=
+          C2B_REFERENCE_ALPHABET[randomInt(0, C2B_REFERENCE_ALPHABET.length)];
+      }
+
+      const reference = FinancialC2BReference.create(
+        `${C2B_REFERENCE_PREFIX}${suffix}`,
+      );
+
+      const alreadyExists =
+        await this.repository.existsByC2BReference(reference);
+
+      if (!alreadyExists) {
+        return reference;
+      }
+    }
+
+    throw new Error(
+      'Unable to generate a unique C2B PayBill reference. Please retry the payment creation.',
+    );
+  }
+}
 
 export default CreateFinancialPaymentHandler;

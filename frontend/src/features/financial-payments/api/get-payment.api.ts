@@ -9,6 +9,11 @@
 //
 //     GET /financial-payments/:paymentPublicId
 //
+// The backend response may include `c2bReference` for C2B payments.
+// This API operation does not generate or modify that reference. It delegates
+// response translation to mapFinancialPayment(), which maps the backend value
+// into the frontend FinancialPayment model.
+//
 // -----------------------------------------------------------------------------
 //
 // Ownership & authorization:
@@ -17,7 +22,6 @@
 //
 //     JwtAuthGuard
 //     PermissionsGuard
-//     financial-payment:read
 //
 // The frontend supplies only the payment public identifier.
 //
@@ -69,6 +73,9 @@ const FINANCIAL_PAYMENTS_PATH = '/financial-payments';
  *
  * @returns
  * The mapped frontend FinancialPayment model.
+ *
+ * For C2B payments, the mapped model includes the backend-generated
+ * PayBill reference when the API response contains one.
  */
 export async function getPayment(
   paymentPublicId: string,

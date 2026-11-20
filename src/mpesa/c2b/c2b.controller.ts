@@ -4,14 +4,18 @@
  * -----------------------------------------------------------------------------
  *
  * Responsibilities:
- * - Return authenticated customer C2B payment instructions.
+ * - Return authenticated customer PayBill instructions.
  * - Expose protected C2B URL registration.
  * - Expose protected sandbox payment simulation.
- * - Receive Daraja C2B callbacks.
- * - Delegate callback normalization to C2BCallbackHandler.
- * - Delegate financial callback processing to FinancialModule.
+ * - Receive and normalize Daraja C2B callbacks.
+ * - Delegate all financial callback processing to FinancialModule.
  *
- * FinancialModule exclusively owns payment processing and financial effects.
+ * Important:
+ * - PayBill is the only supported C2B payment method.
+ * - The account reference is generated for each FinancialPayment.
+ * - This controller never generates or substitutes a payment reference.
+ * - FinancialModule exclusively owns payment matching, reconciliation,
+ *   payment state transitions and financial effects.
  * -----------------------------------------------------------------------------
  */
 
@@ -29,7 +33,7 @@ import {
 } from '@nestjs/common';
 
 // -----------------------------------------------------------------------------
-// C2B Services and Callback Handler
+// M-PESA Services and Callback Handler
 // -----------------------------------------------------------------------------
 
 import { C2BService } from './c2b.service';
@@ -96,14 +100,23 @@ export class C2BController {
   ) {}
 
   // ===========================================================================
-  // Customer Payment Instructions
+  // Customer PayBill Payment Instructions
   // ===========================================================================
 
   /**
-   * Returns C2B payment instructions for the authenticated customer.
+   * Returns the configured PayBill details for the authenticated customer.
    *
-   * The Financial Account reference is resolved from the authenticated
-   * identity. Customers cannot supply another account reference.
+   * This endpoint returns general provider instructions only.
+   *
+   * It deliberately does not return the Financial Account public ID as the
+   * PayBill account reference. The account reference must come from the
+   * payment-specific c2bReference returned when FinancialModule creates
+   * the pending FinancialPayment.
+   *
+   * The frontend must display:
+   * - PayBill shortcode from this endpoint;
+   * - payment.c2bReference from the payment-creation response;
+   * - the amount from that same payment.
    */
   @Get('payment-instructions')
   @UseGuards(JwtAuthGuard)
@@ -127,37 +140,27 @@ export class C2BController {
 
     const mpesa = await this.c2bService.getPaymentInstructions();
 
-    const accountReference = account.account.publicId.value;
-
-    if (mpesa.businessType === 'PAYBILL') {
-      return {
-        provider: 'MPESA',
-        paymentMethod: 'PayBill',
-        businessType: mpesa.businessType,
-        shortcode: mpesa.shortcode,
-        accountReference,
-        currency: 'KES',
-        instructions: [
-          'Open M-PESA on your phone.',
-          'Select PayBill.',
-          `Enter the business number: ${mpesa.shortcode}.`,
-          `Enter your account number: ${accountReference}.`,
-          'Enter the amount you want to deposit and complete the payment.',
-        ],
-      };
+    if (mpesa.businessType !== 'PAYBILL') {
+      throw new BadRequestException(
+        'SisiMove C2B payments are configured for PayBill only.',
+      );
     }
 
     return {
       provider: 'MPESA',
-      paymentMethod: 'Buy Goods',
-      businessType: mpesa.businessType,
+      paymentMethod: 'PayBill',
+      businessType: 'PAYBILL',
       shortcode: mpesa.shortcode,
       currency: 'KES',
+      referenceType: 'PAYMENT_SPECIFIC',
       instructions: [
         'Open M-PESA on your phone.',
-        'Select Buy Goods and Services.',
-        `Enter the Till number: ${mpesa.shortcode}.`,
-        'Enter the amount you want to pay and complete the payment.',
+        'Select Lipa na M-PESA.',
+        'Select PayBill.',
+        `Enter the business number: ${mpesa.shortcode}.`,
+        'Enter the unique account reference displayed on your SisiMove payment screen.',
+        'Enter the exact payment amount displayed on your SisiMove payment screen.',
+        'Confirm the details and complete the payment.',
       ],
     };
   }
@@ -169,9 +172,10 @@ export class C2BController {
   /**
    * Registers the configured C2B callback URLs with Daraja.
    *
-   * This endpoint currently has JWT authentication. It must also be restricted
-   * to authorized administrators through the application's authorization
-   * mechanism before production use.
+   * Requires authentication.
+   *
+   * Before production, restrict this endpoint to authorized administrators
+   * using the application's existing authorization mechanism.
    */
   @Post('register-urls')
   @UseGuards(JwtAuthGuard)
@@ -181,14 +185,16 @@ export class C2BController {
   }
 
   // ===========================================================================
-  // Simulate C2B Payment
+  // Simulate C2B Payment — Sandbox Only
   // ===========================================================================
 
   /**
    * Initiates a sandbox C2B simulation.
    *
-   * C2BService enforces the sandbox-only restriction.
-   * This endpoint must also be restricted to authorized operators.
+   * C2BService enforces the sandbox-only restriction and validates that
+   * the simulation command matches the configured business type.
+   *
+   * Before production, restrict this endpoint to authorized operators.
    */
   @Post('simulate')
   @UseGuards(JwtAuthGuard)
@@ -205,13 +211,14 @@ export class C2BController {
    * Receives C2B confirmation notifications from Daraja.
    *
    * Processing sequence:
-   * 1. Validate and normalize the raw provider payload.
+   * 1. Validate and normalize the Safaricom callback.
    * 2. Delegate the normalized event to FinancialModule.
-   * 3. FinancialModule persists the callback and handles idempotency,
-   *    payment creation, and subsequent financial processing.
-   * 4. Acknowledge Daraja only after the handler completes successfully.
+   * 3. FinancialModule records the callback and performs payment matching,
+   *    duplicate detection, reconciliation and financial state transitions.
+   * 4. Acknowledge the callback after the FinancialModule handler completes.
    *
-   * This controller does not perform financial state transitions.
+   * This controller does not create payments, resolve accounts, credit
+   * wallets or post ledger entries.
    */
   @Post('confirmation')
   @HttpCode(HttpStatus.OK)
@@ -226,20 +233,22 @@ export class C2BController {
 
     if (result.requiresReconciliation) {
       this.logger.warn(
-        `C2B transaction ${event.transactionId} requires reconciliation.`,
+        `C2B transaction ${event.transactionId} requires reconciliation: ${result.message}`,
       );
     } else if (result.duplicate) {
       this.logger.log(
-        `C2B transaction ${event.transactionId} was already received.`,
+        `C2B transaction ${event.transactionId} was already processed.`,
+      );
+    } else if (result.processed) {
+      this.logger.log(
+        `C2B transaction ${event.transactionId} processed successfully.`,
       );
     } else {
-      this.logger.log(
-        `C2B transaction ${event.transactionId} was processed successfully.`,
+      this.logger.warn(
+        `C2B transaction ${event.transactionId} was not processed: ${result.message}`,
       );
     }
 
-    // A successful handler response means the callback has been durably
-    // handled, including callbacks retained for reconciliation.
     return {
       ResultCode: 0,
       ResultDesc: result.requiresReconciliation
@@ -259,9 +268,11 @@ export class C2BController {
    *
    * FinancialModule must make the payment acceptance decision.
    *
-   * The validation workflow has not yet been connected. Until its dedicated
-   * FinancialModule handler is implemented, this endpoint rejects validation
-   * rather than automatically approving payments.
+   * This endpoint deliberately rejects validation while the dedicated
+   * FinancialModule validation workflow is not configured.
+   *
+   * Do not change this to unconditional acceptance. Implement and connect
+   * the FinancialModule validation handler before enabling validation.
    */
   @Post('validation')
   @HttpCode(HttpStatus.OK)
