@@ -25,6 +25,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  HttpException,
   HttpStatus,
   Inject,
   Logger,
@@ -32,16 +33,17 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // M-PESA Services and Callback Handler
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 import { C2BService } from './c2b.service';
+
 import { C2BCallbackHandler } from './c2b-callback.handler';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Authentication
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 import {
   CurrentIdentity,
@@ -49,9 +51,9 @@ import {
   type AuthenticatedIdentity,
 } from '../../foundation/security/auth';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Financial Account Application
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 import { FINANCIAL_ACCOUNT_TOKENS } from '../../domains/financial/application/financial-account.tokens';
 
@@ -63,15 +65,15 @@ import { FinancialAccountOwnerPublicId } from '../../domains/financial/domain/va
 
 import type { FinancialAccountAggregate } from '../../domains/financial/domain/aggregates/financial-account.aggregate';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // Financial C2B Callback Processing
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 import { ProcessC2BPaymentCallbackHandler } from '../../domains/financial/application/command-handlers/process-c2b-payment-callback.handler';
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 // DTOs
-// -----------------------------------------------------------------------------
+// =============================================================================
 
 import C2BRegisterUrlDto from './dto/c2b-register-urls.dto';
 
@@ -204,6 +206,36 @@ export class C2BController {
   }
 
   // ===========================================================================
+  // Customer-Initiated C2B Reconciliation
+  // ===========================================================================
+
+  /**
+   * Checks whether Safaricom has already delivered a callback for the
+   * customer's payment-specific PayBill reference.
+   *
+   * The authenticated customer action is only a reconciliation request. It
+   * is not proof of payment and must never transition a payment by itself.
+   * FinancialModule searches persisted callbacks and performs all matching
+   * and payment lifecycle decisions.
+   *
+   * Request body: { "reference": "<payment-specific C2B reference>" }
+   */
+  @Post('reconcile')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  public async reconcilePayment(@Body('reference') reference: unknown) {
+    if (typeof reference !== 'string' || !reference.trim()) {
+      throw new BadRequestException(
+        'A valid payment-specific C2B reference is required.',
+      );
+    }
+
+    return this.processC2BPaymentCallbackHandler.reconcilePendingPayment(
+      reference.trim(),
+    );
+  }
+
+  // ===========================================================================
   // C2B Confirmation Callback
   // ===========================================================================
 
@@ -211,52 +243,107 @@ export class C2BController {
    * Receives C2B confirmation notifications from Daraja.
    *
    * Processing sequence:
-   * 1. Validate and normalize the Safaricom callback.
-   * 2. Delegate the normalized event to FinancialModule.
-   * 3. FinancialModule records the callback and performs payment matching,
-   *    duplicate detection, reconciliation and financial state transitions.
-   * 4. Acknowledge the callback after the FinancialModule handler completes.
    *
-   * This controller does not create payments, resolve accounts, credit
-   * wallets or post ledger entries.
+   * 1. Validate and normalize the Safaricom callback.
+   * 2. Preserve the original provider payload in the normalized event.
+   * 3. Delegate the event to FinancialModule.
+   * 4. FinancialModule persists the callback and performs payment matching,
+   *    duplicate detection, reconciliation and payment state transitions.
+   * 5. Acknowledge only after FinancialModule confirms processing,
+   *    duplicate detection or durable reconciliation acceptance.
+   *
+   * This controller does not:
+   * - Create payments;
+   * - Resolve financial accounts;
+   * - Credit wallets;
+   * - Post ledger entries;
+   * - Publish domain events.
    */
   @Post('confirmation')
   @HttpCode(HttpStatus.OK)
   public async confirmation(@Body() body: unknown) {
+    // -------------------------------------------------------------------------
+    // Validate and normalize provider payload.
+    // -------------------------------------------------------------------------
+
     const event = this.callbackHandler.processCallback(body);
 
     this.logger.log(
       `Received M-PESA C2B confirmation: ${event.transactionId}.`,
     );
 
+    // -------------------------------------------------------------------------
+    // Delegate all financial processing to FinancialModule.
+    // -------------------------------------------------------------------------
+
     const result = await this.processC2BPaymentCallbackHandler.execute(event);
+
+    // -------------------------------------------------------------------------
+    // Reconciliation acceptance.
+    //
+    // A reconciliation result may be acknowledged only when FinancialModule
+    // has durably persisted the callback for subsequent reconciliation.
+    // -------------------------------------------------------------------------
 
     if (result.requiresReconciliation) {
       this.logger.warn(
         `C2B transaction ${event.transactionId} requires reconciliation: ${result.message}`,
       );
-    } else if (result.duplicate) {
+
+      return {
+        ResultCode: 0,
+        ResultDesc: 'Accepted for reconciliation.',
+      };
+    }
+
+    // -------------------------------------------------------------------------
+    // Duplicate callback.
+    // -------------------------------------------------------------------------
+
+    if (result.duplicate) {
       this.logger.log(
         `C2B transaction ${event.transactionId} was already processed.`,
       );
-    } else if (result.processed) {
+
+      return {
+        ResultCode: 0,
+        ResultDesc: 'Duplicate callback acknowledged.',
+      };
+    }
+
+    // -------------------------------------------------------------------------
+    // Successfully processed callback.
+    // -------------------------------------------------------------------------
+
+    if (result.processed) {
       this.logger.log(
         `C2B transaction ${event.transactionId} processed successfully.`,
       );
-    } else {
-      this.logger.warn(
-        `C2B transaction ${event.transactionId} was not processed: ${result.message}`,
-      );
+
+      return {
+        ResultCode: 0,
+        ResultDesc: 'Accepted.',
+      };
     }
 
-    return {
-      ResultCode: 0,
-      ResultDesc: result.requiresReconciliation
-        ? 'Accepted for reconciliation.'
-        : result.duplicate
-          ? 'Duplicate callback acknowledged.'
-          : 'Accepted',
-    };
+    // -------------------------------------------------------------------------
+    // Unprocessed callback.
+    //
+    // Do not acknowledge a callback that FinancialModule has neither
+    // processed nor durably accepted for reconciliation.
+    //
+    // Returning a server error allows the provider's retry behaviour
+    // to handle the unsuccessful confirmation.
+    // -------------------------------------------------------------------------
+
+    this.logger.error(
+      `C2B transaction ${event.transactionId} was not processed or accepted for reconciliation: ${result.message}`,
+    );
+
+    throw new HttpException(
+      'C2B callback could not be durably accepted by FinancialModule.',
+      HttpStatus.SERVICE_UNAVAILABLE,
+    );
   }
 
   // ===========================================================================
@@ -271,8 +358,10 @@ export class C2BController {
    * This endpoint deliberately rejects validation while the dedicated
    * FinancialModule validation workflow is not configured.
    *
-   * Do not change this to unconditional acceptance. Implement and connect
-   * the FinancialModule validation handler before enabling validation.
+   * Do not change this to unconditional acceptance.
+   *
+   * Implement and connect the FinancialModule validation handler before
+   * enabling validation-based acceptance.
    */
   @Post('validation')
   @HttpCode(HttpStatus.OK)

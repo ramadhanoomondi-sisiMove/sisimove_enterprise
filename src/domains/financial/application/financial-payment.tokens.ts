@@ -52,6 +52,8 @@ export const FINANCIAL_PAYMENT_TOKENS = {
 
     GET_ACCOUNT_PAYMENTS: Symbol('GetFinancialAccountPaymentsHandler'),
 
+    GET_MY_PAYMENTS: Symbol('GetMyFinancialPaymentsHandler'),
+
     GET_BY_REFERENCE: Symbol('GetFinancialPaymentByReferenceHandler'),
 
     GET_BY_TRANSACTION: Symbol('GetFinancialPaymentByTransactionHandler'),

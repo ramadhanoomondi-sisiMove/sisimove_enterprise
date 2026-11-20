@@ -10,6 +10,7 @@
  * - Financial Account resolution.
  * - Payment and attempt lifecycle.
  * - Domain event publication.
+ * - Reconciliation of previously persisted C2B callbacks.
  *
  * MpesaModule owns callback validation and normalization only.
  *
@@ -26,56 +27,38 @@
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
 
-// Application tokens
 import { FINANCIAL_PAYMENT_TOKENS } from '../financial-payment.tokens';
 import { FINANCIAL_ACCOUNT_TOKENS } from '../financial-account.tokens';
 
 import { FINANCIAL_PAYMENT_PROVIDER_TOKENS } from '../../../financial-payment-providers/application/financial-payment-providers.tokens';
-
 import { FINANCIAL_PAYMENT_C2B_CALLBACK_TOKENS } from '../../../financial-payment-providers/application/financial-payment-c2b-callback.tokens';
 
-// Provider configuration
 import { FinancialPaymentProviderConfigurationService } from '../../../financial-payment-providers/application/services/financial-payment-provider-configuration.service';
 
-// Foundation
 import { UNIT_OF_WORK } from '../../../../foundation/persistence/unit-of-work.token';
 import type { UnitOfWork } from '../../../../foundation/persistence/unit-of-work.interface';
 
 import { EVENT_PUBLISHER } from '../../../../foundation/events/event-publisher.token';
 import type { EventPublisher } from '../../../../foundation/events/event-publisher.interface';
 
-// Repositories
 import type { FinancialPaymentRepository } from '../../domain/repositories/financial-payment.repository';
-
 import type { FinancialAccountRepository } from '../../domain/repositories/financial-account.repository';
 
 import type { FinancialPaymentProviderRepository } from '../../../financial-payment-providers/domain/repositories/financial-payment-provider.repository';
-
 import type { FinancialPaymentC2BCallbackRepository } from '../../../financial-payment-providers/domain/repositories/financial-payment-c2b-callback.repository';
-
-// Aggregates and entities
-import { FinancialPaymentAggregate } from '../../domain/aggregates/financial-payment.aggregate';
-
-import { FinancialPaymentEntity } from '../../domain/entities/financial-payment.entity';
 
 import { FinancialPaymentAttemptEntity } from '../../domain/entities/financial-payment-attempt.entity';
 
-// Value objects
 import { FinancialAccountPublicId } from '../../domain/value-objects/financial-account-public-id.vo';
-
+import { FinancialC2BReference } from '../../domain/value-objects/financial-c2b-reference.vo';
 import { FinancialProvider } from '../../domain/value-objects/financial-provider.vo';
-
 import { FinancialProviderReference } from '../../domain/value-objects/financial-provider-reference.vo';
-
 import { FinancialPaymentChannel } from '../../domain/value-objects/financial-payment-channel.vo';
-
 import { Currency } from '../../domain/value-objects/currency.vo';
-
 import { Money } from '../../domain/value-objects/money.vo';
 
 import { FinancialPaymentProviderCode } from '../../../financial-payment-providers/domain/value-objects/financial-payment-provider-code.vo';
 
-// Shared integration contract
 import type { C2BCallbackEvent } from '../../../../mpesa/c2b/c2b-callback.handler';
 
 // =============================================================================
@@ -100,11 +83,8 @@ export class ProcessC2BPaymentCallbackHandler {
   private readonly logger = new Logger(ProcessC2BPaymentCallbackHandler.name);
 
   private readonly paymentProvider = FinancialProvider.create('MPESA');
-
   private readonly mpesaCode = FinancialPaymentProviderCode.create('MPESA');
-
   private readonly c2bChannel = FinancialPaymentChannel.create('C2B');
-
   private readonly kes = Currency.create('KES');
 
   public constructor(
@@ -130,6 +110,97 @@ export class ProcessC2BPaymentCallbackHandler {
   ) {}
 
   // ===========================================================================
+  // Reconcile Previously Received C2B Callbacks
+  // ===========================================================================
+
+  /**
+   * Reconciliation entry point for an existing C2B FinancialPayment.
+   *
+   * The customer action that invokes this method is only a request to check
+   * for an already-received provider callback. It is not proof of payment.
+   *
+   * This method:
+   * - Does not create a FinancialPayment.
+   * - Does not initiate STK Push.
+   * - Does not trust the customer's assertion.
+   * - Searches only persisted PENDING callbacks for the payment reference.
+   * - Reuses execute() so callback verification and payment processing
+   *   remain consistent with the normal callback path.
+   */
+  public async reconcilePendingPayment(
+    reference: string,
+  ): Promise<ProcessC2BPaymentCallbackResult> {
+    let c2bReference: FinancialC2BReference;
+
+    try {
+      c2bReference = FinancialC2BReference.create(reference.trim());
+    } catch {
+      return this.reconciliationResult(
+        'The supplied C2B payment reference is invalid.',
+      );
+    }
+
+    const callbacks =
+      await this.callbackRepository.findPendingByProviderAndBillRefNumber(
+        this.paymentProvider.value,
+        c2bReference.value,
+      );
+
+    if (callbacks.length === 0) {
+      return this.reconciliationResult(
+        'No pending M-PESA callback has been received for this payment reference yet. The payment remains pending.',
+      );
+    }
+
+    let lastResult: ProcessC2BPaymentCallbackResult = this.reconciliationResult(
+      'A matching callback was found but could not yet be reconciled.',
+    );
+
+    // The repository returns callbacks oldest first. Process them in that
+    // deterministic order. Once the payment succeeds, do not process another
+    // callback against the same payment.
+    for (const callbackRecord of callbacks) {
+      if (
+        !callbackRecord.transTime ||
+        !Number.isFinite(callbackRecord.transAmount) ||
+        callbackRecord.transAmount <= 0 ||
+        !callbackRecord.billRefNumber
+      ) {
+        lastResult = this.reconciliationResult(
+          'A stored M-PESA callback is missing required transaction details. Manual reconciliation is required.',
+        );
+        continue;
+      }
+
+      const callback: C2BCallbackEvent = {
+        provider: 'MPESA',
+
+        transactionType: this.readRequiredPayloadString(
+          callbackRecord.payload,
+          'TransactionType',
+        ),
+
+        transactionId: callbackRecord.transId,
+        transactionTime: callbackRecord.transTime,
+        amount: callbackRecord.transAmount.toFixed(2),
+        businessShortCode: callbackRecord.businessShortCode,
+        phoneNumber: callbackRecord.msisdn,
+        billReference: callbackRecord.billRefNumber,
+
+        rawPayload: callbackRecord.payload as C2BCallbackEvent['rawPayload'],
+      };
+
+      lastResult = await this.execute(callback);
+
+      if (lastResult.processed || lastResult.duplicate) {
+        return lastResult;
+      }
+    }
+
+    return lastResult;
+  }
+
+  // ===========================================================================
   // Process Normalized C2B Callback
   // ===========================================================================
 
@@ -139,51 +210,30 @@ export class ProcessC2BPaymentCallbackHandler {
     this.validateCallback(callback);
 
     const transactionId = callback.transactionId.trim();
-
     const providerReference = FinancialProviderReference.create(transactionId);
-
     const correlationId = `MPESA-C2B-${transactionId}`;
-
     const causationId = transactionId;
 
     const completedAt = this.parseTransactionTime(callback.transactionTime);
-
-    // Convert provider decimal KES into Financial domain minor units.
     const amount = Money.create(this.toMinorUnits(callback.amount), this.kes);
+    const billReference = callback.billReference?.trim();
 
     // -------------------------------------------------------------------------
-    // 1. Persist callback receipt before attempting account matching.
+    // 1. Persist callback receipt before attempting payment matching.
     //
-    // The database unique constraint on provider + TransID prevents
-    // duplicate callback receipts.
-    //
-    // Unmatched callbacks remain available for reconciliation.
+    // The unique provider + TransID constraint protects against duplicate
+    // callback receipts. Unmatched callbacks remain PENDING for reconciliation.
     // -------------------------------------------------------------------------
 
     const callbackRecord = await this.callbackRepository.createIfNotExists({
       provider: this.paymentProvider.value,
       transId: transactionId,
-      billRefNumber: callback.billReference?.trim() || null,
+      billRefNumber: billReference || null,
       businessShortCode: callback.businessShortCode,
       transTime: callback.transactionTime,
-
-      // Current repository contract declares this field as number.
       transAmount: Number(callback.amount),
-
       msisdn: callback.phoneNumber,
-
-      payload: {
-        provider: callback.provider,
-        transactionType: callback.transactionType,
-        transactionId,
-        transactionTime: callback.transactionTime,
-        amount: callback.amount,
-        businessShortCode: callback.businessShortCode,
-        phoneNumber: callback.phoneNumber,
-        billReference: callback.billReference ?? null,
-        invoiceNumber: callback.invoiceNumber ?? null,
-        thirdPartyTransactionId: callback.thirdPartyTransactionId ?? null,
-      },
+      payload: callback.rawPayload,
     });
 
     if (callbackRecord.status === 'PROCESSED') {
@@ -196,30 +246,38 @@ export class ProcessC2BPaymentCallbackHandler {
     }
 
     // -------------------------------------------------------------------------
-    // 2. Check whether this provider transaction already created a payment.
-    //
-    // If it did, close the callback receipt transactionally.
+    // 2. Provider transaction deduplication.
     // -------------------------------------------------------------------------
 
-    const existingPayment =
+    const existingTransactionPayment =
       await this.paymentRepository.findByProviderReference(
         this.paymentProvider,
         providerReference,
       );
 
-    if (existingPayment !== null) {
-      const successfulAttempt = existingPayment.getSuccessfulAttempt();
+    if (existingTransactionPayment !== null) {
+      const successfulAttempt =
+        existingTransactionPayment.getSuccessfulAttempt();
 
       if (successfulAttempt === undefined) {
-        return {
-          processed: false,
-          duplicate: true,
-          requiresReconciliation: true,
-          paymentPublicId: existingPayment.publicId.toString(),
-          message:
-            'A payment exists for this M-PESA transaction but has no ' +
-            'successful attempt. Reconciliation is required.',
-        };
+        return this.reconciliationResult(
+          'The M-PESA transaction reference is already associated with a payment that has no successful attempt.',
+          existingTransactionPayment.publicId.toString(),
+        );
+      }
+
+      const sameAmount =
+        existingTransactionPayment.amount.amount === amount.amount;
+
+      const sameReference =
+        existingTransactionPayment.c2bReference?.value ===
+        billReference?.toUpperCase();
+
+      if (!sameAmount || !sameReference) {
+        return this.reconciliationResult(
+          'The M-PESA transaction ID is already recorded, but the callback amount or payment reference does not match.',
+          existingTransactionPayment.publicId.toString(),
+        );
       }
 
       await this.unitOfWork.execute(async () => {
@@ -234,7 +292,7 @@ export class ProcessC2BPaymentCallbackHandler {
         processed: false,
         duplicate: true,
         requiresReconciliation: false,
-        paymentPublicId: existingPayment.publicId.toString(),
+        paymentPublicId: existingTransactionPayment.publicId.toString(),
         attemptPublicId: successfulAttempt.publicId.toString(),
         message: 'M-PESA transaction was already recorded.',
       };
@@ -249,107 +307,194 @@ export class ProcessC2BPaymentCallbackHandler {
     );
 
     if (providerConfiguration === null) {
-      return {
-        processed: false,
-        duplicate: false,
-        requiresReconciliation: true,
-        message:
-          'The C2B shortcode does not match an operational M-PESA ' +
-          'provider configuration. The callback has been retained.',
-      };
+      return this.reconciliationResult(
+        'The C2B shortcode does not match an operational M-PESA PayBill configuration. The callback has been retained.',
+      );
     }
 
     // -------------------------------------------------------------------------
-    // 4. Resolve receiving Financial Account.
-    //
-    // BillRefNumber is the account reference.
-    // MSISDN is never used for account resolution.
+    // 4. Require payment-specific BillRefNumber.
     // -------------------------------------------------------------------------
-
-    const billReference = callback.billReference?.trim();
 
     if (!billReference) {
-      return {
-        processed: false,
-        duplicate: false,
-        requiresReconciliation: true,
-        message:
-          'C2B callback has no Financial Account reference. ' +
-          'The callback receipt has been retained for reconciliation.',
-      };
+      return this.reconciliationResult(
+        'C2B callback has no payment-specific BillRefNumber. The callback has been retained.',
+      );
     }
 
-    let accountPublicId: FinancialAccountPublicId;
+    let c2bReference: FinancialC2BReference;
 
     try {
-      accountPublicId = new FinancialAccountPublicId(billReference);
+      c2bReference = FinancialC2BReference.create(billReference);
     } catch {
-      return {
-        processed: false,
-        duplicate: false,
-        requiresReconciliation: true,
-        message:
-          'The supplied Financial Account reference is invalid. ' +
-          'The callback receipt has been retained for reconciliation.',
-      };
+      return this.reconciliationResult(
+        'The supplied C2B payment reference is invalid. The callback has been retained.',
+      );
     }
+
+    // -------------------------------------------------------------------------
+    // 5. Find the original pending FinancialPayment.
+    //
+    // Never create a new payment here.
+    // -------------------------------------------------------------------------
+
+    const matchedPayment =
+      await this.paymentRepository.findByC2BReference(c2bReference);
+
+    if (matchedPayment === null) {
+      return this.reconciliationResult(
+        'No FinancialPayment matches the supplied payment-specific BillRefNumber. The callback has been retained.',
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // 6. Validate the matched payment before locking.
+    // -------------------------------------------------------------------------
+
+    if (!matchedPayment.channel.isC2B()) {
+      return this.reconciliationResult(
+        'The BillRefNumber resolved to a payment that is not a C2B payment.',
+        matchedPayment.publicId.toString(),
+      );
+    }
+
+    if (!matchedPayment.isPending()) {
+      return this.reconciliationResult(
+        'The matched C2B payment is not pending. Manual reconciliation is required.',
+        matchedPayment.publicId.toString(),
+      );
+    }
+
+    if (!matchedPayment.hasC2BReference()) {
+      return this.reconciliationResult(
+        'The matched payment does not contain a C2B payment reference.',
+        matchedPayment.publicId.toString(),
+      );
+    }
+
+    if (matchedPayment.c2bReference?.value !== c2bReference.value) {
+      return this.reconciliationResult(
+        'The matched payment reference does not match the callback reference.',
+        matchedPayment.publicId.toString(),
+      );
+    }
+
+    if (
+      matchedPayment.amount.amount !== amount.amount ||
+      !matchedPayment.amount.currency.isKes()
+    ) {
+      return this.reconciliationResult(
+        'The callback amount or currency does not match the pending C2B payment.',
+        matchedPayment.publicId.toString(),
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // 7. Resolve and validate the receiving Financial Account.
+    //
+    // Resolve from the matched payment. Never use payer MSISDN.
+    // -------------------------------------------------------------------------
+
+    const accountPublicId = new FinancialAccountPublicId(
+      matchedPayment.accountId.value,
+    );
 
     const account =
       await this.accountRepository.findByPublicId(accountPublicId);
 
     if (account === null) {
-      return {
-        processed: false,
-        duplicate: false,
-        requiresReconciliation: true,
-        message:
-          'No Financial Account matches the supplied BillRefNumber. ' +
-          'The callback receipt has been retained for reconciliation.',
-      };
+      return this.reconciliationResult(
+        'The receiving Financial Account associated with the payment was not found.',
+        matchedPayment.publicId.toString(),
+      );
     }
 
     if (!account.canOperate()) {
-      return {
-        processed: false,
-        duplicate: false,
-        requiresReconciliation: true,
-        message: 'The receiving Financial Account is not operational.',
-      };
+      return this.reconciliationResult(
+        'The receiving Financial Account is not operational.',
+        matchedPayment.publicId.toString(),
+      );
     }
 
     if (!account.currency.isKes()) {
-      return {
-        processed: false,
-        duplicate: false,
-        requiresReconciliation: true,
-        message: 'The receiving Financial Account does not use KES.',
-      };
+      return this.reconciliationResult(
+        'The receiving Financial Account does not use KES.',
+        matchedPayment.publicId.toString(),
+      );
+    }
+
+    if (account.publicId.value !== matchedPayment.accountId.value) {
+      return this.reconciliationResult(
+        'The matched payment account identity is inconsistent.',
+        matchedPayment.publicId.toString(),
+      );
     }
 
     // -------------------------------------------------------------------------
-    // 5. Create payment, attempt, callback status and outbox events atomically.
+    // 8. Complete the EXISTING payment transactionally.
     // -------------------------------------------------------------------------
 
     try {
       const result = await this.unitOfWork.execute(async () => {
-        // Recheck inside the transaction to reduce duplicate processing risk.
-        const paymentAlreadyCreated =
+        await this.paymentRepository.lockByPublicId(matchedPayment.publicId);
+
+        const payment = await this.paymentRepository.findByPublicId(
+          matchedPayment.publicId,
+        );
+
+        if (payment === null) {
+          throw new Error('The matched FinancialPayment no longer exists.');
+        }
+
+        // Revalidate identity and lifecycle after acquiring the lock.
+        if (
+          !payment.channel.isC2B() ||
+          !payment.hasC2BReference() ||
+          payment.c2bReference?.value !== c2bReference.value
+        ) {
+          throw new Error(
+            'The locked FinancialPayment no longer matches the C2B reference.',
+          );
+        }
+
+        if (!payment.isPending()) {
+          throw new Error('The locked C2B payment is no longer pending.');
+        }
+
+        if (
+          payment.amount.amount !== amount.amount ||
+          !payment.amount.currency.isKes()
+        ) {
+          throw new Error(
+            'The locked C2B payment amount or currency does not match the callback.',
+          );
+        }
+
+        // Recheck provider transaction uniqueness inside the transaction.
+        const transactionAlreadyRecorded =
           await this.paymentRepository.findByProviderReference(
             this.paymentProvider,
             providerReference,
           );
 
-        if (paymentAlreadyCreated !== null) {
+        if (transactionAlreadyRecorded !== null) {
           const successfulAttempt =
-            paymentAlreadyCreated.getSuccessfulAttempt();
+            transactionAlreadyRecorded.getSuccessfulAttempt();
 
           if (successfulAttempt === undefined) {
             throw new Error(
-              'Existing M-PESA payment has no successful attempt.',
+              'The M-PESA transaction is already associated with a payment that has no successful attempt.',
             );
           }
 
-          // Close the callback receipt in the same transaction.
+          if (
+            transactionAlreadyRecorded.publicId.value !== payment.publicId.value
+          ) {
+            throw new Error(
+              'The M-PESA transaction ID is already associated with a different payment.',
+            );
+          }
+
           await this.callbackRepository.markProcessed(
             callbackRecord.id,
             successfulAttempt.id.toString(),
@@ -358,26 +503,18 @@ export class ProcessC2BPaymentCallbackHandler {
 
           return {
             duplicate: true,
-            paymentPublicId: paymentAlreadyCreated.publicId.toString(),
+            paymentPublicId: payment.publicId.toString(),
             attemptPublicId: successfulAttempt.publicId.toString(),
           };
         }
 
-        // Create Financial Payment.
-        const paymentEntity = FinancialPaymentEntity.create(
-          account.publicId,
-          amount,
-          this.c2bChannel,
-        );
+        if (payment.accountId.value !== account.publicId.value) {
+          throw new Error(
+            'The receiving account changed during C2B processing.',
+          );
+        }
 
-        const payment = FinancialPaymentAggregate.create(paymentEntity);
-
-        payment.emitCreatedEvent(correlationId, causationId);
-
-        // Start payment processing lifecycle.
-        payment.startProcessing(completedAt, correlationId, causationId);
-
-        // Create successful M-PESA provider attempt.
+        // Create the provider attempt against the existing payment.
         const attempt = FinancialPaymentAttemptEntity.create(
           payment.id,
           this.paymentProvider,
@@ -386,25 +523,28 @@ export class ProcessC2BPaymentCallbackHandler {
         );
 
         attempt.start(completedAt);
-        attempt.succeed(completedAt);
 
         payment.addAttempt(attempt, correlationId, causationId);
 
-        // Mark payment as succeeded.
-        payment.succeed(completedAt, correlationId, causationId);
+        // The provider callback is the verified payment event.
+        payment.startProcessing(completedAt, correlationId, causationId);
 
-        // Persist payment and its owned attempts.
-        await this.paymentRepository.create(payment);
+        // succeedAttempt() transitions the attempt and parent payment.
+        payment.succeedAttempt(
+          attempt.publicId,
+          completedAt,
+          correlationId,
+          causationId,
+        );
 
-        // Persist domain events through transactional EventPublisher.
-        //
-        // EventPublisher must append StoredEvent and OutboxMessage
-        // using the active UnitOfWork transaction.
-        //
-        // Do not replace this with an in-memory EventBus.
+        await this.paymentRepository.save(payment);
+
+        // Publish domain events through the transactional publisher.
         const domainEvents = payment.pullDomainEvents();
 
-        await this.eventPublisher.publishAll(domainEvents);
+        if (domainEvents.length > 0) {
+          await this.eventPublisher.publishAll(domainEvents);
+        }
 
         // Mark callback processed in the same transaction.
         await this.callbackRepository.markProcessed(
@@ -428,16 +568,16 @@ export class ProcessC2BPaymentCallbackHandler {
         attemptPublicId: result.attemptPublicId,
         message: result.duplicate
           ? 'M-PESA transaction has already been recorded.'
-          : 'C2B payment successfully recorded.',
+          : 'Existing C2B payment successfully completed.',
       };
     } catch (error) {
       this.logger.error(
-        'Failed to process M-PESA C2B payment callback.',
+        `Failed to process M-PESA C2B transaction ${transactionId}.`,
         error instanceof Error ? error.stack : undefined,
       );
 
-      // Keep the callback receipt available for retry/reconciliation.
-      // Do not mark it PROCESSED when payment or event persistence fails.
+      // Do not mark the callback processed. Its durable receipt remains
+      // available for retry/reconciliation.
       throw error;
     }
   }
@@ -474,21 +614,62 @@ export class ProcessC2BPaymentCallbackHandler {
 
     const configuredShortcode = configuration.c2bShortcode?.trim();
 
-    if (!configuredShortcode) {
+    if (!configuredShortcode || configuredShortcode !== businessShortCode) {
       return null;
     }
 
-    if (configuredShortcode !== businessShortCode) {
-      return null;
-    }
-
-    const businessType = configuration.c2bBusinessType;
-
-    if (businessType !== 'PAYBILL' && businessType !== 'BUY_GOODS') {
+    // SisiMove C2B supports PayBill only.
+    if (configuration.c2bBusinessType !== 'PAYBILL') {
       return null;
     }
 
     return configuration;
+  }
+
+  // ===========================================================================
+  // Reconciliation Result
+  // ===========================================================================
+
+  private reconciliationResult(
+    message: string,
+    paymentPublicId?: string,
+  ): ProcessC2BPaymentCallbackResult {
+    return {
+      processed: false,
+      duplicate: false,
+      requiresReconciliation: true,
+      ...(paymentPublicId ? { paymentPublicId } : {}),
+      message,
+    };
+  }
+
+  // ===========================================================================
+  // Read Required Values from Persisted Callback Payload
+  // ===========================================================================
+
+  private readRequiredPayloadString(payload: unknown, field: string): string {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new Error('Stored M-PESA callback payload is invalid.');
+    }
+
+    const value = (payload as Record<string, unknown>)[field];
+
+    if (
+      (typeof value !== 'string' && typeof value !== 'number') ||
+      (typeof value === 'number' && !Number.isFinite(value))
+    ) {
+      throw new Error(
+        `Stored M-PESA callback is missing or has an invalid ${field}.`,
+      );
+    }
+
+    const normalized = String(value).trim();
+
+    if (!normalized) {
+      throw new Error(`Stored M-PESA callback is missing ${field}.`);
+    }
+
+    return normalized;
   }
 
   // ===========================================================================
@@ -498,6 +679,13 @@ export class ProcessC2BPaymentCallbackHandler {
   private validateCallback(callback: C2BCallbackEvent): void {
     if (!callback || callback.provider !== 'MPESA') {
       throw new Error('Unsupported C2B payment provider.');
+    }
+
+    if (
+      typeof callback.transactionType !== 'string' ||
+      !callback.transactionType.trim()
+    ) {
+      throw new Error('M-PESA transaction type is required.');
     }
 
     if (
@@ -516,15 +704,7 @@ export class ProcessC2BPaymentCallbackHandler {
 
     if (
       typeof callback.amount !== 'string' ||
-      !/^\d+(\.\d{1,2})?$/.test(callback.amount) ||
-      !/[1-9]/.test(callback.amount)
-    ) {
-      throw new Error('M-PESA transaction amount is invalid.');
-    }
-
-    if (
-      !Number.isFinite(Number(callback.amount)) ||
-      Number(callback.amount) <= 0
+      !/^\d+(\.\d{1,2})?$/.test(callback.amount)
     ) {
       throw new Error('M-PESA transaction amount is invalid.');
     }
@@ -549,12 +729,26 @@ export class ProcessC2BPaymentCallbackHandler {
     ) {
       throw new Error('M-PESA BillRefNumber is invalid.');
     }
+
+    if (
+      !callback.rawPayload ||
+      typeof callback.rawPayload !== 'object' ||
+      Array.isArray(callback.rawPayload)
+    ) {
+      throw new Error(
+        'Original M-PESA callback payload is missing or invalid.',
+      );
+    }
   }
 
   // ===========================================================================
   // Convert Decimal KES to Minor Units
   // ===========================================================================
 
+  /**
+   * Converts decimal KES into integer minor units without floating-point
+   * multiplication.
+   */
   private toMinorUnits(value: string): number {
     const normalized = value.trim();
 
@@ -564,7 +758,6 @@ export class ProcessC2BPaymentCallbackHandler {
 
     const [wholePart = '0', fractionalPart = ''] = normalized.split('.');
 
-    // Use decimal-string arithmetic instead of floating-point multiplication.
     const whole = BigInt(wholePart);
     const fraction = BigInt(fractionalPart.padEnd(2, '0'));
 
@@ -580,10 +773,16 @@ export class ProcessC2BPaymentCallbackHandler {
 
     return Number(minorUnits);
   }
+
   // ===========================================================================
   // Parse Daraja Transaction Time
   // ===========================================================================
 
+  /**
+   * Parses Daraja YYYYMMDDHHmmss into a UTC Date.
+   *
+   * Calendar validity is checked to reject impossible dates and times.
+   */
   private parseTransactionTime(value: string): Date {
     if (!/^\d{14}$/.test(value)) {
       throw new Error('Invalid M-PESA transaction timestamp.');

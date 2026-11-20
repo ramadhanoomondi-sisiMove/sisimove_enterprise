@@ -4679,10 +4679,13 @@ model FinancialPaymentC2BCallback {
 
   // Provider transaction IDs must be unique
   @@unique([provider, transId])
+  // Existing indexes
   @@index([attemptId])
   @@index([billRefNumber])
   @@index([status, receivedAt])
   @@index([msisdn])
+  // C2B pending callback reconciliation
+  @@index([provider, billRefNumber, status, receivedAt, id])
   @@map("financial_payment_c2b_callbacks")
 }
 

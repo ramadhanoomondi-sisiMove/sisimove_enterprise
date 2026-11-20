@@ -139,24 +139,15 @@ export function PaymentForm({
   onSubmit,
   onCancel,
 }: PaymentFormProps) {
-  // ---------------------------------------------------------------------------
-  // Amount Change
-  // ---------------------------------------------------------------------------
+  const quickAmounts = ['100', '200', '500', '1000'];
 
   function handleAmountChange(value: string): void {
-    // Accept digits only and allow the field to be temporarily empty.
-    // Do not convert the amount to a number or minor currency units.
-
     if (!/^\d*$/.test(value)) {
       return;
     }
 
     onAmountChange(value);
   }
-
-  // ---------------------------------------------------------------------------
-  // Payment Configuration
-  // ---------------------------------------------------------------------------
 
   const isPayBill =
     c2bPaymentDetails?.businessType === 'PAYBILL';
@@ -167,8 +158,6 @@ export function PaymentForm({
   const hasInstructions =
     Boolean(c2bPaymentDetails?.instructions.length);
 
-  // The backend generates the payment-specific account reference
-  // after the parent creates the C2B FinancialPayment.
   const isC2BReady =
     Boolean(c2bPaymentDetails) &&
     c2bPaymentDetails?.provider === 'MPESA' &&
@@ -181,10 +170,6 @@ export function PaymentForm({
     Boolean(defaultPaymentMethod?.id) &&
     defaultPaymentMethod?.isActive === true;
 
-  // ---------------------------------------------------------------------------
-  // Submission Guards
-  // ---------------------------------------------------------------------------
-
   const isStkPushSelected =
     topUpOption === 'DEFAULT_NUMBER';
 
@@ -193,9 +178,16 @@ export function PaymentForm({
       ? hasUsableDefaultMethod
       : isC2BReady;
 
+  const numericAmount = Number(amount);
+  const hasValidAmount =
+    amount.trim().length > 0 &&
+    Number.isSafeInteger(numericAmount) &&
+    numericAmount > 0;
+
   const submitDisabled =
     isSubmitting ||
     isSubmitDisabled ||
+    !hasValidAmount ||
     !isSelectedOptionReady;
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
@@ -205,14 +197,12 @@ export function PaymentForm({
       return;
     }
 
-    // The parent creates the appropriate FinancialPayment:
-    // STK_PUSH for the saved number, or C2B for SisiMove PayBill.
     onSubmit();
   }
 
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
+  const selectedMethodLabel = isStkPushSelected
+    ? 'M-PESA prompt'
+    : 'SisiMove PayBill';
 
   return (
     <form
@@ -220,22 +210,42 @@ export function PaymentForm({
       noValidate
       className="space-y-6"
     >
-      {/* ------------------------------------------------------------------- */}
-      {/* Amount                                                              */}
-      {/* ------------------------------------------------------------------- */}
+      <section className="space-y-2">
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden="true"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--brand-soft)] text-[var(--brand)]"
+          >
+            KSh
+          </span>
+          <div>
+            <h2 className="text-base font-semibold text-[var(--foreground)]">
+              Add money to your wallet
+            </h2>
+            <p className="text-sm text-[var(--foreground-secondary)]">
+              Choose an amount and how you would like to pay.
+            </p>
+          </div>
+        </div>
+      </section>
 
-      <div className="space-y-2">
-        <label
-          htmlFor="wallet-top-up-amount"
-          className="block text-sm font-semibold text-[var(--foreground)]"
-        >
-          Amount to add
-        </label>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <label
+            htmlFor="wallet-top-up-amount"
+            className="text-sm font-semibold text-[var(--foreground)]"
+          >
+            How much would you like to add?
+          </label>
+          <span className="text-xs text-[var(--foreground-muted)]">
+            {currency}
+          </span>
+        </div>
 
         <div className="relative">
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm font-medium text-[var(--foreground-muted)]"
+            className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm font-semibold text-[var(--foreground-muted)]"
           >
             {currency}
           </span>
@@ -258,15 +268,38 @@ export function PaymentForm({
                 : 'wallet-top-up-amount-help'
             }
             disabled={isSubmitting}
-            className="pl-16 text-base sm:text-lg"
+            placeholder="Enter amount"
+            className="h-14 pl-16 text-xl font-semibold tracking-wide"
           />
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {quickAmounts.map((quickAmount) => {
+            const isSelected = amount === quickAmount;
+
+            return (
+              <Button
+                key={quickAmount}
+                type="button"
+                size="sm"
+                variant={isSelected ? 'secondary' : 'outline'}
+                disabled={isSubmitting}
+                aria-pressed={isSelected}
+                onClick={() => onAmountChange(quickAmount)}
+                className="min-w-[4.5rem]"
+              >
+                {Number(quickAmount).toLocaleString('en-KE')}
+              </Button>
+            );
+          })}
         </div>
 
         <p
           id="wallet-top-up-amount-help"
-          className="text-xs text-[var(--foreground-muted)]"
+          className="text-xs leading-5 text-[var(--foreground-muted)]"
         >
-          Enter a whole amount in KES. Decimals are not accepted.
+          Enter a whole amount in KES. You can choose one of the quick
+          amounts or type your own amount.
         </p>
 
         {amountError ? (
@@ -280,135 +313,204 @@ export function PaymentForm({
         ) : null}
       </div>
 
-      {/* ------------------------------------------------------------------- */}
-      {/* Payment Method Selector                                             */}
-      {/* ------------------------------------------------------------------- */}
+      <div className="space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold text-[var(--foreground)]">
+            Choose how to pay
+          </h3>
+          <p className="mt-1 text-xs leading-5 text-[var(--foreground-muted)]">
+            Pick the option that is most convenient for you.
+          </p>
+        </div>
 
-      <PaymentMethodSelector
-        selectedOption={topUpOption}
-        onChange={onTopUpOptionChange}
-        defaultPaymentMethod={defaultPaymentMethod}
-        error={paymentMethodError}
-        disabled={isSubmitting}
-      />
-
-      {/* ------------------------------------------------------------------- */}
-      {/* Default Number — STK Push                                           */}
-      {/* ------------------------------------------------------------------- */}
+        <PaymentMethodSelector
+          selectedOption={topUpOption}
+          onChange={onTopUpOptionChange}
+          defaultPaymentMethod={defaultPaymentMethod}
+          error={paymentMethodError}
+          disabled={isSubmitting}
+        />
+      </div>
 
       {topUpOption === 'DEFAULT_NUMBER' &&
       hasUsableDefaultMethod ? (
         <section
           aria-labelledby="wallet-top-up-default-number"
-          className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background-subtle)] p-4"
+          className="space-y-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background-subtle)] p-4"
         >
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h3
               id="wallet-top-up-default-number"
               className="text-sm font-semibold text-[var(--foreground)]"
             >
-              Payment request destination
+              Your M-PESA number
             </h3>
-
-            <Badge variant="brand">
-              Default
-            </Badge>
+            <Badge variant="brand">Saved number</Badge>
           </div>
 
-          <p className="mt-2 text-lg font-semibold text-[var(--foreground)]">
+          <p className="text-xl font-semibold tracking-wide text-[var(--foreground)]">
             {defaultPaymentMethod?.phoneNumber}
           </p>
 
-          <p className="mt-1 text-xs leading-5 text-[var(--foreground-muted)]">
-            sisiMove will send the M-PESA payment request to your saved
-            default number. Enter your M-PESA PIN on your phone to approve it.
+          <ol className="space-y-2 text-sm leading-5 text-[var(--foreground-secondary)]">
+            <li className="flex gap-2">
+              <span className="font-semibold text-[var(--brand)]">1.</span>
+              Tap the button below to request payment.
+            </li>
+            <li className="flex gap-2">
+              <span className="font-semibold text-[var(--brand)]">2.</span>
+              Check your phone for the M-PESA prompt.
+            </li>
+            <li className="flex gap-2">
+              <span className="font-semibold text-[var(--brand)]">3.</span>
+              Confirm the amount and enter your M-PESA PIN in the
+              M-PESA prompt.
+            </li>
+          </ol>
+
+          <p className="rounded-lg bg-[var(--surface)] px-3 py-2 text-xs leading-5 text-[var(--foreground-muted)]">
+            Your M-PESA PIN is entered in the M-PESA prompt, not in
+            SisiMove. Never share your PIN with anyone.
           </p>
         </section>
       ) : null}
-
-      {/* ------------------------------------------------------------------- */}
-      {/* SisiMove PayBill — Preparation                                      */}
-      {/* ------------------------------------------------------------------- */}
 
       {topUpOption === 'PAYBILL' ? (
         <section
           aria-labelledby="wallet-top-up-paybill"
           className="space-y-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background-subtle)] p-4"
         >
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h3
               id="wallet-top-up-paybill"
               className="text-sm font-semibold text-[var(--foreground)]"
             >
-              SisiMove PayBill
+              Pay using SisiMove PayBill
             </h3>
-
-            <Badge variant="default">
-              Manual payment
-            </Badge>
+            <Badge variant="default">Manual payment</Badge>
           </div>
 
           {isC2BReady && c2bPaymentDetails ? (
             <>
               <p className="text-sm leading-6 text-[var(--foreground-secondary)]">
-                Continue to generate a unique account reference for this
-                top-up. You will then see the PayBill number, reference,
-                payment amount and instructions on the next screen.
+                You will receive a unique payment reference after
+                continuing. Use that reference when paying so your
+                top-up can be matched to your wallet.
               </p>
 
               <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3">
                 <p className="text-xs text-[var(--foreground-muted)]">
-                  Configured PayBill number
+                  SisiMove PayBill number
                 </p>
-
-                <p className="mt-1 text-lg font-bold tracking-wide text-[var(--foreground)]">
+                <p className="mt-1 text-xl font-bold tracking-wide text-[var(--foreground)]">
                   {c2bPaymentDetails.shortcode}
                 </p>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-[var(--foreground)]">
+                  What happens next?
+                </p>
+                <ol className="space-y-2 text-sm leading-5 text-[var(--foreground-secondary)]">
+                  <li className="flex gap-2">
+                    <span className="font-semibold text-[var(--brand)]">1.</span>
+                    Continue to create your payment.
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="font-semibold text-[var(--brand)]">2.</span>
+                    Copy the unique account reference shown on the
+                    next screen.
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="font-semibold text-[var(--brand)]">3.</span>
+                    Pay through M-PESA using the displayed PayBill
+                    number, amount and reference.
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="font-semibold text-[var(--brand)]">4.</span>
+                    Return to SisiMove to check the payment status.
+                  </li>
+                </ol>
               </div>
             </>
           ) : (
             <p
               role="alert"
-              className="text-sm text-[var(--danger)]"
+              className="text-sm leading-5 text-[var(--danger)]"
             >
-              SisiMove PayBill configuration is unavailable or incomplete.
-              Please retry loading the payment instructions.
+              SisiMove PayBill details are temporarily unavailable.
+              Please try again in a moment or choose the M-PESA prompt
+              option.
             </p>
           )}
         </section>
       ) : null}
 
-      {/* ------------------------------------------------------------------- */}
-      {/* Actions                                                             */}
-      {/* ------------------------------------------------------------------- */}
+      <section
+        aria-label="Payment summary"
+        className="space-y-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-4"
+      >
+        <h3 className="text-sm font-semibold text-[var(--foreground)]">
+          Your top-up summary
+        </h3>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-[var(--foreground-secondary)]">
+            Amount to add
+          </span>
+          <span className="text-lg font-bold tabular-nums text-[var(--foreground)]">
+            {currency} {hasValidAmount
+              ? numericAmount.toLocaleString('en-KE')
+              : '—'}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-[var(--foreground-secondary)]">
+            Payment method
+          </span>
+          <span className="text-sm font-medium text-[var(--foreground)]">
+            {selectedMethodLabel}
+          </span>
+        </div>
+        <p className="border-t border-[var(--border-subtle)] pt-3 text-xs leading-5 text-[var(--foreground-muted)]">
+          Review the amount before continuing. Your wallet is updated
+          only after the payment has been successfully confirmed.
+        </p>
+      </section>
 
-      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-        {onCancel ? (
+      <div className="space-y-3">
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          {onCancel ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onCancel}
+              disabled={isSubmitting}
+              className="min-h-11 w-full sm:w-auto"
+            >
+              Go back
+            </Button>
+          ) : null}
+
           <Button
-            type="button"
-            variant="outline"
-            onClick={onCancel}
-            disabled={isSubmitting}
-            className="min-h-11 w-full sm:w-auto"
+            type="submit"
+            disabled={submitDisabled}
+            loading={isSubmitting}
+            className="min-h-12 w-full sm:w-auto"
           >
-            Cancel
+            {isSubmitting
+              ? 'Preparing your payment…'
+              : isStkPushSelected
+                ? 'Continue to M-PESA'
+                : 'Continue to PayBill'}
           </Button>
-        ) : null}
+        </div>
 
-        <Button
-          type="submit"
-          disabled={submitDisabled}
-          className="min-h-11 w-full sm:w-auto"
-        >
-          {isSubmitting
-            ? 'Creating payment…'
-            : isStkPushSelected
-              ? 'Request payment'
-              : 'Continue to PayBill'}
-        </Button>
+        <p className="text-center text-xs leading-5 text-[var(--foreground-muted)]">
+          You can review the payment details before completing your
+          payment. Do not share your M-PESA PIN or confirmation message.
+        </p>
       </div>
     </form>
   );
 }
-
 export default PaymentForm;

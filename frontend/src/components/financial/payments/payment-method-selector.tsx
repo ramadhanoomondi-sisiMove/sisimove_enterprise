@@ -9,14 +9,29 @@
 // 1. DEFAULT_NUMBER — STK Push to the saved default M-PESA number.
 // 2. PAYBILL         — Customer-initiated C2B payment to the SisiMove PayBill.
 //
-// The parent/container owns selection state and payment orchestration.
+// Responsibilities:
+// - present available payment channels;
+// - indicate the availability of the default payment method;
+// - communicate the difference between STK Push and manual PayBill;
+// - notify the parent when the selected option changes.
+//
+// The parent/container owns selection state, payment creation,
+// reconciliation, and payment lifecycle orchestration.
+//
+// The I have paid action belongs to the active PayBill payment component,
+// not this payment method selector.
 //
 // =============================================================================
 
 'use client';
 
 import { useId } from 'react';
+
 import { Badge } from '@/components/ui';
+
+// =============================================================================
+// Types
+// =============================================================================
 
 export type TopUpOption = 'DEFAULT_NUMBER' | 'PAYBILL';
 
@@ -35,6 +50,10 @@ export interface PaymentMethodSelectorProps {
   error?: string;
   disabled?: boolean;
 }
+
+// =============================================================================
+// Component
+// =============================================================================
 
 export function PaymentMethodSelector({
   selectedOption,
@@ -68,7 +87,7 @@ export function PaymentMethodSelector({
       id: 'PAYBILL',
       label: 'Pay using SisiMove PayBill',
       description:
-        'Receive a unique account reference for this top-up.',
+        'Make a manual M-PESA payment using a unique reference generated for your top-up.',
     },
   ];
 
@@ -147,8 +166,10 @@ export function PaymentMethodSelector({
 
                 {option.id === 'PAYBILL' ? (
                   <span className="mt-1 block text-xs text-[var(--foreground-secondary)]">
-                    sisiMove will generate a unique account reference for
-                    your payment.
+                    After creating your top-up, SisiMove will display the
+                    PayBill number, amount, and unique account reference.
+                    Once you have paid, you can confirm using the I have paid
+                    button.
                   </span>
                 ) : null}
               </span>

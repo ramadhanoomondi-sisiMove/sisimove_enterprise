@@ -2,7 +2,7 @@
 import type { AdminProviderFilters } from '../models/admin-provider-filters.model';
 import type {
   AdminMpesaEnvironment,
-} from '../models/admin-provider-operation.model';
+} from '../models/admin-provider-operations.model';
 
 // -----------------------------------------------------------------------------
 // Financial Payment Provider Endpoints

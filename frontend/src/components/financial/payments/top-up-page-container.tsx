@@ -3,6 +3,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { AUTHENTICATED_ROUTES } from '@/foundation/routing/authenticated-routes';
 
@@ -13,11 +14,15 @@ import {
   createPaymentSchema,
   useCreatePayment,
   useFinancialPayment,
+  useReconcileC2BPayment,
 } from '@/features/financial-payments';
+
+import { LIST_PAYMENTS_QUERY_KEY } from '@/features/financial-payments/hooks';
 
 import { useC2BPaymentInstructions } from '@/features/mpesa';
 
 import {
+  FinancialPaymentsList,
   PaymentForm,
   PaymentProcessing,
   PaymentResult,
@@ -173,6 +178,7 @@ function getPaymentResultCopy(
 // =============================================================================
 
 export function TopUpPageContainer() {
+  const queryClient = useQueryClient();
   // ===========================================================================
   // Financial Account
   // ===========================================================================
@@ -212,6 +218,10 @@ export function TopUpPageContainer() {
   // ===========================================================================
 
   const createPaymentMutation = useCreatePayment();
+
+  // C2B reconciliation never creates another payment. It asks the backend
+  // to match an already-received M-PESA callback to the existing payment.
+  const reconcileC2BPaymentMutation = useReconcileC2BPayment();
 
   // ===========================================================================
   // Form State
@@ -447,6 +457,33 @@ export function TopUpPageContainer() {
   };
 
   // ===========================================================================
+  // C2B Payment Reconciliation
+  // ===========================================================================
+
+  const handleC2BReconciliation = async (): Promise<void> => {
+    if (!payment?.c2bReference) {
+      return;
+    }
+
+    try {
+      await reconcileC2BPaymentMutation.mutateAsync({
+        reference: payment.c2bReference,
+      });
+
+      // Refresh the authoritative payment record and the persistent history.
+      // The UI does not assume payment success from the customer's tap.
+      await Promise.all([
+        refetchPayment(),
+        queryClient.invalidateQueries({
+          queryKey: LIST_PAYMENTS_QUERY_KEY,
+        }),
+      ]);
+    } catch {
+      // Mutation error state is presented by PayBillPayment.
+    }
+  };
+
+  // ===========================================================================
   // Reset
   // ===========================================================================
 
@@ -459,6 +496,7 @@ export function TopUpPageContainer() {
     setFormError(undefined);
 
     createPaymentMutation.reset();
+    reconcileC2BPaymentMutation.reset();
   };
 
   // ===========================================================================
@@ -756,6 +794,19 @@ export function TopUpPageContainer() {
                     await refetchPayment();
                   }}
                   isCheckingStatus={isPaymentFetching}
+                  onIHavePaid={handleC2BReconciliation}
+                  isReconciling={reconcileC2BPaymentMutation.isPending}
+                  reconciliationError={
+                    reconcileC2BPaymentMutation.isError
+                      ? reconcileC2BPaymentMutation.error.message ||
+                        'Unable to check your payment. Please try again.'
+                      : null
+                  }
+                  reconciliationMessage={
+                    reconcileC2BPaymentMutation.isSuccess
+                      ? reconcileC2BPaymentMutation.data.message
+                      : null
+                  }
                   onBack={handleReset}
                 />
               </div>
@@ -921,6 +972,12 @@ export function TopUpPageContainer() {
               onSubmit={handleSubmit}
               onCancel={handleReset}
             />
+
+            {/* ------------------------------------------------------------- */}
+            {/* Persistent Member Payment History                             */}
+            {/* ------------------------------------------------------------- */}
+
+            <FinancialPaymentsList />
 
             {/* C2B Instructions Loading */}
 

@@ -33,7 +33,13 @@ import {
 
 import { ApiTags } from '@nestjs/swagger';
 
+// -----------------------------------------------------------------------------
+// Authentication
+// -----------------------------------------------------------------------------
+
 import {
+  CurrentIdentity,
+  type AuthenticatedIdentity,
   JwtAuthGuard,
   PermissionsGuard,
   RequirePermissions,
@@ -42,6 +48,7 @@ import {
 import type { CommandHandler } from '../../../../../foundation/kernel/application/command-handler';
 import type { QueryHandler } from '../../../../../foundation/kernel/application/query-handler';
 
+import { FINANCIAL_ACCOUNT_TOKENS } from '../../../application/financial-account.tokens';
 import { FINANCIAL_PAYMENT_TOKENS } from '../../../application/financial-payment.tokens';
 
 import {
@@ -59,10 +66,12 @@ import {
   CountFinancialPaymentsQuery,
   GetAllFinancialPaymentsQuery,
   GetFinancialPaymentQuery,
+  GetMyFinancialAccountQuery,
+  GetMyFinancialPaymentsQuery,
 } from '../../../application/queries';
 
 import type { FinancialPaymentAggregate } from '../../../domain/aggregates/financial-payment.aggregate';
-
+import type { FinancialAccountAggregate } from '../../../domain/aggregates/financial-account.aggregate';
 import {
   Currency,
   FinancialPaymentChannel,
@@ -70,6 +79,7 @@ import {
   FinancialPaymentPublicId,
   FinancialReferencePublicId,
   FinancialReferenceType,
+  FinancialAccountOwnerPublicId,
   Money,
 } from '../../../domain/value-objects';
 
@@ -164,6 +174,18 @@ export class FinancialPaymentsController {
       FinancialPaymentAggregate[]
     >,
 
+    @Inject(FINANCIAL_ACCOUNT_TOKENS.QUERY_HANDLERS.GET_ME)
+    private readonly getMyFinancialAccountHandler: QueryHandler<
+      GetMyFinancialAccountQuery,
+      FinancialAccountAggregate
+    >,
+
+    @Inject(FINANCIAL_PAYMENT_TOKENS.QUERY_HANDLERS.GET_MY_PAYMENTS)
+    private readonly getMyFinancialPaymentsHandler: QueryHandler<
+      GetMyFinancialPaymentsQuery,
+      FinancialPaymentAggregate[]
+    >,
+
     private readonly queryMpesaPaymentStatusService: QueryMpesaPaymentStatusService,
   ) {}
 
@@ -186,6 +208,32 @@ export class FinancialPaymentsController {
   > {
     const aggregates = await this.getAllFinancialPaymentsHandler.execute(
       new GetAllFinancialPaymentsQuery(),
+    );
+
+    return aggregates.map((aggregate) =>
+      FinancialPaymentResponseMapper.toResponse(aggregate),
+    );
+  }
+
+  /**
+   * Returns every payment belonging to the authenticated customer's own
+   * Financial Account, including incomplete and terminal payment states.
+   *
+   * The account is resolved from the authenticated identity. The client does
+   * not supply an account ID, preventing cross-account payment enumeration.
+   */
+  @Get('me')
+  public async getMyPayments(
+    @CurrentIdentity() identity: AuthenticatedIdentity,
+  ): Promise<ReturnType<typeof FinancialPaymentResponseMapper.toResponse>[]> {
+    const account = await this.getMyFinancialAccountHandler.execute(
+      new GetMyFinancialAccountQuery(
+        FinancialAccountOwnerPublicId.create(identity.identityPublicId),
+      ),
+    );
+
+    const aggregates = await this.getMyFinancialPaymentsHandler.execute(
+      new GetMyFinancialPaymentsQuery(account.publicId),
     );
 
     return aggregates.map((aggregate) =>

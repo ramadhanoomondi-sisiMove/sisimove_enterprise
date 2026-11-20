@@ -7,6 +7,7 @@
  * - Accept incoming Daraja C2B callback payloads.
  * - Validate the callback structure and required fields.
  * - Normalize the provider payload into a SisiMove C2B event.
+ * - Preserve the original provider payload for downstream audit processing.
  *
  * This handler is an adapter only.
  *
@@ -29,15 +30,25 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 
 export interface C2BCallbackEvent {
   readonly provider: 'MPESA';
+
   readonly transactionType: string;
   readonly transactionId: string;
   readonly transactionTime: string;
   readonly amount: string;
   readonly businessShortCode: string;
   readonly phoneNumber: string;
+
   readonly billReference?: string;
   readonly invoiceNumber?: string;
   readonly thirdPartyTransactionId?: string;
+
+  /**
+   * Original Daraja callback payload.
+   *
+   * Preserved without financial interpretation so FinancialModule can
+   * persist the original provider payload for audit and reconciliation.
+   */
+  readonly rawPayload: Readonly<Record<string, unknown>>;
 }
 
 // =============================================================================
@@ -71,17 +82,36 @@ export class C2BCallbackHandler {
     const phoneNumber = this.readRequiredString(body, 'MSISDN');
 
     // -------------------------------------------------------------------------
-    // Validate transaction time.
-    // Daraja format: YYYYMMDDHHmmss.
+    // Validate transaction type.
     // -------------------------------------------------------------------------
 
-    if (!/^\d{14}$/.test(transactionTime)) {
-      throw new BadRequestException('M-PESA C2B transaction time is invalid.');
+    if (!transactionType.trim()) {
+      throw new BadRequestException('M-PESA C2B transaction type is invalid.');
     }
 
     // -------------------------------------------------------------------------
+    // Validate transaction ID.
+    // -------------------------------------------------------------------------
+
+    if (transactionId.length > 100) {
+      throw new BadRequestException('M-PESA C2B transaction ID is invalid.');
+    }
+
+    // -------------------------------------------------------------------------
+    // Validate transaction time.
+    //
+    // Daraja format: YYYYMMDDHHmmss.
+    //
+    // Calendar validity is checked here, not just string shape.
+    // -------------------------------------------------------------------------
+
+    this.validateTransactionTime(transactionTime);
+
+    // -------------------------------------------------------------------------
     // Validate transaction amount.
-    // Preserve the decimal string. FinancialModule handles money conversion.
+    //
+    // Preserve the decimal string.
+    // FinancialModule handles conversion to minor units.
     // -------------------------------------------------------------------------
 
     this.validateAmount(amount);
@@ -90,7 +120,7 @@ export class C2BCallbackHandler {
     // Validate business shortcode.
     // -------------------------------------------------------------------------
 
-    if (!/^\d+$/.test(businessShortCode)) {
+    if (!/^\d{5,10}$/.test(businessShortCode)) {
       throw new BadRequestException(
         'M-PESA C2B business shortcode is invalid.',
       );
@@ -98,6 +128,7 @@ export class C2BCallbackHandler {
 
     // -------------------------------------------------------------------------
     // Validate payer phone number.
+    //
     // Expected Kenyan international format:
     // 2547XXXXXXXX or 2541XXXXXXXX.
     // -------------------------------------------------------------------------
@@ -122,10 +153,19 @@ export class C2BCallbackHandler {
     );
 
     // -------------------------------------------------------------------------
+    // Preserve original callback payload.
+    //
+    // The payload is copied so downstream code cannot mutate the original
+    // request object through this event reference.
+    // -------------------------------------------------------------------------
+
+    const rawPayload = Object.freeze({ ...body });
+
+    // -------------------------------------------------------------------------
     // Return normalized provider event.
     // -------------------------------------------------------------------------
 
-    return {
+    return Object.freeze({
       provider: 'MPESA',
       transactionType,
       transactionId,
@@ -133,12 +173,48 @@ export class C2BCallbackHandler {
       amount,
       businessShortCode,
       phoneNumber,
+
       ...(billReference !== undefined ? { billReference } : {}),
+
       ...(invoiceNumber !== undefined ? { invoiceNumber } : {}),
+
       ...(thirdPartyTransactionId !== undefined
         ? { thirdPartyTransactionId }
         : {}),
-    };
+
+      rawPayload,
+    });
+  }
+
+  // ===========================================================================
+  // Transaction Time Validation
+  // ===========================================================================
+
+  private validateTransactionTime(value: string): void {
+    if (!/^\d{14}$/.test(value)) {
+      throw new BadRequestException('M-PESA C2B transaction time is invalid.');
+    }
+
+    const year = Number(value.slice(0, 4));
+    const month = Number(value.slice(4, 6));
+    const day = Number(value.slice(6, 8));
+    const hour = Number(value.slice(8, 10));
+    const minute = Number(value.slice(10, 12));
+    const second = Number(value.slice(12, 14));
+
+    const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+
+    const valid =
+      date.getUTCFullYear() === year &&
+      date.getUTCMonth() === month - 1 &&
+      date.getUTCDate() === day &&
+      date.getUTCHours() === hour &&
+      date.getUTCMinutes() === minute &&
+      date.getUTCSeconds() === second;
+
+    if (!valid) {
+      throw new BadRequestException('M-PESA C2B transaction time is invalid.');
+    }
   }
 
   // ===========================================================================

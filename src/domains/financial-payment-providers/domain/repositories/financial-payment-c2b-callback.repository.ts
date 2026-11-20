@@ -8,6 +8,7 @@
  * - Persist C2B callbacks durably.
  * - Prevent duplicate provider transactions.
  * - Retrieve callbacks using provider and TransID.
+ * - Retrieve pending callbacks using provider and BillRefNumber.
  * - Track callback processing state.
  * - Link processed callbacks to their payment attempts.
  *
@@ -87,6 +88,20 @@ export interface FinancialPaymentC2BCallbackRepository {
     provider: string,
     transId: string,
   ): Promise<FinancialPaymentC2BCallbackRecord | null>;
+
+  /**
+   * Retrieve pending C2B callbacks matching a payment-specific BillRefNumber.
+   *
+   * Results must be ordered oldest first to ensure deterministic
+   * reconciliation when multiple callbacks match the same reference.
+   *
+   * The implementation must return only callbacks belonging to the
+   * specified provider and having PENDING status.
+   */
+  findPendingByProviderAndBillRefNumber(
+    provider: string,
+    billRefNumber: string,
+  ): Promise<FinancialPaymentC2BCallbackRecord[]>;
 
   /**
    * Mark a callback as successfully processed and link its payment attempt.

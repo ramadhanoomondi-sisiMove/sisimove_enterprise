@@ -12,6 +12,7 @@
 // - map nested payment attempts;
 // - convert nullable optional API fields into frontend optional fields;
 // - preserve API-safe public identifiers;
+// - preserve the payment channel returned by the backend;
 // - keep backend response details out of UI components.
 //
 // Non-responsibilities:
@@ -34,6 +35,7 @@ import type {
   FinancialPayment,
   FinancialPaymentAttempt,
   FinancialPaymentAttemptStatus,
+  FinancialPaymentChannel,
   FinancialPaymentStatus,
 } from '../models';
 
@@ -61,8 +63,22 @@ export interface FinancialPaymentApiResponse {
   readonly publicId: string;
   readonly amount: number;
   readonly currency: string;
+
+  /**
+   * Payment channel used to initiate the funding operation.
+   *
+   * STK_PUSH:
+   *     Customer authorizes payment through an M-PESA STK Push prompt.
+   *
+   * C2B:
+   *     Customer manually pays using the displayed PayBill instructions.
+   */
+  readonly channel: FinancialPaymentChannel;
+
   readonly status: FinancialPaymentStatus;
+
   readonly methodPublicId?: string | null;
+
   /**
    * Payment-specific SisiMove PayBill reference.
    *
@@ -70,14 +86,18 @@ export interface FinancialPaymentApiResponse {
    * Absent for STK Push payments and older records without a reference.
    */
   readonly c2bReference?: string | null;
+
   readonly attempts?: readonly FinancialPaymentAttemptApiResponse[] | null;
+
   readonly transactionPublicId?: string | null;
   readonly referenceType?: string | null;
   readonly referencePublicId?: string | null;
+
   readonly initiatedAt: string;
   readonly completedAt?: string | null;
   readonly failedAt?: string | null;
   readonly cancelledAt?: string | null;
+
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -137,6 +157,7 @@ export function mapFinancialPayment(
     publicId: response.publicId,
     amount: response.amount,
     currency: response.currency,
+    channel: response.channel,
     status: response.status,
 
     ...(response.methodPublicId != null && {

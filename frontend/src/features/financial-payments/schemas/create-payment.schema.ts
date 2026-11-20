@@ -80,8 +80,6 @@ export const createPaymentSchema = z
     /**
      * Payment amount in whole KES (major currency units).
      *
-     * The value is transmitted as entered by the member.
-     *
      * Examples:
      *
      *     "100"  = KES 100
@@ -91,8 +89,7 @@ export const createPaymentSchema = z
      * Decimal amounts, leading-zero values, negative values, and
      * non-numeric values are rejected.
      *
-     * The backend converts this value into minor units. This validation
-     * also ensures that multiplying by 100 remains a safe integer.
+     * The backend converts this value into minor units.
      */
     amount: z
       .string()
@@ -100,9 +97,12 @@ export const createPaymentSchema = z
       .regex(/^[1-9]\d*$/, {
         message: 'Amount must be a positive whole number in KES.',
       })
-      .refine((value) => Number.isSafeInteger(Number(value) * 100), {
-        message: 'Amount is too large.',
-      }),
+      .refine(
+        (value) => Number.isSafeInteger(Number(value) * 100),
+        {
+          message: 'Amount is too large.',
+        },
+      ),
 
     /**
      * ISO currency code.
@@ -169,6 +169,7 @@ export const createPaymentSchema = z
       .min(1)
       .optional(),
   })
+  .strict()
   .superRefine((value, ctx) => {
     // STK Push must use an existing saved payment method.
     if (value.channel === 'STK_PUSH' && !value.methodPublicId) {

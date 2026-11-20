@@ -13,3 +13,7 @@
 export { createPayment } from './create-payment.api';
 
 export { getPayment } from './get-payment.api';
+
+export { listPayments } from './list-payments.api';
+
+export { reconcileC2BPayment } from './reconcile-c2b-payment.api';

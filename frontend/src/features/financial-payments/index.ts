@@ -70,4 +70,6 @@ export {
   CREATE_FINANCIAL_PAYMENT_MUTATION_KEY,
   useFinancialPayment,
   FINANCIAL_PAYMENT_QUERY_KEY,
+  useReconcileC2BPayment,
+  RECONCILE_C2B_PAYMENT_MUTATION_KEY,
 } from './hooks';

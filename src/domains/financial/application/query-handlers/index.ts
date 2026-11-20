@@ -50,6 +50,8 @@ export * from './get-financial-transaction.handler';
 
 export * from './get-all-financial-transactions.handler';
 
+export * from './get-my-financial-payments.handler';
+
 // -----------------------------------------------------------------------------
 // Financial Account Transactions
 // -----------------------------------------------------------------------------

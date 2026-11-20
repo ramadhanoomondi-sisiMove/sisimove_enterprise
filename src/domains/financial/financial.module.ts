@@ -247,6 +247,7 @@ import {
   // ---------------------------------------------------------------------------
   GetFinancialPaymentHandler,
   GetAllFinancialPaymentsQueryHandler,
+  GetMyFinancialPaymentsHandler,
 
   // ---------------------------------------------------------------------------
   // Financial Payment Method
@@ -616,6 +617,10 @@ import { FinancialDisbursementAttemptSucceededSubscriber } from './application/s
     {
       provide: FINANCIAL_PAYMENT_TOKENS.QUERY_HANDLERS.GET_ALL,
       useClass: GetAllFinancialPaymentsQueryHandler,
+    },
+    {
+      provide: FINANCIAL_PAYMENT_TOKENS.QUERY_HANDLERS.GET_MY_PAYMENTS,
+      useClass: GetMyFinancialPaymentsHandler,
     },
 
     {

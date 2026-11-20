@@ -8,6 +8,11 @@
 // orchestration, API access, payment lifecycle, and navigation stay outside
 // this boundary.
 //
+// PaymentForm includes the customer-friendly wallet top-up experience:
+// quick amount selection, clearer payment guidance, and a pre-submit summary.
+// The component still delegates payment creation and lifecycle handling to
+// its parent container.
+//
 // -----------------------------------------------------------------------------
 
 export {
@@ -35,3 +40,5 @@ export {
   type PaymentResultProps,
   type PaymentResultStatus,
 } from './payment-result';
+
+export { FinancialPaymentsList } from './financial-payments-list';

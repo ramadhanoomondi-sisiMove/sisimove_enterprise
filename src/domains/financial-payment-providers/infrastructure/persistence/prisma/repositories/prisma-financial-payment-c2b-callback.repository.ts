@@ -7,6 +7,7 @@
  *
  * - Persist C2B callbacks idempotently.
  * - Retrieve callbacks by provider and TransID.
+ * - Retrieve pending callbacks by provider and BillRefNumber.
  * - Mark callbacks as processed.
  * - Mark callbacks as failed.
  * - Preserve the original callback payload.
@@ -130,6 +131,35 @@ export class PrismaFinancialPaymentC2BCallbackRepository implements FinancialPay
     }
 
     return this.toRecord(record);
+  }
+
+  // ===========================================================================
+  // Find Pending By Provider And BillRefNumber
+  // ===========================================================================
+
+  public async findPendingByProviderAndBillRefNumber(
+    provider: string,
+    billRefNumber: string,
+  ): Promise<FinancialPaymentC2BCallbackRecord[]> {
+    const normalizedProvider = provider.trim();
+    const normalizedBillRefNumber = billRefNumber.trim();
+
+    if (!normalizedProvider || !normalizedBillRefNumber) {
+      throw new Error('Provider and BillRefNumber must not be empty.');
+    }
+
+    const records = await this.prisma.financialPaymentC2BCallback.findMany({
+      where: {
+        provider: normalizedProvider,
+        billRefNumber: normalizedBillRefNumber,
+        status: 'PENDING',
+      },
+
+      // Deterministic reconciliation order.
+      orderBy: [{ receivedAt: 'asc' }, { id: 'asc' }],
+    });
+
+    return records.map((record) => this.toRecord(record));
   }
 
   // ===========================================================================
