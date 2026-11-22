@@ -249,10 +249,14 @@ export class B2CService {
       );
     }
 
+    // These keys must match the canonical keys written by ConfigureMpesaHandler.
+    // The security credential is already RSA-encrypted for Daraja. The
+    // configuration service decrypts only the application's at-rest envelope;
+    // this service must pass the resulting Daraja credential through unchanged.
     const configuration: MpesaB2CConfiguration = {
-      shortcode: storedConfiguration.b2cShortcode ?? '',
-      initiatorName: storedConfiguration.initiatorName ?? '',
-      securityCredential: storedConfiguration.securityCredential ?? '',
+      shortcode: storedConfiguration.b2cPartyA ?? '',
+      initiatorName: storedConfiguration.b2cInitiatorName ?? '',
+      securityCredential: storedConfiguration.b2cSecurityCredential ?? '',
       resultUrl,
       queueTimeoutUrl,
     };
@@ -264,6 +268,13 @@ export class B2CService {
     ) {
       throw new HttpException(
         'B2C requires a shortcode, initiator name and security credential.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    if (configuration.initiatorName.trim().length > 100) {
+      throw new HttpException(
+        'B2C initiator name must not exceed 100 characters.',
         HttpStatus.BAD_REQUEST,
       );
     }

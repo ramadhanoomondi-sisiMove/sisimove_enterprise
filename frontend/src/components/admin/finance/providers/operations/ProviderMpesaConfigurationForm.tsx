@@ -113,6 +113,11 @@ function ProviderMpesaConfigurationFormContent({
   const [submissionError, setSubmissionError] = useState<string | null>(
     null,
   );
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Cover both the parent-owned operation state and this form's own submit
+  // lifecycle. This prevents duplicate saves during asynchronous callbacks.
+  const isBusy = isLoading || isSubmitting;
 
   // ===========================================================================
   // Shared Daraja Authentication
@@ -282,11 +287,12 @@ function ProviderMpesaConfigurationFormContent({
   // ===========================================================================
 
   const handleConfirm = async () => {
-    if (!isValid || isLoading) {
+    if (!isValid || isBusy) {
       return;
     }
 
     setSubmissionError(null);
+    setIsSubmitting(true);
 
     const input: AdminConfigureMpesaInput = {
       environment,
@@ -326,6 +332,8 @@ function ProviderMpesaConfigurationFormContent({
       setSubmissionError(
         'M-PESA configuration could not be saved. Please check the supplied details and try again.',
       );
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -376,7 +384,7 @@ function ProviderMpesaConfigurationFormContent({
       description={`Configure Safaricom Daraja for ${provider.name}.`}
       confirmLabel="Save Configuration"
       cancelLabel="Cancel"
-      isLoading={isLoading}
+      isLoading={isBusy}
       onConfirm={handleConfirm}
       onCancel={onCancel}
     >
@@ -403,7 +411,7 @@ function ProviderMpesaConfigurationFormContent({
               );
               setSubmissionError(null);
             }}
-            disabled={isLoading}
+            disabled={isBusy}
             className={inputClass}
           >
             <option value="SANDBOX">Sandbox</option>
@@ -437,7 +445,7 @@ function ProviderMpesaConfigurationFormContent({
             <button
               type="button"
               onClick={() => void refreshConfigurationStatus()}
-              disabled={isStatusLoading || isLoading}
+              disabled={isStatusLoading || isBusy}
               className="text-xs font-medium text-primary underline-offset-4 hover:underline disabled:opacity-50"
             >
               Refresh
@@ -457,6 +465,7 @@ function ProviderMpesaConfigurationFormContent({
               <button
                 type="button"
                 onClick={() => void refreshConfigurationStatus()}
+                disabled={isBusy}
                 className="text-xs font-medium text-primary underline-offset-4 hover:underline"
               >
                 Try again
@@ -525,7 +534,7 @@ function ProviderMpesaConfigurationFormContent({
               autoComplete="new-password"
               value={consumerKey}
               onChange={(event) => setConsumerKey(event.target.value)}
-              disabled={isLoading}
+              disabled={isBusy}
               required
               maxLength={255}
               className={inputClass}
@@ -547,7 +556,7 @@ function ProviderMpesaConfigurationFormContent({
               autoComplete="new-password"
               value={consumerSecret}
               onChange={(event) => setConsumerSecret(event.target.value)}
-              disabled={isLoading}
+              disabled={isBusy}
               required
               maxLength={255}
               className={inputClass}
@@ -585,7 +594,7 @@ function ProviderMpesaConfigurationFormContent({
               inputMode="numeric"
               value={shortcode}
               onChange={(event) => setShortcode(event.target.value)}
-              disabled={isLoading}
+              disabled={isBusy}
               required
               maxLength={20}
               className={inputClass}
@@ -607,7 +616,7 @@ function ProviderMpesaConfigurationFormContent({
               autoComplete="new-password"
               value={passkey}
               onChange={(event) => setPasskey(event.target.value)}
-              disabled={isLoading}
+              disabled={isBusy}
               required
               maxLength={255}
               className={inputClass}
@@ -654,7 +663,7 @@ function ProviderMpesaConfigurationFormContent({
                   event.target.value as 'PAYBILL' | 'BUY_GOODS',
                 )
               }
-              disabled={isLoading}
+              disabled={isBusy}
               className={inputClass}
             >
               <option value="PAYBILL">PayBill</option>
@@ -676,7 +685,7 @@ function ProviderMpesaConfigurationFormContent({
               inputMode="numeric"
               value={c2bShortcode}
               onChange={(event) => setC2bShortcode(event.target.value)}
-              disabled={isLoading}
+              disabled={isBusy}
               maxLength={20}
               className={inputClass}
               placeholder="Enter C2B PayBill / Till shortcode"
@@ -723,7 +732,7 @@ function ProviderMpesaConfigurationFormContent({
               inputMode="numeric"
               value={b2cShortcode}
               onChange={(event) => setB2cShortcode(event.target.value)}
-              disabled={isLoading}
+              disabled={isBusy}
               required={hasAnyB2CField}
               maxLength={20}
               className={inputClass}
@@ -750,7 +759,7 @@ function ProviderMpesaConfigurationFormContent({
               autoComplete="off"
               value={initiatorName}
               onChange={(event) => setInitiatorName(event.target.value)}
-              disabled={isLoading}
+              disabled={isBusy}
               required={hasAnyB2CField}
               maxLength={100}
               className={inputClass}
@@ -774,7 +783,7 @@ function ProviderMpesaConfigurationFormContent({
               onChange={(event) =>
                 setSecurityCredential(event.target.value)
               }
-              disabled={isLoading}
+              disabled={isBusy}
               required={hasAnyB2CField}
               maxLength={4096}
               className={inputClass}

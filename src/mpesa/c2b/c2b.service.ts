@@ -375,7 +375,7 @@ export class C2BService {
     // Resolve the independent C2B shortcode.
     // -------------------------------------------------------------------------
 
-    const shortcode = configuration.c2bShortcode?.trim();
+    const shortcode = configuration.c2bShortCode?.trim();
 
     if (!shortcode || !/^\d{5,10}$/.test(shortcode)) {
       throw new HttpException(
