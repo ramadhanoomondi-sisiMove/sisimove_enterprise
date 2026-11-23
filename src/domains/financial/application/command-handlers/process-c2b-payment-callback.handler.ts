@@ -184,7 +184,9 @@ export class ProcessC2BPaymentCallbackHandler {
         transactionTime: callbackRecord.transTime,
         amount: callbackRecord.transAmount.toFixed(2),
         businessShortCode: callbackRecord.businessShortCode,
-        phoneNumber: callbackRecord.msisdn,
+        ...(callbackRecord.msisdn
+          ? { phoneNumber: callbackRecord.msisdn }
+          : {}),
         billReference: callbackRecord.billRefNumber,
 
         rawPayload: callbackRecord.payload as C2BCallbackEvent['rawPayload'],
@@ -232,7 +234,7 @@ export class ProcessC2BPaymentCallbackHandler {
       businessShortCode: callback.businessShortCode,
       transTime: callback.transactionTime,
       transAmount: Number(callback.amount),
-      msisdn: callback.phoneNumber,
+      msisdn: callback.phoneNumber ?? null,
       payload: callback.rawPayload,
     });
 
@@ -760,9 +762,13 @@ export class ProcessC2BPaymentCallbackHandler {
       throw new Error('M-PESA business shortcode is invalid.');
     }
 
+    // Safaricom sandbox callbacks may mask the payer MSISDN. A missing or
+    // masked number must not prevent receipt persistence or payment matching.
+    // If a full number is supplied, it must still be a valid Kenyan MSISDN.
     if (
-      typeof callback.phoneNumber !== 'string' ||
-      !/^254(?:7|1)\d{8}$/.test(callback.phoneNumber)
+      callback.phoneNumber !== undefined &&
+      (typeof callback.phoneNumber !== 'string' ||
+        !/^254(?:7|1)\d{8}$/.test(callback.phoneNumber))
     ) {
       throw new Error('M-PESA payer phone number is invalid.');
     }

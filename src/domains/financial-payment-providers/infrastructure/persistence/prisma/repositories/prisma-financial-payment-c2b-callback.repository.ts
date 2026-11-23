@@ -63,9 +63,9 @@ export class PrismaFinancialPaymentC2BCallbackRepository implements FinancialPay
     const transId = input.transId.trim();
     const billRefNumber = input.billRefNumber?.trim() || null;
     const businessShortCode = input.businessShortCode.trim();
-    const msisdn = input.msisdn.trim();
+    const msisdn = input.msisdn?.trim() || null;
 
-    if (!provider || !transId || !businessShortCode || !msisdn) {
+    if (!provider || !transId || !businessShortCode) {
       throw new Error(
         'Provider and M-PESA C2B transaction identifiers are required.',
       );
@@ -226,7 +226,7 @@ export class PrismaFinancialPaymentC2BCallbackRepository implements FinancialPay
     businessShortCode: string;
     transTime: string | null;
     transAmount: Prisma.Decimal;
-    msisdn: string;
+    msisdn: string | null;
     attemptId: string | null;
     payload: Prisma.JsonValue;
     status: string;

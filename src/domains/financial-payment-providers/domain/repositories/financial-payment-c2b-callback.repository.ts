@@ -34,7 +34,7 @@ export interface FinancialPaymentC2BCallbackRecord {
   transTime: string | null;
 
   transAmount: number;
-  msisdn: string;
+  msisdn: string | null;
 
   attemptId: string | null;
 
@@ -62,7 +62,7 @@ export interface CreateFinancialPaymentC2BCallbackInput {
   transTime?: string;
 
   transAmount: number;
-  msisdn: string;
+  msisdn: string | null;
 
   payload: unknown;
 }

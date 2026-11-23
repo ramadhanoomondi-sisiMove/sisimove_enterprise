@@ -4657,7 +4657,7 @@ model FinancialPaymentC2BCallback {
 
   // Incoming payment details
   transAmount Decimal @db.Decimal(18, 2)
-  msisdn      String
+  msisdn      String?
 
   // Optional link to the matching payment attempt
   attemptId String?

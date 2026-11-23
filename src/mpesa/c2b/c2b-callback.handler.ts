@@ -36,7 +36,14 @@ export interface C2BCallbackEvent {
   readonly transactionTime: string;
   readonly amount: string;
   readonly businessShortCode: string;
-  readonly phoneNumber: string;
+
+  /**
+   * Full Kenyan payer phone number, when supplied by Safaricom.
+   *
+   * Safaricom Sandbox may mask the MSISDN in callback payloads.
+   * A missing or masked number is therefore represented as undefined.
+   */
+  readonly phoneNumber?: string;
 
   readonly billReference?: string;
   readonly invoiceNumber?: string;
@@ -79,7 +86,21 @@ export class C2BCallbackHandler {
       'BusinessShortCode',
     );
 
-    const phoneNumber = this.readRequiredString(body, 'MSISDN');
+    // -------------------------------------------------------------------------
+    // Read payer phone number.
+    //
+    // Safaricom Sandbox may return a masked MSISDN, for example:
+    // 2547 ***** 149
+    //
+    // A masked number must not prevent callback processing.
+    // -------------------------------------------------------------------------
+
+    const suppliedPhoneNumber = this.readOptionalString(body, 'MSISDN');
+
+    const phoneNumber =
+      suppliedPhoneNumber && /^254(?:7|1)\d{8}$/.test(suppliedPhoneNumber)
+        ? suppliedPhoneNumber
+        : undefined;
 
     // -------------------------------------------------------------------------
     // Validate transaction type.
@@ -127,19 +148,6 @@ export class C2BCallbackHandler {
     }
 
     // -------------------------------------------------------------------------
-    // Validate payer phone number.
-    //
-    // Expected Kenyan international format:
-    // 2547XXXXXXXX or 2541XXXXXXXX.
-    // -------------------------------------------------------------------------
-
-    if (!/^254(?:7|1)\d{8}$/.test(phoneNumber)) {
-      throw new BadRequestException(
-        'M-PESA C2B payer phone number is invalid.',
-      );
-    }
-
-    // -------------------------------------------------------------------------
     // Read optional callback fields.
     // -------------------------------------------------------------------------
 
@@ -172,7 +180,8 @@ export class C2BCallbackHandler {
       transactionTime,
       amount,
       businessShortCode,
-      phoneNumber,
+
+      ...(phoneNumber !== undefined ? { phoneNumber } : {}),
 
       ...(billReference !== undefined ? { billReference } : {}),
 
