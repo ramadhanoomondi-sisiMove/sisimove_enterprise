@@ -3,62 +3,49 @@
  * SisiMove — M-PESA Daraja 3.0 C2B Callback Controller
  * -----------------------------------------------------------------------------
  *
+ * DEVELOPMENT DIAGNOSTICS ENABLED
+ *
  * Responsibilities:
  * - Receive Safaricom C2B confirmation callbacks.
+ * - Display incoming callback evidence in the terminal.
  * - Normalize incoming provider payloads.
- * - Delegate financial processing to FinancialModule.
+ * - Delegate processing to FinancialModule.
+ * - Acknowledge confirmation callbacks during the diagnostic phase,
+ *   even when internal processing fails.
  * - Expose the C2B validation endpoint.
  *
- * Public callback endpoints:
+ * IMPORTANT:
+ * Diagnostic acknowledgement does not prove database persistence.
+ * Do not use unconditional acknowledgement in production.
  *
- * POST /api/v1/payment-callbacks/c2b-confirmation
- * POST /api/v1/payment-callbacks/c2b-validation
- *
- * Architectural boundaries:
- * - This controller is an HTTP callback adapter.
- * - C2BCallbackHandler normalizes provider payloads.
- * - FinancialModule owns callback persistence and financial processing.
- * - This controller never creates payments, credits accounts or posts ledgers.
- *
- * Security:
- * - These endpoints are intentionally not protected by JWT authentication.
- * - Safaricom must be able to reach them without an application access token.
  * -----------------------------------------------------------------------------
  */
 
 import {
   Body,
   Controller,
+  Headers,
   HttpCode,
-  HttpException,
   HttpStatus,
   Logger,
   Post,
 } from '@nestjs/common';
 
-// =============================================================================
-// M-PESA Callback Normalization
-// =============================================================================
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { C2BCallbackHandler } from './c2b-callback.handler';
 
-// =============================================================================
-// Financial C2B Callback Processing
-// =============================================================================
-
 import { ProcessC2BPaymentCallbackHandler } from '../../domains/financial/application/command-handlers/process-c2b-payment-callback.handler';
 
-// =============================================================================
-// Controller
-// =============================================================================
+import type { C2BCallbackEvent } from './c2b-callback.handler';
 
+@ApiTags('M-PESA C2B Callbacks')
 @Controller('payment-callbacks')
 export class C2BCallbackController {
   private readonly logger = new Logger(C2BCallbackController.name);
 
   public constructor(
     private readonly callbackHandler: C2BCallbackHandler,
-
     private readonly processC2BPaymentCallbackHandler: ProcessC2BPaymentCallbackHandler,
   ) {}
 
@@ -66,108 +53,174 @@ export class C2BCallbackController {
   // C2B Confirmation Callback
   // ===========================================================================
 
-  /**
-   * Receives C2B confirmation notifications from Daraja.
-   *
-   * Processing sequence:
-   *
-   * 1. Validate and normalize the Safaricom callback.
-   * 2. Preserve the original provider payload.
-   * 3. Delegate the event to FinancialModule.
-   * 4. FinancialModule persists the callback and performs payment matching,
-   *    duplicate detection, reconciliation and payment state transitions.
-   * 5. Acknowledge only after FinancialModule confirms processing,
-   *    duplicate detection or durable reconciliation acceptance.
-   *
-   * This controller does not:
-   * - Create payments;
-   * - Resolve financial accounts;
-   * - Credit wallets;
-   * - Post ledger entries;
-   * - Publish domain events.
-   */
   @Post('c2b-confirmation')
   @HttpCode(HttpStatus.OK)
-  public async confirmation(@Body() body: unknown) {
+  @ApiOperation({
+    summary: 'Receive M-PESA C2B confirmation callback',
+    description:
+      'Public Safaricom Daraja callback. No application JWT is required.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'C2B callback acknowledged during the diagnostic phase.',
+  })
+  public async confirmation(
+    @Body() body: unknown,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ) {
+    const requestId = `C2B-${Date.now()}`;
+
     // -------------------------------------------------------------------------
-    // Validate and normalize provider payload.
+    // 0. Confirm HTTP arrival
     // -------------------------------------------------------------------------
 
-    const event = this.callbackHandler.processCallback(body);
+    this.logger.warn(
+      `[${requestId}] ==================================================`,
+    );
 
-    this.logger.log(
-      `Received M-PESA C2B confirmation: ${event.transactionId}.`,
+    this.logger.warn(`[${requestId}] C2B CONFIRMATION CALLBACK RECEIVED`);
+
+    this.logger.warn(`[${requestId}] Received At: ${new Date().toISOString()}`);
+
+    this.logger.warn(`[${requestId}] Method: POST`);
+
+    this.logger.warn(
+      `[${requestId}] Endpoint: /api/v1/payment-callbacks/c2b-confirmation`,
+    );
+
+    // Do not expose authorization, cookie or API-key headers.
+    const safeHeaders = { ...headers };
+
+    for (const key of Object.keys(safeHeaders)) {
+      if (/authorization|cookie|token|api[-_]?key|secret/i.test(key)) {
+        safeHeaders[key] = '[REDACTED]';
+      }
+    }
+
+    this.logger.warn(
+      `[${requestId}] INCOMING HEADERS:\n${JSON.stringify(safeHeaders, null, 2)}`,
+    );
+
+    this.logger.warn(
+      `[${requestId}] RAW CALLBACK BODY:\n${JSON.stringify(body, null, 2)}`,
+    );
+
+    this.logger.warn(
+      `[${requestId}] BODY TYPE: ${
+        body === null ? 'null' : Array.isArray(body) ? 'array' : typeof body
+      }`,
     );
 
     // -------------------------------------------------------------------------
-    // Delegate financial processing to FinancialModule.
+    // 1. Normalize provider payload
     // -------------------------------------------------------------------------
 
-    const result = await this.processC2BPaymentCallbackHandler.execute(event);
+    this.logger.warn(`[${requestId}] STARTING C2B PAYLOAD NORMALIZATION`);
 
-    // -------------------------------------------------------------------------
-    // Reconciliation acceptance.
-    //
-    // A reconciliation result may be acknowledged only when FinancialModule
-    // has durably persisted the callback for subsequent reconciliation.
-    // -------------------------------------------------------------------------
+    let event: C2BCallbackEvent;
 
-    if (result.requiresReconciliation) {
+    try {
+      event = this.callbackHandler.processCallback(body);
+
+      this.logger.warn(`[${requestId}] NORMALIZATION SUCCESS`);
+
       this.logger.warn(
-        `C2B transaction ${event.transactionId} requires reconciliation: ${result.message}`,
+        `[${requestId}] NORMALIZED CALLBACK EVIDENCE:\n${JSON.stringify(
+          {
+            provider: event.provider,
+            transactionType: event.transactionType,
+            transactionId: event.transactionId,
+            transactionTime: event.transactionTime,
+            amount: event.amount,
+            businessShortCode: event.businessShortCode,
+            billReference: event.billReference,
+            phoneNumber: event.phoneNumber,
+          },
+          null,
+          2,
+        )}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `[${requestId}] NORMALIZATION FAILED`,
+        error instanceof Error ? error.stack : String(error),
+      );
+
+      this.logger.warn(
+        `[${requestId}] DIAGNOSTIC ACKNOWLEDGEMENT: NORMALIZATION FAILED; CALLBACK NOT CONFIRMED AS PERSISTED.`,
       );
 
       return {
         ResultCode: 0,
-        ResultDesc: 'Accepted for reconciliation.',
+        ResultDesc: 'Callback received for diagnostic inspection.',
       };
     }
 
     // -------------------------------------------------------------------------
-    // Duplicate callback.
+    // 2. Delegate to FinancialModule
     // -------------------------------------------------------------------------
 
-    if (result.duplicate) {
-      this.logger.log(
-        `C2B transaction ${event.transactionId} was already processed.`,
+    this.logger.warn(`[${requestId}] STARTING FINANCIAL CALLBACK HANDLER`);
+
+    this.logger.warn(`[${requestId}] TRANSACTION ID: ${event.transactionId}`);
+
+    try {
+      const result = await this.processC2BPaymentCallbackHandler.execute(event);
+
+      this.logger.warn(`[${requestId}] FINANCIAL HANDLER RETURNED`);
+
+      this.logger.warn(
+        `[${requestId}] FINANCIAL HANDLER RESULT:\n${JSON.stringify(
+          result,
+          null,
+          2,
+        )}`,
       );
 
-      return {
-        ResultCode: 0,
-        ResultDesc: 'Duplicate callback acknowledged.',
-      };
-    }
-
-    // -------------------------------------------------------------------------
-    // Successfully processed callback.
-    // -------------------------------------------------------------------------
-
-    if (result.processed) {
-      this.logger.log(
-        `C2B transaction ${event.transactionId} processed successfully.`,
+      if (result.processed) {
+        this.logger.warn(`[${requestId}] CALLBACK PROCESSING REPORTED SUCCESS`);
+      } else if (result.duplicate) {
+        this.logger.warn(`[${requestId}] DUPLICATE CALLBACK IDENTIFIED`);
+      } else if (result.requiresReconciliation) {
+        this.logger.warn(
+          `[${requestId}] CALLBACK REQUIRES RECONCILIATION: ${result.message}`,
+        );
+      } else {
+        this.logger.warn(
+          `[${requestId}] CALLBACK RETURNED WITHOUT PROCESSING CONFIRMATION`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `[${requestId}] FINANCIAL HANDLER THREW AN ERROR`,
+        error instanceof Error ? error.stack : String(error),
       );
 
-      return {
-        ResultCode: 0,
-        ResultDesc: 'Accepted.',
-      };
+      this.logger.error(
+        `[${requestId}] DATABASE RECEIPT PERSISTENCE IS NOT CONFIRMED.`,
+      );
     }
 
     // -------------------------------------------------------------------------
-    // Unprocessed callback.
-    //
-    // Do not acknowledge callbacks that FinancialModule has neither
-    // processed nor durably accepted for reconciliation.
+    // 3. Diagnostic acknowledgement
     // -------------------------------------------------------------------------
 
-    this.logger.error(
-      `C2B transaction ${event.transactionId} was not processed or accepted for reconciliation: ${result.message}`,
+    this.logger.warn(
+      `[${requestId}] C2B CALLBACK ACKNOWLEDGED FOR DIAGNOSTIC TESTING`,
     );
 
-    throw new HttpException(
-      'C2B callback could not be durably accepted by FinancialModule.',
-      HttpStatus.SERVICE_UNAVAILABLE,
+    this.logger.warn(
+      `[${requestId}] IMPORTANT: ACKNOWLEDGEMENT DOES NOT PROVE DATABASE PERSISTENCE.`,
     );
+
+    this.logger.warn(
+      `[${requestId}] ==================================================`,
+    );
+
+    return {
+      ResultCode: 0,
+      ResultDesc: 'Callback received for diagnostic inspection.',
+    };
   }
 
   // ===========================================================================
@@ -175,26 +228,38 @@ export class C2BCallbackController {
   // ===========================================================================
 
   /**
-   * Receives Daraja C2B validation requests.
+   * Validation workflow remains unchanged.
    *
-   * IMPORTANT:
-   *
-   * The dedicated FinancialModule validation workflow has not yet been
-   * connected.
-   *
-   * This endpoint therefore deliberately rejects validation requests.
-   * It must not be changed to unconditional acceptance without implementing
-   * the appropriate FinancialModule validation policy.
-   *
-   * The C2B registration responseType and validation behaviour must be
-   * configured consistently before accepting live payments.
+   * The dedicated FinancialModule validation workflow has not yet
+   * been connected.
    */
   @Post('c2b-validation')
   @HttpCode(HttpStatus.OK)
-  public validation() {
+  @ApiOperation({
+    summary: 'Receive M-PESA C2B validation callback',
+    description:
+      'Public Safaricom Daraja validation endpoint. The FinancialModule validation workflow is not yet configured.',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Validation request rejected by the current validation policy.',
+  })
+  public validation(
+    @Body() body: unknown,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ) {
     this.logger.warn(
-      'Received C2B validation request, but the validation workflow is not configured.',
+      '========== C2B VALIDATION HTTP REQUEST RECEIVED ==========',
     );
+
+    this.logger.debug(
+      `C2B VALIDATION HEADERS:\n${JSON.stringify(headers, null, 2)}`,
+    );
+
+    this.logger.debug(`C2B VALIDATION BODY:\n${JSON.stringify(body, null, 2)}`);
+
+    this.logger.warn('C2B validation workflow is not configured.');
 
     return {
       ResultCode: 1,

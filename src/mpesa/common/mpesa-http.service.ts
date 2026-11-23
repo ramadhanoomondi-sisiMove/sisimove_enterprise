@@ -105,6 +105,20 @@ export class MpesaHttpService {
       headers.Authorization = `Bearer ${options.accessToken}`;
     }
 
+    const traceId = `MPESA-HTTP-${Date.now()}`;
+    const startedAt = Date.now();
+
+    this.logger.warn(
+      `[${traceId}] OUTBOUND REQUEST START: ${JSON.stringify({
+        method,
+        environment,
+        path,
+        baseURL,
+        hasAccessToken: Boolean(options.accessToken),
+        contentType: MPESA_HTTP.CONTENT_TYPE,
+      })}`,
+    );
+
     try {
       const response = await firstValueFrom(
         this.httpService.request<TResponse>({
@@ -117,8 +131,41 @@ export class MpesaHttpService {
         }),
       );
 
+      const durationMs = Date.now() - startedAt;
+      const responseData: unknown = response.data;
+
+      const providerResponse =
+        typeof responseData === 'object' && responseData !== null
+          ? (responseData as Record<string, unknown>)
+          : {};
+
+      this.logger.warn(
+        `[${traceId}] OUTBOUND RESPONSE RECEIVED: ${JSON.stringify({
+          method,
+          environment,
+          path,
+          httpStatus: response.status,
+          durationMs,
+          responseCode: providerResponse.ResponseCode ?? null,
+          responseDescription: providerResponse.ResponseDescription ?? null,
+          originatorConversationID:
+            providerResponse.OriginatorConversationID ?? null,
+          conversationID: providerResponse.ConversationID ?? null,
+          customerMessage: providerResponse.CustomerMessage ?? null,
+        })}`,
+      );
+
       return response.data;
     } catch (error: unknown) {
+      this.logger.error(
+        `[${traceId}] OUTBOUND REQUEST FAILED: ${JSON.stringify({
+          method,
+          environment,
+          path,
+          durationMs: Date.now() - startedAt,
+        })}`,
+      );
+
       this.handleRequestError(error, {
         method,
         path,

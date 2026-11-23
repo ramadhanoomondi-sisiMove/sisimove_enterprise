@@ -25,7 +25,13 @@
  * -----------------------------------------------------------------------------
  */
 
-import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 
 import { ConfigService } from '@nestjs/config';
 
@@ -96,6 +102,8 @@ interface ResolvedC2BConfiguration {
 
 @Injectable()
 export class C2BService {
+  private readonly logger = new Logger(C2BService.name);
+
   public constructor(
     private readonly oauthService: MpesaOAuthService,
 
@@ -162,7 +170,15 @@ export class C2BService {
       ConfirmationURL: confirmationUrl,
       ValidationURL: validationUrl,
     };
-
+    this.logger.log(
+      `Registering M-PESA C2B URLs: ${JSON.stringify({
+        environment,
+        shortcode,
+        responseType: dto.responseType,
+        confirmationUrl,
+        validationUrl,
+      })}`,
+    );
     const response = await this.httpService.post<MpesaC2BRegisterUrlResponse>(
       environment,
       MPESA_C2B.REGISTER_URL_PATH,
@@ -170,10 +186,36 @@ export class C2BService {
       { accessToken },
     );
 
-    if (response.ResponseCode !== '0') {
+    // -------------------------------------------------------------------------
+    // Safe provider response diagnostics.
+    // Never log access tokens, credentials, or request headers.
+    // -------------------------------------------------------------------------
+
+    this.logger.log(
+      `C2B URL registration response: ${JSON.stringify({
+        responseCode: response.ResponseCode ?? null,
+        responseDescription: response.ResponseDescription ?? null,
+        originatorConversationID: response.OriginatorConversationID ?? null,
+        conversationID: response.ConversationID ?? null,
+      })}`,
+    );
+
+    // -------------------------------------------------------------------------
+    // Validate Daraja response.
+    // Handles both numeric 0 and string "0".
+    // -------------------------------------------------------------------------
+
+    const responseCode = String(response.ResponseCode ?? '').trim();
+    const responseDescription = String(
+      response.ResponseDescription ?? '',
+    ).trim();
+
+    const registrationSuccessful =
+      responseCode === '0' || responseCode === '00000000';
+
+    if (!registrationSuccessful) {
       throw new HttpException(
-        response.ResponseDescription ||
-          'Safaricom rejected C2B URL registration.',
+        responseDescription || 'Safaricom rejected C2B URL registration.',
         HttpStatus.BAD_GATEWAY,
       );
     }
@@ -234,12 +276,35 @@ export class C2BService {
         : {}),
     };
 
-    return this.httpService.post<MpesaApiResponse>(
+    this.logger.log(
+      `Submitting M-PESA C2B simulation: ${JSON.stringify({
+        environment,
+        shortcode,
+        commandId: expectedCommandId,
+        amount: dto.amount,
+        billRefNumber: dto.billRefNumber?.trim() ?? null,
+      })}`,
+    );
+
+    const response = await this.httpService.post<MpesaApiResponse>(
       environment,
       MPESA_C2B.SIMULATE_PATH,
       request,
       { accessToken },
     );
+
+    this.logger.warn(
+      `C2B_SIMULATION_PROVIDER_RESPONSE: ${JSON.stringify({
+        environment,
+        shortcode,
+        responseCode: response.ResponseCode ?? null,
+        responseDescription: response.ResponseDescription ?? null,
+        originatorConversationID: response.OriginatorConversationID ?? null,
+        conversationID: response.ConversationID ?? null,
+      })}`,
+    );
+
+    return response;
   }
 
   // ===========================================================================

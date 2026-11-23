@@ -1,4 +1,3 @@
-
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -31,6 +30,7 @@ import { SupportModule } from './domains/support/support.module';
 
 // External Integrations
 import { MpesaModule } from './mpesa/mpesa.module';
+import { C2BDiagnosticModule } from './mpesa/c2b-diagnostic/c2b-diagnostic.module';
 
 @Module({
   imports: [
@@ -67,7 +67,9 @@ import { MpesaModule } from './mpesa/mpesa.module';
     SupportModule,
 
     // External Integrations
+    // External Integrations
     MpesaModule,
+    C2BDiagnosticModule,
   ],
 })
 export class AppModule {}

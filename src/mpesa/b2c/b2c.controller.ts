@@ -22,10 +22,16 @@
  * - A result callback communicates the provider's final outcome.
  * - A queue timeout does not establish payout failure.
  *
+ * Security:
+ * - These endpoints are intentionally public.
+ * - Safaricom must reach them without an application JWT.
+ *
  * -----------------------------------------------------------------------------
  */
 
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 // -----------------------------------------------------------------------------
 // B2C Callback Adapter
@@ -47,6 +53,7 @@ import { ReceiveFinancialDisbursementCallbackService } from '../../domains/finan
 // Controller
 // =============================================================================
 
+@ApiTags('M-PESA B2C Callbacks')
 @Controller('mpesa/b2c')
 export class B2CController {
   public constructor(
@@ -71,6 +78,28 @@ export class B2CController {
 
   @Post('result')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Receive M-PESA B2C result callback',
+    description:
+      'Public Safaricom Daraja callback. Persists the normalized provider result through FinancialModule. No application JWT is required.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'B2C result callback durably accepted.',
+    schema: {
+      example: {
+        accepted: true,
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid or malformed B2C result callback.',
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Callback intake failed.',
+  })
   public async processResultCallback(
     @Body() body: unknown,
   ): Promise<{ accepted: true }> {
@@ -95,6 +124,28 @@ export class B2CController {
 
   @Post('queue-timeout')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Receive M-PESA B2C queue-timeout callback',
+    description:
+      'Public Safaricom Daraja callback. Persists the timeout as a distinct callback event for subsequent reconciliation. A queue timeout does not establish payout failure.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'B2C queue-timeout callback durably accepted.',
+    schema: {
+      example: {
+        accepted: true,
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid or malformed B2C queue-timeout callback.',
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Callback intake failed.',
+  })
   public async processQueueTimeoutCallback(
     @Body() body: unknown,
   ): Promise<{ accepted: true }> {

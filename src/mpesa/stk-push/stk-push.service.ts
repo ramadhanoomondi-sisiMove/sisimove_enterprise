@@ -1,4 +1,3 @@
-
 /**
  * -----------------------------------------------------------------------------
  * SisiMove — M-PESA Daraja 3.0 STK Push Service
@@ -28,12 +27,7 @@
 
 import { Buffer } from 'node:buffer';
 
-import {
-  HttpException,
-  HttpStatus,
-  Inject,
-  Injectable,
-} from '@nestjs/common';
+import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 
 import { ConfigService } from '@nestjs/config';
 
@@ -166,8 +160,8 @@ export class StkPushService {
     }
 
     // Shortcode and passkey remain provider-specific encrypted credentials.
-    const shortcode = configuration.shortcode?.trim();
-    const passkey = configuration.passkey?.trim();
+    const shortcode = configuration.stkBusinessShortCode?.trim();
+    const passkey = configuration.stkPasskey?.trim();
 
     // Callback URL is supplied through runtime environment configuration.
     const callbackUrl = this.configService

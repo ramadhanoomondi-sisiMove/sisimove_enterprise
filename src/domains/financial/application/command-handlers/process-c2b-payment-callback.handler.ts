@@ -590,16 +590,30 @@ export class ProcessC2BPaymentCallbackHandler {
     const provider = await this.providerRepository.findByCode(this.mpesaCode);
 
     if (provider === null) {
+      this.logger.error(
+        '[C2B_CONFIG_DIAGNOSTIC] Provider lookup failed: MPESA provider not found.',
+      );
       return null;
     }
 
-    if (!provider.isEnabled || !provider.status.isReady()) {
+    const providerReady = provider.status.isReady();
+
+    if (!provider.isEnabled || !providerReady) {
+      this.logger.error(
+        `[C2B_CONFIG_DIAGNOSTIC] Provider is not operational: ${JSON.stringify({
+          enabled: provider.isEnabled,
+          ready: providerReady,
+        })}`,
+      );
       return null;
     }
 
     const environment = provider.environment;
 
     if (environment === null) {
+      this.logger.error(
+        '[C2B_CONFIG_DIAGNOSTIC] Provider environment is missing.',
+      );
       return null;
     }
 
@@ -609,19 +623,49 @@ export class ProcessC2BPaymentCallbackHandler {
     );
 
     if (configuration === null) {
+      this.logger.error(
+        `[C2B_CONFIG_DIAGNOSTIC] Provider configuration not found: ${JSON.stringify(
+          {
+            environment,
+          },
+        )}`,
+      );
       return null;
     }
 
-    const configuredShortcode = configuration.c2bShortcode?.trim();
+    const configuredShortcode = configuration.c2bShortCode?.trim();
 
     if (!configuredShortcode || configuredShortcode !== businessShortCode) {
+      this.logger.error(
+        `[C2B_CONFIG_DIAGNOSTIC] Shortcode mismatch: ${JSON.stringify({
+          environment,
+          configuredShortcode: configuredShortcode ?? null,
+          callbackShortcode: businessShortCode,
+          shortcodePresent: Boolean(configuredShortcode),
+          shortcodeMatches: configuredShortcode === businessShortCode,
+        })}`,
+      );
       return null;
     }
 
     // SisiMove C2B supports PayBill only.
     if (configuration.c2bBusinessType !== 'PAYBILL') {
+      this.logger.error(
+        `[C2B_CONFIG_DIAGNOSTIC] Business type mismatch: ${JSON.stringify({
+          configuredBusinessType: configuration.c2bBusinessType ?? null,
+          expectedBusinessType: 'PAYBILL',
+        })}`,
+      );
       return null;
     }
+
+    this.logger.log(
+      `[C2B_CONFIG_DIAGNOSTIC] Configuration matched: ${JSON.stringify({
+        environment,
+        shortcode: configuredShortcode,
+        businessType: configuration.c2bBusinessType,
+      })}`,
+    );
 
     return configuration;
   }
