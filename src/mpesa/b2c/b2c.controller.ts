@@ -26,10 +26,23 @@
  * - These endpoints are intentionally public.
  * - Safaricom must reach them without an application JWT.
  *
+ * Diagnostics:
+ * - Logs callback arrival, request metadata and raw payload.
+ * - Logs normalization start, success and failure.
+ * - Logs callback persistence start, success and failure.
+ * - Logs unexpected exceptions with stack traces.
+ *
  * -----------------------------------------------------------------------------
  */
 
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Logger,
+  Post,
+} from '@nestjs/common';
 
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
@@ -56,10 +69,75 @@ import { ReceiveFinancialDisbursementCallbackService } from '../../domains/finan
 @ApiTags('M-PESA B2C Callbacks')
 @Controller('mpesa/b2c')
 export class B2CController {
+  private readonly logger = new Logger(B2CController.name);
+
   public constructor(
     private readonly callbackHandler: B2CCallbackHandler,
     private readonly callbackIntakeService: ReceiveFinancialDisbursementCallbackService,
   ) {}
+
+  // ===========================================================================
+  // Diagnostic Helpers
+  // ===========================================================================
+
+  private createTraceId(callbackType: string): string {
+    return `B2C-${callbackType}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)
+      .toUpperCase()}`;
+  }
+
+  private logRawBody(
+    traceId: string,
+    callbackType: string,
+    body: unknown,
+  ): void {
+    this.logger.warn(
+      `[${traceId}] RAW ${callbackType} CALLBACK BODY:\n${this.safeStringify(body)}`,
+    );
+  }
+
+  private safeStringify(value: unknown): string {
+    try {
+      const result = JSON.stringify(value, null, 2);
+      return result ?? String(value);
+    } catch (error: unknown) {
+      return `[Unable to serialize callback body: ${this.errorMessage(error)}]`;
+    }
+  }
+
+  private errorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  }
+
+  private errorStack(error: unknown): string | undefined {
+    return error instanceof Error ? error.stack : undefined;
+  }
+
+  private logCallbackError(
+    traceId: string,
+    stage: string,
+    error: unknown,
+  ): void {
+    this.logger.error(
+      `[${traceId}] ${stage} FAILED: ${this.errorMessage(error)}`,
+      this.errorStack(error),
+    );
+
+    if (!(error instanceof Error)) {
+      this.logger.error(
+        `[${traceId}] NON-ERROR EXCEPTION DETAILS: ${this.safeStringify(error)}`,
+      );
+    }
+  }
 
   // ===========================================================================
   // Daraja B2C Result Callback
@@ -103,12 +181,87 @@ export class B2CController {
   public async processResultCallback(
     @Body() body: unknown,
   ): Promise<{ accepted: true }> {
-    const event: B2CResultCallbackEvent =
-      this.callbackHandler.processResultCallback(body);
+    const traceId = this.createTraceId('RESULT');
+    const startedAt = Date.now();
 
-    await this.callbackIntakeService.receiveResultCallback(event, body);
+    this.logger.warn(
+      `[${traceId}] ==================================================`,
+    );
+    this.logger.warn(`[${traceId}] B2C RESULT CALLBACK RECEIVED`);
+    this.logger.warn(`[${traceId}] RECEIVED AT: ${new Date().toISOString()}`);
+    this.logger.warn(`[${traceId}] CALLBACK TYPE: RESULT`);
+    this.logger.warn(`[${traceId}] BODY TYPE: ${typeof body}`);
+    this.logger.warn(`[${traceId}] BODY IS NULL: ${body === null}`);
+    this.logger.warn(`[${traceId}] BODY IS ARRAY: ${Array.isArray(body)}`);
 
-    return { accepted: true };
+    this.logRawBody(traceId, 'RESULT', body);
+
+    try {
+      // -----------------------------------------------------------------------
+      // Stage 1: Normalize callback
+      // -----------------------------------------------------------------------
+
+      this.logger.warn(`[${traceId}] STAGE 1: CALLBACK NORMALIZATION STARTED`);
+
+      const event: B2CResultCallbackEvent =
+        this.callbackHandler.processResultCallback(body);
+
+      this.logger.warn(
+        `[${traceId}] STAGE 1: CALLBACK NORMALIZATION SUCCEEDED`,
+      );
+
+      this.logger.warn(
+        `[${traceId}] NORMALIZED RESULT EVENT:\n${this.safeStringify(event)}`,
+      );
+
+      // -----------------------------------------------------------------------
+      // Stage 2: Persist callback
+      // -----------------------------------------------------------------------
+
+      this.logger.warn(
+        `[${traceId}] STAGE 2: FINANCIAL CALLBACK PERSISTENCE STARTED`,
+      );
+
+      await this.callbackIntakeService.receiveResultCallback(event, body);
+
+      this.logger.warn(
+        `[${traceId}] STAGE 2: FINANCIAL CALLBACK PERSISTENCE SUCCEEDED`,
+      );
+
+      // -----------------------------------------------------------------------
+      // Stage 3: Acknowledge callback
+      // -----------------------------------------------------------------------
+
+      this.logger.warn(`[${traceId}] STAGE 3: CALLBACK ACKNOWLEDGEMENT READY`);
+
+      this.logger.warn(
+        `[${traceId}] B2C RESULT CALLBACK COMPLETED SUCCESSFULLY`,
+      );
+
+      this.logger.warn(
+        `[${traceId}] TOTAL PROCESSING TIME: ${Date.now() - startedAt}ms`,
+      );
+
+      this.logger.warn(
+        `[${traceId}] ==================================================`,
+      );
+
+      return { accepted: true };
+    } catch (error: unknown) {
+      this.logCallbackError(traceId, 'RESULT CALLBACK PROCESSING', error);
+
+      this.logger.error(`[${traceId}] RESULT CALLBACK PROCESSING STOPPED`);
+
+      this.logger.error(
+        `[${traceId}] TOTAL TIME BEFORE FAILURE: ${Date.now() - startedAt}ms`,
+      );
+
+      this.logger.error(
+        `[${traceId}] ==================================================`,
+      );
+
+      throw error;
+    }
   }
 
   // ===========================================================================
@@ -149,12 +302,93 @@ export class B2CController {
   public async processQueueTimeoutCallback(
     @Body() body: unknown,
   ): Promise<{ accepted: true }> {
-    const event: B2CQueueTimeoutCallbackEvent =
-      this.callbackHandler.processQueueTimeoutCallback(body);
+    const traceId = this.createTraceId('QUEUE-TIMEOUT');
+    const startedAt = Date.now();
 
-    await this.callbackIntakeService.receiveQueueTimeoutCallback(event, body);
+    this.logger.warn(
+      `[${traceId}] ==================================================`,
+    );
+    this.logger.warn(`[${traceId}] B2C QUEUE TIMEOUT CALLBACK RECEIVED`);
+    this.logger.warn(`[${traceId}] RECEIVED AT: ${new Date().toISOString()}`);
+    this.logger.warn(`[${traceId}] CALLBACK TYPE: QUEUE TIMEOUT`);
+    this.logger.warn(`[${traceId}] BODY TYPE: ${typeof body}`);
+    this.logger.warn(`[${traceId}] BODY IS NULL: ${body === null}`);
+    this.logger.warn(`[${traceId}] BODY IS ARRAY: ${Array.isArray(body)}`);
 
-    return { accepted: true };
+    this.logRawBody(traceId, 'QUEUE TIMEOUT', body);
+
+    try {
+      // -----------------------------------------------------------------------
+      // Stage 1: Normalize callback
+      // -----------------------------------------------------------------------
+
+      this.logger.warn(`[${traceId}] STAGE 1: CALLBACK NORMALIZATION STARTED`);
+
+      const event: B2CQueueTimeoutCallbackEvent =
+        this.callbackHandler.processQueueTimeoutCallback(body);
+
+      this.logger.warn(
+        `[${traceId}] STAGE 1: CALLBACK NORMALIZATION SUCCEEDED`,
+      );
+
+      this.logger.warn(
+        `[${traceId}] NORMALIZED QUEUE TIMEOUT EVENT:\n${this.safeStringify(event)}`,
+      );
+
+      // -----------------------------------------------------------------------
+      // Stage 2: Persist callback
+      // -----------------------------------------------------------------------
+
+      this.logger.warn(
+        `[${traceId}] STAGE 2: FINANCIAL CALLBACK PERSISTENCE STARTED`,
+      );
+
+      await this.callbackIntakeService.receiveQueueTimeoutCallback(event, body);
+
+      this.logger.warn(
+        `[${traceId}] STAGE 2: FINANCIAL CALLBACK PERSISTENCE SUCCEEDED`,
+      );
+
+      // -----------------------------------------------------------------------
+      // Stage 3: Acknowledge callback
+      // -----------------------------------------------------------------------
+
+      this.logger.warn(`[${traceId}] STAGE 3: CALLBACK ACKNOWLEDGEMENT READY`);
+
+      this.logger.warn(
+        `[${traceId}] B2C QUEUE TIMEOUT CALLBACK COMPLETED SUCCESSFULLY`,
+      );
+
+      this.logger.warn(
+        `[${traceId}] TOTAL PROCESSING TIME: ${Date.now() - startedAt}ms`,
+      );
+
+      this.logger.warn(
+        `[${traceId}] ==================================================`,
+      );
+
+      return { accepted: true };
+    } catch (error: unknown) {
+      this.logCallbackError(
+        traceId,
+        'QUEUE TIMEOUT CALLBACK PROCESSING',
+        error,
+      );
+
+      this.logger.error(
+        `[${traceId}] QUEUE TIMEOUT CALLBACK PROCESSING STOPPED`,
+      );
+
+      this.logger.error(
+        `[${traceId}] TOTAL TIME BEFORE FAILURE: ${Date.now() - startedAt}ms`,
+      );
+
+      this.logger.error(
+        `[${traceId}] ==================================================`,
+      );
+
+      throw error;
+    }
   }
 }
 

@@ -66,18 +66,20 @@ export type WithdrawalDestinationMode =
  * Converts a Kenyan mobile number to the Daraja PartyB format.
  * Returns null when the value is not a valid Kenyan mobile number.
  */
-export function normalizeKenyanMobileNumber(value: string): string | null {
-  const digits = value.replace(/[\\s()+-]/g, '');
+export function normalizeKenyanMobileNumber(
+  value: string,
+): string | null {
+  const digits = value.replace(/[\s()+-]/g, '');
 
-  if (/^0[17]\\d{8}$/.test(digits)) {
+  if (/^0[17]\d{8}$/.test(digits)) {
     return `254${digits.slice(1)}`;
   }
 
-  if (/^[17]\\d{8}$/.test(digits)) {
+  if (/^[17]\d{8}$/.test(digits)) {
     return `254${digits}`;
   }
 
-  if (/^254[17]\\d{8}$/.test(digits)) {
+  if (/^254[17]\d{8}$/.test(digits)) {
     return digits;
   }
 
