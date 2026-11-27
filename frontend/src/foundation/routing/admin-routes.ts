@@ -1,4 +1,4 @@
-
+//src/foundation/routing/admin-routes.ts
 /* -----------------------------------------------------------------------------
  * sisiMove — Admin Routes
  * -----------------------------------------------------------------------------
@@ -11,6 +11,7 @@
  * - Verification and trust management
  * - Journey operations
  * - Booking and boarding operations
+ * - Journey completion operations
  * - Financial oversight and accounting
  * - Asset management
  * - Authentication and session oversight
@@ -107,6 +108,20 @@ export const ADMIN_ROUTES = {
 
   BOARDING_JOURNEY: (journeyPublicId: string) =>
     `/admin/boarding/${encodeURIComponent(journeyPublicId)}`,
+
+  
+  // ---------------------------------------------------------------------------
+  // Journey Completion
+  // ---------------------------------------------------------------------------
+
+  JOURNEY_COMPLETION: '/admin/journey-completion',
+
+  JOURNEY_COMPLETION_DETAIL: (completionPublicId: string) =>
+  `/admin/journey-completion/${encodeURIComponent(completionPublicId)}`,
+
+  JOURNEY_COMPLETION_JOURNEY: (journeyPublicId: string) =>
+    `/admin/journey-completion/${encodeURIComponent(journeyPublicId)}`,
+
 
   // ---------------------------------------------------------------------------
   // Finance Control Center

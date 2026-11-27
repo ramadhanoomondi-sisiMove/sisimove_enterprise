@@ -94,6 +94,11 @@ const NAVIGATION_GROUPS = [
         href: ADMIN_ROUTES.BOARDING,
         icon: BriefcaseBusiness,
       },
+      {
+        label: "Journey Completion",
+        href: ADMIN_ROUTES.JOURNEY_COMPLETION,
+        icon: BadgeCheck,
+      },
     ],
   },
   {

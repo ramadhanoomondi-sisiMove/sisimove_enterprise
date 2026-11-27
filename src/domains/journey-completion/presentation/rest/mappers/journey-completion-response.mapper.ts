@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// Journey Completion — rest Response Mapper
+// Journey Completion — REST Response Mapper
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
@@ -21,14 +21,28 @@ import type { JourneyCompletionDisputeEntity } from '../../../domain/entities/jo
 /**
  * HTTP representation of a Journey Completion aggregate.
  *
- * Domain value objects are converted to primitives at the presentation
- * boundary. Internal UniqueEntityId values are never exposed directly.
+ * Domain value objects and internal identifiers are converted to transport
+ * primitives at the presentation boundary.
+ *
+ * The internal aggregate UUID is exposed as `id` because related domain
+ * operations, such as Journey Settlement creation, require it.
+ *
+ * The public identifier remains available as `publicId` for external
+ * references and API lookups.
  */
 export interface JourneyCompletionResponse {
   // ===========================================================================
   // Identity
   // ===========================================================================
 
+  /**
+   * Internal UUID of the Journey Completion aggregate.
+   */
+  id: string;
+
+  /**
+   * Public identity of the Journey Completion aggregate.
+   */
   publicId: string;
 
   journeyPublicId: string;
@@ -220,6 +234,8 @@ export class JourneyCompletionResponseMapper {
       // -----------------------------------------------------------------------
       // Identity
       // -----------------------------------------------------------------------
+
+      id: completion.id.toString(),
 
       publicId: completion.publicId.value,
 
