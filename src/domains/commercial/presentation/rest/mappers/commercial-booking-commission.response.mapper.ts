@@ -109,6 +109,26 @@ export class CommercialBookingCommissionResponseMapper {
   public static fromEntity(
     commission: CommercialBookingCommissionEntity,
   ): CommercialBookingCommissionResponse {
+    // -------------------------------------------------------------------------
+    // Domain Integrity
+    // -------------------------------------------------------------------------
+
+    if (!commission.percentage) {
+      throw new Error(
+        `Invalid CommercialBookingCommissionEntity: percentage value object is missing. Public ID: ${commission.publicId.value}`,
+      );
+    }
+
+    if (commission.percentage.value === undefined) {
+      throw new Error(
+        `Invalid CommercialBookingCommissionEntity: percentage value is missing. Public ID: ${commission.publicId.value}`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Response
+    // -------------------------------------------------------------------------
+
     return {
       // -----------------------------------------------------------------------
       // Identity

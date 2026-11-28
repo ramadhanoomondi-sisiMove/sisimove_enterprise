@@ -11,16 +11,16 @@ import {
 import {
   CommissionPageContainer,
   CommissionDetailHeader,
-} from '@/components/admin/commissions/layout';
+} from '@/components/admin/finance/commissions/layout';
 
 import {
   CommissionOverview,
-} from '@/components/admin/commissions/overview/CommissionOverview';
+} from '@/components/admin/finance/commissions/overview/CommissionOverview';
 
 import {
   useAdminBookingCommissions,
   useAdminEarningCommissions,
-} from '@/features/admin/commissions/hooks';
+} from '@/features/admin/finance/commissions/hooks';
 
 import {
   ADMIN_ROUTES,

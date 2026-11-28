@@ -1,5 +1,5 @@
 import { Skeleton } from '@/components/ui';
-import { CommissionPageContainer } from '@/components/admin/commissions/layout/CommissionPageContainer';
+import { CommissionPageContainer } from '@/components/admin/finance/commissions/layout/CommissionPageContainer';
 
 function CommissionRulePanelSkeleton() {
   return (

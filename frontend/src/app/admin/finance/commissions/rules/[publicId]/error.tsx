@@ -3,7 +3,7 @@
 import Link from 'next/link';
 
 import { ErrorState } from '@/components/ui';
-import { CommissionPageContainer } from '@/components/admin/commissions/layout/CommissionPageContainer';
+import { CommissionPageContainer } from '@/components/admin/finance/commissions/layout/CommissionPageContainer';
 import { ADMIN_ROUTES } from '@/foundation/routing/admin-routes';
 
 interface CommissionRuleErrorProps {

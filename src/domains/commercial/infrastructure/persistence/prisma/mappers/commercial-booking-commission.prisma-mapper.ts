@@ -247,7 +247,18 @@ export class CommercialBookingCommissionPrismaMapper {
     // -------------------------------------------------------------------------
     // Entity Rehydration
     // -------------------------------------------------------------------------
+    const percentageValue = Number(record.percentage.toString());
 
+    const percentage =
+      CommercialBookingCommissionPercentage.create(percentageValue);
+
+    console.log('[Booking Commission Percentage Mapping]', {
+      publicId: record.publicId,
+      persistedPercentage: record.percentage.toString(),
+      percentageValue,
+      reconstructedPercentage: percentage.value,
+      percentageType: typeof percentage.value,
+    });
     return CommercialBookingCommissionEntity.rehydrate(
       {
         // ---------------------------------------------------------------------

@@ -715,8 +715,22 @@ export class CommercialBookingCommissionPrismaRepository implements CommercialBo
   private toAggregate(
     record: CommercialBookingCommissionRecord,
   ): CommercialBookingCommissionAggregate {
-    return CommercialBookingCommissionAggregate.rehydrate(
-      CommercialBookingCommissionPrismaMapper.toDomain(record),
-    );
+    const entity = CommercialBookingCommissionPrismaMapper.toDomain(record);
+
+    console.log('[Repository Before Aggregate]', {
+      publicId: entity.publicId.value,
+      percentage: entity.percentage,
+      percentageValue: entity.percentage?.value,
+    });
+
+    const aggregate = CommercialBookingCommissionAggregate.rehydrate(entity);
+
+    console.log('[Repository After Aggregate]', {
+      publicId: aggregate.publicId.value,
+      percentage: aggregate.bookingCommission.percentage,
+      percentageValue: aggregate.bookingCommission.percentage?.value,
+    });
+
+    return aggregate;
   }
 }

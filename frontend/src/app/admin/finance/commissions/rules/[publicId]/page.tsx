@@ -1,18 +1,18 @@
-import { CommissionRuleDetailsLayout } from '@/components/admin/commissions/rules/CommissionRuleDetailsLayout';
+import { CommissionRuleDetailsContainer } from '@/components/admin/finance/commissions/rules/CommissionRuleDetailsContainer';
 
-interface CommissionRulePageProps {
+interface CommissionRuleDetailsPageProps {
   readonly params: Promise<{
     publicId: string;
   }>;
 }
 
-export default async function CommissionRulePage({
+export default async function CommissionRuleDetailsPage({
   params,
-}: CommissionRulePageProps) {
+}: CommissionRuleDetailsPageProps) {
   const { publicId } = await params;
 
   return (
-    <CommissionRuleDetailsLayout
+    <CommissionRuleDetailsContainer
       rulePublicId={publicId}
     />
   );

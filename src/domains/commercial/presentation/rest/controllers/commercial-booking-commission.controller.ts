@@ -78,8 +78,6 @@ import type { CommercialBookingCommissionAggregate } from '../../../domain/aggre
 // Domain — Entities
 // -----------------------------------------------------------------------------
 
-import type { CommercialBookingCommissionEntity } from '../../../domain/entities/commercial-booking-commission.entity';
-
 // -----------------------------------------------------------------------------
 // Domain — Value Objects
 // -----------------------------------------------------------------------------
@@ -113,6 +111,14 @@ import {
   GetCommercialBookingCommissionByBookingQueryDto,
   GetCommercialBookingCommissionsByJourneyQueryDto,
 } from '../dto/query';
+
+// -----------------------------------------------------------------------------
+// Presentation — Response Mapper
+// -----------------------------------------------------------------------------
+
+import { CommercialBookingCommissionResponseMapper } from '../mappers/commercial-booking-commission.response.mapper';
+
+import type { CommercialBookingCommissionResponse } from '../mappers/commercial-booking-commission.response.mapper';
 
 // -----------------------------------------------------------------------------
 // Controller
@@ -174,7 +180,7 @@ export class CommercialBookingCommissionController {
     @Inject(COMMERCIAL_BOOKING_COMMISSION_TOKENS.QUERY_HANDLERS.LIST)
     private readonly listCommercialBookingCommissionsHandler: QueryHandler<
       ListCommercialBookingCommissionsQuery,
-      CommercialBookingCommissionEntity[]
+      CommercialBookingCommissionAggregate[]
     >,
   ) {}
 
@@ -187,10 +193,15 @@ export class CommercialBookingCommissionController {
   // ---------------------------------------------------------------------------
 
   @Get()
-  @RequirePermissions('commercial-booking-commission:read')
-  public async list(): Promise<CommercialBookingCommissionEntity[]> {
-    return this.listCommercialBookingCommissionsHandler.execute(
-      new ListCommercialBookingCommissionsQuery(),
+  @RequirePermissions('admin:read')
+  public async list(): Promise<CommercialBookingCommissionResponse[]> {
+    const commissions =
+      await this.listCommercialBookingCommissionsHandler.execute(
+        new ListCommercialBookingCommissionsQuery(),
+      );
+
+    return CommercialBookingCommissionResponseMapper.fromAggregates(
+      commissions,
     );
   }
 
@@ -199,17 +210,22 @@ export class CommercialBookingCommissionController {
   // ---------------------------------------------------------------------------
 
   @Get('by-booking')
-  @RequirePermissions('commercial-booking-commission:read')
+  @RequirePermissions('admin:read')
   public async getByBooking(
     @Query() dto: GetCommercialBookingCommissionByBookingQueryDto,
-  ): Promise<CommercialBookingCommissionAggregate | null> {
+  ): Promise<CommercialBookingCommissionResponse | null> {
     const bookingPublicId = CommercialBookingCommissionBookingPublicId.create(
       dto.bookingPublicId,
     );
 
-    return this.getCommercialBookingCommissionByBookingHandler.execute(
-      new GetCommercialBookingCommissionByBookingQuery(bookingPublicId),
-    );
+    const aggregate =
+      await this.getCommercialBookingCommissionByBookingHandler.execute(
+        new GetCommercialBookingCommissionByBookingQuery(bookingPublicId),
+      );
+
+    return aggregate
+      ? CommercialBookingCommissionResponseMapper.toResponse(aggregate)
+      : null;
   }
 
   // ---------------------------------------------------------------------------
@@ -217,15 +233,18 @@ export class CommercialBookingCommissionController {
   // ---------------------------------------------------------------------------
 
   @Get('by-journey')
-  @RequirePermissions('commercial-booking-commission:read')
+  @RequirePermissions('admin:read')
   public async getByJourney(
     @Query() dto: GetCommercialBookingCommissionsByJourneyQueryDto,
-  ): Promise<CommercialBookingCommissionAggregate[]> {
-    return this.getCommercialBookingCommissionsByJourneyHandler.execute(
-      new GetCommercialBookingCommissionByJourneyQuery(
-        new CommercialBookingCommissionJourneyPublicId(dto.journeyPublicId),
-      ),
-    );
+  ): Promise<CommercialBookingCommissionResponse[]> {
+    const aggregates =
+      await this.getCommercialBookingCommissionsByJourneyHandler.execute(
+        new GetCommercialBookingCommissionByJourneyQuery(
+          new CommercialBookingCommissionJourneyPublicId(dto.journeyPublicId),
+        ),
+      );
+
+    return CommercialBookingCommissionResponseMapper.fromAggregates(aggregates);
   }
 
   // ---------------------------------------------------------------------------
@@ -233,18 +252,22 @@ export class CommercialBookingCommissionController {
   // ---------------------------------------------------------------------------
 
   @Get(':commercialBookingCommissionPublicId')
-  @RequirePermissions('commercial-booking-commission:read')
+  @RequirePermissions('admin:read')
   public async get(
     @Param('commercialBookingCommissionPublicId')
     commercialBookingCommissionPublicId: string,
-  ): Promise<CommercialBookingCommissionAggregate | null> {
-    return this.getCommercialBookingCommissionHandler.execute(
+  ): Promise<CommercialBookingCommissionResponse | null> {
+    const aggregate = await this.getCommercialBookingCommissionHandler.execute(
       new GetCommercialBookingCommissionQuery(
         new CommercialBookingCommissionPublicId(
           commercialBookingCommissionPublicId,
         ),
       ),
     );
+
+    return aggregate
+      ? CommercialBookingCommissionResponseMapper.toResponse(aggregate)
+      : null;
   }
 
   // ===========================================================================
@@ -256,30 +279,35 @@ export class CommercialBookingCommissionController {
   // ---------------------------------------------------------------------------
 
   @Post()
-  @RequirePermissions('commercial-booking-commission:create')
+  @RequirePermissions('admin:read')
   public async create(
     @Body() dto: CreateCommercialBookingCommissionDto,
-  ): Promise<CommercialBookingCommissionAggregate> {
-    return this.createCommercialBookingCommissionHandler.execute(
-      new CreateCommercialBookingCommissionCommand(
-        new CommercialCommissionRulePublicId(dto.commissionRulePublicId),
+  ): Promise<CommercialBookingCommissionResponse> {
+    const aggregate =
+      await this.createCommercialBookingCommissionHandler.execute(
+        new CreateCommercialBookingCommissionCommand(
+          new CommercialCommissionRulePublicId(dto.commissionRulePublicId),
 
-        CommercialBookingCommissionBookingPublicId.create(dto.bookingPublicId),
+          CommercialBookingCommissionBookingPublicId.create(
+            dto.bookingPublicId,
+          ),
 
-        new CommercialBookingCommissionJourneyPublicId(dto.journeyPublicId),
+          new CommercialBookingCommissionJourneyPublicId(dto.journeyPublicId),
 
-        CommercialBookingCommissionPercentage.create(dto.percentage),
+          CommercialBookingCommissionPercentage.create(dto.percentage),
 
-        CommercialBookingCommissionBaseAmount.create(dto.baseAmount),
+          CommercialBookingCommissionBaseAmount.create(dto.baseAmount),
 
-        CommercialBookingCommissionAmount.create(dto.commissionAmount),
+          CommercialBookingCommissionAmount.create(dto.commissionAmount),
 
-        CommercialBookingCommissionCurrency.create(dto.currency),
+          CommercialBookingCommissionCurrency.create(dto.currency),
 
-        dto.correlationId,
-        dto.causationId,
-      ),
-    );
+          dto.correlationId,
+          dto.causationId,
+        ),
+      );
+
+    return CommercialBookingCommissionResponseMapper.toResponse(aggregate);
   }
 
   // ---------------------------------------------------------------------------
@@ -287,22 +315,27 @@ export class CommercialBookingCommissionController {
   // ---------------------------------------------------------------------------
 
   @Post(':commercialBookingCommissionPublicId/assess')
-  @RequirePermissions('commercial-booking-commission:assess')
+  @RequirePermissions('admin:read')
   public async assess(
     @Param('commercialBookingCommissionPublicId')
     commercialBookingCommissionPublicId: string,
     @Body() dto: AssessCommercialBookingCommissionDto,
-  ): Promise<CommercialBookingCommissionAggregate> {
-    return this.assessCommercialBookingCommissionHandler.execute(
-      new AssessCommercialBookingCommissionCommand(
-        new CommercialBookingCommissionPublicId(
-          commercialBookingCommissionPublicId,
+  ): Promise<CommercialBookingCommissionResponse> {
+    const aggregate =
+      await this.assessCommercialBookingCommissionHandler.execute(
+        new AssessCommercialBookingCommissionCommand(
+          new CommercialBookingCommissionPublicId(
+            commercialBookingCommissionPublicId,
+          ),
+
+          new Date(dto.assessedAt),
+
+          dto.correlationId,
+          dto.causationId,
         ),
-        new Date(dto.assessedAt),
-        dto.correlationId,
-        dto.causationId,
-      ),
-    );
+      );
+
+    return CommercialBookingCommissionResponseMapper.toResponse(aggregate);
   }
 
   // ---------------------------------------------------------------------------
@@ -310,22 +343,27 @@ export class CommercialBookingCommissionController {
   // ---------------------------------------------------------------------------
 
   @Post(':commercialBookingCommissionPublicId/cancel')
-  @RequirePermissions('commercial-booking-commission:cancel')
+  @RequirePermissions('admin:read')
   public async cancel(
     @Param('commercialBookingCommissionPublicId')
     commercialBookingCommissionPublicId: string,
     @Body() dto: CancelCommercialBookingCommissionDto,
-  ): Promise<CommercialBookingCommissionAggregate> {
-    return this.cancelCommercialBookingCommissionHandler.execute(
-      new CancelCommercialBookingCommissionCommand(
-        new CommercialBookingCommissionPublicId(
-          commercialBookingCommissionPublicId,
+  ): Promise<CommercialBookingCommissionResponse> {
+    const aggregate =
+      await this.cancelCommercialBookingCommissionHandler.execute(
+        new CancelCommercialBookingCommissionCommand(
+          new CommercialBookingCommissionPublicId(
+            commercialBookingCommissionPublicId,
+          ),
+
+          new Date(dto.cancelledAt),
+
+          dto.correlationId,
+          dto.causationId,
         ),
-        new Date(dto.cancelledAt),
-        dto.correlationId,
-        dto.causationId,
-      ),
-    );
+      );
+
+    return CommercialBookingCommissionResponseMapper.toResponse(aggregate);
   }
 }
 
