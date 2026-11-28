@@ -8,12 +8,13 @@
  * - Retrieve completion confirmations.
  * - Retrieve completion disputes.
  * - Combine their recorded lifecycle events.
+ * - Support completion lifecycle events from the directory overview.
  * - Sort activity chronologically.
  *
  * Architecture:
  * - API access remains in the API layer.
  * - TanStack Query manages server data and caching.
- * - Activity is derived from existing confirmation and dispute records.
+ * - Activity is derived from existing records.
  * - No separate backend activity endpoint is assumed.
  * -----------------------------------------------------------------------------
  */
@@ -35,8 +36,18 @@ import { adminJourneyCompletionKeys } from './useAdminJourneyCompletions';
 // -----------------------------------------------------------------------------
 
 export type AdminJourneyCompletionActivityType =
+  // Completion lifecycle events
+  | 'COMPLETION_CREATED'
+  | 'COMPLETION_REQUESTED'
+  | 'COMPLETION_CONFIRMED'
+  | 'COMPLETION_DISPUTED'
+  | 'COMPLETION_CANCELLED'
+
+  // Confirmation events
   | 'CONFIRMATION_CONFIRMED'
   | 'CONFIRMATION_WITHDRAWN'
+
+  // Dispute events
   | 'DISPUTE_OPENED'
   | 'DISPUTE_RESOLVED'
   | 'DISPUTE_REJECTED'
@@ -70,11 +81,19 @@ export function buildAdminJourneyCompletionActivity(
 ): AdminJourneyCompletionActivityItem[] {
   const activity: AdminJourneyCompletionActivityItem[] = [];
 
+  const confirmations = Array.isArray(data?.confirmations)
+    ? data.confirmations
+    : [];
+
+  const disputes = Array.isArray(data?.disputes)
+    ? data.disputes
+    : [];
+
   // ---------------------------------------------------------------------------
   // Confirmation Events
   // ---------------------------------------------------------------------------
 
-  for (const confirmation of data.confirmations) {
+  for (const confirmation of confirmations) {
     if (confirmation.confirmedAt) {
       activity.push({
         id: `${confirmation.publicId}-confirmed`,
@@ -104,16 +123,18 @@ export function buildAdminJourneyCompletionActivity(
   // Dispute Events
   // ---------------------------------------------------------------------------
 
-  for (const dispute of data.disputes) {
-    activity.push({
-      id: `${dispute.publicId}-opened`,
-      type: 'DISPUTE_OPENED',
-      title: 'Dispute opened',
-      description: dispute.description ?? dispute.reason,
-      status: dispute.status,
-      occurredAt: dispute.openedAt,
-      relatedPublicId: dispute.publicId,
-    });
+  for (const dispute of disputes) {
+    if (dispute.openedAt) {
+      activity.push({
+        id: `${dispute.publicId}-opened`,
+        type: 'DISPUTE_OPENED',
+        title: 'Dispute opened',
+        description: dispute.description ?? dispute.reason,
+        status: dispute.status,
+        occurredAt: dispute.openedAt,
+        relatedPublicId: dispute.publicId,
+      });
+    }
 
     if (dispute.resolvedAt) {
       activity.push({
@@ -182,34 +203,45 @@ export function useAdminJourneyCompletionActivity(
         ],
 
     queryFn: async (): Promise<AdminJourneyCompletionActivityData> => {
-      const [confirmations, disputes] = await Promise.all([
-        adminJourneyCompletionApi.getConfirmations(publicId),
-        adminJourneyCompletionApi.getDisputes(publicId),
-      ]);
+      const [confirmationsResponse, disputesResponse] =
+        await Promise.all([
+          adminJourneyCompletionApi.getConfirmations(publicId),
+          adminJourneyCompletionApi.getDisputes(publicId),
+        ]);
 
       return {
-        confirmations,
-        disputes,
+        confirmations: Array.isArray(confirmationsResponse)
+          ? confirmationsResponse
+          : [],
+
+        disputes: Array.isArray(disputesResponse)
+          ? disputesResponse
+          : [],
       };
     },
 
     enabled: publicId.length > 0,
   });
 
-  // ---------------------------------------------------------------------------
-  // Stable Data References
-  // ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// Confirmation and Dispute Data
+// -----------------------------------------------------------------------------
 
-  const confirmations = useMemo(
-    () => query.data?.confirmations ?? [],
-    [query.data?.confirmations],
-  );
+const confirmations = useMemo(
+  () =>
+    Array.isArray(query.data?.confirmations)
+      ? query.data.confirmations
+      : [],
+  [query.data],
+);
 
-  const disputes = useMemo(
-    () => query.data?.disputes ?? [],
-    [query.data?.disputes],
-  );
-
+const disputes = useMemo(
+  () =>
+    Array.isArray(query.data?.disputes)
+      ? query.data.disputes
+      : [],
+  [query.data],
+);
   // ---------------------------------------------------------------------------
   // Derived Activity
   // ---------------------------------------------------------------------------

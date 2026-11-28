@@ -5,7 +5,7 @@ import { cn } from '@/foundation/utils/cn';
 
 export interface JourneyCompletionPublicIdProps
   extends Omit<HTMLAttributes<HTMLSpanElement>, 'children'> {
-  publicId: string;
+  publicId?: string | null;
   prefix?: string;
   maxLength?: number;
 }
@@ -17,12 +17,32 @@ export function JourneyCompletionPublicId({
   className,
   ...props
 }: JourneyCompletionPublicIdProps) {
-  const normalizedId = publicId.trim();
+  // ---------------------------------------------------------------------------
+  // Normalize Public ID
+  // ---------------------------------------------------------------------------
+
+  const normalizedId =
+    typeof publicId === 'string'
+      ? publicId.trim()
+      : '';
+
+  // ---------------------------------------------------------------------------
+  // Determine Visible ID
+  // ---------------------------------------------------------------------------
+
+  const safeMaxLength =
+    Number.isFinite(maxLength) && maxLength > 0
+      ? Math.floor(maxLength)
+      : 16;
 
   const visibleId =
-    normalizedId.length > maxLength
-      ? `${normalizedId.slice(0, maxLength)}…`
+    normalizedId.length > safeMaxLength
+      ? `${normalizedId.slice(0, safeMaxLength)}…`
       : normalizedId;
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
     <span

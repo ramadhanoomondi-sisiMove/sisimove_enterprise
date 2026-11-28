@@ -2,6 +2,7 @@
 import type {
   AdminJourneyCompletionMetrics,
 } from '@/features/admin/journey-completion/models';
+
 import type {
   AdminJourneyCompletionActivityItem,
 } from '@/features/admin/journey-completion/hooks';
@@ -14,13 +15,13 @@ import { JourneyCompletionPerformanceSummary } from './JourneyCompletionPerforma
 
 export interface JourneyCompletionOverviewProps {
   metrics: AdminJourneyCompletionMetrics;
-  activity: AdminJourneyCompletionActivityItem[];
+  activity?: AdminJourneyCompletionActivityItem[];
   className?: string;
 }
 
 export function JourneyCompletionOverview({
   metrics,
-  activity,
+  activity = [],
   className,
 }: JourneyCompletionOverviewProps) {
   const headlineMetrics = [
@@ -51,7 +52,10 @@ export function JourneyCompletionOverview({
   ];
 
   return (
-    <section className={className} aria-label="Journey completion overview">
+    <section
+      className={className}
+      aria-label="Journey completion overview"
+    >
       <div className="space-y-6">
         <JourneyCompletionMetricGrid metrics={headlineMetrics} />
 

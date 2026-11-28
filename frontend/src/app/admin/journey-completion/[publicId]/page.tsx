@@ -25,6 +25,13 @@ import { useParams, useRouter } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
 
+import { JourneyCompletionActionsMenu } from '@/components/admin/journey-completion/operations/completion/JourneyCompletionActionsMenu';
+import type { JourneyCompletionAction } from '@/components/admin/journey-completion/operations/completion/JourneyCompletionActionsMenu';
+import { JourneyCompletionDisputeActionsMenu } from '@/components/admin/journey-completion/operations/disputes/JourneyCompletionDisputeActionsMenu';
+import type { JourneyCompletionDisputeAction } from '@/components/admin/journey-completion/operations/disputes/JourneyCompletionDisputeActionsMenu';
+import { JourneySettlementActionsMenu } from '@/components/admin/journey-completion/operations/settlement/JourneySettlementActionsMenu';
+import type { JourneySettlementAction } from '@/components/admin/journey-completion/operations/settlement/JourneySettlementActionsMenu';
+
 import {
   useAdminJourneyCompletion,
   useAdminJourneyCompletionActivity,
@@ -83,6 +90,7 @@ import {
 type ActiveDialog =
   | 'requestCompletion'
   | 'confirmCompletion'
+  | 'withdrawConfirmation'
   | 'cancelCompletion'
   | 'openDispute'
   | 'reviewDispute'
@@ -180,6 +188,9 @@ export default function JourneyCompletionDetailsPage() {
   const [selectedDisputePublicId, setSelectedDisputePublicId] =
     useState<string | null>(null);
 
+  const [selectedConfirmationPublicId, setSelectedConfirmationPublicId] =
+    useState<string | null>(null);
+
   const [feedback, setFeedback] =
     useState<OperationFeedbackState | null>(null);
 
@@ -190,6 +201,7 @@ export default function JourneyCompletionDetailsPage() {
   const closeDialog = () => {
     setActiveDialog(null);
     setSelectedDisputePublicId(null);
+    setSelectedConfirmationPublicId(null);
   };
 
   const openDialog = (dialog: ActiveDialog) => {
@@ -208,6 +220,12 @@ export default function JourneyCompletionDetailsPage() {
     setFeedback(null);
     setSelectedDisputePublicId(disputePublicId);
     setActiveDialog(dialog);
+  };
+
+  const openWithdrawConfirmationDialog = (confirmationPublicId: string) => {
+    setFeedback(null);
+    setSelectedConfirmationPublicId(confirmationPublicId);
+    setActiveDialog('withdrawConfirmation');
   };
 
   // ---------------------------------------------------------------------------
@@ -267,6 +285,22 @@ export default function JourneyCompletionDetailsPage() {
       'Completion confirmed',
       'The completion confirmation was submitted successfully.',
     );
+
+  const handleWithdrawConfirmation = () => {
+    if (!selectedConfirmationPublicId) {
+      return Promise.resolve(false);
+    }
+
+    return runOperation(
+      () =>
+        completionOperations.withdrawConfirmation.mutateAsync({
+          journeyCompletionPublicId: publicId,
+          confirmationPublicId: selectedConfirmationPublicId,
+        }),
+      'Confirmation withdrawn',
+      'The completion confirmation was withdrawn successfully.',
+    );
+  };
 
   const handleCancelCompletion = () =>
     runOperation(
@@ -574,24 +608,91 @@ export default function JourneyCompletionDetailsPage() {
     `/admin/providers/${encodeURIComponent(completion.providerPublicId)}`;
 
 
-  const isCompletionPending =
-    completion.status === 'PENDING';
-
+  const isCompletionPending = completion.status === 'PENDING';
   const isConfirmationRequired =
     completion.status === 'CONFIRMATION_REQUIRED';
 
-  const canRequestCompletion =
-    isCompletionPending;
+  const activeConfirmation = completion.confirmations.find(
+    (confirmation) => !confirmation.withdrawnAt,
+  );
 
-  const canConfirmCompletion =
-    isConfirmationRequired &&
-    completion.confirmedCount >= completion.requiredConfirmations;
+  const completionAvailableActions: JourneyCompletionAction[] = [
+    ...(isCompletionPending ? ['request' as const] : []),
+    ...(isConfirmationRequired &&
+    completion.confirmedCount >= completion.requiredConfirmations
+      ? ['confirm' as const]
+      : []),
+    ...(completion.status === 'CONFIRMED' && activeConfirmation
+      ? ['withdraw-confirmation' as const]
+      : []),
+    ...(isCompletionPending || isConfirmationRequired
+      ? ['cancel' as const]
+      : []),
+  ];
 
-  const canCancelCompletion =
-    isCompletionPending || isConfirmationRequired;
+  const canOpenDispute = isConfirmationRequired;
 
-  const canOpenDispute =
-    isConfirmationRequired;
+  const getDisputeAvailableActions = (
+    status: string,
+  ): JourneyCompletionDisputeAction[] => {
+    switch (status) {
+      case 'OPEN':
+        return ['REVIEW_DISPUTE', 'WITHDRAW_DISPUTE'];
+      case 'UNDER_REVIEW':
+        return [
+          'RESOLVE_DISPUTE',
+          'REJECT_DISPUTE',
+          'WITHDRAW_DISPUTE',
+        ];
+      default:
+        return [];
+    }
+  };
+
+  const settlementAvailableActions: JourneySettlementAction[] =
+    !settlement
+      ? []
+      : settlement.status === 'PENDING'
+        ? ['SUBMIT', 'CANCEL']
+        : settlement.status === 'SUBMITTED'
+          ? ['PROCESS', 'FAIL', 'HOLD', 'CANCEL']
+          : settlement.status === 'PROCESSING'
+            ? ['COMPLETE', 'FAIL', 'HOLD', 'CANCEL']
+            : settlement.status === 'HELD'
+              ? ['PROCESS', 'CANCEL']
+              : [];
+
+  const handleCompletionAction = (action: JourneyCompletionAction) => {
+    switch (action) {
+      case 'request':
+        openDialog('requestCompletion');
+        break;
+      case 'confirm':
+        openDialog('confirmCompletion');
+        break;
+      case 'withdraw-confirmation':
+        if (activeConfirmation) {
+          openWithdrawConfirmationDialog(activeConfirmation.publicId);
+        }
+        break;
+      case 'cancel':
+        openDialog('cancelCompletion');
+        break;
+    }
+  };
+
+  const handleSettlementAction = (action: JourneySettlementAction) => {
+    const dialogs: Record<JourneySettlementAction, ActiveDialog> = {
+      SUBMIT: 'submitSettlement',
+      PROCESS: 'processSettlement',
+      COMPLETE: 'completeSettlement',
+      FAIL: 'failSettlement',
+      HOLD: 'holdSettlement',
+      CANCEL: 'cancelSettlement',
+    };
+
+    openDialog(dialogs[action]);
+  };
 
   const lifecycleEvents = activity.map((event) => ({
     id: event.id,
@@ -624,47 +725,19 @@ export default function JourneyCompletionDetailsPage() {
         providerHref={providerHref}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {canRequestCompletion && (
-              <Button
-                size="sm"
-                onClick={() =>
-                  openDialog('requestCompletion')
-                }
-              >
-                Request completion
-              </Button>
-            )}
-
-            {canConfirmCompletion && (
-              <Button
-                size="sm"
-                onClick={() =>
-                  openDialog('confirmCompletion')
-                }
-              >
-                Confirm completion
-              </Button>
-            )}
+            <JourneyCompletionActionsMenu
+              availableActions={completionAvailableActions}
+              onAction={handleCompletionAction}
+              disabled={completionOperations.isLoading}
+            />
 
             {canOpenDispute && (
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() =>
-                  openDialog('openDispute')
-                }
+                onClick={() => openDialog('openDispute')}
               >
                 Open dispute
-              </Button>
-            )}
-
-            {canCancelCompletion && (
-              <Button
-                size="sm"
-                variant="danger"
-                onClick={() => openDialog('cancelCompletion')}
-              >
-                Cancel completion
               </Button>
             )}
           </div>
@@ -791,9 +864,16 @@ export default function JourneyCompletionDetailsPage() {
               </h3>
 
               {settlement && (
-                <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium">
-                  {settlement.status.replaceAll('_', ' ')}
-                </span>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium">
+                    {settlement.status.replaceAll('_', ' ')}
+                  </span>
+                  <JourneySettlementActionsMenu
+                    availableActions={settlementAvailableActions}
+                    onAction={handleSettlementAction}
+                    disabled={settlementOperations.isLoading}
+                  />
+                </div>
               )}
             </div>
 
@@ -905,59 +985,26 @@ export default function JourneyCompletionDetailsPage() {
                       {dispute.publicId}
                     </p>
 
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          openDisputeDialog(
-                            'reviewDispute',
-                            dispute.publicId,
-                          )
+                    <JourneyCompletionDisputeActionsMenu
+                      availableActions={getDisputeAvailableActions(dispute.status)}
+                      disabled={disputeOperations.isLoading}
+                      onAction={(action) => {
+                        switch (action) {
+                          case 'REVIEW_DISPUTE':
+                            openDisputeDialog('reviewDispute', dispute.publicId);
+                            break;
+                          case 'RESOLVE_DISPUTE':
+                            openDisputeDialog('resolveDispute', dispute.publicId);
+                            break;
+                          case 'REJECT_DISPUTE':
+                            openDisputeDialog('rejectDispute', dispute.publicId);
+                            break;
+                          case 'WITHDRAW_DISPUTE':
+                            openDisputeDialog('withdrawDispute', dispute.publicId);
+                            break;
                         }
-                      >
-                        Review
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          openDisputeDialog(
-                            'resolveDispute',
-                            dispute.publicId,
-                          )
-                        }
-                      >
-                        Resolve
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          openDisputeDialog(
-                            'rejectDispute',
-                            dispute.publicId,
-                          )
-                        }
-                      >
-                        Reject
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() =>
-                          openDisputeDialog(
-                            'withdrawDispute',
-                            dispute.publicId,
-                          )
-                        }
-                      >
-                        Withdraw
-                      </Button>
-                    </div>
+                      }}
+                    />
                   </div>
                 ))}
               </div>
@@ -993,6 +1040,17 @@ export default function JourneyCompletionDetailsPage() {
         confirmLabel="Confirm completion"
         onConfirm={() => void handleConfirmCompletion()}
         isPending={completionOperations.isConfirming}
+      />
+
+      <JourneySettlementOperationConfirmation
+        open={activeDialog === 'withdrawConfirmation'}
+        onOpenChange={(open) => !open && closeDialog()}
+        title="Withdraw Completion Confirmation"
+        description="Are you sure you want to withdraw this completion confirmation?"
+        confirmLabel="Withdraw confirmation"
+        tone="danger"
+        onConfirm={() => void handleWithdrawConfirmation()}
+        isPending={completionOperations.isWithdrawingConfirmation}
       />
 
       <JourneySettlementOperationConfirmation

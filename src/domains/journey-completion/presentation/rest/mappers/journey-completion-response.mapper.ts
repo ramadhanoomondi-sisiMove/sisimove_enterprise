@@ -31,62 +31,30 @@ import type { JourneyCompletionDisputeEntity } from '../../../domain/entities/jo
  * references and API lookups.
  */
 export interface JourneyCompletionResponse {
-  // ===========================================================================
   // Identity
-  // ===========================================================================
-
-  /**
-   * Internal UUID of the Journey Completion aggregate.
-   */
   id: string;
-
-  /**
-   * Public identity of the Journey Completion aggregate.
-   */
   publicId: string;
-
   journeyPublicId: string;
-
   providerPublicId: string;
 
-  // ===========================================================================
   // Lifecycle
-  // ===========================================================================
-
   status: string;
-
   completionRequestedAt: Date | undefined;
-
   confirmedAt: Date | undefined;
-
   disputedAt: Date | undefined;
-
   cancelledAt: Date | undefined;
-
   requiredConfirmations: number;
-
   confirmedCount: number;
-
   version: number;
 
-  // ===========================================================================
   // Confirmations
-  // ===========================================================================
-
   confirmations: JourneyCompletionConfirmationResponse[];
 
-  // ===========================================================================
   // Disputes
-  // ===========================================================================
-
   disputes: JourneyCompletionDisputeResponse[];
 
-  // ===========================================================================
   // Audit
-  // ===========================================================================
-
   createdAt: Date;
-
   updatedAt: Date;
 }
 
@@ -98,36 +66,20 @@ export interface JourneyCompletionResponse {
  * HTTP representation of a Journey Completion confirmation.
  */
 export interface JourneyCompletionConfirmationResponse {
-  // ===========================================================================
   // Identity
-  // ===========================================================================
-
   publicId: string;
-
   completionId: string;
-
   memberPublicId: string;
-
   bookingPublicId: string | undefined;
 
-  // ===========================================================================
   // Confirmation
-  // ===========================================================================
-
   role: string;
-
   status: string;
-
   confirmedAt: Date;
-
   withdrawnAt: Date | undefined;
 
-  // ===========================================================================
   // Audit
-  // ===========================================================================
-
   createdAt: Date;
-
   updatedAt: Date;
 }
 
@@ -139,48 +91,26 @@ export interface JourneyCompletionConfirmationResponse {
  * HTTP representation of a Journey Completion dispute.
  */
 export interface JourneyCompletionDisputeResponse {
-  // ===========================================================================
   // Identity
-  // ===========================================================================
-
   publicId: string;
-
   completionId: string;
-
   raisedByPublicId: string;
 
-  // ===========================================================================
   // Dispute
-  // ===========================================================================
-
   reason: string;
-
   description: string | undefined;
-
   status: string;
 
-  // ===========================================================================
   // Resolution
-  // ===========================================================================
-
   resolvedByPublicId: string | undefined;
-
   resolutionSummary: string | undefined;
-
   openedAt: Date;
-
   resolvedAt: Date | undefined;
-
   rejectedAt: Date | undefined;
-
   withdrawnAt: Date | undefined;
 
-  // ===========================================================================
   // Audit
-  // ===========================================================================
-
   createdAt: Date;
-
   updatedAt: Date;
 }
 
@@ -231,56 +161,30 @@ export class JourneyCompletionResponseMapper {
     disputes: readonly JourneyCompletionDisputeEntity[] = [],
   ): JourneyCompletionResponse {
     return {
-      // -----------------------------------------------------------------------
       // Identity
-      // -----------------------------------------------------------------------
-
       id: completion.id.toString(),
-
       publicId: completion.publicId.value,
-
       journeyPublicId: completion.journeyPublicId.value,
-
       providerPublicId: completion.providerPublicId.value,
 
-      // -----------------------------------------------------------------------
       // Lifecycle
-      // -----------------------------------------------------------------------
-
       status: completion.status.value,
-
       completionRequestedAt: completion.completionRequestedAt,
-
       confirmedAt: completion.confirmedAt,
-
       disputedAt: completion.disputedAt,
-
       cancelledAt: completion.cancelledAt,
-
       requiredConfirmations: completion.requiredConfirmations,
-
       confirmedCount: completion.confirmedCount,
-
       version: completion.version,
 
-      // -----------------------------------------------------------------------
       // Confirmations
-      // -----------------------------------------------------------------------
-
       confirmations: this.mapConfirmations(confirmations),
 
-      // -----------------------------------------------------------------------
       // Disputes
-      // -----------------------------------------------------------------------
-
       disputes: this.mapDisputes(disputes),
 
-      // -----------------------------------------------------------------------
       // Audit
-      // -----------------------------------------------------------------------
-
       createdAt: completion.createdAt,
-
       updatedAt: completion.updatedAt,
     };
   }
@@ -318,6 +222,18 @@ export class JourneyCompletionResponseMapper {
   // Confirmation Collection
   // ===========================================================================
 
+  /**
+   * Maps a collection of confirmation entities.
+   */
+  public static fromConfirmations(
+    confirmations: readonly JourneyCompletionConfirmationEntity[],
+  ): JourneyCompletionConfirmationResponse[] {
+    return this.mapConfirmations(confirmations);
+  }
+
+  /**
+   * Maps a collection of confirmation entities internally.
+   */
   private static mapConfirmations(
     confirmations: readonly JourneyCompletionConfirmationEntity[],
   ): JourneyCompletionConfirmationResponse[] {
@@ -330,40 +246,36 @@ export class JourneyCompletionResponseMapper {
   // Confirmation
   // ===========================================================================
 
+  /**
+   * Maps an individual confirmation entity.
+   */
+  public static fromConfirmation(
+    confirmation: JourneyCompletionConfirmationEntity,
+  ): JourneyCompletionConfirmationResponse {
+    return this.mapConfirmation(confirmation);
+  }
+
+  /**
+   * Maps an individual confirmation entity internally.
+   */
   private static mapConfirmation(
     confirmation: JourneyCompletionConfirmationEntity,
   ): JourneyCompletionConfirmationResponse {
     return {
-      // -----------------------------------------------------------------------
       // Identity
-      // -----------------------------------------------------------------------
-
       publicId: confirmation.publicId.value,
-
       completionId: confirmation.completionId.value,
-
       memberPublicId: confirmation.memberPublicId.value,
-
       bookingPublicId: confirmation.bookingPublicId?.value,
 
-      // -----------------------------------------------------------------------
       // Confirmation
-      // -----------------------------------------------------------------------
-
       role: confirmation.role.value,
-
       status: confirmation.status.value,
-
       confirmedAt: confirmation.confirmedAt,
-
       withdrawnAt: confirmation.withdrawnAt,
 
-      // -----------------------------------------------------------------------
       // Audit
-      // -----------------------------------------------------------------------
-
       createdAt: confirmation.createdAt,
-
       updatedAt: confirmation.updatedAt,
     };
   }
@@ -372,6 +284,18 @@ export class JourneyCompletionResponseMapper {
   // Dispute Collection
   // ===========================================================================
 
+  /**
+   * Maps a collection of dispute entities.
+   */
+  public static fromDisputes(
+    disputes: readonly JourneyCompletionDisputeEntity[],
+  ): JourneyCompletionDisputeResponse[] {
+    return this.mapDisputes(disputes);
+  }
+
+  /**
+   * Maps a collection of dispute entities internally.
+   */
   private static mapDisputes(
     disputes: readonly JourneyCompletionDisputeEntity[],
   ): JourneyCompletionDisputeResponse[] {
@@ -382,52 +306,42 @@ export class JourneyCompletionResponseMapper {
   // Dispute
   // ===========================================================================
 
+  /**
+   * Maps an individual dispute entity.
+   */
+  public static fromDispute(
+    dispute: JourneyCompletionDisputeEntity,
+  ): JourneyCompletionDisputeResponse {
+    return this.mapDispute(dispute);
+  }
+
+  /**
+   * Maps an individual dispute entity internally.
+   */
   private static mapDispute(
     dispute: JourneyCompletionDisputeEntity,
   ): JourneyCompletionDisputeResponse {
     return {
-      // -----------------------------------------------------------------------
       // Identity
-      // -----------------------------------------------------------------------
-
       publicId: dispute.publicId.value,
-
       completionId: dispute.completionId.value,
-
       raisedByPublicId: dispute.raisedByPublicId.value,
 
-      // -----------------------------------------------------------------------
       // Dispute
-      // -----------------------------------------------------------------------
-
       reason: dispute.reason.value,
-
       description: dispute.description?.value,
-
       status: dispute.status.value,
 
-      // -----------------------------------------------------------------------
       // Resolution
-      // -----------------------------------------------------------------------
-
       resolvedByPublicId: dispute.resolvedByPublicId?.value,
-
       resolutionSummary: dispute.resolutionSummary?.value,
-
       openedAt: dispute.openedAt,
-
       resolvedAt: dispute.resolvedAt,
-
       rejectedAt: dispute.rejectedAt,
-
       withdrawnAt: dispute.withdrawnAt,
 
-      // -----------------------------------------------------------------------
       // Audit
-      // -----------------------------------------------------------------------
-
       createdAt: dispute.createdAt,
-
       updatedAt: dispute.updatedAt,
     };
   }

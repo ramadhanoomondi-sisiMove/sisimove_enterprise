@@ -19,10 +19,11 @@ import { IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
 // -----------------------------------------------------------------------------
 
 /**
- * REST query DTO for retrieving a specific Journey Completion dispute.
+ * REST DTO for retrieving a specific Journey Completion dispute.
  *
- * Both identifiers remain transport-level primitives. The application query
- * handler converts them into domain value objects.
+ * Both identifiers remain transport-level primitives supplied through
+ * route parameters. The application query handler converts them into
+ * domain value objects.
  */
 export class GetJourneyCompletionDisputeQueryDto {
   // ===========================================================================

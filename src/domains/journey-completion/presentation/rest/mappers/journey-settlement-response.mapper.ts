@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// Journey Settlement — rest Response Mapper
+// Journey Settlement — REST Response Mapper
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
@@ -21,52 +21,28 @@ import type { JourneySettlementEntity } from '../../../domain/entities/journey-s
  * primitives at the presentation boundary.
  */
 export interface JourneySettlementResponse {
-  // ===========================================================================
   // Identity
-  // ===========================================================================
-
   publicId: string;
-
   completionId: string;
-
   journeyPublicId: string;
-
   providerPublicId: string;
 
-  // ===========================================================================
   // Financial Reference
-  // ===========================================================================
-
   financialTransactionPublicId: string | undefined;
 
-  // ===========================================================================
   // Lifecycle
-  // ===========================================================================
-
   status: string;
-
   submittedAt: Date | undefined;
-
   processingAt: Date | undefined;
-
   completedAt: Date | undefined;
-
   failedAt: Date | undefined;
-
   heldAt: Date | undefined;
-
   cancelledAt: Date | undefined;
-
   failureReason: string | undefined;
-
   version: number;
 
-  // ===========================================================================
   // Audit
-  // ===========================================================================
-
   createdAt: Date;
-
   updatedAt: Date;
 }
 
@@ -105,53 +81,29 @@ export class JourneySettlementResponseMapper {
     settlement: JourneySettlementEntity,
   ): JourneySettlementResponse {
     return {
-      // -----------------------------------------------------------------------
       // Identity
-      // -----------------------------------------------------------------------
-
       publicId: settlement.publicId.value,
-
       completionId: settlement.completionId.toString(),
-
       journeyPublicId: settlement.journeyPublicId.value,
-
       providerPublicId: settlement.providerPublicId.value,
 
-      // -----------------------------------------------------------------------
       // Financial Reference
-      // -----------------------------------------------------------------------
-
       financialTransactionPublicId:
         settlement.financialTransactionPublicId?.value,
 
-      // -----------------------------------------------------------------------
       // Lifecycle
-      // -----------------------------------------------------------------------
-
       status: settlement.status.value,
-
       submittedAt: settlement.submittedAt,
-
       processingAt: settlement.processingAt,
-
       completedAt: settlement.completedAt,
-
       failedAt: settlement.failedAt,
-
       heldAt: settlement.heldAt,
-
       cancelledAt: settlement.cancelledAt,
-
       failureReason: settlement.failureReason?.value,
-
       version: settlement.version,
 
-      // -----------------------------------------------------------------------
       // Audit
-      // -----------------------------------------------------------------------
-
       createdAt: settlement.createdAt,
-
       updatedAt: settlement.updatedAt,
     };
   }

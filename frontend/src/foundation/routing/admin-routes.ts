@@ -1,4 +1,4 @@
-//src/foundation/routing/admin-routes.ts
+
 /* -----------------------------------------------------------------------------
  * sisiMove — Admin Routes
  * -----------------------------------------------------------------------------
@@ -109,7 +109,6 @@ export const ADMIN_ROUTES = {
   BOARDING_JOURNEY: (journeyPublicId: string) =>
     `/admin/boarding/${encodeURIComponent(journeyPublicId)}`,
 
-  
   // ---------------------------------------------------------------------------
   // Journey Completion
   // ---------------------------------------------------------------------------
@@ -117,11 +116,10 @@ export const ADMIN_ROUTES = {
   JOURNEY_COMPLETION: '/admin/journey-completion',
 
   JOURNEY_COMPLETION_DETAIL: (completionPublicId: string) =>
-  `/admin/journey-completion/${encodeURIComponent(completionPublicId)}`,
+    `/admin/journey-completion/${encodeURIComponent(completionPublicId)}`,
 
   JOURNEY_COMPLETION_JOURNEY: (journeyPublicId: string) =>
     `/admin/journey-completion/${encodeURIComponent(journeyPublicId)}`,
-
 
   // ---------------------------------------------------------------------------
   // Finance Control Center
@@ -186,13 +184,41 @@ export const ADMIN_ROUTES = {
   // Commissions
   // ---------------------------------------------------------------------------
 
+  /**
+   * Commission Management landing page.
+   *
+   * This is the main entry point for commission administration.
+   * It provides navigation to booking commissions, earning commissions,
+   * and commission rules.
+   */
   FINANCE_COMMISSIONS: '/admin/finance/commissions',
 
-  FINANCE_COMMISSION_RULES: '/admin/finance/commissions/rules',
+  // ---------------------------------------------------------------------------
+  // Booking Commissions
+  // ---------------------------------------------------------------------------
 
   FINANCE_BOOKING_COMMISSIONS: '/admin/finance/commissions/bookings',
 
+  FINANCE_BOOKING_COMMISSION: (commissionPublicId: string) =>
+    `/admin/finance/commissions/bookings/${encodeURIComponent(commissionPublicId)}`,
+
+  // ---------------------------------------------------------------------------
+  // Earning Commissions
+  // ---------------------------------------------------------------------------
+
   FINANCE_EARNING_COMMISSIONS: '/admin/finance/commissions/earnings',
+
+  FINANCE_EARNING_COMMISSION: (commissionPublicId: string) =>
+    `/admin/finance/commissions/earnings/${encodeURIComponent(commissionPublicId)}`,
+
+  // ---------------------------------------------------------------------------
+  // Commission Rules
+  // ---------------------------------------------------------------------------
+
+  FINANCE_COMMISSION_RULES: '/admin/finance/commissions/rules',
+
+  FINANCE_COMMISSION_RULE: (rulePublicId: string) =>
+    `/admin/finance/commissions/rules/${encodeURIComponent(rulePublicId)}`,
 
   // ---------------------------------------------------------------------------
   // Settlements

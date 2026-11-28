@@ -47,7 +47,10 @@ export function JourneyCompletionStatusBadge({
   size = 'md',
   className,
 }: JourneyCompletionStatusBadgeProps) {
-  const presentation = STATUS_PRESENTATION[status];
+  const presentation = STATUS_PRESENTATION[status] ?? {
+    label: 'Unknown',
+    variant: 'outline' as BadgeVariant,
+  };
 
   return (
     <Badge

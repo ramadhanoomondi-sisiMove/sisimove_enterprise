@@ -6,7 +6,7 @@
 // NestJS / Swagger
 // -----------------------------------------------------------------------------
 
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 // -----------------------------------------------------------------------------
 // Validation
@@ -14,7 +14,6 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 import {
   IsIn,
-  IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
@@ -36,28 +35,12 @@ import { JOURNEY_COMPLETION_DISPUTE_REASONS } from '../../../../domain/value-obj
 /**
  * REST query DTO for retrieving disputes belonging to a Journey Completion.
  *
- * All identifiers remain transport-level strings.
+ * The Journey Completion public ID is supplied through the route parameter.
+ * Optional filters remain transport-level strings.
  *
  * Domain value objects are created by the application query handler.
  */
 export class GetJourneyCompletionDisputesQueryDto {
-  // ===========================================================================
-  // Journey Completion Public ID
-  // ===========================================================================
-
-  @ApiProperty({
-    description:
-      'Public identifier of the Journey Completion whose disputes are requested.',
-    example: 'JCP_01J8XYZ123456789',
-    minLength: 1,
-    maxLength: 100,
-  })
-  @IsString()
-  @IsNotEmpty()
-  @MinLength(1)
-  @MaxLength(100)
-  completionPublicId!: string;
-
   // ===========================================================================
   // Raised By
   // ===========================================================================

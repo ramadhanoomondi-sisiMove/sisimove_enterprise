@@ -119,6 +119,15 @@ import {
 import { UniqueEntityId } from '@foundation/kernel/domain/unique-entity-id';
 
 // -----------------------------------------------------------------------------
+// Response Mapper
+// -----------------------------------------------------------------------------
+
+import {
+  JourneySettlementResponseMapper,
+  type JourneySettlementResponse,
+} from '../mappers/journey-settlement-response.mapper';
+
+// -----------------------------------------------------------------------------
 // Controller
 // -----------------------------------------------------------------------------
 
@@ -214,8 +223,8 @@ export class JourneySettlementController {
   @RequirePermissions('settlement:read')
   public async list(
     @Query() dto: ListJourneySettlementsQueryDto,
-  ): Promise<JourneySettlementEntity[]> {
-    return this.listJourneySettlementsHandler.execute(
+  ): Promise<JourneySettlementResponse[]> {
+    const settlements = await this.listJourneySettlementsHandler.execute(
       new ListJourneySettlementsQuery({
         ...(dto.journeyPublicId !== undefined
           ? { journeyPublicId: dto.journeyPublicId }
@@ -226,6 +235,8 @@ export class JourneySettlementController {
         ...(dto.status !== undefined ? { status: dto.status } : {}),
       }),
     );
+
+    return JourneySettlementResponseMapper.fromEntities(settlements);
   }
 
   // ---------------------------------------------------------------------------
@@ -257,12 +268,17 @@ export class JourneySettlementController {
   @RequirePermissions('settlement:read')
   public async getByCompletion(
     @Query() dto: GetJourneySettlementByCompletionQueryDto,
-  ): Promise<JourneySettlementEntity | null> {
-    return this.getJourneySettlementByCompletionHandler.execute(
-      new GetJourneySettlementByCompletionQuery({
-        completionPublicId: dto.completionPublicId,
-      }),
-    );
+  ): Promise<JourneySettlementResponse | null> {
+    const settlement =
+      await this.getJourneySettlementByCompletionHandler.execute(
+        new GetJourneySettlementByCompletionQuery({
+          completionPublicId: dto.completionPublicId,
+        }),
+      );
+
+    return settlement
+      ? JourneySettlementResponseMapper.fromEntity(settlement)
+      : null;
   }
 
   // ---------------------------------------------------------------------------
@@ -273,12 +289,16 @@ export class JourneySettlementController {
   @RequirePermissions('settlement:read')
   public async get(
     @Param('journeySettlementPublicId') journeySettlementPublicId: string,
-  ): Promise<JourneySettlementAggregate | null> {
-    return this.getJourneySettlementHandler.execute(
+  ): Promise<JourneySettlementResponse | null> {
+    const aggregate = await this.getJourneySettlementHandler.execute(
       new GetJourneySettlementQuery({
         journeySettlementPublicId,
       }),
     );
+
+    return aggregate
+      ? JourneySettlementResponseMapper.toResponse(aggregate)
+      : null;
   }
 
   // ===========================================================================
@@ -289,8 +309,8 @@ export class JourneySettlementController {
   @RequirePermissions('settlement:create')
   public async create(
     @Body() dto: CreateJourneySettlementDto,
-  ): Promise<JourneySettlementAggregate> {
-    return this.createJourneySettlementHandler.execute(
+  ): Promise<JourneySettlementResponse> {
+    const aggregate = await this.createJourneySettlementHandler.execute(
       new CreateJourneySettlementCommand(
         new UniqueEntityId(dto.completionId),
         dto.journeyPublicId,
@@ -299,6 +319,8 @@ export class JourneySettlementController {
         dto.causationId,
       ),
     );
+
+    return JourneySettlementResponseMapper.toResponse(aggregate);
   }
 
   // ===========================================================================
@@ -310,8 +332,8 @@ export class JourneySettlementController {
   public async submit(
     @Param('journeySettlementPublicId') journeySettlementPublicId: string,
     @Body() dto: SubmitJourneySettlementDto,
-  ): Promise<JourneySettlementAggregate> {
-    return this.submitJourneySettlementHandler.execute(
+  ): Promise<JourneySettlementResponse> {
+    const aggregate = await this.submitJourneySettlementHandler.execute(
       new SubmitJourneySettlementCommand(
         new JourneySettlementPublicId(journeySettlementPublicId),
         dto.correlationId,
@@ -319,6 +341,8 @@ export class JourneySettlementController {
         dto.submittedAt !== undefined ? new Date(dto.submittedAt) : undefined,
       ),
     );
+
+    return JourneySettlementResponseMapper.toResponse(aggregate);
   }
 
   // ===========================================================================
@@ -330,8 +354,8 @@ export class JourneySettlementController {
   public async process(
     @Param('journeySettlementPublicId') journeySettlementPublicId: string,
     @Body() dto: ProcessJourneySettlementDto,
-  ): Promise<JourneySettlementAggregate> {
-    return this.processJourneySettlementHandler.execute(
+  ): Promise<JourneySettlementResponse> {
+    const aggregate = await this.processJourneySettlementHandler.execute(
       new ProcessJourneySettlementCommand(
         new JourneySettlementPublicId(journeySettlementPublicId),
         dto.correlationId,
@@ -339,6 +363,8 @@ export class JourneySettlementController {
         dto.processingAt !== undefined ? new Date(dto.processingAt) : undefined,
       ),
     );
+
+    return JourneySettlementResponseMapper.toResponse(aggregate);
   }
 
   // ===========================================================================
@@ -350,8 +376,8 @@ export class JourneySettlementController {
   public async complete(
     @Param('journeySettlementPublicId') journeySettlementPublicId: string,
     @Body() dto: CompleteJourneySettlementDto,
-  ): Promise<JourneySettlementAggregate> {
-    return this.completeJourneySettlementHandler.execute(
+  ): Promise<JourneySettlementResponse> {
+    const aggregate = await this.completeJourneySettlementHandler.execute(
       new CompleteJourneySettlementCommand(
         new JourneySettlementPublicId(journeySettlementPublicId),
         new JourneySettlementFinancialTransactionPublicId(
@@ -362,6 +388,8 @@ export class JourneySettlementController {
         dto.completedAt !== undefined ? new Date(dto.completedAt) : undefined,
       ),
     );
+
+    return JourneySettlementResponseMapper.toResponse(aggregate);
   }
 
   // ===========================================================================
@@ -373,8 +401,8 @@ export class JourneySettlementController {
   public async fail(
     @Param('journeySettlementPublicId') journeySettlementPublicId: string,
     @Body() dto: FailJourneySettlementDto,
-  ): Promise<JourneySettlementAggregate> {
-    return this.failJourneySettlementHandler.execute(
+  ): Promise<JourneySettlementResponse> {
+    const aggregate = await this.failJourneySettlementHandler.execute(
       new FailJourneySettlementCommand(
         new JourneySettlementPublicId(journeySettlementPublicId),
         JourneySettlementFailureReason.create(dto.failureReason),
@@ -383,6 +411,8 @@ export class JourneySettlementController {
         dto.failedAt !== undefined ? new Date(dto.failedAt) : undefined,
       ),
     );
+
+    return JourneySettlementResponseMapper.toResponse(aggregate);
   }
 
   // ===========================================================================
@@ -394,8 +424,8 @@ export class JourneySettlementController {
   public async hold(
     @Param('journeySettlementPublicId') journeySettlementPublicId: string,
     @Body() dto: HoldJourneySettlementDto,
-  ): Promise<JourneySettlementAggregate> {
-    return this.holdJourneySettlementHandler.execute(
+  ): Promise<JourneySettlementResponse> {
+    const aggregate = await this.holdJourneySettlementHandler.execute(
       new HoldJourneySettlementCommand(
         new JourneySettlementPublicId(journeySettlementPublicId),
         dto.correlationId,
@@ -403,6 +433,8 @@ export class JourneySettlementController {
         dto.heldAt !== undefined ? new Date(dto.heldAt) : undefined,
       ),
     );
+
+    return JourneySettlementResponseMapper.toResponse(aggregate);
   }
 
   // ===========================================================================
@@ -414,8 +446,8 @@ export class JourneySettlementController {
   public async cancel(
     @Param('journeySettlementPublicId') journeySettlementPublicId: string,
     @Body() dto: CancelJourneySettlementDto,
-  ): Promise<JourneySettlementAggregate> {
-    return this.cancelJourneySettlementHandler.execute(
+  ): Promise<JourneySettlementResponse> {
+    const aggregate = await this.cancelJourneySettlementHandler.execute(
       new CancelJourneySettlementCommand(
         new JourneySettlementPublicId(journeySettlementPublicId),
         dto.correlationId,
@@ -423,6 +455,8 @@ export class JourneySettlementController {
         dto.cancelledAt !== undefined ? new Date(dto.cancelledAt) : undefined,
       ),
     );
+
+    return JourneySettlementResponseMapper.toResponse(aggregate);
   }
 }
 

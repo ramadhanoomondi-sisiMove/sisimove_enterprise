@@ -6,7 +6,7 @@
 // NestJS / Swagger
 // -----------------------------------------------------------------------------
 
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 // -----------------------------------------------------------------------------
 // Validation
@@ -14,7 +14,6 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 import {
   IsIn,
-  IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
@@ -36,27 +35,13 @@ import { JOURNEY_COMPLETION_CONFIRMATION_STATUSES } from '../../../../domain/val
 /**
  * REST query DTO for retrieving Journey Completion confirmations.
  *
- * All domain identifiers remain transport-level strings. Domain value objects
- * are constructed by the query handler.
+ * The Journey Completion public identifier is supplied through the route
+ * parameter and is therefore not part of this query DTO.
+ *
+ * Optional filters remain transport-level primitives. Domain value objects
+ * are constructed by the application query handler.
  */
 export class GetJourneyCompletionConfirmationsQueryDto {
-  // ===========================================================================
-  // Journey Completion
-  // ===========================================================================
-
-  @ApiProperty({
-    description:
-      'Public identifier of the Journey Completion whose confirmations are requested.',
-    example: 'JCP_01J8XYZ123456789',
-    minLength: 1,
-    maxLength: 100,
-  })
-  @IsString()
-  @IsNotEmpty()
-  @MinLength(1)
-  @MaxLength(100)
-  completionPublicId!: string;
-
   // ===========================================================================
   // Member
   // ===========================================================================

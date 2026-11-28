@@ -141,6 +141,17 @@ import {
 } from '../dto/query';
 
 // -----------------------------------------------------------------------------
+// REST Response Mapper
+// -----------------------------------------------------------------------------
+
+import {
+  JourneyCompletionResponseMapper,
+  type JourneyCompletionResponse,
+  type JourneyCompletionConfirmationResponse,
+  type JourneyCompletionDisputeResponse,
+} from '../mappers/journey-completion-response.mapper';
+
+// -----------------------------------------------------------------------------
 // Request Type
 // -----------------------------------------------------------------------------
 
@@ -315,8 +326,8 @@ export class JourneyCompletionController {
   @RequirePermissions('completion:read')
   public async list(
     @Query() dto: ListJourneyCompletionsQueryDto,
-  ): Promise<JourneyCompletionEntity[]> {
-    return this.listJourneyCompletionsHandler.execute(
+  ): Promise<JourneyCompletionResponse[]> {
+    const result = await this.listJourneyCompletionsHandler.execute(
       new ListJourneyCompletionsQuery({
         ...(dto.journeyPublicId !== undefined
           ? { journeyPublicId: dto.journeyPublicId }
@@ -327,6 +338,8 @@ export class JourneyCompletionController {
         ...(dto.status !== undefined ? { status: dto.status } : {}),
       }),
     );
+
+    return JourneyCompletionResponseMapper.fromEntities(result);
   }
 
   // ---------------------------------------------------------------------------
@@ -356,13 +369,15 @@ export class JourneyCompletionController {
   @RequirePermissions('completion:read')
   public async listByProvider(
     @Query() dto: ListJourneyCompletionsByProviderQueryDto,
-  ): Promise<JourneyCompletionEntity[]> {
-    return this.listJourneyCompletionsByProviderHandler.execute(
+  ): Promise<JourneyCompletionResponse[]> {
+    const result = await this.listJourneyCompletionsByProviderHandler.execute(
       new ListJourneyCompletionsByProviderQuery({
         providerPublicId: dto.providerPublicId,
         ...(dto.status !== undefined ? { status: dto.status } : {}),
       }),
     );
+
+    return JourneyCompletionResponseMapper.fromEntities(result);
   }
 
   // ---------------------------------------------------------------------------
@@ -373,8 +388,8 @@ export class JourneyCompletionController {
   @RequirePermissions('completion:read')
   public async listByStatus(
     @Query() dto: ListJourneyCompletionsByStatusQueryDto,
-  ): Promise<JourneyCompletionEntity[]> {
-    return this.listJourneyCompletionsByStatusHandler.execute(
+  ): Promise<JourneyCompletionResponse[]> {
+    const result = await this.listJourneyCompletionsByStatusHandler.execute(
       new ListJourneyCompletionsByStatusQuery({
         status: dto.status,
         ...(dto.providerPublicId !== undefined
@@ -385,6 +400,8 @@ export class JourneyCompletionController {
           : {}),
       }),
     );
+
+    return JourneyCompletionResponseMapper.fromEntities(result);
   }
 
   // ---------------------------------------------------------------------------
@@ -395,12 +412,16 @@ export class JourneyCompletionController {
   @RequirePermissions('completion:read')
   public async getByJourney(
     @Param('journeyPublicId') journeyPublicId: string,
-  ): Promise<JourneyCompletionEntity | null> {
-    return this.getJourneyCompletionByJourneyHandler.execute(
+  ): Promise<JourneyCompletionResponse | null> {
+    const result = await this.getJourneyCompletionByJourneyHandler.execute(
       new GetJourneyCompletionByJourneyQuery({
         journeyPublicId,
       }),
     );
+
+    return result === null
+      ? null
+      : JourneyCompletionResponseMapper.fromEntity(result);
   }
 
   // ---------------------------------------------------------------------------
@@ -412,8 +433,8 @@ export class JourneyCompletionController {
   public async getConfirmations(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Query() dto: GetJourneyCompletionConfirmationsQueryDto,
-  ): Promise<JourneyCompletionConfirmationEntity[]> {
-    return this.getJourneyCompletionConfirmationsHandler.execute(
+  ): Promise<JourneyCompletionConfirmationResponse[]> {
+    const result = await this.getJourneyCompletionConfirmationsHandler.execute(
       new GetJourneyCompletionConfirmationsQuery({
         completionPublicId: journeyCompletionPublicId,
         ...(dto.memberPublicId !== undefined
@@ -426,6 +447,8 @@ export class JourneyCompletionController {
         ...(dto.status !== undefined ? { status: dto.status } : {}),
       }),
     );
+
+    return JourneyCompletionResponseMapper.fromConfirmations(result);
   }
 
   // ---------------------------------------------------------------------------
@@ -437,13 +460,17 @@ export class JourneyCompletionController {
   public async getConfirmation(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Param('confirmationPublicId') confirmationPublicId: string,
-  ): Promise<JourneyCompletionConfirmationEntity | null> {
-    return this.getJourneyCompletionConfirmationHandler.execute(
+  ): Promise<JourneyCompletionConfirmationResponse | null> {
+    const result = await this.getJourneyCompletionConfirmationHandler.execute(
       new GetJourneyCompletionConfirmationQuery({
         completionPublicId: journeyCompletionPublicId,
         confirmationPublicId,
       }),
     );
+
+    return result === null
+      ? null
+      : JourneyCompletionResponseMapper.fromConfirmation(result);
   }
 
   // ---------------------------------------------------------------------------
@@ -455,8 +482,8 @@ export class JourneyCompletionController {
   public async getDisputes(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Query() dto: GetJourneyCompletionDisputesQueryDto,
-  ): Promise<JourneyCompletionDisputeEntity[]> {
-    return this.getJourneyCompletionDisputesHandler.execute(
+  ): Promise<JourneyCompletionDisputeResponse[]> {
+    const result = await this.getJourneyCompletionDisputesHandler.execute(
       new GetJourneyCompletionDisputesQuery({
         completionPublicId: journeyCompletionPublicId,
         ...(dto.raisedByPublicId !== undefined
@@ -466,6 +493,8 @@ export class JourneyCompletionController {
         ...(dto.reason !== undefined ? { reason: dto.reason } : {}),
       }),
     );
+
+    return JourneyCompletionResponseMapper.fromDisputes(result);
   }
 
   // ---------------------------------------------------------------------------
@@ -477,13 +506,17 @@ export class JourneyCompletionController {
   public async getDispute(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Param('disputePublicId') disputePublicId: string,
-  ): Promise<JourneyCompletionDisputeEntity | null> {
-    return this.getJourneyCompletionDisputeHandler.execute(
+  ): Promise<JourneyCompletionDisputeResponse | null> {
+    const result = await this.getJourneyCompletionDisputeHandler.execute(
       new GetJourneyCompletionDisputeQuery({
         completionPublicId: journeyCompletionPublicId,
         disputePublicId,
       }),
     );
+
+    return result === null
+      ? null
+      : JourneyCompletionResponseMapper.fromDispute(result);
   }
 
   // ---------------------------------------------------------------------------
@@ -495,8 +528,8 @@ export class JourneyCompletionController {
   public async get(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Query() dto: GetJourneyCompletionQueryDto,
-  ): Promise<JourneyCompletionAggregate | null> {
-    return this.getJourneyCompletionHandler.execute(
+  ): Promise<JourneyCompletionResponse | null> {
+    const result = await this.getJourneyCompletionHandler.execute(
       new GetJourneyCompletionQuery({
         journeyCompletionPublicId,
         ...(dto.journeyPublicId !== undefined
@@ -507,6 +540,10 @@ export class JourneyCompletionController {
           : {}),
       }),
     );
+
+    return result === null
+      ? null
+      : JourneyCompletionResponseMapper.toResponse(result);
   }
 
   // ===========================================================================
@@ -517,8 +554,8 @@ export class JourneyCompletionController {
   @RequirePermissions('completion:create')
   public async create(
     @Body() dto: CreateJourneyCompletionDto,
-  ): Promise<JourneyCompletionAggregate> {
-    return this.createJourneyCompletionHandler.execute(
+  ): Promise<JourneyCompletionResponse> {
+    const result = await this.createJourneyCompletionHandler.execute(
       new CreateJourneyCompletionCommand(
         new JourneyCompletionJourneyPublicId(dto.journeyPublicId),
         new JourneyCompletionProviderPublicId(dto.providerPublicId),
@@ -527,6 +564,8 @@ export class JourneyCompletionController {
         dto.causationId,
       ),
     );
+
+    return JourneyCompletionResponseMapper.toResponse(result);
   }
 
   // ===========================================================================
@@ -538,8 +577,8 @@ export class JourneyCompletionController {
   public async requestCompletion(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Body() dto: RequestJourneyCompletionDto,
-  ): Promise<JourneyCompletionAggregate> {
-    return this.requestJourneyCompletionHandler.execute(
+  ): Promise<JourneyCompletionResponse> {
+    const result = await this.requestJourneyCompletionHandler.execute(
       new RequestJourneyCompletionCommand(
         new JourneyCompletionPublicId(journeyCompletionPublicId),
         dto.correlationId,
@@ -547,6 +586,8 @@ export class JourneyCompletionController {
         dto.requestedAt !== undefined ? new Date(dto.requestedAt) : undefined,
       ),
     );
+
+    return JourneyCompletionResponseMapper.toResponse(result);
   }
 
   // ===========================================================================
@@ -558,8 +599,8 @@ export class JourneyCompletionController {
   public async confirm(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Body() dto: ConfirmJourneyCompletionDto,
-  ): Promise<JourneyCompletionAggregate> {
-    return this.confirmJourneyCompletionHandler.execute(
+  ): Promise<JourneyCompletionResponse> {
+    const result = await this.confirmJourneyCompletionHandler.execute(
       new ConfirmJourneyCompletionCommand(
         new JourneyCompletionPublicId(journeyCompletionPublicId),
         dto.correlationId,
@@ -567,6 +608,8 @@ export class JourneyCompletionController {
         dto.confirmedAt !== undefined ? new Date(dto.confirmedAt) : undefined,
       ),
     );
+
+    return JourneyCompletionResponseMapper.toResponse(result);
   }
 
   // ===========================================================================
@@ -582,18 +625,21 @@ export class JourneyCompletionController {
     @Param('confirmationPublicId') confirmationPublicId: string,
     @Body() dto: WithdrawJourneyCompletionConfirmationDto,
     @Req() request: AuthenticatedRequest,
-  ): Promise<JourneyCompletionAggregate> {
+  ): Promise<JourneyCompletionResponse> {
     const memberPublicId = dto.memberPublicId ?? request.user.publicId;
 
-    return this.withdrawJourneyCompletionConfirmationHandler.execute(
-      new WithdrawJourneyCompletionConfirmationCommand(
-        journeyCompletionPublicId,
-        confirmationPublicId,
-        memberPublicId,
-        dto.correlationId,
-        dto.causationId,
-      ),
-    );
+    const result =
+      await this.withdrawJourneyCompletionConfirmationHandler.execute(
+        new WithdrawJourneyCompletionConfirmationCommand(
+          journeyCompletionPublicId,
+          confirmationPublicId,
+          memberPublicId,
+          dto.correlationId,
+          dto.causationId,
+        ),
+      );
+
+    return JourneyCompletionResponseMapper.toResponse(result);
   }
   // ===========================================================================
   // OPEN DISPUTE
@@ -605,12 +651,12 @@ export class JourneyCompletionController {
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Body() dto: OpenJourneyCompletionDisputeDto,
     @Req() request: AuthenticatedRequest,
-  ): Promise<JourneyCompletionAggregate> {
+  ): Promise<JourneyCompletionResponse> {
     const raisedByPublicId = dto.raisedByPublicId ?? request.user.publicId;
 
     const domainValues = dto.toDomainValues();
 
-    return this.openJourneyCompletionDisputeHandler.execute(
+    const result = await this.openJourneyCompletionDisputeHandler.execute(
       new OpenJourneyCompletionDisputeCommand(
         new JourneyCompletionPublicId(journeyCompletionPublicId),
         new JourneyCompletionMemberPublicId(raisedByPublicId),
@@ -620,6 +666,8 @@ export class JourneyCompletionController {
         dto.causationId,
       ),
     );
+
+    return JourneyCompletionResponseMapper.toResponse(result);
   }
 
   // ===========================================================================
@@ -631,8 +679,8 @@ export class JourneyCompletionController {
   public async reviewDispute(
     @Param('disputePublicId') disputePublicId: string,
     @Body() dto: ReviewJourneyCompletionDisputeDto,
-  ): Promise<JourneyCompletionAggregate> {
-    return this.reviewJourneyCompletionDisputeHandler.execute(
+  ): Promise<JourneyCompletionResponse> {
+    const result = await this.reviewJourneyCompletionDisputeHandler.execute(
       new ReviewJourneyCompletionDisputeCommand(
         new JourneyCompletionDisputePublicId(disputePublicId),
         dto.correlationId,
@@ -642,6 +690,8 @@ export class JourneyCompletionController {
           : undefined,
       ),
     );
+
+    return JourneyCompletionResponseMapper.toResponse(result);
   }
 
   // ===========================================================================
@@ -655,10 +705,10 @@ export class JourneyCompletionController {
     @Param('disputePublicId') disputePublicId: string,
     @Body() dto: ResolveJourneyCompletionDisputeDto,
     @Req() request: AuthenticatedRequest,
-  ): Promise<JourneyCompletionAggregate> {
+  ): Promise<JourneyCompletionResponse> {
     const resolvedByPublicId = dto.resolvedByPublicId ?? request.user.publicId;
 
-    return this.resolveJourneyCompletionDisputeHandler.execute(
+    const result = await this.resolveJourneyCompletionDisputeHandler.execute(
       new ResolveJourneyCompletionDisputeCommand(
         new JourneyCompletionPublicId(journeyCompletionPublicId),
         new JourneyCompletionDisputePublicId(disputePublicId),
@@ -669,6 +719,8 @@ export class JourneyCompletionController {
         dto.resolvedAt !== undefined ? new Date(dto.resolvedAt) : undefined,
       ),
     );
+
+    return JourneyCompletionResponseMapper.toResponse(result);
   }
 
   // ===========================================================================
@@ -682,10 +734,10 @@ export class JourneyCompletionController {
     @Param('disputePublicId') disputePublicId: string,
     @Body() dto: RejectJourneyCompletionDisputeDto,
     @Req() request: AuthenticatedRequest,
-  ): Promise<JourneyCompletionAggregate> {
+  ): Promise<JourneyCompletionResponse> {
     const resolvedByPublicId = dto.resolvedByPublicId ?? request.user.publicId;
 
-    return this.rejectJourneyCompletionDisputeHandler.execute(
+    const result = await this.rejectJourneyCompletionDisputeHandler.execute(
       new RejectJourneyCompletionDisputeCommand(
         new JourneyCompletionPublicId(journeyCompletionPublicId),
         new JourneyCompletionDisputePublicId(disputePublicId),
@@ -696,6 +748,8 @@ export class JourneyCompletionController {
         dto.rejectedAt !== undefined ? new Date(dto.rejectedAt) : undefined,
       ),
     );
+
+    return JourneyCompletionResponseMapper.toResponse(result);
   }
 
   // ===========================================================================
@@ -709,11 +763,11 @@ export class JourneyCompletionController {
     @Param('disputePublicId') disputePublicId: string,
     @Body() dto: WithdrawJourneyCompletionDisputeDto,
     @Req() request: AuthenticatedRequest,
-  ): Promise<JourneyCompletionAggregate> {
+  ): Promise<JourneyCompletionResponse> {
     const withdrawnByPublicId =
       dto.withdrawnByPublicId ?? request.user.publicId;
 
-    return this.withdrawJourneyCompletionDisputeHandler.execute(
+    const result = await this.withdrawJourneyCompletionDisputeHandler.execute(
       new WithdrawJourneyCompletionDisputeCommand(
         new JourneyCompletionPublicId(journeyCompletionPublicId),
         new JourneyCompletionDisputePublicId(disputePublicId),
@@ -723,6 +777,8 @@ export class JourneyCompletionController {
         dto.withdrawnAt !== undefined ? new Date(dto.withdrawnAt) : undefined,
       ),
     );
+
+    return JourneyCompletionResponseMapper.toResponse(result);
   }
 
   // ===========================================================================
@@ -734,8 +790,8 @@ export class JourneyCompletionController {
   public async cancel(
     @Param('journeyCompletionPublicId') journeyCompletionPublicId: string,
     @Body() dto: CancelJourneyCompletionDto,
-  ): Promise<JourneyCompletionAggregate> {
-    return this.cancelJourneyCompletionHandler.execute(
+  ): Promise<JourneyCompletionResponse> {
+    const result = await this.cancelJourneyCompletionHandler.execute(
       new CancelJourneyCompletionCommand(
         new JourneyCompletionPublicId(journeyCompletionPublicId),
         dto.correlationId,
@@ -743,6 +799,8 @@ export class JourneyCompletionController {
         dto.cancelledAt !== undefined ? new Date(dto.cancelledAt) : undefined,
       ),
     );
+
+    return JourneyCompletionResponseMapper.toResponse(result);
   }
 }
 

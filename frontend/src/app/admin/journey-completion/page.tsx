@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useMemo } from 'react';
@@ -8,12 +9,15 @@ import { ADMIN_ROUTES } from '@/foundation/routing/admin-routes';
 import {
   useAdminJourneyCompletions,
   useAdminJourneyCompletionMetrics,
-  buildAdminJourneyCompletionActivity,
 } from '@/features/admin/journey-completion/hooks';
 
 import type {
   AdminJourneyCompletion,
 } from '@/features/admin/journey-completion/models';
+
+import type {
+  AdminJourneyCompletionActivityItem,
+} from '@/features/admin/journey-completion/hooks';
 
 import {
   JourneyCompletionPageContainer,
@@ -36,22 +40,88 @@ export default function JourneyCompletionPage() {
   const { metrics } =
     useAdminJourneyCompletionMetrics(allCompletions);
 
-  const activity = useMemo(
-    () =>
-      allCompletions
-        .flatMap((completion) =>
-          buildAdminJourneyCompletionActivity({
-            confirmations: completion.confirmations,
-            disputes: completion.disputes,
-          }),
-        )
-        .sort(
-          (a, b) =>
-            new Date(b.occurredAt).getTime() -
-            new Date(a.occurredAt).getTime(),
-        ),
+  // ---------------------------------------------------------------------------
+  // Overview Activity
+  // Derive only events supported by the completion list records.
+  // Detailed confirmation and dispute events are loaded on the detail page.
+  // ---------------------------------------------------------------------------
+
+  const activity = useMemo<AdminJourneyCompletionActivityItem[]>(
+    () => {
+      const items: AdminJourneyCompletionActivityItem[] = [];
+
+      for (const completion of allCompletions) {
+        items.push({
+          id: `${completion.publicId}-created`,
+          type: 'COMPLETION_CREATED' as AdminJourneyCompletionActivityItem['type'],
+          title: 'Completion record created',
+          description: `Completion record created for journey ${completion.journeyPublicId}.`,
+          status: completion.status,
+          occurredAt: completion.createdAt,
+          relatedPublicId: completion.publicId,
+        });
+
+        if (completion.completionRequestedAt) {
+          items.push({
+            id: `${completion.publicId}-requested`,
+            type: 'COMPLETION_REQUESTED' as AdminJourneyCompletionActivityItem['type'],
+            title: 'Completion requested',
+            description: 'The journey completion process was requested.',
+            status: completion.status,
+            occurredAt: completion.completionRequestedAt,
+            relatedPublicId: completion.publicId,
+          });
+        }
+
+        if (completion.confirmedAt) {
+          items.push({
+            id: `${completion.publicId}-confirmed`,
+            type: 'COMPLETION_CONFIRMED' as AdminJourneyCompletionActivityItem['type'],
+            title: 'Completion confirmed',
+            description: 'The journey completion was confirmed.',
+            status: completion.status,
+            occurredAt: completion.confirmedAt,
+            relatedPublicId: completion.publicId,
+          });
+        }
+
+        if (completion.disputedAt) {
+          items.push({
+            id: `${completion.publicId}-disputed`,
+            type: 'COMPLETION_DISPUTED' as AdminJourneyCompletionActivityItem['type'],
+            title: 'Completion disputed',
+            description: 'A dispute was recorded against this completion.',
+            status: completion.status,
+            occurredAt: completion.disputedAt,
+            relatedPublicId: completion.publicId,
+          });
+        }
+
+        if (completion.cancelledAt) {
+          items.push({
+            id: `${completion.publicId}-cancelled`,
+            type: 'COMPLETION_CANCELLED' as AdminJourneyCompletionActivityItem['type'],
+            title: 'Completion cancelled',
+            description: 'The journey completion was cancelled.',
+            status: completion.status,
+            occurredAt: completion.cancelledAt,
+            relatedPublicId: completion.publicId,
+          });
+        }
+      }
+
+      return items.sort(
+        (a, b) =>
+          new Date(b.occurredAt).getTime() -
+          new Date(a.occurredAt).getTime(),
+      );
+    },
     [allCompletions],
   );
+
+  // ---------------------------------------------------------------------------
+  // Navigation
+  // ---------------------------------------------------------------------------
 
   const handleOpenCompletion = (
     completion: AdminJourneyCompletion,
@@ -60,6 +130,10 @@ export default function JourneyCompletionPage() {
       ADMIN_ROUTES.JOURNEY_COMPLETION_DETAIL(completion.publicId),
     );
   };
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
     <JourneyCompletionPageContainer>

@@ -2,7 +2,9 @@
 import type {
   AdminJourneyCompletion,
 } from '@/features/admin/journey-completion/models';
+
 import { JourneyCompletionEmptyState } from '../shared';
+
 import { JourneyCompletionTableRow } from './JourneyCompletionTableRow';
 import { JourneyCompletionTableSkeleton } from './JourneyCompletionTableSkeleton';
 
@@ -22,7 +24,7 @@ const HEADERS = [
   'Confirmations',
   'Created',
   'Confirmed',
-];
+] as const;
 
 export function JourneyCompletionTable({
   completions,
@@ -64,9 +66,13 @@ export function JourneyCompletionTable({
         </thead>
 
         <tbody>
-          {completions.map((completion) => (
+          {completions.map((completion, index) => (
             <JourneyCompletionTableRow
-              key={completion.publicId}
+              key={
+                completion.publicId?.trim()
+                  ? completion.publicId
+                  : `journey-completion-row-${index}`
+              }
               completion={completion}
               onOpen={onOpen}
             />

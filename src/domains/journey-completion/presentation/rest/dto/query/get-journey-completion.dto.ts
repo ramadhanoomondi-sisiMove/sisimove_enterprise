@@ -6,7 +6,7 @@
 // NestJS / Swagger
 // -----------------------------------------------------------------------------
 
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 // -----------------------------------------------------------------------------
 // Validation
@@ -21,27 +21,13 @@ import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 /**
  * REST query DTO for retrieving a single Journey Completion.
  *
- * The Journey Completion public identifier is required.
+ * The Journey Completion public identifier is supplied through the route
+ * parameter and is therefore not part of this query DTO.
  *
  * Optional journey and provider identifiers allow callers to constrain
  * the lookup without exposing persistence concerns to the presentation layer.
  */
 export class GetJourneyCompletionQueryDto {
-  // ===========================================================================
-  // Journey Completion Public ID
-  // ===========================================================================
-
-  @ApiProperty({
-    description: 'Public identifier of the Journey Completion to retrieve.',
-    example: 'JCP_01J8XYZ123456789',
-    minLength: 1,
-    maxLength: 100,
-  })
-  @IsString()
-  @MinLength(1)
-  @MaxLength(100)
-  journeyCompletionPublicId!: string;
-
   // ===========================================================================
   // Optional Journey Filter
   // ===========================================================================
